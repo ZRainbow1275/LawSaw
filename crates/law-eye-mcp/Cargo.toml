@@ -1,0 +1,23 @@
+[package]
+name = "law-eye-mcp"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "law-eye-mcp"
+path = "src/main.rs"
+
+[dependencies]
+law-eye-common = { path = "../law-eye-common" }
+law-eye-db = { path = "../law-eye-db" }
+law-eye-core = { path = "../law-eye-core" }
+law-eye-ai = { path = "../law-eye-ai" }
+sqlx.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+dotenvy.workspace = true

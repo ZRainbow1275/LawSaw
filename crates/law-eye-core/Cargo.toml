@@ -1,0 +1,17 @@
+[package]
+name = "law-eye-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+law-eye-common = { path = "../law-eye-common" }
+law-eye-db = { path = "../law-eye-db" }
+law-eye-ai = { path = "../law-eye-ai" }
+sqlx.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+argon2.workspace = true
+rand.workspace = true

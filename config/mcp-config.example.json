@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "law-eye": {
+      "command": "law-eye-mcp",
+      "env": {
+        "DATABASE_URL": "postgres://law_eye:password@localhost:5432/law_eye",
+        "OPENAI_API_KEY": "your-api-key-here",
+        "OPENAI_BASE_URL": "https://api.openai.com/v1"
+      }
+    }
+  }
+}

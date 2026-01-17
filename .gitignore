@@ -1,0 +1,39 @@
+# Rust
+/target/
+Cargo.lock
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+.next/
+.turbo/
+dist/
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+
+# Temp
+tmp/
+temp/
+*.tmp
+tmpclaude-*
+.ace-tool/

@@ -1,0 +1,89 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/law-eye-api",
+    "crates/law-eye-worker",
+    "crates/law-eye-core",
+    "crates/law-eye-crawler",
+    "crates/law-eye-db",
+    "crates/law-eye-queue",
+    "crates/law-eye-common",
+    "crates/law-eye-ai",
+    "crates/law-eye-mcp",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/user/law-eye"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.43", features = ["full"] }
+
+# Web framework
+axum = { version = "0.8", features = ["macros"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "chrono", "json"] }
+deadpool-redis = "0.18"
+redis = { version = "0.27", features = ["tokio-comp"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "cookies"] }
+
+# HTML/RSS parsing
+scraper = "0.21"
+feed-rs = "2.1"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Config
+config = "0.14"
+dotenvy = "0.15"
+
+# Utils
+uuid = { version = "1.11", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+url = "2.5"
+rand = "0.8"
+
+# OpenAPI
+utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "8", features = ["axum"] }
+
+# AI / LLM
+async-openai = "0.27"
+tiktoken-rs = "0.6"
+
+# Vector
+pgvector = "0.4"
+
+# Async utilities
+futures = "0.3"
+async-trait = "0.1"
+
+# Authentication
+argon2 = "0.5"
+axum-login = "0.17"
+tower-sessions = "0.14"
+tower-sessions-redis-store = "0.16"
+time = "0.3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"

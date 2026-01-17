@@ -1,0 +1,14 @@
+[package]
+name = "law-eye-db"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+law-eye-common = { path = "../law-eye-common" }
+sqlx.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+argon2.workspace = true

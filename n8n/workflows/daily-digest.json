@@ -1,0 +1,231 @@
+{
+  "name": "Law Eye Daily Digest",
+  "nodes": [
+    {
+      "id": "cron-trigger",
+      "name": "Daily Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "fetch-articles",
+      "name": "Fetch Today's Articles",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.LAW_EYE_API_URL }}/api/articles",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "published"
+            },
+            {
+              "name": "date",
+              "value": "={{ $now.format('yyyy-MM-dd') }}"
+            },
+            {
+              "name": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "check-articles",
+      "name": "Check if Articles Exist",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [440, 0],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.data.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "group-by-category",
+      "name": "Group by Category",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, -100],
+      "parameters": {
+        "jsCode": "const articles = $input.first().json.data;\nconst categories = {};\nconst highlights = [];\n\nfor (const article of articles) {\n  // 识别高优先级文章\n  if (article.importance >= 4 || article.risk_score >= 70) {\n    highlights.push(article);\n  }\n  \n  // 按分类分组\n  const catName = article.category?.name || '其他';\n  if (!categories[catName]) {\n    categories[catName] = {\n      name: catName,\n      icon: article.category?.icon || '📋',\n      color: article.category?.color || '#666',\n      articles: []\n    };\n  }\n  categories[catName].articles.push({\n    title: article.title,\n    link: article.link,\n    summary: article.summary,\n    category_name: catName,\n    category_icon: article.category?.icon || '📋',\n    category_color: article.category?.color || '#666',\n    risk_score: article.risk_score,\n    importance: article.importance,\n    published_at: article.published_at\n  });\n}\n\nreturn [{\n  json: {\n    date: new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }),\n    total_count: articles.length,\n    categories: Object.values(categories),\n    highlights: highlights.slice(0, 5)\n  }\n}];"
+      }
+    },
+    {
+      "id": "generate-html",
+      "name": "Generate HTML Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, -100],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LAW_EYE_API_URL }}/api/email/render",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "template",
+              "value": "daily_digest"
+            },
+            {
+              "name": "data",
+              "value": "={{ JSON.stringify($json) }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "send-email",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1100, -100],
+      "parameters": {
+        "fromEmail": "={{ $env.EMAIL_FROM }}",
+        "toEmail": "={{ $env.EMAIL_TO }}",
+        "subject": "法眼日报 - {{ $now.format('yyyy年MM月dd日') }}",
+        "emailType": "html",
+        "html": "={{ $json.html }}"
+      }
+    },
+    {
+      "id": "no-articles",
+      "name": "No Articles Today",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [660, 100],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Daily Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Today's Articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Today's Articles": {
+      "main": [
+        [
+          {
+            "node": "Check if Articles Exist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check if Articles Exist": {
+      "main": [
+        [
+          {
+            "node": "Group by Category",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Articles Today",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Group by Category": {
+      "main": [
+        [
+          {
+            "node": "Generate HTML Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate HTML Email": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "law-eye",
+      "createdAt": "2025-01-17T00:00:00.000Z",
+      "updatedAt": "2025-01-17T00:00:00.000Z"
+    }
+  ],
+  "triggerCount": 1,
+  "versionId": "1"
+}

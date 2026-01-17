@@ -1,0 +1,225 @@
+@import "tailwindcss";
+
+/* =============================================
+   法眼 (Law Eye) 设计系统 - 基于 DESIGN_HANDBOOK.md
+   ============================================= */
+
+@theme {
+  /* 品牌主色 - 橙色系 */
+  --color-primary-50: #FFF4F1;
+  --color-primary-100: #FFE6DC;
+  --color-primary-200: #FFCCB8;
+  --color-primary-300: #FFB394;
+  --color-primary-400: #FF9970;
+  --color-primary-500: #FF6B35;
+  --color-primary-600: #E55A2B;
+  --color-primary-700: #CC4A1F;
+  --color-primary-800: #B23A13;
+  --color-primary-900: #992A07;
+
+  /* 中性色 */
+  --color-neutral-50: #F8F9FA;
+  --color-neutral-100: #F1F3F4;
+  --color-neutral-200: #E9ECEF;
+  --color-neutral-300: #DEE2E6;
+  --color-neutral-400: #CED4DA;
+  --color-neutral-500: #ADB5BD;
+  --color-neutral-600: #6C757D;
+  --color-neutral-700: #495057;
+  --color-neutral-800: #343A40;
+  --color-neutral-900: #212529;
+
+  /* 功能色 */
+  --color-success: #28A745;
+  --color-success-light: #F0FDF4;
+  --color-warning: #FFC107;
+  --color-warning-light: #FFFBEB;
+  --color-error: #DC3545;
+  --color-error-light: #FEF2F2;
+  --color-info: #17A2B8;
+  --color-info-light: #EFF6FF;
+
+  /* 分类颜色 */
+  --color-legislation: #3498DB;
+  --color-regulation: #9B59B6;
+  --color-enforcement: #E74C3C;
+  --color-industry: #F39C12;
+  --color-compliance: #27AE60;
+  --color-data: #1ABC9C;
+  --color-security: #E91E63;
+  --color-academic: #795548;
+  --color-events: #FF5722;
+  --color-international: #2196F3;
+
+  /* 图表色 */
+  --color-chart-1: #FF6B35;
+  --color-chart-2: #17A2B8;
+  --color-chart-3: #28A745;
+  --color-chart-4: #FFC107;
+  --color-chart-5: #DC3545;
+
+  /* 语义色 */
+  --color-background: #F8F9FA;
+  --color-foreground: #212529;
+  --color-card: #FFFFFF;
+  --color-card-foreground: #212529;
+  --color-muted: #F1F3F4;
+  --color-muted-foreground: #6C757D;
+  --color-border: #E9ECEF;
+  --color-input: #E9ECEF;
+  --color-ring: #FF6B35;
+
+  /* 圆角 */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-card-hover: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.1);
+  --shadow-brand: 0 4px 12px rgba(255, 107, 53, 0.15);
+  --shadow-brand-lg: 0 8px 24px rgba(255, 107, 53, 0.2);
+
+  /* 字体 */
+  --font-sans: "Inter", "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Fira Code", "Monaco", "Menlo", "Courier New", monospace;
+}
+
+/* 暗色模式 */
+.dark {
+  --color-background: hsl(0 0% 10%);
+  --color-foreground: hsl(0 0% 98%);
+  --color-card: hsl(0 0% 15%);
+  --color-card-foreground: hsl(0 0% 98%);
+  --color-muted: hsl(0 0% 20%);
+  --color-muted-foreground: hsl(0 0% 65%);
+  --color-border: hsl(0 0% 25%);
+  --color-input: hsl(0 0% 20%);
+}
+
+/* 基础样式 */
+* {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background-color: var(--color-primary-500);
+  color: #FFFFFF;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+  border-radius: var(--radius-lg);
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-neutral-100);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, var(--color-primary-500), var(--color-primary-600));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, var(--color-primary-600), var(--color-primary-700));
+}
+
+/* 动画关键帧 */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes bounceIn {
+  0% { opacity: 0; transform: scale(0.3); }
+  50% { opacity: 1; transform: scale(1.05); }
+  70% { transform: scale(0.9); }
+  100% { transform: scale(1); }
+}
+
+@keyframes pulsePrimary {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.7); }
+  70% { box-shadow: 0 0 0 10px rgba(255, 107, 53, 0); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 动画工具类 */
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.5s ease-out;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.3s ease-out;
+}
+
+.animate-bounce-in {
+  animation: bounceIn 0.6s ease-out;
+}
+
+.animate-pulse-primary {
+  animation: pulsePrimary 2s infinite;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* 渐变背景 */
+.bg-gradient-primary {
+  background: linear-gradient(135deg, var(--color-primary-500), var(--color-primary-600));
+}
+
+.bg-gradient-primary-light {
+  background: linear-gradient(135deg, var(--color-primary-50), var(--color-primary-100));
+}
+
+/* 减少动画偏好 */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,39 @@
+[package]
+name = "law-eye-api"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "law-eye-api"
+path = "src/main.rs"
+
+[dependencies]
+law-eye-common = { path = "../law-eye-common" }
+law-eye-db = { path = "../law-eye-db" }
+law-eye-core = { path = "../law-eye-core" }
+law-eye-queue = { path = "../law-eye-queue" }
+law-eye-ai = { path = "../law-eye-ai" }
+
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+tokio.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+utoipa.workspace = true
+utoipa-swagger-ui.workspace = true
+anyhow.workspace = true
+argon2.workspace = true
+axum-login.workspace = true
+tower-sessions.workspace = true
+tower-sessions-redis-store.workspace = true
+async-trait.workspace = true
+deadpool-redis.workspace = true
+time.workspace = true
+regex = "1.11"
+once_cell = "1.19"

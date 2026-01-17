@@ -1,0 +1,47 @@
+# Docker ignore file for Law Eye
+# Excludes files not needed in Docker build context
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# Build artifacts
+target/
+*.rs.bk
+
+# Documentation
+*.md
+!README.md
+docs/
+
+# Tests
+**/tests/
+**/*_test.rs
+
+# Local config
+.env
+.env.local
+*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# n8n data (mounted separately)
+n8n_data/
+
+# Logs
+*.log
+logs/
+
+# Temp files
+tmp/
+temp/

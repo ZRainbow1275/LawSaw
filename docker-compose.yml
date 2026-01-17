@@ -1,0 +1,119 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: law-eye-postgres
+    environment:
+      POSTGRES_DB: law_eye
+      POSTGRES_USER: law_eye
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-law_eye_secret}
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U law_eye"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - law-eye-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: law-eye-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - law-eye-network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: law-eye-api
+    environment:
+      DATABASE_URL: postgres://law_eye:${POSTGRES_PASSWORD:-law_eye_secret}@postgres:5432/law_eye
+      REDIS_URL: redis://redis:6379
+      RUST_LOG: info
+      API_HOST: 0.0.0.0
+      API_PORT: 3000
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      JWT_SECRET: ${JWT_SECRET:-change_me_in_production}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - law-eye-network
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: law-eye-worker
+    environment:
+      DATABASE_URL: postgres://law_eye:${POSTGRES_PASSWORD:-law_eye_secret}@postgres:5432/law_eye
+      REDIS_URL: redis://redis:6379
+      RUST_LOG: info
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    networks:
+      - law-eye-network
+    restart: unless-stopped
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: law-eye-n8n
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      - LAW_EYE_API_URL=http://api:3000
+      - EMAIL_FROM=${EMAIL_FROM:-noreply@laweye.com}
+      - EMAIL_TO=${EMAIL_TO:-}
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/home/node/workflows:ro
+    depends_on:
+      - api
+    networks:
+      - law-eye-network
+    restart: unless-stopped
+
+networks:
+  law-eye-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  n8n_data:
