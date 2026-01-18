@@ -14,7 +14,7 @@ import {
   Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useSidebarStore } from "@/stores/sidebar-store";
 
 const categories = [
   { slug: "legislation", name: "立法前沿", icon: "📜", color: "legislation" },
@@ -40,7 +40,7 @@ const navigation = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
+  const { collapsed, toggle } = useSidebarStore();
 
   return (
     <aside
@@ -126,7 +126,7 @@ export function Sidebar() {
       {/* Collapse Button */}
       <div className="border-t border-neutral-200 p-3">
         <button
-          onClick={() => setCollapsed(!collapsed)}
+          onClick={toggle}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-neutral-50 py-2 text-sm text-neutral-600 transition-all hover:bg-neutral-100 hover:text-neutral-900"
         >
           {collapsed ? (

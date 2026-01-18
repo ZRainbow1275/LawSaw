@@ -1,5 +1,8 @@
+"use client";
+
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+import { MainContent } from "@/components/layout/main-content";
 import { StatsCards } from "@/components/dashboard/stats-cards";
 import { CategoryOverview } from "@/components/dashboard/category-overview";
 import { RecentArticles } from "@/components/dashboard/recent-articles";
@@ -13,7 +16,7 @@ export default function Dashboard() {
       <div className="flex min-h-screen bg-neutral-50">
         <Sidebar />
 
-        <main className="ml-[280px] flex-1">
+        <MainContent>
           <Header />
 
           <div className="p-6">
@@ -76,7 +79,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
           </div>
-        </main>
+        </MainContent>
       </div>
     </ProtectedRoute>
   );

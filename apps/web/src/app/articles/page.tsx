@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+import { MainContent } from "@/components/layout/main-content";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -76,7 +77,7 @@ export default function ArticlesPage() {
       <div className="flex min-h-screen bg-neutral-50">
         <Sidebar />
 
-        <main className="ml-[280px] flex-1">
+        <MainContent>
           <Header />
 
           <div className="p-6">
@@ -226,7 +227,7 @@ export default function ArticlesPage() {
               </CardContent>
             </Card>
           </div>
-        </main>
+        </MainContent>
       </div>
     </ProtectedRoute>
   );
