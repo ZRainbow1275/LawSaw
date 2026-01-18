@@ -8,7 +8,7 @@ use law_eye_ai::{AiService, LlmGateway};
 use law_eye_common::AppConfig;
 use law_eye_db::create_pool;
 use law_eye_queue::TaskQueue;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::CorsLayer;
 use tower_sessions::{Expiry, SessionManagerLayer};
 use tower_sessions_redis_store::{fred::prelude::{ClientLike, Client as RedisClient, Config as RedisConfig}, RedisStore};
 use tracing::{info, warn};
@@ -78,9 +78,15 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState::new(pool, task_queue, ai_service, llm_gateway);
 
     let cors = CorsLayer::new()
-        .allow_origin(Any)
+        .allow_origin([
+            "http://localhost:3000".parse().unwrap(),
+            "http://localhost:3333".parse().unwrap(),
+            "http://127.0.0.1:3000".parse().unwrap(),
+            "http://127.0.0.1:3333".parse().unwrap(),
+        ])
         .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
-        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION, header::COOKIE])
+        .allow_credentials(true);
 
     let app = routes::create_router(state)
         .layer(auth_layer)

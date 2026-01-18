@@ -8,20 +8,26 @@ import { useAuth } from "@/hooks/use-auth";
 
 export function LoginForm() {
   const router = useRouter();
-  const { login, isLoading } = useAuth();
+  const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setIsSubmitting(true);
 
-    const result = await login({ email, password });
-    if (result.success) {
-      router.push("/");
-    } else {
-      setError(result.error || "登录失败，请重试");
+    try {
+      const result = await login({ email, password });
+      if (result.success) {
+        router.push("/");
+      } else {
+        setError(result.error || "登录失败，请重试");
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -63,8 +69,8 @@ export function LoginForm() {
         />
       </div>
 
-      <Button type="submit" className="w-full" disabled={isLoading}>
-        {isLoading ? "登录中..." : "登录"}
+      <Button type="submit" className="w-full" disabled={isSubmitting}>
+        {isSubmitting ? "登录中..." : "登录"}
       </Button>
 
       <p className="text-center text-sm text-neutral-500">

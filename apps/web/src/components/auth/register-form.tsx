@@ -8,11 +8,12 @@ import { useAuth } from "@/hooks/use-auth";
 
 export function RegisterForm() {
   const router = useRouter();
-  const { register, isLoading } = useAuth();
+  const { register } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,16 +24,21 @@ export function RegisterForm() {
       return;
     }
 
-    const result = await register({
-      email,
-      password,
-      display_name: displayName || undefined,
-    });
+    setIsSubmitting(true);
+    try {
+      const result = await register({
+        email,
+        password,
+        display_name: displayName || undefined,
+      });
 
-    if (result.success) {
-      router.push("/");
-    } else {
-      setError(result.error || "注册失败，请重试");
+      if (result.success) {
+        router.push("/");
+      } else {
+        setError(result.error || "注册失败，请重试");
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -88,8 +94,8 @@ export function RegisterForm() {
         />
       </div>
 
-      <Button type="submit" className="w-full" disabled={isLoading}>
-        {isLoading ? "注册中..." : "创建账户"}
+      <Button type="submit" className="w-full" disabled={isSubmitting}>
+        {isSubmitting ? "注册中..." : "创建账户"}
       </Button>
 
       <p className="text-center text-sm text-neutral-500">
