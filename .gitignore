@@ -37,3 +37,13 @@ temp/
 *.tmp
 tmpclaude-*
 .ace-tool/
+
+# Agent / Tooling (do not commit)
+.claude/
+.playwright-mcp/
+
+# Build artifacts
+*.tsbuildinfo
+
+# Backups
+*.bak

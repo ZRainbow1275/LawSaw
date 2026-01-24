@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,14 +9,23 @@ import { useAuth } from "@/hooks/use-auth";
 export function LoginForm() {
   const router = useRouter();
   const { login } = useAuth();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    const formData = new FormData(formRef.current!);
+    const email = formData.get("email") as string;
+    const password = formData.get("password") as string;
+
+    if (!email?.trim() || !password?.trim()) {
+      setError("请输入邮箱和密码");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -32,7 +41,7 @@ export function LoginForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
       {error && (
         <div className="rounded-lg bg-error-light p-3 text-sm text-error">
           {error}
@@ -45,9 +54,8 @@ export function LoginForm() {
         </label>
         <Input
           id="email"
+          name="email"
           type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
           placeholder="your@email.com"
           required
           autoComplete="email"
@@ -60,9 +68,8 @@ export function LoginForm() {
         </label>
         <Input
           id="password"
+          name="password"
           type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
           placeholder="••••••••"
           required
           autoComplete="current-password"

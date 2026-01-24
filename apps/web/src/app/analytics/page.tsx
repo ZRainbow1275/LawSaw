@@ -18,7 +18,31 @@ import {
   Rss,
   AlertTriangle,
   CheckCircle,
+  ScrollText,
+  Building2,
+  Scale,
+  Briefcase,
+  ShieldCheck,
+  Shield,
+  GraduationCap,
+  Flame,
+  Globe2,
+  type LucideIcon,
 } from "lucide-react";
+
+// 分类图标映射 (替代 emoji)
+const categoryIconMap: Record<string, { Icon: LucideIcon; color: string }> = {
+  legislation: { Icon: ScrollText, color: "text-blue-500" },
+  regulation: { Icon: Building2, color: "text-purple-500" },
+  enforcement: { Icon: Scale, color: "text-rose-500" },
+  industry: { Icon: Briefcase, color: "text-amber-500" },
+  compliance: { Icon: ShieldCheck, color: "text-emerald-500" },
+  data: { Icon: BarChart3, color: "text-cyan-500" },
+  security: { Icon: Shield, color: "text-red-500" },
+  academic: { Icon: GraduationCap, color: "text-indigo-500" },
+  events: { Icon: Flame, color: "text-orange-500" },
+  international: { Icon: Globe2, color: "text-teal-500" },
+};
 
 export default function AnalyticsPage() {
   const { data: articlesData } = useArticles({ limit: 1000, offset: 0 });
@@ -323,18 +347,26 @@ export default function AnalyticsPage() {
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-                  {categories?.map((category) => (
-                    <div
-                      key={category.id}
-                      className="flex flex-col items-center rounded-lg border border-neutral-100 p-4 text-center"
-                    >
-                      <span className="text-2xl">{category.icon}</span>
-                      <span className="mt-2 text-sm font-medium">{category.name}</span>
-                      <span className="mt-1 text-2xl font-bold text-primary-600">
-                        {categoryCounts[category.id] ?? 0}
-                      </span>
-                    </div>
-                  ))}
+                  {categories?.map((category) => {
+                    const iconInfo = categoryIconMap[category.slug];
+                    const IconComponent = iconInfo?.Icon;
+                    return (
+                      <div
+                        key={category.id}
+                        className="flex flex-col items-center rounded-lg border border-neutral-100 p-4 text-center"
+                      >
+                        {IconComponent ? (
+                          <IconComponent className={`h-6 w-6 ${iconInfo.color}`} />
+                        ) : (
+                          <BarChart3 className="h-6 w-6 text-neutral-400" />
+                        )}
+                        <span className="mt-2 text-sm font-medium">{category.name}</span>
+                        <span className="mt-1 text-2xl font-bold text-primary-600">
+                          {categoryCounts[category.id] ?? 0}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { MainContent } from "@/components/layout/main-content";
@@ -10,50 +11,72 @@ import { Button } from "@/components/ui/button";
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { useArticles } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
+import { ArticleCard, ArticleCardSkeleton } from "@/components/article/article-card";
+import { AnimatedList } from "@/components/ui/animated-list";
+import { SwipeableCard, swipeActionPresets, SwipeHint } from "@/components/ui/swipeable-card";
+import { AnimatedNumber } from "@/components/ui/animated-number";
+import { NoDataState, NoSearchResultState } from "@/components/ui/empty-state";
+import { useToast } from "@/stores/toast-store";
+import { fadeVariants, staggerContainerVariants } from "@/lib/motion";
 import {
   FileText,
-  Clock,
-  ArrowUpRight,
   ChevronLeft,
   ChevronRight,
   Filter,
+  LayoutGrid,
+  List,
+  SlidersHorizontal,
+  ScrollText,
+  Building2,
+  Scale,
+  Briefcase,
+  ShieldCheck,
+  BarChart3,
+  Shield,
+  GraduationCap,
+  Flame,
+  Globe2,
+  type LucideIcon,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-type RiskLevel = "low" | "medium" | "high";
-
-const riskColors: Record<RiskLevel, "success" | "warning" | "destructive"> = {
-  low: "success",
-  medium: "warning",
-  high: "destructive",
-};
-
-const riskLabels: Record<RiskLevel, string> = {
-  low: "低风险",
-  medium: "中风险",
-  high: "高风险",
-};
-
-function getRiskLevel(score: number | null): RiskLevel {
-  if (!score || score <= 30) return "low";
-  if (score <= 70) return "medium";
-  return "high";
-}
-
-function formatTime(dateStr: string | null): string {
-  if (!dateStr) return "未知时间";
-  const date = new Date(dateStr);
-  return date.toLocaleDateString("zh-CN", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-}
+// ============================================
+// 常量
+// ============================================
 
 const PAGE_SIZE = 20;
+
+// 分类图标映射 (替代 emoji)
+const categoryIconMap: Record<string, { Icon: LucideIcon; color: string }> = {
+  legislation: { Icon: ScrollText, color: "text-blue-500" },
+  regulation: { Icon: Building2, color: "text-purple-500" },
+  enforcement: { Icon: Scale, color: "text-rose-500" },
+  industry: { Icon: Briefcase, color: "text-amber-500" },
+  compliance: { Icon: ShieldCheck, color: "text-emerald-500" },
+  data: { Icon: BarChart3, color: "text-cyan-500" },
+  security: { Icon: Shield, color: "text-red-500" },
+  academic: { Icon: GraduationCap, color: "text-indigo-500" },
+  events: { Icon: Flame, color: "text-orange-500" },
+  international: { Icon: Globe2, color: "text-teal-500" },
+};
+
+// ============================================
+// 视图模式
+// ============================================
+
+type ViewMode = "list" | "grid";
+
+// ============================================
+// 主组件
+// ============================================
 
 export default function ArticlesPage() {
   const [page, setPage] = useState(0);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [showMobileHint, setShowMobileHint] = useState(true);
+
+  const { success: showSuccess } = useToast();
 
   const { data: articlesData, isLoading: articlesLoading } = useArticles({
     limit: PAGE_SIZE,
@@ -67,10 +90,72 @@ export default function ArticlesPage() {
   const total = articlesData?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  const getCategoryName = (categoryId: string | null) => {
-    if (!categoryId || !categories) return null;
-    return categories.find((c) => c.id === categoryId);
-  };
+  const getCategoryInfo = useCallback(
+    (categoryId: string | null) => {
+      if (!categoryId || !categories) return { name: undefined, icon: undefined };
+      const cat = categories.find((c) => c.id === categoryId);
+      return { name: cat?.name, icon: cat?.icon };
+    },
+    [categories]
+  );
+
+  // 收藏处理
+  const handleBookmark = useCallback(
+    (articleId: string) => {
+      showSuccess("已收藏", "文章已添加到收藏夹");
+    },
+    [showSuccess]
+  );
+
+  // 分享处理
+  const handleShare = useCallback(
+    (articleId: string) => {
+      const url = `${window.location.origin}/articles/${articleId}`;
+      navigator.clipboard.writeText(url);
+      showSuccess("链接已复制", "文章链接已复制到剪贴板");
+    },
+    [showSuccess]
+  );
+
+  // 渲染文章卡片（带滑动操作，仅移动端）
+  const renderArticleCard = useCallback(
+    (article: (typeof articles)[0], index: number) => {
+      const { name, icon } = getCategoryInfo(article.category_id);
+
+      const card = (
+        <ArticleCard
+          article={article}
+          categoryName={name ?? undefined}
+          categoryIcon={icon ?? undefined}
+          variant={viewMode === "grid" ? "compact" : "default"}
+          showSummary={viewMode === "list"}
+          onBookmark={handleBookmark}
+          animationDelay={index * 0.03}
+        />
+      );
+
+      // 移动端显示滑动操作
+      return (
+        <div key={article.id} className="md:contents">
+          {/* 移动端：带滑动 */}
+          <div className="md:hidden">
+            <SwipeableCard
+              rightActions={[
+                swipeActionPresets.bookmark(() => handleBookmark(article.id)),
+                swipeActionPresets.share(() => handleShare(article.id)),
+              ]}
+              onSwipeStart={() => setShowMobileHint(false)}
+            >
+              {card}
+            </SwipeableCard>
+          </div>
+          {/* 桌面端：直接显示 */}
+          <div className="hidden md:block">{card}</div>
+        </div>
+      );
+    },
+    [getCategoryInfo, viewMode, handleBookmark, handleShare]
+  );
 
   return (
     <ProtectedRoute>
@@ -80,49 +165,108 @@ export default function ArticlesPage() {
         <MainContent>
           <Header />
 
-          <div className="p-6">
-            {/* Page Title */}
+          <motion.div
+            variants={fadeVariants}
+            initial="hidden"
+            animate="visible"
+            className="p-6"
+          >
+            {/* 页面标题 */}
             <div className="mb-6 flex items-center justify-between">
               <div>
                 <h1 className="text-2xl font-bold text-neutral-900">资讯列表</h1>
                 <p className="text-sm text-neutral-500">
-                  共 {total} 条资讯
+                  共{" "}
+                  <AnimatedNumber
+                    value={total}
+                    duration={800}
+                    numberClassName="font-semibold text-neutral-700"
+                  />{" "}
+                  条资讯
                 </p>
               </div>
-              <Button variant="outline" size="sm">
-                <Filter className="mr-2 h-4 w-4" />
-                筛选
-              </Button>
+              <div className="flex items-center gap-2">
+                {/* 视图切换 */}
+                <div className="hidden sm:flex items-center gap-1 rounded-lg border border-neutral-200 bg-white p-1">
+                  <Button
+                    variant={viewMode === "list" ? "secondary" : "ghost"}
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setViewMode("list")}
+                  >
+                    <List className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant={viewMode === "grid" ? "secondary" : "ghost"}
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setViewMode("grid")}
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                  </Button>
+                </div>
+                <Button variant="outline" size="sm">
+                  <SlidersHorizontal className="mr-2 h-4 w-4" />
+                  筛选
+                </Button>
+              </div>
             </div>
 
-            {/* Category Filters */}
-            <div className="mb-6 flex flex-wrap gap-2">
-              <Badge
-                variant={selectedCategory === null ? "default" : "outline"}
-                className="cursor-pointer"
-                onClick={() => {
-                  setSelectedCategory(null);
-                  setPage(0);
-                }}
-              >
-                全部
-              </Badge>
-              {categories?.map((category) => (
+            {/* 分类筛选 */}
+            <motion.div
+              variants={staggerContainerVariants}
+              initial="hidden"
+              animate="visible"
+              className="mb-6 flex flex-wrap gap-2"
+            >
+              <motion.div variants={fadeVariants}>
                 <Badge
-                  key={category.id}
-                  variant={selectedCategory === category.id ? "default" : "outline"}
-                  className="cursor-pointer"
+                  variant={selectedCategory === null ? "default" : "outline"}
+                  className="cursor-pointer transition-all hover:scale-105"
                   onClick={() => {
-                    setSelectedCategory(category.id);
+                    setSelectedCategory(null);
                     setPage(0);
                   }}
                 >
-                  {category.icon} {category.name}
+                  全部
                 </Badge>
-              ))}
-            </div>
+              </motion.div>
+              {categories?.map((category, index) => {
+                const iconInfo = categoryIconMap[category.slug];
+                const IconComponent = iconInfo?.Icon;
+                return (
+                  <motion.div key={category.id} variants={fadeVariants}>
+                    <Badge
+                      variant={selectedCategory === category.id ? "default" : "outline"}
+                      className="cursor-pointer transition-all hover:scale-105 flex items-center gap-1.5"
+                      onClick={() => {
+                        setSelectedCategory(category.id);
+                        setPage(0);
+                      }}
+                    >
+                      {IconComponent && <IconComponent className={cn("h-3.5 w-3.5", iconInfo.color)} />}
+                      {category.name}
+                    </Badge>
+                  </motion.div>
+                );
+              })}
+            </motion.div>
 
-            {/* Articles List */}
+            {/* 移动端滑动提示 */}
+            <AnimatePresence>
+              {showMobileHint && articles.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="md:hidden mb-4"
+                >
+                  <SwipeHint direction="left" />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* 文章列表 */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -132,75 +276,80 @@ export default function ArticlesPage() {
               </CardHeader>
               <CardContent>
                 {articlesLoading ? (
-                  <div className="animate-pulse space-y-4">
-                    {[...Array(5)].map((_, i) => (
-                      <div key={i} className="h-24 rounded-lg bg-neutral-100" />
+                  // 加载骨架屏
+                  <div
+                    className={cn(
+                      viewMode === "grid"
+                        ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                        : "space-y-4"
+                    )}
+                  >
+                    {[...Array(6)].map((_, i) => (
+                      <ArticleCardSkeleton
+                        key={i}
+                        variant={viewMode === "grid" ? "compact" : "default"}
+                      />
                     ))}
                   </div>
                 ) : articles.length === 0 ? (
-                  <p className="py-12 text-center text-neutral-500">暂无资讯</p>
+                  // 空状态
+                  selectedCategory ? (
+                    <NoSearchResultState
+                      title="该分类暂无资讯"
+                      description="尝试选择其他分类或查看全部资讯"
+                      actionLabel="查看全部"
+                      onAction={() => setSelectedCategory(null)}
+                    />
+                  ) : (
+                    <NoDataState
+                      title="暂无资讯"
+                      description="系统尚未采集到任何资讯"
+                    />
+                  )
                 ) : (
-                  <div className="space-y-4">
-                    {articles.map((article) => {
-                      const category = getCategoryName(article.category_id);
-                      const riskLevel = getRiskLevel(article.risk_score);
-
-                      return (
-                        <div
-                          key={article.id}
-                          className="group flex items-start justify-between rounded-lg border border-neutral-100 p-4 transition-all hover:border-primary-200 hover:bg-primary-50/50"
-                        >
-                          <div className="flex-1">
-                            <div className="mb-2 flex items-center gap-2">
-                              {category && (
-                                <Badge variant="outline">
-                                  {category.icon} {category.name}
-                                </Badge>
-                              )}
-                              <Badge variant={riskColors[riskLevel]}>
-                                {riskLabels[riskLevel]}
-                              </Badge>
-                              <Badge variant="outline">{article.status}</Badge>
-                            </div>
-                            <h4 className="text-sm font-semibold text-neutral-900 group-hover:text-primary-600">
-                              {article.title}
-                            </h4>
-                            {article.summary && (
-                              <p className="mt-1 line-clamp-2 text-xs text-neutral-500">
-                                {article.summary}
-                              </p>
-                            )}
-                            <div className="mt-2 flex items-center gap-4 text-xs text-neutral-500">
-                              {article.author && <span>来源：{article.author}</span>}
-                              <span className="flex items-center gap-1">
-                                <Clock className="h-3 w-3" />
-                                {formatTime(article.published_at)}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {article.link && (
-                              <a
-                                href={article.link}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-neutral-700 opacity-0 transition-opacity hover:bg-neutral-100 hover:text-neutral-900 group-hover:opacity-100"
-                              >
-                                <ArrowUpRight className="h-4 w-4" />
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                  // 文章列表
+                  <div
+                    className={cn(
+                      viewMode === "grid"
+                        ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                        : "space-y-4"
+                    )}
+                  >
+                    <AnimatedList
+                      staggerDelay={0.04}
+                      direction="up"
+                      gap={viewMode === "grid" ? "gap-4" : "space-y-4"}
+                      className={
+                        viewMode === "grid"
+                          ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
+                          : ""
+                      }
+                    >
+                      {articles.map((article, index) =>
+                        renderArticleCard(article, index)
+                      )}
+                    </AnimatedList>
                   </div>
                 )}
 
-                {/* Pagination */}
+                {/* 分页 */}
                 {totalPages > 1 && (
-                  <div className="mt-6 flex items-center justify-between">
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 }}
+                    className="mt-6 flex items-center justify-between border-t border-neutral-100 pt-4"
+                  >
                     <p className="text-sm text-neutral-500">
-                      第 {page + 1} / {totalPages} 页
+                      第{" "}
+                      <span className="font-medium text-neutral-700">
+                        {page + 1}
+                      </span>{" "}
+                      /{" "}
+                      <span className="font-medium text-neutral-700">
+                        {totalPages}
+                      </span>{" "}
+                      页
                     </p>
                     <div className="flex items-center gap-2">
                       <Button
@@ -215,18 +364,20 @@ export default function ArticlesPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                        onClick={() =>
+                          setPage((p) => Math.min(totalPages - 1, p + 1))
+                        }
                         disabled={page >= totalPages - 1}
                       >
                         下一页
                         <ChevronRight className="h-4 w-4" />
                       </Button>
                     </div>
-                  </div>
+                  </motion.div>
                 )}
               </CardContent>
             </Card>
-          </div>
+          </motion.div>
         </MainContent>
       </div>
     </ProtectedRoute>

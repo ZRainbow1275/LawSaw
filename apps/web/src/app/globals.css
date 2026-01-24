@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 /* =============================================
    法眼 (Law Eye) 设计系统 - 基于 DESIGN_HANDBOOK.md
@@ -87,6 +88,46 @@
   /* 字体 */
   --font-sans: "Inter", "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Fira Code", "Monaco", "Menlo", "Courier New", monospace;
+  --font-serif: "Noto Serif SC", "Source Han Serif SC", Georgia, "Times New Roman", serif;
+
+  /* =============================================
+     Rational Elegance 设计系统扩展
+     ============================================= */
+
+  /* 质感边框 - Linear 风格 */
+  --border-subtle: 1px solid rgba(0, 0, 0, 0.06);
+  --border-emphasis: 1px solid rgba(0, 0, 0, 0.12);
+  --border-interactive: 1px solid rgba(255, 107, 53, 0.3);
+
+  /* 毛玻璃效果 - Glassmorphism */
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-bg-dark: rgba(26, 26, 26, 0.85);
+  --glass-blur: blur(12px);
+  --glass-border: 1px solid rgba(255, 255, 255, 0.2);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+
+  /* 纸张感背景 */
+  --bg-paper: #FAFAF9;
+  --bg-paper-warm: #F9F7F4;
+  --bg-canvas: #FCFCFB;
+
+  /* 阅读器排版 */
+  --reading-width-narrow: 480px;
+  --reading-width-normal: 640px;
+  --reading-width-wide: 800px;
+  --reading-line-height: 1.8;
+  --reading-paragraph-spacing: 1.5em;
+
+  /* 层级系统 */
+  --z-base: 0;
+  --z-dropdown: 10;
+  --z-sticky: 20;
+  --z-fixed: 30;
+  --z-overlay: 40;
+  --z-modal: 50;
+  --z-popover: 60;
+  --z-tooltip: 70;
+  --z-toast: 80;
 }
 
 /* 暗色模式 */
@@ -99,6 +140,15 @@
   --color-muted-foreground: hsl(0 0% 65%);
   --color-border: hsl(0 0% 25%);
   --color-input: hsl(0 0% 20%);
+
+  /* 暗色模式质感扩展 */
+  --border-subtle: 1px solid rgba(255, 255, 255, 0.06);
+  --border-emphasis: 1px solid rgba(255, 255, 255, 0.12);
+  --glass-bg: rgba(26, 26, 26, 0.85);
+  --glass-border: 1px solid rgba(255, 255, 255, 0.1);
+  --bg-paper: #1A1A1A;
+  --bg-paper-warm: #1C1A18;
+  --bg-canvas: #141414;
 }
 
 /* 基础样式 */
@@ -106,9 +156,7 @@
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-html {
-  scroll-behavior: smooth;
-}
+/* scroll-behavior 移至 body 避免 Next.js 警告 */
 
 body {
   font-family: var(--font-sans);
@@ -116,6 +164,7 @@ body {
   color: var(--color-foreground);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
 }
 
 ::selection {
@@ -216,10 +265,155 @@ body {
   background: linear-gradient(135deg, var(--color-primary-50), var(--color-primary-100));
 }
 
+/* 骨架屏渐变动画 */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* 阅读器主题样式 */
+.reader-light {
+  --reading-bg: #FFFFFF;
+  --reading-text: #212529;
+}
+
+.reader-dark {
+  --reading-bg: #1A1A1A;
+  --reading-text: #E9ECEF;
+}
+
+.reader-sepia {
+  --reading-bg: #F4ECD8;
+  --reading-text: #5C4B37;
+}
+
+/* 阅读器正文排版 */
+.prose-reader {
+  font-size: var(--reading-font-size, 17px);
+  line-height: var(--reading-line-height, 1.8);
+}
+
+.prose-reader h1,
+.prose-reader h2,
+.prose-reader h3 {
+  scroll-margin-top: 80px;
+}
+
+/* Serif 阅读模式 */
+.prose-serif {
+  font-family: var(--font-serif);
+  letter-spacing: 0.02em;
+}
+
+.prose-serif h1,
+.prose-serif h2,
+.prose-serif h3,
+.prose-serif h4 {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* 法律文档排版优化 */
+.prose-legal {
+  --tw-prose-body: var(--color-neutral-700);
+  --tw-prose-headings: var(--color-neutral-900);
+  line-height: 1.85;
+}
+
+.prose-legal p {
+  margin-bottom: var(--reading-paragraph-spacing, 1.5em);
+}
+
+.prose-legal blockquote {
+  border-left: 3px solid var(--color-primary-500);
+  background: var(--bg-paper);
+  padding: 1rem 1.5rem;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  font-style: normal;
+}
+
+/* Glassmorphism 工具类 */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--glass-shadow);
+}
+
+/* Subtle Border 工具类 */
+.border-subtle {
+  border: var(--border-subtle);
+}
+
+.border-emphasis {
+  border: var(--border-emphasis);
+}
+
+/* 悬浮上升效果 */
+.hover-lift {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* 安全区域适配（iOS） */
+.safe-area-pb {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.safe-area-pt {
+  padding-top: env(safe-area-inset-top, 0);
+}
+
+/* 卡片悬停效果增强 */
+.card-hover {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* 按钮点击效果 */
+.btn-press:active {
+  transform: scale(0.98);
+}
+
+/* 列表交错动画延迟 */
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.1s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.2s; }
+.stagger-5 { animation-delay: 0.25s; }
+
 /* 减少动画偏好 */
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

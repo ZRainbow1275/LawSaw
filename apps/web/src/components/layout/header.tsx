@@ -31,7 +31,7 @@ export function Header() {
   const initials = displayName.charAt(0).toUpperCase();
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-neutral-200 bg-white/95 px-6 backdrop-blur-sm">
+    <header className="sticky top-0 z-20 flex h-16 items-center justify-between px-6 glass border-b border-neutral-100/50">
       {/* Search */}
       <form onSubmit={handleSearch} className="relative w-full max-w-md">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
@@ -76,9 +76,9 @@ export function Header() {
           </Button>
 
           {showMenu && (
-            <div className="absolute right-0 top-full mt-2 w-48 rounded-lg border border-neutral-200 bg-white py-1 shadow-lg">
+            <div className="absolute right-0 top-full mt-2 w-48 rounded-xl glass-card py-1.5 shadow-lg">
               <button
-                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
+                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50/80 transition-colors"
                 onClick={() => {
                   setShowMenu(false);
                   router.push("/settings");
@@ -88,7 +88,7 @@ export function Header() {
                 设置
               </button>
               <button
-                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-error hover:bg-neutral-50"
+                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-error hover:bg-error/5 transition-colors"
                 onClick={() => {
                   setShowMenu(false);
                   handleLogout();

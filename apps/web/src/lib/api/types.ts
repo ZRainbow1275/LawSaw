@@ -107,3 +107,59 @@ export interface ApiError {
   error: string;
   status: number;
 }
+
+export interface ArticleStats {
+  total_articles: number;
+  pending_count: number;
+  published_count: number;
+  high_risk_count: number;
+  today_count: number;
+}
+
+export interface Feedback {
+  id: string;
+  user_id: string | null;
+  type: "source_suggestion" | "bug_report" | "feature_request" | "other";
+  title: string;
+  content: string;
+  contact_email: string | null;
+  status: "pending" | "reviewing" | "resolved" | "rejected";
+  admin_response: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateFeedbackInput {
+  type: Feedback["type"];
+  title: string;
+  content: string;
+  contact_email?: string;
+  source_url?: string;
+  source_name?: string;
+}
+
+// AI 相关类型
+export interface AiEntity {
+  name: string;
+  entity_type: "organization" | "regulation" | "person" | "date" | "location" | "legal_term";
+  context?: string;
+}
+
+export interface RiskDimension {
+  name: string;
+  score: number;
+  description: string;
+}
+
+export interface ArticleAiInsights {
+  summary: string;
+  abstract_text: string;
+  key_points: string[];
+  entities: AiEntity[];
+  risk_score: number;
+  risk_level: "low" | "medium" | "high" | "critical";
+  risk_dimensions: RiskDimension[];
+  recommendations: string[];
+  tags: string[];
+  keywords: string[];
+}

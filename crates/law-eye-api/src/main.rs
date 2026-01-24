@@ -1,20 +1,24 @@
 mod auth;
+mod error;
+mod middleware;
 mod routes;
 mod state;
+pub use error::{ApiError, ApiResult, AppError};
 
-use axum::http::{header, Method};
+use axum::http::{header, HeaderValue, Method};
 use axum_login::AuthManagerLayerBuilder;
 use law_eye_ai::{AiService, LlmGateway};
 use law_eye_common::AppConfig;
 use law_eye_db::create_pool;
 use law_eye_queue::TaskQueue;
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_sessions::{Expiry, SessionManagerLayer};
 use tower_sessions_redis_store::{fred::prelude::{ClientLike, Client as RedisClient, Config as RedisConfig}, RedisStore};
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::auth::AuthBackend;
+use crate::middleware::RequestIdLayer;
 use crate::state::AppState;
 
 #[tokio::main]
@@ -47,7 +51,8 @@ async fn main() -> anyhow::Result<()> {
 
     let session_store = RedisStore::new(redis_client);
     let session_layer = SessionManagerLayer::new(session_store)
-        .with_secure(false) // Set to true in production with HTTPS
+        .with_secure(std::env::var("PRODUCTION").is_ok()) // Secure cookie in production
+        .with_same_site(tower_sessions::cookie::SameSite::Lax) // CSRF protection
         .with_expiry(Expiry::OnInactivity(time::Duration::hours(24)));
 
     // Initialize auth backend
@@ -77,19 +82,30 @@ async fn main() -> anyhow::Result<()> {
 
     let state = AppState::new(pool, task_queue, ai_service, llm_gateway);
 
+    // CORS configuration - use predicate for dynamic origin validation
+    let allowed_origins: Vec<HeaderValue> = vec![
+        "http://localhost:3000".parse().unwrap(),
+        "http://localhost:8849".parse().unwrap(),
+        "http://localhost:3002".parse().unwrap(),
+        "http://localhost:3333".parse().unwrap(),
+        "http://127.0.0.1:3000".parse().unwrap(),
+        "http://127.0.0.1:8849".parse().unwrap(),
+        "http://127.0.0.1:3002".parse().unwrap(),
+        "http://127.0.0.1:3333".parse().unwrap(),
+    ];
+
     let cors = CorsLayer::new()
-        .allow_origin([
-            "http://localhost:3000".parse().unwrap(),
-            "http://localhost:3333".parse().unwrap(),
-            "http://127.0.0.1:3000".parse().unwrap(),
-            "http://127.0.0.1:3333".parse().unwrap(),
-        ])
-        .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
+        .allow_origin(AllowOrigin::predicate(move |origin, _| {
+            allowed_origins.iter().any(|allowed| allowed == origin)
+        }))
+        .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE, Method::OPTIONS])
         .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION, header::COOKIE])
         .allow_credentials(true);
 
+    // Build application with middleware layers
     let app = routes::create_router(state)
         .layer(auth_layer)
+        .layer(RequestIdLayer::new()) // Add request ID tracking
         .layer(cors);
 
     let addr = format!("{}:{}", config.server.host, config.server.port);
