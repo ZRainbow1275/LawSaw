@@ -16,10 +16,24 @@ use tower_sessions::{Expiry, SessionManagerLayer};
 use tower_sessions_redis_store::{fred::prelude::{ClientLike, Client as RedisClient, Config as RedisConfig}, RedisStore};
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use url::Url;
 
 use crate::auth::AuthBackend;
 use crate::middleware::RequestIdLayer;
 use crate::state::AppState;
+
+fn redact_sensitive_url(raw: &str) -> String {
+    match Url::parse(raw) {
+        Ok(mut url) => {
+            // Never log secrets; if userinfo includes password, redact it.
+            if url.password().is_some() {
+                let _ = url.set_password(Some("REDACTED"));
+            }
+            url.to_string()
+        }
+        Err(_) => "<redacted>".to_string(),
+    }
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -31,8 +45,8 @@ async fn main() -> anyhow::Result<()> {
     let config = AppConfig::load().unwrap_or_default();
 
     info!("Starting Law Eye API server...");
-    info!("Database URL: {}", config.database.url);
-    info!("Redis URL: {}", config.redis.url);
+    info!("Database URL: {}", redact_sensitive_url(&config.database.url));
+    info!("Redis URL: {}", redact_sensitive_url(&config.redis.url));
     info!("Server Port: {}", config.server.port);
 
     let pool = create_pool(&config.database.url, config.database.max_connections).await?;

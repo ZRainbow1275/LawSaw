@@ -35,5 +35,6 @@ tower-sessions-redis-store.workspace = true
 async-trait.workspace = true
 deadpool-redis.workspace = true
 time.workspace = true
+url.workspace = true
 regex = "1.11"
 once_cell = "1.19"
