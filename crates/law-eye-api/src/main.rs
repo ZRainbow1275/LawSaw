@@ -1,5 +1,6 @@
 mod auth;
 mod error;
+mod openapi;
 mod middleware;
 mod routes;
 mod state;

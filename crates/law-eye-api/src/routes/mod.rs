@@ -4,6 +4,7 @@ pub mod articles;
 pub mod auth;
 pub mod categories;
 pub mod health;
+pub mod openapi;
 pub mod search;
 pub mod sources;
 pub mod users;
@@ -29,6 +30,7 @@ pub fn create_router(state: AppState) -> Router {
         .layer(middleware::from_extractor::<RequireAuth>());
 
     Router::new()
+        .merge(openapi::router())
         .nest("/api/v1/auth", auth::router())
         .nest("/api/v1", protected_api)
         .nest("/health", health::router())

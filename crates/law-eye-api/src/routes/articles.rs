@@ -128,7 +128,27 @@ fn is_valid_status(status: &str) -> bool {
     )
 }
 
-async fn list_articles(
+#[utoipa::path(
+    get,
+    path = "/api/v1/articles",
+    params(
+        ("limit" = Option<i64>, Query, description = "Max results (default 20, max 100)"),
+        ("offset" = Option<i64>, Query, description = "Offset (default 0)"),
+        ("category_id" = Option<Uuid>, Query, description = "Filter by category id"),
+        ("status" = Option<String>, Query, description = "Filter by status (pending/processing/published/archived/rejected)")
+    ),
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "Article list", body = ArticleListResponse),
+        (status = 400, description = "Validation error", body = ErrorResponse),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
+    )
+)]
+pub(crate) async fn list_articles(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Query(params): Query<ListParams>,
@@ -197,7 +217,20 @@ async fn list_articles(
     Ok(Json(ArticleListResponse { data, total, limit, offset }))
 }
 
-async fn get_stats(
+#[utoipa::path(
+    get,
+    path = "/api/v1/articles/stats",
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "Article stats", body = ArticleStatsResponse),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
+    )
+)]
+pub(crate) async fn get_stats(
     State(state): State<AppState>,
     auth_session: AuthSession,
 ) -> Result<Json<ArticleStatsResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -237,7 +270,23 @@ async fn get_stats(
     }))
 }
 
-async fn list_recent(
+#[utoipa::path(
+    get,
+    path = "/api/v1/articles/recent",
+    params(
+        ("limit" = Option<i64>, Query, description = "Max results (default 10, max 50)")
+    ),
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "Recent articles", body = Vec<ArticleResponse>),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
+    )
+)]
+pub(crate) async fn list_recent(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Query(params): Query<ListParams>,
@@ -274,7 +323,22 @@ async fn list_recent(
     Ok(Json(data))
 }
 
-async fn get_article(
+#[utoipa::path(
+    get,
+    path = "/api/v1/articles/{id}",
+    params(("id" = Uuid, Path, description = "Article ID")),
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "Article details", body = ArticleResponse),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 404, description = "Not found", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
+    )
+)]
+pub(crate) async fn get_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
@@ -309,7 +373,22 @@ async fn get_article(
     Ok(Json(article.into()))
 }
 
-async fn delete_article(
+#[utoipa::path(
+    delete,
+    path = "/api/v1/articles/{id}",
+    params(("id" = Uuid, Path, description = "Article ID")),
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "Article deleted", body = DeleteResponse),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 404, description = "Not found", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
+    )
+)]
+pub(crate) async fn delete_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
@@ -359,7 +438,21 @@ async fn delete_article(
     }))
 }
 
-async fn publish_article(
+#[utoipa::path(
+    post,
+    path = "/api/v1/articles/{id}/publish",
+    params(("id" = Uuid, Path, description = "Article ID")),
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "Article published", body = ArticleResponse),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
+    )
+)]
+pub(crate) async fn publish_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
@@ -394,7 +487,21 @@ async fn publish_article(
     Ok(Json(article.into()))
 }
 
-async fn archive_article(
+#[utoipa::path(
+    post,
+    path = "/api/v1/articles/{id}/archive",
+    params(("id" = Uuid, Path, description = "Article ID")),
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "Article archived", body = ArticleResponse),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
+    )
+)]
+pub(crate) async fn archive_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
@@ -429,7 +536,22 @@ async fn archive_article(
     Ok(Json(article.into()))
 }
 
-async fn batch_update_status(
+#[utoipa::path(
+    post,
+    path = "/api/v1/articles/batch-status",
+    request_body = BatchStatusRequest,
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "Batch status updated", body = BatchStatusResponse),
+        (status = 400, description = "Validation error", body = ErrorResponse),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
+    )
+)]
+pub(crate) async fn batch_update_status(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Json(req): Json<BatchStatusRequest>,

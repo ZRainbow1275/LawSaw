@@ -91,7 +91,7 @@ pub struct ErrorResponse {
         (status = 409, description = "Email already exists", body = ErrorResponse)
     )
 )]
-async fn register(
+pub(crate) async fn register(
     State(state): State<AppState>,
     mut auth_session: AuthSession,
     Json(req): Json<RegisterRequest>,
@@ -175,7 +175,10 @@ async fn register(
         (status = 401, description = "Invalid credentials", body = ErrorResponse)
     )
 )]
-async fn login(mut auth_session: AuthSession, Json(creds): Json<Credentials>) -> impl IntoResponse {
+pub(crate) async fn login(
+    mut auth_session: AuthSession,
+    Json(creds): Json<Credentials>,
+) -> impl IntoResponse {
     match auth_session.authenticate(creds).await {
         Ok(Some(user)) => {
             if let Err(e) = auth_session.login(&user).await {
@@ -223,7 +226,7 @@ async fn login(mut auth_session: AuthSession, Json(creds): Json<Credentials>) ->
         (status = 200, description = "Logout successful", body = AuthResponse)
     )
 )]
-async fn logout(mut auth_session: AuthSession) -> impl IntoResponse {
+pub(crate) async fn logout(mut auth_session: AuthSession) -> impl IntoResponse {
     let _ = auth_session.logout().await;
 
     (
@@ -240,12 +243,15 @@ async fn logout(mut auth_session: AuthSession) -> impl IntoResponse {
 #[utoipa::path(
     get,
     path = "/api/v1/auth/me",
+    security(
+        ("session" = [])
+    ),
     responses(
         (status = 200, description = "Current user", body = AuthResponse),
         (status = 401, description = "Not authenticated", body = ErrorResponse)
     )
 )]
-async fn get_current_user(auth_session: AuthSession) -> impl IntoResponse {
+pub(crate) async fn get_current_user(auth_session: AuthSession) -> impl IntoResponse {
     match auth_session.user {
         Some(user) => (
             StatusCode::OK,

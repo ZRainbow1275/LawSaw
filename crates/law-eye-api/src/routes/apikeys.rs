@@ -65,12 +65,19 @@ pub struct SuccessResponse {
 #[utoipa::path(
     get,
     path = "/api/v1/apikeys",
+    security(
+        ("session" = [])
+    ),
     responses(
         (status = 200, description = "List of API keys", body = KeyListResponse),
-        (status = 401, description = "Not authenticated")
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
     )
 )]
-async fn list_keys(State(state): State<AppState>, auth_session: AuthSession) -> impl IntoResponse {
+pub(crate) async fn list_keys(
+    State(state): State<AppState>,
+    auth_session: AuthSession,
+) -> impl IntoResponse {
     let user = match auth_session.user {
         Some(u) => u,
         None => {
@@ -118,12 +125,16 @@ async fn list_keys(State(state): State<AppState>, auth_session: AuthSession) -> 
     post,
     path = "/api/v1/apikeys",
     request_body = CreateKeyRequest,
+    security(
+        ("session" = [])
+    ),
     responses(
         (status = 201, description = "API key created", body = CreateKeyResponse),
-        (status = 401, description = "Not authenticated")
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
     )
 )]
-async fn create_key(
+pub(crate) async fn create_key(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Json(req): Json<CreateKeyRequest>,
@@ -181,13 +192,17 @@ async fn create_key(
     post,
     path = "/api/v1/apikeys/{id}/revoke",
     params(("id" = Uuid, Path, description = "API key ID")),
+    security(
+        ("session" = [])
+    ),
     responses(
         (status = 200, description = "Key revoked", body = SuccessResponse),
-        (status = 401, description = "Not authenticated"),
-        (status = 404, description = "Key not found")
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 404, description = "Key not found", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
     )
 )]
-async fn revoke_key(
+pub(crate) async fn revoke_key(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
@@ -236,13 +251,17 @@ async fn revoke_key(
     delete,
     path = "/api/v1/apikeys/{id}",
     params(("id" = Uuid, Path, description = "API key ID")),
+    security(
+        ("session" = [])
+    ),
     responses(
         (status = 200, description = "Key deleted", body = SuccessResponse),
-        (status = 401, description = "Not authenticated"),
-        (status = 404, description = "Key not found")
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 404, description = "Key not found", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
     )
 )]
-async fn delete_key(
+pub(crate) async fn delete_key(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,

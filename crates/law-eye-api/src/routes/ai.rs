@@ -48,13 +48,19 @@ pub struct ErrorResponse {
     post,
     path = "/api/v1/ai/process/{article_id}",
     params(("article_id" = Uuid, Path, description = "Article ID")),
+    security(
+        ("session" = [])
+    ),
     responses(
         (status = 202, description = "AI processing task enqueued", body = AiProcessResponse),
-        (status = 404, description = "Article not found"),
-        (status = 503, description = "AI service not available")
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 404, description = "Article not found", body = ErrorResponse),
+        (status = 500, description = "Failed to enqueue task", body = ErrorResponse),
+        (status = 503, description = "AI service not available", body = ErrorResponse)
     )
 )]
-async fn process_article(
+pub(crate) async fn process_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(article_id): Path<Uuid>,
@@ -130,12 +136,19 @@ async fn process_article(
     post,
     path = "/api/v1/ai/classify/{article_id}",
     params(("article_id" = Uuid, Path, description = "Article ID")),
+    security(
+        ("session" = [])
+    ),
     responses(
         (status = 202, description = "Classification task enqueued", body = AiProcessResponse),
-        (status = 404, description = "Article not found")
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 404, description = "Article not found", body = ErrorResponse),
+        (status = 500, description = "Failed to enqueue task", body = ErrorResponse),
+        (status = 503, description = "AI service not available", body = ErrorResponse)
     )
 )]
-async fn classify_article(
+pub(crate) async fn classify_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(article_id): Path<Uuid>,
@@ -209,12 +222,19 @@ async fn classify_article(
     post,
     path = "/api/v1/ai/summarize/{article_id}",
     params(("article_id" = Uuid, Path, description = "Article ID")),
+    security(
+        ("session" = [])
+    ),
     responses(
         (status = 202, description = "Summarization task enqueued", body = AiProcessResponse),
-        (status = 404, description = "Article not found")
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 404, description = "Article not found", body = ErrorResponse),
+        (status = 500, description = "Failed to enqueue task", body = ErrorResponse),
+        (status = 503, description = "AI service not available", body = ErrorResponse)
     )
 )]
-async fn summarize_article(
+pub(crate) async fn summarize_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(article_id): Path<Uuid>,
@@ -288,12 +308,19 @@ async fn summarize_article(
     post,
     path = "/api/v1/ai/risk/{article_id}",
     params(("article_id" = Uuid, Path, description = "Article ID")),
+    security(
+        ("session" = [])
+    ),
     responses(
         (status = 202, description = "Risk assessment task enqueued", body = AiProcessResponse),
-        (status = 404, description = "Article not found")
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 404, description = "Article not found", body = ErrorResponse),
+        (status = 500, description = "Failed to enqueue task", body = ErrorResponse),
+        (status = 503, description = "AI service not available", body = ErrorResponse)
     )
 )]
-async fn assess_risk(
+pub(crate) async fn assess_risk(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(article_id): Path<Uuid>,
@@ -367,12 +394,18 @@ async fn assess_risk(
     get,
     path = "/api/v1/ai/status/{article_id}",
     params(("article_id" = Uuid, Path, description = "Article ID")),
+    security(
+        ("session" = [])
+    ),
     responses(
         (status = 200, description = "AI processing status", body = AiStatusResponse),
-        (status = 404, description = "Article not found")
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 404, description = "Article not found", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
     )
 )]
-async fn get_ai_status(
+pub(crate) async fn get_ai_status(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(article_id): Path<Uuid>,

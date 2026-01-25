@@ -110,13 +110,17 @@ async fn check_admin_permission(state: &AppState, user_id: Uuid) -> bool {
         ("limit" = Option<i64>, Query, description = "Limit"),
         ("offset" = Option<i64>, Query, description = "Offset")
     ),
+    security(
+        ("session" = [])
+    ),
     responses(
         (status = 200, description = "Users list", body = UsersListResponse),
-        (status = 401, description = "Not authenticated"),
-        (status = 403, description = "Forbidden")
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
     )
 )]
-async fn list_users(
+pub(crate) async fn list_users(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Query(query): Query<ListQuery>,
@@ -173,14 +177,18 @@ async fn list_users(
     get,
     path = "/api/v1/users/{id}",
     params(("id" = Uuid, Path, description = "User ID")),
+    security(
+        ("session" = [])
+    ),
     responses(
         (status = 200, description = "User details", body = UserDetailResponse),
-        (status = 401, description = "Not authenticated"),
-        (status = 403, description = "Forbidden"),
-        (status = 404, description = "User not found")
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
+        (status = 404, description = "User not found", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
     )
 )]
-async fn get_user(
+pub(crate) async fn get_user(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
@@ -249,14 +257,18 @@ async fn get_user(
     path = "/api/v1/users/{id}",
     params(("id" = Uuid, Path, description = "User ID")),
     request_body = UpdateUserRequest,
+    security(
+        ("session" = [])
+    ),
     responses(
         (status = 200, description = "User updated", body = UserResponse),
-        (status = 401, description = "Not authenticated"),
-        (status = 403, description = "Forbidden"),
-        (status = 404, description = "User not found")
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
+        (status = 404, description = "User not found", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
     )
 )]
-async fn update_user(
+pub(crate) async fn update_user(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
@@ -311,14 +323,18 @@ async fn update_user(
     path = "/api/v1/users/{id}/roles",
     params(("id" = Uuid, Path, description = "User ID")),
     request_body = UpdateRolesRequest,
+    security(
+        ("session" = [])
+    ),
     responses(
         (status = 200, description = "Roles updated", body = SuccessResponse),
-        (status = 401, description = "Not authenticated"),
-        (status = 403, description = "Forbidden"),
-        (status = 404, description = "User not found")
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
+        (status = 404, description = "User not found", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
     )
 )]
-async fn update_user_roles(
+pub(crate) async fn update_user_roles(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,

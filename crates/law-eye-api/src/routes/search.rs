@@ -103,11 +103,17 @@ pub struct ErrorResponse {
         ("q" = String, Query, description = "Search query"),
         ("limit" = Option<i64>, Query, description = "Max results")
     ),
+    security(
+        ("session" = [])
+    ),
     responses(
-        (status = 200, description = "Search results", body = SearchResponse)
+        (status = 200, description = "Search results", body = SearchResponse),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
     )
 )]
-async fn search(
+pub(crate) async fn search(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Query(query): Query<SearchQuery>,
@@ -170,11 +176,17 @@ async fn search(
     post,
     path = "/api/v1/search/semantic",
     request_body = SemanticSearchRequest,
+    security(
+        ("session" = [])
+    ),
     responses(
-        (status = 200, description = "Semantic search results", body = SemanticSearchResponse)
+        (status = 200, description = "Semantic search results", body = SemanticSearchResponse),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
     )
 )]
-async fn semantic_search(
+pub(crate) async fn semantic_search(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Json(req): Json<SemanticSearchRequest>,
@@ -237,11 +249,17 @@ async fn semantic_search(
     post,
     path = "/api/v1/search/ask",
     request_body = AskRequest,
+    security(
+        ("session" = [])
+    ),
     responses(
-        (status = 200, description = "AI-generated answer", body = AskResponse)
+        (status = 200, description = "AI-generated answer", body = AskResponse),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
     )
 )]
-async fn ask_question(
+pub(crate) async fn ask_question(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Json(req): Json<AskRequest>,
