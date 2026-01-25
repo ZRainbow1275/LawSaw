@@ -48,11 +48,14 @@ export function Header() {
 			{/* Right Actions */}
 			<div className="flex items-center gap-4">
 				{/* Notifications */}
-				<Button variant="ghost" size="icon" className="relative">
+				<Button
+					variant="ghost"
+					size="icon"
+					className="relative"
+					aria-label="通知设置"
+					onClick={() => router.push("/settings?tab=notifications")}
+				>
 					<Bell className="h-5 w-5" />
-					<span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary-500 text-[10px] font-bold text-white">
-						3
-					</span>
 				</Button>
 
 				{/* User Menu */}

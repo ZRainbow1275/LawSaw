@@ -29,6 +29,7 @@ import {
 import { useAuthStore } from "@/stores/auth-store";
 import { useToast } from "@/stores/toast-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import {
 	Bell,
 	Copy,
@@ -95,9 +96,27 @@ export default function SettingsPage() {
 	const setUser = useAuthStore((s) => s.setUser);
 	const queryClient = useQueryClient();
 	const { success: toastSuccess, error: toastError } = useToast();
+	const searchParams = useSearchParams();
 
 	const [activeTab, setActiveTab] = useState("profile");
 	const [loadedFromServer, setLoadedFromServer] = useState(false);
+
+	useEffect(() => {
+		const tab = searchParams.get("tab");
+		if (!tab) return;
+
+		const allowedTabs = [
+			"profile",
+			"notifications",
+			"appearance",
+			"security",
+			"api",
+			"system",
+		];
+		if (allowedTabs.includes(tab)) {
+			setActiveTab(tab);
+		}
+	}, [searchParams]);
 
 	const [profile, setProfile] = useState({
 		displayName: "",
