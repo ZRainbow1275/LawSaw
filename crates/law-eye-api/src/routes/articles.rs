@@ -265,7 +265,7 @@ pub(crate) async fn get_stats(
         total_articles: stats.total,
         pending_count: stats.pending,
         published_count: stats.published,
-        high_risk_count: 0, // TODO: Add high_risk to ArticleStats
+        high_risk_count: stats.high_risk,
         today_count: stats.today,
     }))
 }

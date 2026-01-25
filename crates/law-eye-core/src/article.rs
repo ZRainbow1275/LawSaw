@@ -12,6 +12,7 @@ pub struct ArticleStats {
     pub total: i64,
     pub published: i64,
     pub pending: i64,
+    pub high_risk: i64,
     pub today: i64,
 }
 
@@ -245,6 +246,12 @@ impl ArticleService {
             .await
             .map_err(|e| Error::Database(e.to_string()))?;
 
+        // Count high risk articles (risk_score > 70). `NULL` risk_score will be excluded naturally.
+        let high_risk: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM articles WHERE risk_score > 70")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
         let today: (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM articles WHERE created_at >= CURRENT_DATE"
         )
@@ -256,6 +263,7 @@ impl ArticleService {
             total: total.0,
             published: published.0,
             pending: pending.0,
+            high_risk: high_risk.0,
             today: today.0,
         })
     }
