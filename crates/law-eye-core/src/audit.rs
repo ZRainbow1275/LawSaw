@@ -1,10 +1,46 @@
 use law_eye_common::{Error, Result};
 use law_eye_db::{AuditLog, CreateAuditLog};
-use sqlx::PgPool;
+use sqlx::{Executor, PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 pub struct AuditService {
     pool: PgPool,
+}
+
+async fn log_audit_inner<'e, E>(executor: E, input: CreateAuditLog) -> Result<AuditLog>
+where
+    E: Executor<'e, Database = Postgres>,
+{
+    let audit = sqlx::query_as::<_, AuditLog>(
+        r#"
+        INSERT INTO audit_logs (user_id, action, resource, resource_id, old_value, new_value, ip_address, user_agent)
+        VALUES ($1, $2, $3, $4, $5, $6, $7::inet, $8)
+        RETURNING
+            id,
+            user_id,
+            action,
+            resource,
+            resource_id,
+            old_value,
+            new_value,
+            ip_address::text AS ip_address,
+            user_agent,
+            created_at
+        "#,
+    )
+    .bind(input.user_id)
+    .bind(&input.action)
+    .bind(&input.resource)
+    .bind(input.resource_id)
+    .bind(&input.old_value)
+    .bind(&input.new_value)
+    .bind(&input.ip_address)
+    .bind(&input.user_agent)
+    .fetch_one(executor)
+    .await
+    .map_err(|e| Error::Database(e.to_string()))?;
+
+    Ok(audit)
 }
 
 #[derive(Debug, Clone, Default)]
@@ -23,31 +59,20 @@ impl AuditService {
     }
 
     pub async fn log(&self, input: CreateAuditLog) -> Result<AuditLog> {
-        let audit = sqlx::query_as::<_, AuditLog>(
-            r#"
-            INSERT INTO audit_logs (user_id, action, resource, resource_id, old_value, new_value, ip_address, user_agent)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING *
-            "#,
-        )
-        .bind(input.user_id)
-        .bind(&input.action)
-        .bind(&input.resource)
-        .bind(input.resource_id)
-        .bind(&input.old_value)
-        .bind(&input.new_value)
-        .bind(&input.ip_address)
-        .bind(&input.user_agent)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        log_audit_inner(&self.pool, input).await
+    }
 
-        Ok(audit)
+    pub async fn log_tx(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        input: CreateAuditLog,
+    ) -> Result<AuditLog> {
+        log_audit_inner(&mut **tx, input).await
     }
 
     pub async fn list(&self, filters: AuditFilters) -> Result<Vec<AuditLog>> {
         let mut query = String::from(
-            "SELECT * FROM audit_logs WHERE 1=1"
+            "SELECT id, user_id, action, resource, resource_id, old_value, new_value, ip_address::text AS ip_address, user_agent, created_at FROM audit_logs WHERE 1=1"
         );
         let mut param_count = 0;
 
@@ -100,7 +125,9 @@ impl AuditService {
     }
 
     pub async fn get_by_id(&self, id: Uuid) -> Result<AuditLog> {
-        sqlx::query_as::<_, AuditLog>("SELECT * FROM audit_logs WHERE id = $1")
+        sqlx::query_as::<_, AuditLog>(
+            "SELECT id, user_id, action, resource, resource_id, old_value, new_value, ip_address::text AS ip_address, user_agent, created_at FROM audit_logs WHERE id = $1",
+        )
             .bind(id)
             .fetch_optional(&self.pool)
             .await

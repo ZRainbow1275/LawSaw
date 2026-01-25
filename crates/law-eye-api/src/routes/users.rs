@@ -1,17 +1,19 @@
 use axum::{
-    extract::{Path, Query, State},
-    http::StatusCode,
+    extract::{ConnectInfo, Path, Query, State},
+    http::{header::USER_AGENT, HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{get, patch},
     Json, Router,
 };
-use law_eye_db::UpdateUser;
+use law_eye_common::Error;
+use law_eye_db::{CreateAuditLog, UpdateUser};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
+use std::net::{IpAddr, SocketAddr};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -337,9 +339,25 @@ pub(crate) async fn update_user(
 pub(crate) async fn update_user_roles(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateRolesRequest>,
 ) -> impl IntoResponse {
+    fn normalize_role_names(input: Option<Vec<String>>) -> Result<Vec<String>, String> {
+        use std::collections::BTreeSet;
+
+        let mut unique = BTreeSet::<String>::new();
+        for raw in input.unwrap_or_default() {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                return Err("Role name cannot be empty".to_string());
+            }
+            unique.insert(trimmed.to_string());
+        }
+        Ok(unique.into_iter().collect())
+    }
+
     let current_user = match auth_session.user {
         Some(u) => u,
         None => {
@@ -364,31 +382,191 @@ pub(crate) async fn update_user_roles(
     }
 
     // Verify user exists
-    if state.user_service.get_by_id(id).await.is_err() {
+    match state.user_service.get_by_id(id).await {
+        Ok(_) => {}
+        Err(Error::NotFound(_)) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "User not found".to_string(),
+                }),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse { error: e.to_string() }),
+            )
+                .into_response();
+        }
+    }
+
+    let add_roles = match normalize_role_names(req.add_roles) {
+        Ok(v) => v,
+        Err(msg) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse { error: msg }),
+            )
+                .into_response()
+        }
+    };
+    let remove_roles = match normalize_role_names(req.remove_roles) {
+        Ok(v) => v,
+        Err(msg) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse { error: msg }),
+            )
+                .into_response()
+        }
+    };
+
+    if add_roles.is_empty() && remove_roles.is_empty() {
         return (
-            StatusCode::NOT_FOUND,
+            StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
-                error: "User not found".to_string(),
+                error: "No roles specified".to_string(),
             }),
         )
             .into_response();
     }
 
-    // Add roles
-    if let Some(roles) = req.add_roles {
-        for role in roles {
-            let _ = state
-                .user_service
-                .assign_role(id, &role, Some(current_user.id))
-                .await;
+    let add_set: std::collections::BTreeSet<String> = add_roles.iter().cloned().collect();
+    let remove_set: std::collections::BTreeSet<String> = remove_roles.iter().cloned().collect();
+    let overlap: Vec<String> = add_set
+        .intersection(&remove_set)
+        .cloned()
+        .collect::<Vec<_>>();
+    if !overlap.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Role(s) cannot be both added and removed: {}", overlap.join(", ")),
+            }),
+        )
+            .into_response();
+    }
+
+    let mut tx = match state.pool.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse { error: e.to_string() }),
+            )
+                .into_response()
+        }
+    };
+
+    let all_role_names: Vec<String> = add_set.union(&remove_set).cloned().collect();
+    if let Err(e) = state
+        .user_service
+        .validate_roles_exist_tx(&mut tx, &all_role_names)
+        .await
+    {
+        let status = match e {
+            Error::Validation(_) => StatusCode::BAD_REQUEST,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        return (status, Json(ErrorResponse { error: e.to_string() })).into_response();
+    }
+
+    let before_roles = match state.user_service.get_user_roles_tx(&mut tx, id).await {
+        Ok(v) => v,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse { error: e.to_string() }),
+            )
+                .into_response()
+        }
+    };
+
+    for role in &add_roles {
+        if let Err(e) = state
+            .user_service
+            .assign_role_tx(&mut tx, id, role, Some(current_user.id))
+            .await
+        {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse { error: e.to_string() }),
+            )
+                .into_response();
         }
     }
 
-    // Remove roles
-    if let Some(roles) = req.remove_roles {
-        for role in roles {
-            let _ = state.user_service.remove_role(id, &role).await;
+    for role in &remove_roles {
+        if let Err(e) = state.user_service.remove_role_tx(&mut tx, id, role).await {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse { error: e.to_string() }),
+            )
+                .into_response();
         }
+    }
+
+    let after_roles = match state.user_service.get_user_roles_tx(&mut tx, id).await {
+        Ok(v) => v,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse { error: e.to_string() }),
+            )
+                .into_response()
+        }
+    };
+
+    let before_role_names: Vec<String> = before_roles.into_iter().map(|r| r.name).collect();
+    let after_role_names: Vec<String> = after_roles.into_iter().map(|r| r.name).collect();
+
+    let ip_from_xff = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .map(|s| s.trim())
+        .and_then(|s| s.parse::<IpAddr>().ok())
+        .map(|ip| ip.to_string());
+    let ip_address = ip_from_xff.or_else(|| Some(addr.ip().to_string()));
+
+    let user_agent = headers
+        .get(USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    let audit_input = CreateAuditLog {
+        user_id: Some(current_user.id),
+        action: "users.roles.update".to_string(),
+        resource: "users".to_string(),
+        resource_id: Some(id),
+        old_value: Some(serde_json::json!({
+            "roles": before_role_names,
+        })),
+        new_value: Some(serde_json::json!({
+            "roles": after_role_names,
+            "requested_add_roles": add_roles,
+            "requested_remove_roles": remove_roles,
+        })),
+        ip_address,
+        user_agent,
+    };
+
+    if let Err(e) = state.audit_service.log_tx(&mut tx, audit_input).await {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: e.to_string() }),
+        )
+            .into_response();
+    }
+
+    if let Err(e) = tx.commit().await {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: e.to_string() }),
+        )
+            .into_response();
     }
 
     (

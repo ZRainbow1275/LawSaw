@@ -4,11 +4,112 @@ use argon2::{
 };
 use law_eye_common::{Error, Result};
 use law_eye_db::{CreateUser, Role, UpdateUser, User};
-use sqlx::PgPool;
+use sqlx::{Executor, PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 pub struct UserService {
     pool: PgPool,
+}
+
+async fn fetch_user_roles<'e, E>(executor: E, user_id: Uuid) -> Result<Vec<Role>>
+where
+    E: Executor<'e, Database = Postgres>,
+{
+    let roles = sqlx::query_as::<_, Role>(
+        r#"
+        SELECT r.* FROM roles r
+        INNER JOIN user_roles ur ON r.id = ur.role_id
+        WHERE ur.user_id = $1
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(executor)
+    .await
+    .map_err(|e| Error::Database(e.to_string()))?;
+
+    Ok(roles)
+}
+
+async fn assign_role_inner<'e, E>(
+    executor: E,
+    user_id: Uuid,
+    role_name: &str,
+    granted_by: Option<Uuid>,
+) -> Result<()>
+where
+    E: Executor<'e, Database = Postgres>,
+{
+    sqlx::query(
+        r#"
+        INSERT INTO user_roles (user_id, role_id, granted_by)
+        SELECT $1, id, $3 FROM roles WHERE name = $2
+        ON CONFLICT DO NOTHING
+        "#,
+    )
+    .bind(user_id)
+    .bind(role_name)
+    .bind(granted_by)
+    .execute(executor)
+    .await
+    .map_err(|e| Error::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+async fn remove_role_inner<'e, E>(executor: E, user_id: Uuid, role_name: &str) -> Result<()>
+where
+    E: Executor<'e, Database = Postgres>,
+{
+    sqlx::query(
+        r#"
+        DELETE FROM user_roles
+        WHERE user_id = $1 AND role_id = (SELECT id FROM roles WHERE name = $2)
+        "#,
+    )
+    .bind(user_id)
+    .bind(role_name)
+    .execute(executor)
+    .await
+    .map_err(|e| Error::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+async fn validate_roles_exist_inner<'e, E>(executor: E, role_names: &[String]) -> Result<()>
+where
+    E: Executor<'e, Database = Postgres>,
+{
+    use std::collections::BTreeSet;
+
+    if role_names.is_empty() {
+        return Ok(());
+    }
+
+    let unique: Vec<String> = BTreeSet::<String>::from_iter(role_names.iter().cloned())
+        .into_iter()
+        .collect();
+
+    let existing: Vec<String> =
+        sqlx::query_scalar::<_, String>("SELECT name FROM roles WHERE name = ANY($1)")
+            .bind(&unique)
+            .fetch_all(executor)
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
+    let existing_set: BTreeSet<String> = existing.into_iter().collect();
+    let missing: Vec<String> = unique
+        .into_iter()
+        .filter(|name| !existing_set.contains(name))
+        .collect();
+
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(Error::Validation(format!(
+            "Unknown role(s): {}",
+            missing.join(", ")
+        )))
+    }
 }
 
 impl UserService {
@@ -128,19 +229,15 @@ impl UserService {
     }
 
     pub async fn get_user_roles(&self, user_id: Uuid) -> Result<Vec<Role>> {
-        let roles = sqlx::query_as::<_, Role>(
-            r#"
-            SELECT r.* FROM roles r
-            INNER JOIN user_roles ur ON r.id = ur.role_id
-            WHERE ur.user_id = $1
-            "#,
-        )
-        .bind(user_id)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        fetch_user_roles(&self.pool, user_id).await
+    }
 
-        Ok(roles)
+    pub async fn get_user_roles_tx(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        user_id: Uuid,
+    ) -> Result<Vec<Role>> {
+        fetch_user_roles(&mut **tx, user_id).await
     }
 
     pub async fn get_user_permissions(&self, user_id: Uuid) -> Result<Vec<String>> {
@@ -174,37 +271,42 @@ impl UserService {
     }
 
     pub async fn assign_role(&self, user_id: Uuid, role_name: &str, granted_by: Option<Uuid>) -> Result<()> {
-        sqlx::query(
-            r#"
-            INSERT INTO user_roles (user_id, role_id, granted_by)
-            SELECT $1, id, $3 FROM roles WHERE name = $2
-            ON CONFLICT DO NOTHING
-            "#,
-        )
-        .bind(user_id)
-        .bind(role_name)
-        .bind(granted_by)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        assign_role_inner(&self.pool, user_id, role_name, granted_by).await
+    }
 
-        Ok(())
+    pub async fn assign_role_tx(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        user_id: Uuid,
+        role_name: &str,
+        granted_by: Option<Uuid>,
+    ) -> Result<()> {
+        assign_role_inner(&mut **tx, user_id, role_name, granted_by).await
     }
 
     pub async fn remove_role(&self, user_id: Uuid, role_name: &str) -> Result<()> {
-        sqlx::query(
-            r#"
-            DELETE FROM user_roles
-            WHERE user_id = $1 AND role_id = (SELECT id FROM roles WHERE name = $2)
-            "#,
-        )
-        .bind(user_id)
-        .bind(role_name)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        remove_role_inner(&self.pool, user_id, role_name).await
+    }
 
-        Ok(())
+    pub async fn remove_role_tx(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        user_id: Uuid,
+        role_name: &str,
+    ) -> Result<()> {
+        remove_role_inner(&mut **tx, user_id, role_name).await
+    }
+
+    pub async fn validate_roles_exist(&self, role_names: &[String]) -> Result<()> {
+        validate_roles_exist_inner(&self.pool, role_names).await
+    }
+
+    pub async fn validate_roles_exist_tx(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        role_names: &[String],
+    ) -> Result<()> {
+        validate_roles_exist_inner(&mut **tx, role_names).await
     }
 
     pub async fn list(&self, limit: i64, offset: i64) -> Result<Vec<User>> {
