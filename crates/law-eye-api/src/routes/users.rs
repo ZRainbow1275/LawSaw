@@ -69,8 +69,35 @@ impl From<law_eye_db::User> for UserResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct UserProfileResponse {
+    pub id: Uuid,
+    pub email: String,
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub is_active: bool,
+    pub last_login: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub preferences: serde_json::Value,
+}
+
+impl From<law_eye_db::User> for UserProfileResponse {
+    fn from(user: law_eye_db::User) -> Self {
+        Self {
+            id: user.id,
+            email: user.email,
+            display_name: user.display_name,
+            avatar_url: user.avatar_url,
+            is_active: user.is_active,
+            last_login: user.last_login,
+            created_at: user.created_at,
+            preferences: user.preferences,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct UserDetailResponse {
-    pub user: UserResponse,
+    pub user: UserProfileResponse,
     pub roles: Vec<String>,
     pub permissions: Vec<String>,
 }
@@ -263,7 +290,7 @@ pub(crate) async fn get_user(
         ("session" = [])
     ),
     responses(
-        (status = 200, description = "User updated", body = UserResponse),
+        (status = 200, description = "User updated", body = UserProfileResponse),
         (status = 401, description = "Not authenticated", body = ErrorResponse),
         (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "User not found", body = ErrorResponse),
@@ -308,7 +335,7 @@ pub(crate) async fn update_user(
     };
 
     match state.user_service.update(id, update).await {
-        Ok(user) => (StatusCode::OK, Json(UserResponse::from(user))).into_response(),
+        Ok(user) => (StatusCode::OK, Json(UserProfileResponse::from(user))).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {

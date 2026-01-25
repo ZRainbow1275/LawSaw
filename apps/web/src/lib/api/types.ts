@@ -68,6 +68,11 @@ export interface DeleteResponse {
 	message: string;
 }
 
+export interface HealthResponse {
+	status: string;
+	version: string;
+}
+
 export interface ArticleListResponse {
 	data: Article[];
 	total: number;
@@ -113,11 +118,37 @@ export interface ApiKey {
 	id: string;
 	name: string;
 	key_prefix: string;
-	permissions: Record<string, unknown>;
+	permissions: string[];
 	rate_limit: number;
 	is_active: boolean;
 	last_used: string | null;
 	created_at: string;
+}
+
+export interface ApiKeyListResponse {
+	keys: ApiKey[];
+}
+
+export interface CreateApiKeyResponse {
+	key: ApiKey;
+	raw_key: string;
+}
+
+export interface UserProfile {
+	id: string;
+	email: string;
+	display_name: string | null;
+	avatar_url: string | null;
+	is_active: boolean;
+	last_login: string | null;
+	created_at: string;
+	preferences: Record<string, unknown>;
+}
+
+export interface UserDetailResponse {
+	user: UserProfile;
+	roles: string[];
+	permissions: string[];
 }
 
 export interface ApiError {
@@ -319,6 +350,75 @@ export function assertUser(value: unknown, path = "user"): asserts value is User
 	assertOptional(createdAt, `${path}.created_at`, assertString);
 }
 
+export function assertUserProfile(
+	value: unknown,
+	path = "userProfile",
+): asserts value is UserProfile {
+	assertRecord(value, path);
+
+	assertString(getRequired(value, "id", path), `${path}.id`);
+	assertString(getRequired(value, "email", path), `${path}.email`);
+	assertNullable(getRequired(value, "display_name", path), `${path}.display_name`, assertString);
+	assertNullable(getRequired(value, "avatar_url", path), `${path}.avatar_url`, assertString);
+	assertBoolean(getRequired(value, "is_active", path), `${path}.is_active`);
+	assertNullable(getRequired(value, "last_login", path), `${path}.last_login`, assertString);
+	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
+
+	const preferences = getRequired(value, "preferences", path);
+	assertRecord(preferences, `${path}.preferences`);
+}
+
+export function assertUserDetailResponse(
+	value: unknown,
+	path = "userDetailResponse",
+): asserts value is UserDetailResponse {
+	assertRecord(value, path);
+
+	const user = getRequired(value, "user", path);
+	assertUserProfile(user, `${path}.user`);
+
+	const roles = getRequired(value, "roles", path);
+	assertArray(roles, `${path}.roles`, assertString);
+
+	const permissions = getRequired(value, "permissions", path);
+	assertArray(permissions, `${path}.permissions`, assertString);
+}
+
+export function assertApiKey(value: unknown, path = "apiKey"): asserts value is ApiKey {
+	assertRecord(value, path);
+
+	assertString(getRequired(value, "id", path), `${path}.id`);
+	assertString(getRequired(value, "name", path), `${path}.name`);
+	assertString(getRequired(value, "key_prefix", path), `${path}.key_prefix`);
+
+	const permissions = getRequired(value, "permissions", path);
+	assertArray(permissions, `${path}.permissions`, assertString);
+
+	assertNumber(getRequired(value, "rate_limit", path), `${path}.rate_limit`);
+	assertBoolean(getRequired(value, "is_active", path), `${path}.is_active`);
+	assertNullable(getRequired(value, "last_used", path), `${path}.last_used`, assertString);
+	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
+}
+
+export function assertApiKeyListResponse(
+	value: unknown,
+	path = "apiKeyListResponse",
+): asserts value is ApiKeyListResponse {
+	assertRecord(value, path);
+	const keys = getRequired(value, "keys", path);
+	assertArray(keys, `${path}.keys`, assertApiKey);
+}
+
+export function assertCreateApiKeyResponse(
+	value: unknown,
+	path = "createApiKeyResponse",
+): asserts value is CreateApiKeyResponse {
+	assertRecord(value, path);
+	const key = getRequired(value, "key", path);
+	assertApiKey(key, `${path}.key`);
+	assertString(getRequired(value, "raw_key", path), `${path}.raw_key`);
+}
+
 export function assertAuthResponse(
 	value: unknown,
 	path = "auth",
@@ -398,6 +498,15 @@ export function assertDeleteResponse(
 	assertRecord(value, path);
 	assertBoolean(getRequired(value, "success", path), `${path}.success`);
 	assertString(getRequired(value, "message", path), `${path}.message`);
+}
+
+export function assertHealthResponse(
+	value: unknown,
+	path = "healthResponse",
+): asserts value is HealthResponse {
+	assertRecord(value, path);
+	assertString(getRequired(value, "status", path), `${path}.status`);
+	assertString(getRequired(value, "version", path), `${path}.version`);
 }
 
 export function assertCategory(
