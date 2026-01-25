@@ -1,20 +1,24 @@
 use crate::protocol::*;
-use law_eye_core::{ArticleService, RagService};
 use law_eye_ai::LlmGateway;
+use law_eye_core::{ArticleService, CategoryService, RagService};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use std::sync::Arc;
-use tracing::info;
+use tracing::{error, info};
 
 pub struct McpServer {
+    pool: PgPool,
     article_service: Arc<ArticleService>,
+    category_service: Arc<CategoryService>,
     rag_service: Arc<RagService>,
 }
 
 impl McpServer {
     pub fn new(pool: PgPool, gateway: Arc<LlmGateway>) -> Self {
         Self {
+            pool: pool.clone(),
             article_service: Arc::new(ArticleService::new(pool.clone())),
+            category_service: Arc::new(CategoryService::new(pool.clone())),
             rag_service: Arc::new(RagService::new(pool, gateway)),
         }
     }
@@ -327,23 +331,87 @@ impl McpServer {
 
         let content = match params.uri.as_str() {
             "laweye://categories" => {
+                let categories = match self.category_service.list().await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!("Failed to list categories: {}", e);
+                        return JsonRpcResponse::error(id, -32603, "Failed to read categories");
+                    }
+                };
+
+                let categories = categories
+                    .into_iter()
+                    .map(|c| {
+                        json!({
+                            "id": c.id,
+                            "slug": c.slug,
+                            "name": c.name,
+                            "description": c.description,
+                            "parent_id": c.parent_id,
+                            "sort_order": c.sort_order,
+                            "icon": c.icon,
+                            "color": c.color,
+                            "created_at": c.created_at,
+                        })
+                    })
+                    .collect::<Vec<_>>();
+
                 json!({
-                    "categories": [
-                        {"slug": "legislation", "name": "立法动态"},
-                        {"slug": "judicial", "name": "司法实务"},
-                        {"slug": "enforcement", "name": "执法监管"},
-                        {"slug": "corporate", "name": "企业合规"},
-                        {"slug": "international", "name": "国际法务"},
-                        {"slug": "legal-tech", "name": "法律科技"},
-                        {"slug": "opinion", "name": "观点评论"}
-                    ]
-                }).to_string()
+                    "categories": categories
+                })
+                .to_string()
             }
             "laweye://stats" => {
-                // 简单统计，实际可从数据库查询
+                let article_stats = match self.article_service.get_stats().await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!("Failed to load article stats: {}", e);
+                        return JsonRpcResponse::error(id, -32603, "Failed to compute stats");
+                    }
+                };
+
+                let categories_total: (i64,) = match sqlx::query_as("SELECT COUNT(*) FROM categories")
+                    .fetch_one(&self.pool)
+                    .await
+                {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!("Failed to count categories: {}", e);
+                        return JsonRpcResponse::error(id, -32603, "Failed to compute stats");
+                    }
+                };
+
+                let sources_total: (i64,) = match sqlx::query_as("SELECT COUNT(*) FROM sources")
+                    .fetch_one(&self.pool)
+                    .await
+                {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!("Failed to count sources: {}", e);
+                        return JsonRpcResponse::error(id, -32603, "Failed to compute stats");
+                    }
+                };
+
+                let users_total: (i64,) = match sqlx::query_as("SELECT COUNT(*) FROM users")
+                    .fetch_one(&self.pool)
+                    .await
+                {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!("Failed to count users: {}", e);
+                        return JsonRpcResponse::error(id, -32603, "Failed to compute stats");
+                    }
+                };
+
                 json!({
                     "status": "operational",
-                    "version": env!("CARGO_PKG_VERSION")
+                    "version": env!("CARGO_PKG_VERSION"),
+                    "articles": article_stats,
+                    "counts": {
+                        "categories": categories_total.0,
+                        "sources": sources_total.0,
+                        "users": users_total.0
+                    }
                 }).to_string()
             }
             _ => return JsonRpcResponse::error(id, -32602, "Unknown resource URI"),
