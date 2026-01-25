@@ -10,6 +10,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use crate::auth::AuthSession;
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -55,8 +56,37 @@ pub struct ErrorResponse {
 )]
 async fn process_article(
     State(state): State<AppState>,
+    auth_session: AuthSession,
     Path(article_id): Path<Uuid>,
 ) -> impl IntoResponse {
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Not authenticated".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    };
+
+    let can_write = state
+        .user_service
+        .has_permission(user.id, "articles:write")
+        .await
+        .unwrap_or(false);
+    if !can_write {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Permission denied".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
     // Verify article exists
     if state.article_service.get_by_id(article_id).await.is_err() {
         return (
@@ -107,8 +137,37 @@ async fn process_article(
 )]
 async fn classify_article(
     State(state): State<AppState>,
+    auth_session: AuthSession,
     Path(article_id): Path<Uuid>,
 ) -> impl IntoResponse {
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Not authenticated".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    };
+
+    let can_write = state
+        .user_service
+        .has_permission(user.id, "articles:write")
+        .await
+        .unwrap_or(false);
+    if !can_write {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Permission denied".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
     if state.article_service.get_by_id(article_id).await.is_err() {
         return (
             StatusCode::NOT_FOUND,
@@ -157,8 +216,37 @@ async fn classify_article(
 )]
 async fn summarize_article(
     State(state): State<AppState>,
+    auth_session: AuthSession,
     Path(article_id): Path<Uuid>,
 ) -> impl IntoResponse {
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Not authenticated".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    };
+
+    let can_write = state
+        .user_service
+        .has_permission(user.id, "articles:write")
+        .await
+        .unwrap_or(false);
+    if !can_write {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Permission denied".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
     if state.article_service.get_by_id(article_id).await.is_err() {
         return (
             StatusCode::NOT_FOUND,
@@ -207,8 +295,37 @@ async fn summarize_article(
 )]
 async fn assess_risk(
     State(state): State<AppState>,
+    auth_session: AuthSession,
     Path(article_id): Path<Uuid>,
 ) -> impl IntoResponse {
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Not authenticated".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    };
+
+    let can_write = state
+        .user_service
+        .has_permission(user.id, "articles:write")
+        .await
+        .unwrap_or(false);
+    if !can_write {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Permission denied".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
     if state.article_service.get_by_id(article_id).await.is_err() {
         return (
             StatusCode::NOT_FOUND,
@@ -257,8 +374,37 @@ async fn assess_risk(
 )]
 async fn get_ai_status(
     State(state): State<AppState>,
+    auth_session: AuthSession,
     Path(article_id): Path<Uuid>,
 ) -> impl IntoResponse {
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Not authenticated".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    };
+
+    let can_read = state
+        .user_service
+        .has_permission(user.id, "articles:read")
+        .await
+        .unwrap_or(false);
+    if !can_read {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Permission denied".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
     match state.article_service.get_by_id(article_id).await {
         Ok(article) => {
             let ai_processed = article.status == "ai_processed";

@@ -10,18 +10,27 @@ pub mod users;
 
 use axum::Router;
 
+use axum::middleware;
+
+use crate::middleware::RequireAuth;
 use crate::state::AppState;
 
 pub fn create_router(state: AppState) -> Router {
+    let protected_api = Router::new()
+        .nest("/articles", articles::router())
+        .nest("/sources", sources::router())
+        .nest("/categories", categories::router())
+        .nest("/ai", ai::router())
+        .nest("/users", users::router())
+        .nest("/search", search::router())
+        .nest("/apikeys", apikeys::router())
+        // Default deny: everything under /api/v1 requires an authenticated session,
+        // except routes explicitly mounted outside this protected router (e.g. /api/v1/auth/*).
+        .layer(middleware::from_extractor::<RequireAuth>());
+
     Router::new()
-        .nest("/api/v1/articles", articles::router())
-        .nest("/api/v1/sources", sources::router())
-        .nest("/api/v1/categories", categories::router())
-        .nest("/api/v1/ai", ai::router())
         .nest("/api/v1/auth", auth::router())
-        .nest("/api/v1/users", users::router())
-        .nest("/api/v1/search", search::router())
-        .nest("/api/v1/apikeys", apikeys::router())
+        .nest("/api/v1", protected_api)
         .nest("/health", health::router())
         .with_state(state)
 }

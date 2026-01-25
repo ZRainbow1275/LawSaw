@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use crate::auth::AuthSession;
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -108,8 +109,37 @@ pub struct ErrorResponse {
 )]
 async fn search(
     State(state): State<AppState>,
+    auth_session: AuthSession,
     Query(query): Query<SearchQuery>,
 ) -> impl IntoResponse {
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Not authenticated".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    };
+
+    let can_read = state
+        .user_service
+        .has_permission(user.id, "articles:read")
+        .await
+        .unwrap_or(false);
+    if !can_read {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Permission denied".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
     // Use article service for basic search
     match state.article_service.search(&query.q, query.limit).await {
         Ok(articles) => {
@@ -146,8 +176,37 @@ async fn search(
 )]
 async fn semantic_search(
     State(state): State<AppState>,
+    auth_session: AuthSession,
     Json(req): Json<SemanticSearchRequest>,
 ) -> impl IntoResponse {
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Not authenticated".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    };
+
+    let can_read = state
+        .user_service
+        .has_permission(user.id, "articles:read")
+        .await
+        .unwrap_or(false);
+    if !can_read {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Permission denied".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
     match state.rag_service.search(&req.query, req.limit).await {
         Ok(results) => {
             let response = SemanticSearchResponse {
@@ -184,8 +243,37 @@ async fn semantic_search(
 )]
 async fn ask_question(
     State(state): State<AppState>,
+    auth_session: AuthSession,
     Json(req): Json<AskRequest>,
 ) -> impl IntoResponse {
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Not authenticated".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    };
+
+    let can_read = state
+        .user_service
+        .has_permission(user.id, "articles:read")
+        .await
+        .unwrap_or(false);
+    if !can_read {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Permission denied".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
     match state.rag_service.answer(&req.question, req.top_k).await {
         Ok(answer) => {
             let response = AskResponse {

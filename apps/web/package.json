@@ -7,8 +7,9 @@
     "dev": "next dev -p 8849",
     "build": "next build",
     "start": "next start",
-    "lint": "biome lint .",
-    "format": "biome format --write ."
+    "lint": "biome lint src",
+    "format": "biome format --write src",
+    "typecheck": "tsc --noEmit --incremental false"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.11",
