@@ -5,6 +5,7 @@ use axum::{
     Json, Router,
 };
 use chrono::{DateTime, Utc};
+use law_eye_common::Error;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -57,6 +58,8 @@ impl From<law_eye_db::Article> for ArticleResponse {
 pub struct ListParams {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    pub category_id: Option<Uuid>,
+    pub status: Option<String>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -113,9 +116,16 @@ pub fn router() -> Router<AppState> {
         .route("/stats", get(get_stats))
         .route("/recent", get(list_recent))
         .route("/batch-status", post(batch_update_status))
-        .route("/{id}", get(get_article))
+        .route("/{id}", get(get_article).delete(delete_article))
         .route("/{id}/publish", post(publish_article))
         .route("/{id}/archive", post(archive_article))
+}
+
+fn is_valid_status(status: &str) -> bool {
+    matches!(
+        status,
+        "pending" | "processing" | "published" | "archived" | "rejected"
+    )
 }
 
 async fn list_articles(
@@ -151,13 +161,37 @@ async fn list_articles(
     let limit = params.limit.unwrap_or(20).min(100);
     let offset = params.offset.unwrap_or(0);
 
+    if let Some(status) = params.status.as_deref() {
+        if !is_valid_status(status) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "Invalid status".to_string(),
+                    code: "VALIDATION_ERROR".to_string(),
+                }),
+            ));
+        }
+    }
+
     let articles = state
         .article_service
-        .list(limit, offset)
+        .list_filtered(limit, offset, params.category_id, params.status.as_deref())
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string(), code: "FETCH_ERROR".to_string() })))?;
 
-    let total = state.article_service.count().await.unwrap_or(0);
+    let total = state
+        .article_service
+        .count_filtered(params.category_id, params.status.as_deref())
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                    code: "COUNT_ERROR".to_string(),
+                }),
+            )
+        })?;
     let data: Vec<ArticleResponse> = articles.into_iter().map(|a| a.into()).collect();
 
     Ok(Json(ArticleListResponse { data, total, limit, offset }))
@@ -273,6 +307,56 @@ async fn get_article(
     let article = state.article_service.get_by_id(id).await
         .map_err(|e| (StatusCode::NOT_FOUND, Json(ErrorResponse { error: e.to_string(), code: "NOT_FOUND".to_string() })))?;
     Ok(Json(article.into()))
+}
+
+async fn delete_article(
+    State(state): State<AppState>,
+    auth_session: AuthSession,
+    Path(id): Path<Uuid>,
+) -> Result<Json<DeleteResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let user = auth_session.user.ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Not authenticated".to_string(),
+                code: "UNAUTHORIZED".to_string(),
+            }),
+        )
+    })?;
+
+    let can_write = state
+        .user_service
+        .has_permission(user.id, "articles:write")
+        .await
+        .unwrap_or(false);
+    if !can_write {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Permission denied".to_string(),
+                code: "FORBIDDEN".to_string(),
+            }),
+        ));
+    }
+
+    state.article_service.delete(id).await.map_err(|e| {
+        let (status, code) = match e {
+            Error::NotFound(_) => (StatusCode::NOT_FOUND, "NOT_FOUND"),
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, "DELETE_ERROR"),
+        };
+        (
+            status,
+            Json(ErrorResponse {
+                error: e.to_string(),
+                code: code.to_string(),
+            }),
+        )
+    })?;
+
+    Ok(Json(DeleteResponse {
+        success: true,
+        message: "Article deleted".to_string(),
+    }))
 }
 
 async fn publish_article(

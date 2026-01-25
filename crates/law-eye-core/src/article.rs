@@ -1,6 +1,6 @@
 use law_eye_common::{Error, Result};
 use law_eye_db::{Article, CreateArticle};
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, QueryBuilder};
 use uuid::Uuid;
 
 pub struct ArticleService {
@@ -42,6 +42,44 @@ impl ArticleService {
         .fetch_all(&self.pool)
         .await
         .map_err(|e| Error::Database(e.to_string()))
+    }
+
+    pub async fn count_filtered<'a>(
+        &self,
+        category_id: Option<Uuid>,
+        status: Option<&'a str>,
+    ) -> Result<i64> {
+        let mut qb: QueryBuilder<'a, Postgres> =
+            QueryBuilder::new("SELECT COUNT(*) FROM articles");
+        push_article_filters(&mut qb, category_id, status);
+
+        let result: (i64,) = qb
+            .build_query_as()
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
+        Ok(result.0)
+    }
+
+    pub async fn list_filtered<'a>(
+        &self,
+        limit: i64,
+        offset: i64,
+        category_id: Option<Uuid>,
+        status: Option<&'a str>,
+    ) -> Result<Vec<Article>> {
+        let mut qb: QueryBuilder<'a, Postgres> = QueryBuilder::new("SELECT * FROM articles");
+        push_article_filters(&mut qb, category_id, status);
+
+        qb.push(" ORDER BY created_at DESC");
+        qb.push(" LIMIT ").push_bind(limit);
+        qb.push(" OFFSET ").push_bind(offset);
+
+        qb.build_query_as::<Article>()
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| Error::Database(e.to_string()))
     }
 
     pub async fn get_by_id(&self, id: Uuid) -> Result<Article> {
@@ -236,5 +274,25 @@ impl ArticleService {
         .fetch_all(&self.pool)
         .await
         .map_err(|e| Error::Database(e.to_string()))
+    }
+}
+
+fn push_article_filters<'a>(
+    qb: &mut QueryBuilder<'a, Postgres>,
+    category_id: Option<Uuid>,
+    status: Option<&'a str>,
+) {
+    let mut has_where = false;
+
+    if let Some(category_id) = category_id {
+        qb.push(" WHERE category_id = ");
+        qb.push_bind(category_id);
+        has_where = true;
+    }
+
+    if let Some(status) = status {
+        qb.push(if has_where { " AND " } else { " WHERE " });
+        qb.push("status = ");
+        qb.push_bind(status);
     }
 }
