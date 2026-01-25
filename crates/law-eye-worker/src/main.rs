@@ -3,13 +3,25 @@ use law_eye_common::AppConfig;
 use law_eye_core::{ArticleService, SourceService};
 use law_eye_crawler::{RawArticle, RssFetcher, SpiderConfig, WebSpider};
 use law_eye_db::{create_pool, CreateArticle};
-use law_eye_queue::{AiTask, AiTaskType, IngestTask, PushTask, TaskQueue};
+use law_eye_queue::{AiTask, AiTaskType, IngestTask, PushTask, ReservedTask, TaskQueue};
 use sqlx::PgPool;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::signal;
+use tokio::time::{Duration, Instant};
 use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+const QUEUE_INGEST: &str = "queue:ingest";
+const QUEUE_AI: &str = "queue:ai";
+const QUEUE_PUSH: &str = "queue:push";
+
+const MAINTENANCE_INTERVAL_SECS: u64 = 15;
+const MAINTENANCE_MAX_BATCH: usize = 200;
+
+const VISIBILITY_TIMEOUT_INGEST_MS: i64 = 10 * 60 * 1_000;
+const VISIBILITY_TIMEOUT_AI_MS: i64 = 20 * 60 * 1_000;
+const VISIBILITY_TIMEOUT_PUSH_MS: i64 = 5 * 60 * 1_000;
 
 struct Worker {
     pool: PgPool,
@@ -35,37 +47,35 @@ impl Worker {
     async fn run(&self) -> anyhow::Result<()> {
         info!("Worker started, waiting for tasks...");
 
+        let maintenance_interval = Duration::from_secs(MAINTENANCE_INTERVAL_SECS);
+        let mut last_maintenance = Instant::now() - maintenance_interval;
+
         while !self.shutdown.load(Ordering::Relaxed) {
-            if let Some(task) = self
-                .task_queue
-                .dequeue::<IngestTask>("queue:ingest", 5)
-                .await?
-            {
-                self.process_ingest_task(task).await;
+            if last_maintenance.elapsed() >= maintenance_interval {
+                if let Err(e) = self.run_queue_maintenance().await {
+                    error!("Queue maintenance failed: {}", e);
+                }
+                last_maintenance = Instant::now();
+            }
+
+            if let Some(reserved) = self.task_queue.reserve_retryable::<IngestTask>(QUEUE_INGEST, 5).await? {
+                self.handle_ingest_reserved(reserved).await;
             }
 
             if self.shutdown.load(Ordering::Relaxed) {
                 break;
             }
 
-            if let Some(task) = self
-                .task_queue
-                .dequeue::<AiTask>("queue:ai", 1)
-                .await?
-            {
-                self.process_ai_task(task).await;
+            if let Some(reserved) = self.task_queue.reserve_retryable::<AiTask>(QUEUE_AI, 1).await? {
+                self.handle_ai_reserved(reserved).await;
             }
 
             if self.shutdown.load(Ordering::Relaxed) {
                 break;
             }
 
-            if let Some(task) = self
-                .task_queue
-                .dequeue::<PushTask>("queue:push", 1)
-                .await?
-            {
-                self.process_push_task(task).await;
+            if let Some(reserved) = self.task_queue.reserve_retryable::<PushTask>(QUEUE_PUSH, 1).await? {
+                self.handle_push_reserved(reserved).await;
             }
         }
 
@@ -73,7 +83,183 @@ impl Worker {
         Ok(())
     }
 
-    async fn process_ingest_task(&self, task: IngestTask) {
+    async fn run_queue_maintenance(&self) -> anyhow::Result<()> {
+        let queues = [
+            (QUEUE_INGEST, VISIBILITY_TIMEOUT_INGEST_MS),
+            (QUEUE_AI, VISIBILITY_TIMEOUT_AI_MS),
+            (QUEUE_PUSH, VISIBILITY_TIMEOUT_PUSH_MS),
+        ];
+
+        for (queue, visibility_timeout_ms) in queues {
+            if let Err(e) = self.task_queue.process_delayed_tasks(queue).await {
+                error!("Failed to process delayed tasks for {}: {}", queue, e);
+            }
+            if let Err(e) = self
+                .task_queue
+                .requeue_stuck_tasks(queue, visibility_timeout_ms, MAINTENANCE_MAX_BATCH)
+                .await
+            {
+                error!("Failed to re-queue stuck tasks for {}: {}", queue, e);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn handle_ingest_reserved(&self, reserved: ReservedTask<IngestTask>) {
+        let queue = QUEUE_INGEST;
+        let task = reserved.task;
+        let task_id = task.id;
+
+        match self.task_queue.is_done(queue, task_id).await {
+            Ok(true) => {
+                if let Err(e) = self.task_queue.ack_reserved(queue, &reserved.raw_payload).await {
+                    error!("Failed to ack duplicate ingest task {}: {}", task_id, e);
+                }
+                return;
+            }
+            Ok(false) => {}
+            Err(e) => {
+                error!("Failed to check ingest task {} done: {}", task_id, e);
+                return;
+            }
+        }
+
+        let payload = task.payload.clone();
+        match self.process_ingest_task(payload).await {
+            Ok(()) => {
+                if let Err(e) = self.task_queue.mark_done(queue, task_id).await {
+                    error!("Failed to mark ingest task {} done: {}", task_id, e);
+                }
+                if let Err(e) = self.task_queue.ack_reserved(queue, &reserved.raw_payload).await {
+                    error!("Failed to ack ingest task {}: {}", task_id, e);
+                }
+            }
+            Err(e) => {
+                let error_msg = e.to_string();
+                match self
+                    .task_queue
+                    .retry_or_dead_letter(queue, task, error_msg)
+                    .await
+                {
+                    Ok(_) => {
+                        if let Err(e) =
+                            self.task_queue.ack_reserved(queue, &reserved.raw_payload).await
+                        {
+                            error!("Failed to ack failed ingest task {}: {}", task_id, e);
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to schedule retry/DLQ for ingest task {}: {}", task_id, e);
+                    }
+                }
+            }
+        }
+    }
+
+    async fn handle_ai_reserved(&self, reserved: ReservedTask<AiTask>) {
+        let queue = QUEUE_AI;
+        let task = reserved.task;
+        let task_id = task.id;
+
+        match self.task_queue.is_done(queue, task_id).await {
+            Ok(true) => {
+                if let Err(e) = self.task_queue.ack_reserved(queue, &reserved.raw_payload).await {
+                    error!("Failed to ack duplicate AI task {}: {}", task_id, e);
+                }
+                return;
+            }
+            Ok(false) => {}
+            Err(e) => {
+                error!("Failed to check AI task {} done: {}", task_id, e);
+                return;
+            }
+        }
+
+        let payload = task.payload.clone();
+        match self.process_ai_task(payload).await {
+            Ok(()) => {
+                if let Err(e) = self.task_queue.mark_done(queue, task_id).await {
+                    error!("Failed to mark AI task {} done: {}", task_id, e);
+                }
+                if let Err(e) = self.task_queue.ack_reserved(queue, &reserved.raw_payload).await {
+                    error!("Failed to ack AI task {}: {}", task_id, e);
+                }
+            }
+            Err(e) => {
+                let error_msg = e.to_string();
+                match self
+                    .task_queue
+                    .retry_or_dead_letter(queue, task, error_msg)
+                    .await
+                {
+                    Ok(_) => {
+                        if let Err(e) =
+                            self.task_queue.ack_reserved(queue, &reserved.raw_payload).await
+                        {
+                            error!("Failed to ack failed AI task {}: {}", task_id, e);
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to schedule retry/DLQ for AI task {}: {}", task_id, e);
+                    }
+                }
+            }
+        }
+    }
+
+    async fn handle_push_reserved(&self, reserved: ReservedTask<PushTask>) {
+        let queue = QUEUE_PUSH;
+        let task = reserved.task;
+        let task_id = task.id;
+
+        match self.task_queue.is_done(queue, task_id).await {
+            Ok(true) => {
+                if let Err(e) = self.task_queue.ack_reserved(queue, &reserved.raw_payload).await {
+                    error!("Failed to ack duplicate push task {}: {}", task_id, e);
+                }
+                return;
+            }
+            Ok(false) => {}
+            Err(e) => {
+                error!("Failed to check push task {} done: {}", task_id, e);
+                return;
+            }
+        }
+
+        let payload = task.payload.clone();
+        match self.process_push_task(payload).await {
+            Ok(()) => {
+                if let Err(e) = self.task_queue.mark_done(queue, task_id).await {
+                    error!("Failed to mark push task {} done: {}", task_id, e);
+                }
+                if let Err(e) = self.task_queue.ack_reserved(queue, &reserved.raw_payload).await {
+                    error!("Failed to ack push task {}: {}", task_id, e);
+                }
+            }
+            Err(e) => {
+                let error_msg = e.to_string();
+                match self
+                    .task_queue
+                    .retry_or_dead_letter(queue, task, error_msg)
+                    .await
+                {
+                    Ok(_) => {
+                        if let Err(e) =
+                            self.task_queue.ack_reserved(queue, &reserved.raw_payload).await
+                        {
+                            error!("Failed to ack failed push task {}: {}", task_id, e);
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to schedule retry/DLQ for push task {}: {}", task_id, e);
+                    }
+                }
+            }
+        }
+    }
+
+    async fn process_ingest_task(&self, task: IngestTask) -> anyhow::Result<()> {
         info!("Processing ingest task for source: {}", task.source_id);
 
         let source_service = SourceService::new(self.pool.clone());
@@ -86,8 +272,10 @@ impl Worker {
                     Err(e) => {
                         let msg = format!("Failed to parse spider config: {}", e);
                         error!("{}", msg);
-                        let _ = source_service.update_last_fetch(task.source_id, Some(msg.as_str())).await;
-                        return;
+                        let _ = source_service
+                            .update_last_fetch(task.source_id, Some(msg.as_str()))
+                            .await;
+                        return Err(anyhow::anyhow!(msg));
                     }
                 };
                 self.web_spider.fetch(&task.url, &config).await
@@ -95,8 +283,10 @@ impl Worker {
             _ => {
                 let msg = format!("Unknown source type: {}", task.source_type);
                 error!("{}", msg);
-                let _ = source_service.update_last_fetch(task.source_id, Some(msg.as_str())).await;
-                return;
+                let _ = source_service
+                    .update_last_fetch(task.source_id, Some(msg.as_str()))
+                    .await;
+                return Err(anyhow::anyhow!(msg));
             }
         };
 
@@ -117,7 +307,7 @@ impl Worker {
                                     article_id,
                                     task_type: AiTaskType::Full,
                                 };
-                                if let Err(e) = self.task_queue.enqueue("queue:ai", &ai_task).await {
+                                if let Err(e) = self.task_queue.enqueue_retryable(QUEUE_AI, ai_task).await {
                                     error!("Failed to enqueue AI task: {}", e);
                                 }
                             }
@@ -131,12 +321,14 @@ impl Worker {
 
                 info!("Saved {} articles from source {}", saved, task.source_id);
                 let _ = source_service.update_last_fetch(task.source_id, None).await;
+                Ok(())
             }
             Err(e) => {
                 let msg = e.to_string();
                 let msg = msg.chars().take(500).collect::<String>();
                 error!("Failed to fetch articles: {}", msg);
                 let _ = source_service.update_last_fetch(task.source_id, Some(msg.as_str())).await;
+                Err(anyhow::anyhow!(msg))
             }
         }
     }
@@ -164,14 +356,14 @@ impl Worker {
         Ok(Some(created.id))
     }
 
-    async fn process_ai_task(&self, task: AiTask) {
+    async fn process_ai_task(&self, task: AiTask) -> anyhow::Result<()> {
         info!("Processing AI task for article: {}", task.article_id);
 
         let ai_service = match &self.ai_service {
             Some(s) => s,
             None => {
                 warn!("AI service not configured, skipping AI task");
-                return;
+                return Err(anyhow::anyhow!("AI service not configured"));
             }
         };
 
@@ -181,37 +373,39 @@ impl Worker {
             Ok(a) => a,
             Err(e) => {
                 error!("Failed to get article {}: {}", task.article_id, e);
-                return;
+                return Err(anyhow::anyhow!("Failed to get article {}: {}", task.article_id, e));
             }
         };
 
         let content = article.content.as_deref().unwrap_or("");
         if content.is_empty() {
             warn!("Article {} has no content, skipping AI processing", task.article_id);
-            return;
+            return Ok(());
         }
 
         let result = match task.task_type {
             AiTaskType::Full => ai_service.process_article(&article.title, content).await,
             _ => {
                 warn!("Partial AI task types not yet implemented");
-                return;
+                return Err(anyhow::anyhow!("AiTaskType {:?} not implemented", task.task_type));
             }
         };
 
         match result {
             Ok(ai_result) => {
-                if let Err(e) = self
-                    .update_article_with_ai(&article_service, task.article_id, &ai_result)
+                self.update_article_with_ai(&article_service, task.article_id, &ai_result)
                     .await
-                {
-                    error!("Failed to update article with AI result: {}", e);
-                } else {
-                    info!("AI processing completed for article: {}", task.article_id);
-                }
+                    .map_err(|e| anyhow::anyhow!("Failed to update article with AI result: {}", e))?;
+                info!("AI processing completed for article: {}", task.article_id);
+                Ok(())
             }
             Err(e) => {
                 error!("AI processing failed for article {}: {}", task.article_id, e);
+                Err(anyhow::anyhow!(
+                    "AI processing failed for article {}: {}",
+                    task.article_id,
+                    e
+                ))
             }
         }
     }
@@ -259,7 +453,7 @@ impl Worker {
         Ok(())
     }
 
-    async fn process_push_task(&self, task: PushTask) {
+    async fn process_push_task(&self, task: PushTask) -> anyhow::Result<()> {
         info!("Processing push task for {} articles", task.article_ids.len());
 
         let client = reqwest::Client::new();
@@ -273,7 +467,7 @@ impl Worker {
         }
 
         if articles.is_empty() {
-            return;
+            return Ok(());
         }
 
         let message = format_push_message(&articles);
@@ -287,12 +481,15 @@ impl Worker {
             Ok(resp) => {
                 if resp.status().is_success() {
                     info!("Push sent successfully");
+                    Ok(())
                 } else {
                     error!("Push failed with status: {}", resp.status());
+                    Err(anyhow::anyhow!("Push failed with status: {}", resp.status()))
                 }
             }
             Err(e) => {
                 error!("Push request failed: {}", e);
+                Err(anyhow::anyhow!("Push request failed: {}", e))
             }
         }
     }

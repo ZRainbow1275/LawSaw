@@ -110,7 +110,7 @@ pub(crate) async fn process_article(
         task_type: AiTaskType::Full,
     };
 
-    if let Err(e) = state.task_queue.enqueue("queue:ai", &task).await {
+    if let Err(e) = state.task_queue.enqueue_retryable("queue:ai", task).await {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
@@ -196,7 +196,7 @@ pub(crate) async fn classify_article(
         task_type: AiTaskType::Classify,
     };
 
-    if let Err(e) = state.task_queue.enqueue("queue:ai", &task).await {
+    if let Err(e) = state.task_queue.enqueue_retryable("queue:ai", task).await {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
@@ -282,7 +282,7 @@ pub(crate) async fn summarize_article(
         task_type: AiTaskType::Summarize,
     };
 
-    if let Err(e) = state.task_queue.enqueue("queue:ai", &task).await {
+    if let Err(e) = state.task_queue.enqueue_retryable("queue:ai", task).await {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
@@ -368,7 +368,7 @@ pub(crate) async fn assess_risk(
         task_type: AiTaskType::RiskAssess,
     };
 
-    if let Err(e) = state.task_queue.enqueue("queue:ai", &task).await {
+    if let Err(e) = state.task_queue.enqueue_retryable("queue:ai", task).await {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {

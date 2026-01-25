@@ -333,7 +333,7 @@ pub(crate) async fn trigger_fetch(
         config: source.config,
     };
 
-    if let Err(e) = state.task_queue.enqueue("queue:ingest", &task).await {
+    if let Err(e) = state.task_queue.enqueue_retryable("queue:ingest", task).await {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {

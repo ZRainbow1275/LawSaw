@@ -2,10 +2,12 @@ use deadpool_redis::{Config, Pool, Runtime};
 use law_eye_common::{Error, Result};
 use redis::AsyncCommands;
 use serde::{de::DeserializeOwned, Serialize};
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
-const MAX_RETRIES: u32 = 3;
-const RETRY_DELAY_MS: u64 = 5000;
+const DEFAULT_MAX_RETRIES: u32 = 3;
+const RETRY_BASE_DELAY_MS: u64 = 5_000;
+const RETRY_MAX_DELAY_MS: u64 = 60_000;
+const DONE_TTL_SECS: u64 = 60 * 60 * 24 * 7;
 
 pub struct TaskQueue {
     pool: Pool,
@@ -13,6 +15,8 @@ pub struct TaskQueue {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RetryableTask<T> {
+    #[serde(default = "uuid::Uuid::new_v4")]
+    pub id: uuid::Uuid,
     pub payload: T,
     pub retry_count: u32,
     pub max_retries: u32,
@@ -23,9 +27,10 @@ pub struct RetryableTask<T> {
 impl<T> RetryableTask<T> {
     pub fn new(payload: T) -> Self {
         Self {
+            id: uuid::Uuid::new_v4(),
             payload,
             retry_count: 0,
-            max_retries: MAX_RETRIES,
+            max_retries: DEFAULT_MAX_RETRIES,
             created_at: chrono::Utc::now().timestamp(),
             last_error: None,
         }
@@ -39,6 +44,11 @@ impl<T> RetryableTask<T> {
         self.retry_count += 1;
         self.last_error = Some(error);
     }
+}
+
+pub struct ReservedTask<T> {
+    pub raw_payload: String,
+    pub task: RetryableTask<T>,
 }
 
 impl TaskQueue {
@@ -102,24 +112,224 @@ impl TaskQueue {
         self.dequeue(queue, timeout).await
     }
 
+    pub async fn reserve_retryable<T: DeserializeOwned>(
+        &self,
+        queue: &str,
+        timeout: u64,
+    ) -> Result<Option<ReservedTask<T>>> {
+        let processing_queue = format!("{}:processing", queue);
+        let inflight_queue = format!("{}:inflight", queue);
+
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+
+        let payload: Option<String> = redis::cmd("BRPOPLPUSH")
+            .arg(queue)
+            .arg(&processing_queue)
+            .arg(timeout as usize)
+            .query_async(&mut conn)
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+
+        let Some(raw_payload) = payload else {
+            return Ok(None);
+        };
+
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.zadd::<_, _, _, ()>(&inflight_queue, &raw_payload, now)
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+
+        let task = match parse_retryable_or_wrap::<T>(&raw_payload) {
+            Ok(task) => task,
+            Err(e) => {
+                let err_msg = e.to_string();
+                error!(
+                    "Failed to deserialize reserved task from {} (moving to DLQ): {}",
+                    queue, err_msg
+                );
+
+                let dlq = format!("{}:dlq", queue);
+                let poison = serde_json::json!({
+                    "raw_payload": raw_payload.clone(),
+                    "error": err_msg,
+                    "failed_at": chrono::Utc::now().timestamp()
+                });
+                let poison_payload =
+                    serde_json::to_string(&poison).unwrap_or_else(|_| "{\"error\":\"dlq_poison_serialize_failed\"}".to_string());
+
+                conn.zrem::<_, _, ()>(&inflight_queue, &raw_payload)
+                    .await
+                    .map_err(|e| Error::Internal(e.to_string()))?;
+                conn.lrem::<_, _, ()>(&processing_queue, 1, &raw_payload)
+                    .await
+                    .map_err(|e| Error::Internal(e.to_string()))?;
+                conn.rpush::<_, _, ()>(&dlq, &poison_payload)
+                    .await
+                    .map_err(|e| Error::Internal(e.to_string()))?;
+
+                return Ok(None);
+            }
+        };
+
+        Ok(Some(ReservedTask {
+            raw_payload,
+            task,
+        }))
+    }
+
+    pub async fn ack_reserved(&self, queue: &str, raw_payload: &str) -> Result<()> {
+        let processing_queue = format!("{}:processing", queue);
+        let inflight_queue = format!("{}:inflight", queue);
+
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+
+        conn.lrem::<_, _, ()>(&processing_queue, 1, raw_payload)
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+        conn.zrem::<_, _, ()>(&inflight_queue, raw_payload)
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn requeue_stuck_tasks(
+        &self,
+        queue: &str,
+        visibility_timeout_ms: i64,
+        max_batch: usize,
+    ) -> Result<u32> {
+        let processing_queue = format!("{}:processing", queue);
+        let inflight_queue = format!("{}:inflight", queue);
+        let now = chrono::Utc::now().timestamp_millis();
+        let cutoff = now.saturating_sub(visibility_timeout_ms);
+
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+
+        let stuck: Vec<String> = redis::cmd("ZRANGEBYSCORE")
+            .arg(&inflight_queue)
+            .arg(0i64)
+            .arg(cutoff)
+            .arg("LIMIT")
+            .arg(0usize)
+            .arg(max_batch)
+            .query_async(&mut conn)
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+
+        let mut count = 0u32;
+        for raw_payload in stuck {
+            conn.zrem::<_, _, ()>(&inflight_queue, &raw_payload)
+                .await
+                .map_err(|e| Error::Internal(e.to_string()))?;
+            conn.lrem::<_, _, ()>(&processing_queue, 1, &raw_payload)
+                .await
+                .map_err(|e| Error::Internal(e.to_string()))?;
+            conn.rpush::<_, _, ()>(queue, &raw_payload)
+                .await
+                .map_err(|e| Error::Internal(e.to_string()))?;
+            count = count.saturating_add(1);
+        }
+
+        // Repair edge case: if BRPOPLPUSH succeeded but ZADD failed (or worker crashed),
+        // items can be left in :processing without an :inflight entry and would never be re-queued.
+        if max_batch > 0 {
+            let end = max_batch.saturating_sub(1) as isize;
+            let processing_head: Vec<String> = conn
+                .lrange(&processing_queue, 0, end)
+                .await
+                .map_err(|e| Error::Internal(e.to_string()))?;
+
+            for raw_payload in processing_head {
+                let score: Option<f64> = redis::cmd("ZSCORE")
+                    .arg(&inflight_queue)
+                    .arg(&raw_payload)
+                    .query_async(&mut conn)
+                    .await
+                    .map_err(|e| Error::Internal(e.to_string()))?;
+
+                if score.is_none() {
+                    conn.lrem::<_, _, ()>(&processing_queue, 1, &raw_payload)
+                        .await
+                        .map_err(|e| Error::Internal(e.to_string()))?;
+                    conn.rpush::<_, _, ()>(queue, &raw_payload)
+                        .await
+                        .map_err(|e| Error::Internal(e.to_string()))?;
+                    count = count.saturating_add(1);
+                }
+            }
+        }
+
+        if count > 0 {
+            warn!(
+                "Re-queued {} stuck tasks back to {} (visibility_timeout_ms={})",
+                count, queue, visibility_timeout_ms
+            );
+        }
+
+        Ok(count)
+    }
+
+    pub async fn is_done(&self, queue: &str, id: uuid::Uuid) -> Result<bool> {
+        let key = format!("{}:done:{}", queue, id);
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+
+        let exists: bool = conn
+            .exists(key)
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+        Ok(exists)
+    }
+
+    pub async fn mark_done(&self, queue: &str, id: uuid::Uuid) -> Result<()> {
+        let key = format!("{}:done:{}", queue, id);
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+
+        conn.set_ex::<_, _, ()>(key, 1u8, DONE_TTL_SECS)
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+        Ok(())
+    }
+
     pub async fn retry_or_dead_letter<T: Serialize + Clone>(
         &self,
         queue: &str,
         mut task: RetryableTask<T>,
         error_msg: String,
     ) -> Result<bool> {
+        let error_msg = error_msg.chars().take(1000).collect::<String>();
         task.increment_retry(error_msg.clone());
 
         if task.can_retry() {
             warn!(
-                "Task failed, scheduling retry {}/{} for queue {}: {}",
-                task.retry_count, task.max_retries, queue, error_msg
+                "Task {} failed, scheduling retry {}/{} for queue {}: {}",
+                task.id, task.retry_count, task.max_retries, queue, error_msg
             );
-            
+
             // Add delay before retry using Redis ZADD for delayed queue
             let delayed_queue = format!("{}:delayed", queue);
-            let retry_at = chrono::Utc::now().timestamp_millis() + (RETRY_DELAY_MS as i64 * task.retry_count as i64);
-            
+            let delay_ms = retry_backoff_ms(task.retry_count);
+            let retry_at = chrono::Utc::now().timestamp_millis() + delay_ms as i64;
+
             let mut conn = self
                 .pool
                 .get()
@@ -127,7 +337,7 @@ impl TaskQueue {
                 .map_err(|e| Error::Internal(e.to_string()))?;
 
             let payload = serde_json::to_string(&task).map_err(|e| Error::Internal(e.to_string()))?;
-            
+
             conn.zadd::<_, _, _, ()>(&delayed_queue, &payload, retry_at)
                 .await
                 .map_err(|e| Error::Internal(e.to_string()))?;
@@ -135,8 +345,8 @@ impl TaskQueue {
             Ok(true)
         } else {
             error!(
-                "Task exceeded max retries, moving to dead letter queue: {}",
-                error_msg
+                "Task {} exceeded max retries, moving to dead letter queue: {}",
+                task.id, error_msg
             );
             
             let dlq = format!("{}:dlq", queue);
@@ -218,6 +428,30 @@ impl TaskQueue {
     }
 }
 
+fn parse_retryable_or_wrap<T: DeserializeOwned>(raw_payload: &str) -> Result<RetryableTask<T>> {
+    let raw_payload = raw_payload
+        .trim_start_matches(|c: char| c.is_whitespace() || c == '\u{feff}')
+        .trim_end();
+
+    match serde_json::from_str::<RetryableTask<T>>(raw_payload) {
+        Ok(task) => Ok(task),
+        Err(_) => {
+            let payload =
+                serde_json::from_str::<T>(raw_payload).map_err(|e| Error::Internal(e.to_string()))?;
+            Ok(RetryableTask::new(payload))
+        }
+    }
+}
+
+fn retry_backoff_ms(retry_count: u32) -> u64 {
+    let exp = retry_count.saturating_sub(1);
+    let mut delay = RETRY_BASE_DELAY_MS;
+    for _ in 0..exp {
+        delay = delay.saturating_mul(2);
+    }
+    delay.min(RETRY_MAX_DELAY_MS)
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct IngestTask {
     pub source_id: uuid::Uuid,
@@ -248,4 +482,82 @@ pub enum AiTaskType {
     ExtractTags,
     Embed,
     Full,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn retry_backoff_is_exponential_and_capped() {
+        assert_eq!(retry_backoff_ms(1), 5_000);
+        assert_eq!(retry_backoff_ms(2), 10_000);
+        assert_eq!(retry_backoff_ms(3), 20_000);
+        assert_eq!(retry_backoff_ms(4), 40_000);
+        assert_eq!(retry_backoff_ms(5), 60_000);
+        assert_eq!(retry_backoff_ms(20), 60_000);
+    }
+
+    #[test]
+    fn parse_retryable_or_wrap_wraps_legacy_payload() {
+        let source_id = uuid::Uuid::new_v4();
+        let payload = IngestTask {
+            source_id,
+            source_type: "rss".to_string(),
+            url: "https://example.com/feed".to_string(),
+            config: json!({"a": 1}),
+        };
+
+        let raw = serde_json::to_string(&payload).unwrap();
+        let task = parse_retryable_or_wrap::<IngestTask>(&raw).unwrap();
+
+        assert_eq!(task.payload.source_id, source_id);
+        assert_eq!(task.payload.source_type, "rss");
+        assert_eq!(task.retry_count, 0);
+        assert_eq!(task.max_retries, DEFAULT_MAX_RETRIES);
+        assert!(task.last_error.is_none());
+        assert_ne!(task.id, uuid::Uuid::nil());
+    }
+
+    #[test]
+    fn parse_retryable_or_wrap_tolerates_bom_and_trailing_newline() {
+        let source_id = uuid::Uuid::new_v4();
+        let payload = IngestTask {
+            source_id,
+            source_type: "rss".to_string(),
+            url: "https://example.com/feed".to_string(),
+            config: json!({"a": 1}),
+        };
+
+        let raw = serde_json::to_string(&payload).unwrap();
+        let wrapped = format!("\u{feff}  {}\r\n", raw);
+        let task = parse_retryable_or_wrap::<IngestTask>(&wrapped).unwrap();
+
+        assert_eq!(task.payload.source_id, source_id);
+        assert_eq!(task.payload.source_type, "rss");
+        assert_ne!(task.id, uuid::Uuid::nil());
+    }
+
+    #[test]
+    fn retryable_task_missing_id_deserializes_with_default() {
+        let payload = IngestTask {
+            source_id: uuid::Uuid::new_v4(),
+            source_type: "rss".to_string(),
+            url: "https://example.com/feed".to_string(),
+            config: json!({"k": "v"}),
+        };
+
+        let raw = serde_json::to_string(&json!({
+            "payload": payload,
+            "retry_count": 0,
+            "max_retries": 3,
+            "created_at": 0,
+            "last_error": null
+        }))
+        .unwrap();
+
+        let task: RetryableTask<IngestTask> = serde_json::from_str(&raw).unwrap();
+        assert_ne!(task.id, uuid::Uuid::nil());
+    }
 }
