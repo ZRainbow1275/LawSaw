@@ -480,13 +480,22 @@ pub(crate) async fn get_ai_status(
 
     match state.article_service.get_by_id(article_id).await {
         Ok(article) => {
-            let ai_processed = article.status == "ai_processed";
+            let ai_processed = article.ai_processed_at.is_some();
+            let category = match article.category_id {
+                Some(category_id) => state
+                    .category_service
+                    .get_by_id(category_id)
+                    .await
+                    .ok()
+                    .map(|c| c.name),
+                None => None,
+            };
             (
                 StatusCode::OK,
                 Json(AiStatusResponse {
                     article_id,
                     ai_processed,
-                    category: None, // Would need to join with categories table
+                    category,
                     risk_score: article.risk_score,
                     summary: article.summary,
                 }),
