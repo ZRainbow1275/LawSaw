@@ -19,6 +19,7 @@ pub fn router() -> Router<AppState> {
         .route("/classify/{article_id}", post(classify_article))
         .route("/summarize/{article_id}", post(summarize_article))
         .route("/risk/{article_id}", post(assess_risk))
+        .route("/available", get(get_ai_availability))
         .route("/status/{article_id}", get(get_ai_status))
 }
 
@@ -39,8 +40,67 @@ pub struct AiStatusResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct AiAvailabilityResponse {
+    pub available: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ErrorResponse {
     pub error: String,
+}
+
+/// AI 服务是否可用（仅检测 API 侧配置，不做外部 LLM 探测）
+#[utoipa::path(
+    get,
+    path = "/api/v1/ai/available",
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "AI availability", body = AiAvailabilityResponse),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse)
+    )
+)]
+pub(crate) async fn get_ai_availability(
+    State(state): State<AppState>,
+    auth_session: AuthSession,
+) -> impl IntoResponse {
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Not authenticated".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    };
+
+    let can_read = state
+        .user_service
+        .has_permission(user.id, "articles:read")
+        .await
+        .unwrap_or(false);
+    if !can_read {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Permission denied".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
+    (
+        StatusCode::OK,
+        Json(AiAvailabilityResponse {
+            available: state.ai_service.is_some(),
+        }),
+    )
+        .into_response()
 }
 
 /// 触发文章完整 AI 处理

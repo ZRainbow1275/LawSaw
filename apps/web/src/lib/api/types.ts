@@ -218,6 +218,10 @@ export interface ArticleAiInsights {
 	keywords: string[];
 }
 
+export interface AiAvailabilityResponse {
+	available: boolean;
+}
+
 type JsonRecord = Record<string, unknown>;
 
 const ARTICLE_STATUSES = [
@@ -624,6 +628,14 @@ export function assertAskResponse(
 	const sources = getRequired(value, "sources", path);
 	assertArray(sources, `${path}.sources`, assertAskSource);
 	assertNumber(getRequired(value, "confidence", path), `${path}.confidence`);
+}
+
+export function assertAiAvailabilityResponse(
+	value: unknown,
+	path = "aiAvailabilityResponse",
+): asserts value is AiAvailabilityResponse {
+	assertRecord(value, path);
+	assertBoolean(getRequired(value, "available", path), `${path}.available`);
 }
 
 export function assertFeedback(
