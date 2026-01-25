@@ -199,6 +199,15 @@ const ARTICLE_STATUSES = [
 
 const SENTIMENTS = ["positive", "negative", "neutral", "mixed"] as const;
 
+const FEEDBACK_TYPES = [
+	"source_suggestion",
+	"bug_report",
+	"feature_request",
+	"other",
+] as const;
+
+const FEEDBACK_STATUSES = ["pending", "reviewing", "resolved", "rejected"] as const;
+
 function typeName(value: unknown): string {
 	if (value === null) return "null";
 	if (Array.isArray(value)) return "array";
@@ -506,4 +515,41 @@ export function assertAskResponse(
 	const sources = getRequired(value, "sources", path);
 	assertArray(sources, `${path}.sources`, assertAskSource);
 	assertNumber(getRequired(value, "confidence", path), `${path}.confidence`);
+}
+
+export function assertFeedback(
+	value: unknown,
+	path = "feedback",
+): asserts value is Feedback {
+	assertRecord(value, path);
+
+	assertString(getRequired(value, "id", path), `${path}.id`);
+	assertNullable(getRequired(value, "user_id", path), `${path}.user_id`, assertString);
+	assertOneOf(getRequired(value, "type", path), `${path}.type`, FEEDBACK_TYPES);
+	assertString(getRequired(value, "title", path), `${path}.title`);
+	assertString(getRequired(value, "content", path), `${path}.content`);
+	assertNullable(
+		getRequired(value, "contact_email", path),
+		`${path}.contact_email`,
+		assertString,
+	);
+	assertOneOf(
+		getRequired(value, "status", path),
+		`${path}.status`,
+		FEEDBACK_STATUSES,
+	);
+	assertNullable(
+		getRequired(value, "admin_response", path),
+		`${path}.admin_response`,
+		assertString,
+	);
+	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
+	assertString(getRequired(value, "updated_at", path), `${path}.updated_at`);
+}
+
+export function assertFeedbackList(
+	value: unknown,
+	path = "feedbacks",
+): asserts value is Feedback[] {
+	assertArray(value, path, assertFeedback);
 }

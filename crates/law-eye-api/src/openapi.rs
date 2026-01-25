@@ -55,13 +55,19 @@ impl Modify for SecurityAddon {
         crate::routes::apikeys::list_keys,
         crate::routes::apikeys::create_key,
         crate::routes::apikeys::revoke_key,
-        crate::routes::apikeys::delete_key
+        crate::routes::apikeys::delete_key,
+        crate::routes::feedbacks::list_feedbacks,
+        crate::routes::feedbacks::list_my_feedbacks,
+        crate::routes::feedbacks::create_feedback,
+        crate::routes::feedbacks::get_feedback,
+        crate::routes::feedbacks::update_feedback
     ),
     tags(
         (name = "health", description = "Health"),
         (name = "auth", description = "Authentication"),
         (name = "articles", description = "Articles"),
         (name = "categories", description = "Categories"),
+        (name = "feedbacks", description = "Feedbacks"),
         (name = "sources", description = "Sources"),
         (name = "search", description = "Search"),
         (name = "ai", description = "AI"),

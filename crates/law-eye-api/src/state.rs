@@ -1,7 +1,7 @@
 use law_eye_ai::{AiService, LlmGateway};
 use law_eye_core::{
-    ApiKeyService, ArticleService, CategoryService, KnowledgeService, RagService, SourceService,
-    UserService,
+    ApiKeyService, ArticleService, CategoryService, FeedbackService, KnowledgeService, RagService,
+    SourceService, UserService,
 };
 use law_eye_queue::TaskQueue;
 use sqlx::PgPool;
@@ -14,6 +14,7 @@ pub struct AppState {
     pub article_service: Arc<ArticleService>,
     pub source_service: Arc<SourceService>,
     pub category_service: Arc<CategoryService>,
+    pub feedback_service: Arc<FeedbackService>,
     pub user_service: Arc<UserService>,
     pub task_queue: Arc<TaskQueue>,
     #[allow(dead_code)] // Reserved for future synchronous AI operations
@@ -46,6 +47,7 @@ impl AppState {
             article_service: Arc::new(ArticleService::new(pool.clone())),
             source_service: Arc::new(SourceService::new(pool.clone())),
             category_service: Arc::new(CategoryService::new(pool.clone())),
+            feedback_service: Arc::new(FeedbackService::new(pool.clone())),
             user_service: Arc::new(UserService::new(pool.clone())),
             task_queue: Arc::new(task_queue),
             ai_service: ai_service.map(Arc::new),

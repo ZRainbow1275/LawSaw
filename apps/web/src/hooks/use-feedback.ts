@@ -1,20 +1,21 @@
 "use client";
 
 import { apiClient } from "@/lib/api";
-import type { CreateFeedbackInput, Feedback } from "@/lib/api/types";
+import { assertFeedback, assertFeedbackList } from "@/lib/api/types";
+import type { CreateFeedbackInput } from "@/lib/api/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 export function useFeedbacks() {
 	return useQuery({
 		queryKey: ["feedbacks"],
-		queryFn: () => apiClient.get<Feedback[]>("/api/v1/feedbacks"),
+		queryFn: () => apiClient.get("/api/v1/feedbacks", assertFeedbackList),
 	});
 }
 
 export function useFeedback(id: string) {
 	return useQuery({
 		queryKey: ["feedback", id],
-		queryFn: () => apiClient.get<Feedback>(`/api/v1/feedbacks/${id}`),
+		queryFn: () => apiClient.get(`/api/v1/feedbacks/${id}`, assertFeedback),
 		enabled: !!id,
 	});
 }
@@ -24,9 +25,10 @@ export function useCreateFeedback() {
 
 	return useMutation({
 		mutationFn: (data: CreateFeedbackInput) =>
-			apiClient.post<Feedback>("/api/v1/feedbacks", data),
+			apiClient.post("/api/v1/feedbacks", data, assertFeedback),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["feedbacks"] });
+			queryClient.invalidateQueries({ queryKey: ["my-feedbacks"] });
 		},
 	});
 }
@@ -34,6 +36,6 @@ export function useCreateFeedback() {
 export function useMyFeedbacks() {
 	return useQuery({
 		queryKey: ["my-feedbacks"],
-		queryFn: () => apiClient.get<Feedback[]>("/api/v1/feedbacks/my"),
+		queryFn: () => apiClient.get("/api/v1/feedbacks/my", assertFeedbackList),
 	});
 }

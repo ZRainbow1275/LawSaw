@@ -167,6 +167,44 @@ pub struct CreateAuditLog {
     pub user_agent: Option<String>,
 }
 
+// ========== Feedback Models ==========
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Feedback {
+    pub id: Uuid,
+    pub user_id: Option<Uuid>,
+    #[sqlx(rename = "type")]
+    #[serde(rename = "type")]
+    pub feedback_type: String,
+    pub title: String,
+    pub content: String,
+    pub contact_email: Option<String>,
+    pub source_url: Option<String>,
+    pub source_name: Option<String>,
+    pub status: String,
+    pub admin_response: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateFeedback {
+    pub user_id: Option<Uuid>,
+    #[serde(rename = "type")]
+    pub feedback_type: String,
+    pub title: String,
+    pub content: String,
+    pub contact_email: Option<String>,
+    pub source_url: Option<String>,
+    pub source_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateFeedback {
+    pub status: Option<String>,
+    pub admin_response: Option<String>,
+}
+
 // ========== Knowledge Graph Models ==========
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

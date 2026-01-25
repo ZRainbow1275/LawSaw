@@ -3,6 +3,7 @@ pub mod apikeys;
 pub mod articles;
 pub mod auth;
 pub mod categories;
+pub mod feedbacks;
 pub mod health;
 pub mod openapi;
 pub mod search;
@@ -21,6 +22,7 @@ pub fn create_router(state: AppState) -> Router {
         .nest("/articles", articles::router())
         .nest("/sources", sources::router())
         .nest("/categories", categories::router())
+        .nest("/feedbacks", feedbacks::router())
         .nest("/ai", ai::router())
         .nest("/users", users::router())
         .nest("/search", search::router())
