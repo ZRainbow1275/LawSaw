@@ -6,7 +6,7 @@ import { MainContent } from "@/components/layout/main-content";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useArticles } from "@/hooks/use-articles";
+import { useArticles, useArticleTrends } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
 import { useSources } from "@/hooks/use-sources";
 import {
@@ -48,6 +48,7 @@ export default function AnalyticsPage() {
 	const { data: articlesData } = useArticles({ limit: 1000, offset: 0 });
 	const { data: categories } = useCategories();
 	const { data: sources } = useSources();
+	const { data: trendPoints, isLoading: trendsLoading } = useArticleTrends(7);
 
 	const articles = articlesData?.data ?? [];
 	const totalArticles = articlesData?.total ?? 0;
@@ -93,18 +94,12 @@ export default function AnalyticsPage() {
 	const activeSources = sources?.filter((s) => s.is_active).length ?? 0;
 	const errorSources = sources?.filter((s) => s.last_error).length ?? 0;
 
-	// 最近7天趋势（模拟数据，实际应该从后端获取）
-	const last7Days = Array.from({ length: 7 }, (_, i) => {
-		const date = new Date();
-		date.setDate(date.getDate() - (6 - i));
-		return {
-			date: date.toLocaleDateString("zh-CN", {
-				month: "short",
-				day: "numeric",
-			}),
-			count: Math.floor(Math.random() * 50) + 10,
-		};
-	});
+	const last7Days =
+		trendPoints?.map((point) => ({
+			date: formatZhMonthDay(point.date),
+			count: point.count,
+		})) ?? [];
+	const maxTrendCount = Math.max(1, ...last7Days.map((day) => day.count));
 
 	return (
 		<ProtectedRoute>
@@ -362,22 +357,40 @@ export default function AnalyticsPage() {
 									</CardTitle>
 								</CardHeader>
 								<CardContent>
-									<div className="flex h-40 items-end justify-between gap-2">
-										{last7Days.map((day) => (
-											<div
-												key={day.date}
-												className="flex flex-1 flex-col items-center gap-1"
-											>
+									{trendsLoading ? (
+										<div className="flex h-40 items-end justify-between gap-2">
+											{Array.from({ length: 7 }, (_, idx) => `trend-skel-${idx}`).map(
+												(key) => (
+													<div
+														key={key}
+														className="flex flex-1 flex-col items-center gap-2"
+													>
+														<div className="h-full w-full animate-pulse rounded-t bg-neutral-100" />
+														<div className="h-3 w-10 animate-pulse rounded bg-neutral-100" />
+													</div>
+												),
+											)}
+										</div>
+									) : (
+										<div className="flex h-40 items-end justify-between gap-2">
+											{last7Days.map((day) => (
 												<div
-													className="w-full rounded-t bg-primary-500 transition-all hover:bg-primary-600"
-													style={{ height: `${(day.count / 60) * 100}%` }}
-												/>
-												<span className="text-xs text-neutral-500">
-													{day.date}
-												</span>
-											</div>
-										))}
-									</div>
+													key={day.date}
+													className="flex flex-1 flex-col items-center gap-1"
+												>
+													<div
+														className="w-full rounded-t bg-primary-500 transition-all hover:bg-primary-600"
+														style={{
+															height: `${(day.count / maxTrendCount) * 100}%`,
+														}}
+													/>
+													<span className="text-xs text-neutral-500">
+														{day.date}
+													</span>
+												</div>
+											))}
+										</div>
+									)}
 								</CardContent>
 							</Card>
 						</div>
@@ -424,4 +437,14 @@ export default function AnalyticsPage() {
 			</div>
 		</ProtectedRoute>
 	);
+}
+
+function formatZhMonthDay(dateIso: string) {
+	const parts = dateIso.split("-");
+	if (parts.length !== 3) return dateIso;
+
+	const month = Number(parts[1]);
+	const day = Number(parts[2]);
+	if (!Number.isFinite(month) || !Number.isFinite(day)) return dateIso;
+	return `${month}月${day}日`;
 }

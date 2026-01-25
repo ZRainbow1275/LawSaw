@@ -164,6 +164,11 @@ export interface ArticleStats {
 	today_count: number;
 }
 
+export interface ArticleTrendPoint {
+	date: string; // YYYY-MM-DD
+	count: number;
+}
+
 export interface Feedback {
 	id: string;
 	user_id: string | null;
@@ -493,6 +498,22 @@ export function assertArticleStats(
 	assertNumber(getRequired(value, "published_count", path), `${path}.published_count`);
 	assertNumber(getRequired(value, "high_risk_count", path), `${path}.high_risk_count`);
 	assertNumber(getRequired(value, "today_count", path), `${path}.today_count`);
+}
+
+export function assertArticleTrendPoint(
+	value: unknown,
+	path = "articleTrendPoint",
+): asserts value is ArticleTrendPoint {
+	assertRecord(value, path);
+	assertString(getRequired(value, "date", path), `${path}.date`);
+	assertNumber(getRequired(value, "count", path), `${path}.count`);
+}
+
+export function assertArticleTrends(
+	value: unknown,
+	path = "articleTrends",
+): asserts value is ArticleTrendPoint[] {
+	assertArray(value, path, assertArticleTrendPoint);
 }
 
 export function assertDeleteResponse(

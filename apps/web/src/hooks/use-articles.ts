@@ -5,6 +5,7 @@ import {
 	assertArticle,
 	assertArticleListResponse,
 	assertArticleStats,
+	assertArticleTrends,
 	assertDeleteResponse,
 } from "@/lib/api/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -47,6 +48,21 @@ export function useArticleStats() {
 	return useQuery({
 		queryKey: ["articleStats"],
 		queryFn: () => apiClient.get("/api/v1/articles/stats", assertArticleStats),
+		staleTime: 30000,
+	});
+}
+
+export function useArticleTrends(days = 7) {
+	const queryParams = new URLSearchParams();
+	queryParams.set("days", days.toString());
+
+	return useQuery({
+		queryKey: ["articleTrends", days],
+		queryFn: () =>
+			apiClient.get(
+				`/api/v1/articles/trends?${queryParams.toString()}`,
+				assertArticleTrends,
+			),
 		staleTime: 30000,
 	});
 }

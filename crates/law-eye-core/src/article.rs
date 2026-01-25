@@ -1,5 +1,6 @@
 use law_eye_common::{Error, Result};
 use law_eye_db::{Article, CreateArticle};
+use chrono::NaiveDate;
 use sqlx::{PgPool, Postgres, QueryBuilder};
 use uuid::Uuid;
 
@@ -14,6 +15,12 @@ pub struct ArticleStats {
     pub pending: i64,
     pub high_risk: i64,
     pub today: i64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ArticleDailyTrendPoint {
+    pub date: NaiveDate,
+    pub count: i64,
 }
 
 impl ArticleService {
@@ -282,6 +289,40 @@ impl ArticleService {
         .fetch_all(&self.pool)
         .await
         .map_err(|e| Error::Database(e.to_string()))
+    }
+
+    pub async fn get_daily_trend(&self, days: i64) -> Result<Vec<ArticleDailyTrendPoint>> {
+        let days = days.clamp(1, 90);
+
+        let rows = sqlx::query_as::<_, (NaiveDate, i64)>(
+            r#"
+            WITH days AS (
+                SELECT generate_series(
+                    CURRENT_DATE - (($1::int - 1) * INTERVAL '1 day'),
+                    CURRENT_DATE,
+                    INTERVAL '1 day'
+                )::date AS day
+            )
+            SELECT
+                days.day AS date,
+                COALESCE(COUNT(a.id), 0)::bigint AS count
+            FROM days
+            LEFT JOIN articles a
+                ON a.created_at >= days.day::timestamptz
+               AND a.created_at < (days.day::timestamptz + INTERVAL '1 day')
+            GROUP BY days.day
+            ORDER BY days.day ASC
+            "#,
+        )
+        .bind(days)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(date, count)| ArticleDailyTrendPoint { date, count })
+            .collect())
     }
 }
 

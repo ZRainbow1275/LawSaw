@@ -79,6 +79,17 @@ pub struct ArticleStatsResponse {
     pub today_count: i64,
 }
 
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ArticleTrendPointResponse {
+    pub date: String,
+    pub count: i64,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct TrendParams {
+    pub days: Option<i64>,
+}
+
 #[derive(Deserialize, ToSchema)]
 pub struct UpdateArticleRequest {
     pub title: Option<String>,
@@ -114,6 +125,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_articles))
         .route("/stats", get(get_stats))
+        .route("/trends", get(get_trends))
         .route("/recent", get(list_recent))
         .route("/batch-status", post(batch_update_status))
         .route("/{id}", get(get_article).delete(delete_article))
@@ -268,6 +280,85 @@ pub(crate) async fn get_stats(
         high_risk_count: stats.high_risk,
         today_count: stats.today,
     }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/articles/trends",
+    params(
+        ("days" = Option<i64>, Query, description = "Number of days (default 7, max 90)")
+    ),
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "Daily article trend", body = Vec<ArticleTrendPointResponse>),
+        (status = 400, description = "Validation error", body = ErrorResponse),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
+    )
+)]
+pub(crate) async fn get_trends(
+    State(state): State<AppState>,
+    auth_session: AuthSession,
+    Query(params): Query<TrendParams>,
+) -> Result<Json<Vec<ArticleTrendPointResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    let user = auth_session.user.ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Not authenticated".to_string(),
+                code: "UNAUTHORIZED".to_string(),
+            }),
+        )
+    })?;
+
+    let can_read = state
+        .user_service
+        .has_permission(user.id, "articles:read")
+        .await
+        .unwrap_or(false);
+    if !can_read {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Permission denied".to_string(),
+                code: "FORBIDDEN".to_string(),
+            }),
+        ));
+    }
+
+    let days = params.days.unwrap_or(7);
+    if !(1..=90).contains(&days) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Invalid days".to_string(),
+                code: "VALIDATION_ERROR".to_string(),
+            }),
+        ));
+    }
+
+    let points = state.article_service.get_daily_trend(days).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+                code: "STATS_ERROR".to_string(),
+            }),
+        )
+    })?;
+
+    Ok(Json(
+        points
+            .into_iter()
+            .map(|point| ArticleTrendPointResponse {
+                date: point.date.to_string(),
+                count: point.count,
+            })
+            .collect(),
+    ))
 }
 
 #[utoipa::path(
