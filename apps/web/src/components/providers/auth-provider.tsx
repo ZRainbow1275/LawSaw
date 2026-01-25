@@ -20,6 +20,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			// ignore
 		}
 
+		// PWA：注册 Service Worker（仅生产环境，避免 dev 下缓存干扰）。
+		if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
+			navigator.serviceWorker.register("/sw", { scope: "/" }).catch(() => {
+				// ignore
+			});
+		}
+
 		const checkSession = async () => {
 			setLoading(true);
 			try {
