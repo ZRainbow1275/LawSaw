@@ -67,6 +67,18 @@ interface ToastItemProps {
 function ToastItem({ toast, onDismiss }: ToastItemProps) {
 	const Icon = iconMap[toast.type];
 	const styles = styleMap[toast.type];
+	const pauseToast = useToastStore((s) => s.pauseToast);
+	const resumeToast = useToastStore((s) => s.resumeToast);
+
+	const shouldAutoDismiss = toast.duration > 0;
+	const handlePause = () => {
+		if (!shouldAutoDismiss) return;
+		pauseToast(toast.id);
+	};
+	const handleResume = () => {
+		if (!shouldAutoDismiss) return;
+		resumeToast(toast.id);
+	};
 
 	return (
 		<motion.div
@@ -75,6 +87,15 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
 			initial="hidden"
 			animate="visible"
 			exit="exit"
+			onPointerEnter={handlePause}
+			onPointerLeave={handleResume}
+			onFocusCapture={handlePause}
+			onBlurCapture={(e) => {
+				const next = e.relatedTarget;
+				if (!(next instanceof Node) || !e.currentTarget.contains(next)) {
+					handleResume();
+				}
+			}}
 			className={cn(
 				"pointer-events-auto w-full max-w-sm overflow-hidden rounded-xl border shadow-lg backdrop-blur-sm",
 				styles.bg,

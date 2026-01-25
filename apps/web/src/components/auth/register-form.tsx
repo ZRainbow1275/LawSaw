@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
+import { useToastStore } from "@/stores/toast-store";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -33,6 +34,11 @@ export function RegisterForm() {
 			});
 
 			if (result.success) {
+				useToastStore.getState().addToast({
+					type: "success",
+					title: "注册成功",
+					description: "已自动登录",
+				});
 				router.push("/");
 			} else {
 				setError(result.error || "注册失败，请重试");
