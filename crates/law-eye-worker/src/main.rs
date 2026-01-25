@@ -1,9 +1,10 @@
-use law_eye_ai::{AiService, ArticleAiResult};
+use law_eye_ai::{AiService, ClassifyResult, RiskAssessment, SummaryResult, TagsResult};
 use law_eye_common::AppConfig;
 use law_eye_core::{ArticleService, SourceService};
 use law_eye_crawler::{RawArticle, RssFetcher, SpiderConfig, WebSpider};
 use law_eye_db::{create_pool, CreateArticle};
 use law_eye_queue::{AiTask, AiTaskType, IngestTask, PushTask, ReservedTask, TaskQueue};
+use serde_json::json;
 use sqlx::PgPool;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -357,12 +358,15 @@ impl Worker {
     }
 
     async fn process_ai_task(&self, task: AiTask) -> anyhow::Result<()> {
-        info!("Processing AI task for article: {}", task.article_id);
+        info!(
+            "Processing AI task for article: {} (type={:?})",
+            task.article_id, task.task_type
+        );
 
         let ai_service = match &self.ai_service {
             Some(s) => s,
             None => {
-                warn!("AI service not configured, skipping AI task");
+                warn!("AI service not configured, cannot process AI task");
                 return Err(anyhow::anyhow!("AI service not configured"));
             }
         };
@@ -377,78 +381,327 @@ impl Worker {
             }
         };
 
-        let content = article.content.as_deref().unwrap_or("");
+        let content = article.content.as_deref().unwrap_or("").trim();
         if content.is_empty() {
             warn!("Article {} has no content, skipping AI processing", task.article_id);
             return Ok(());
         }
 
-        let result = match task.task_type {
-            AiTaskType::Full => ai_service.process_article(&article.title, content).await,
-            _ => {
-                warn!("Partial AI task types not yet implemented");
-                return Err(anyhow::anyhow!("AiTaskType {:?} not implemented", task.task_type));
-            }
-        };
+        match task.task_type {
+            AiTaskType::Full => {
+                let (classify, summary, risk, tags) = tokio::try_join!(
+                    ai_service.classify(&article.title, content),
+                    ai_service.summarize(&article.title, content),
+                    ai_service.assess_risk(&article.title, content),
+                    ai_service.extract_tags(&article.title, content),
+                )
+                .map_err(|e| anyhow::anyhow!("AI full processing failed: {}", e))?;
 
-        match result {
-            Ok(ai_result) => {
-                self.update_article_with_ai(&article_service, task.article_id, &ai_result)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to update article with AI result: {}", e))?;
-                info!("AI processing completed for article: {}", task.article_id);
+                self.update_article_full(task.article_id, &classify, &summary, &risk, &tags)
+                    .await?;
+
+                // Embedding 可能较慢且对外部依赖敏感：拆成单独的任务，失败可独立重试/DLQ。
+                let embed_task = AiTask {
+                    article_id: task.article_id,
+                    task_type: AiTaskType::Embed,
+                };
+                if let Err(e) = self.task_queue.enqueue_retryable(QUEUE_AI, embed_task).await {
+                    warn!(
+                        "Failed to enqueue embed task for article {}: {}",
+                        task.article_id, e
+                    );
+                }
+
+                info!("AI full processing completed for article: {}", task.article_id);
                 Ok(())
             }
-            Err(e) => {
-                error!("AI processing failed for article {}: {}", task.article_id, e);
-                Err(anyhow::anyhow!(
-                    "AI processing failed for article {}: {}",
-                    task.article_id,
-                    e
-                ))
+            AiTaskType::Classify => {
+                let classify = ai_service
+                    .classify(&article.title, content)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("AI classify failed: {}", e))?;
+                self.update_article_classify(task.article_id, &classify)
+                    .await?;
+                info!("AI classify completed for article: {}", task.article_id);
+                Ok(())
+            }
+            AiTaskType::Summarize => {
+                let summary = ai_service
+                    .summarize(&article.title, content)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("AI summarize failed: {}", e))?;
+                self.update_article_summary(task.article_id, &summary)
+                    .await?;
+                info!("AI summarize completed for article: {}", task.article_id);
+                Ok(())
+            }
+            AiTaskType::RiskAssess => {
+                let risk = ai_service
+                    .assess_risk(&article.title, content)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("AI risk assessment failed: {}", e))?;
+                self.update_article_risk(task.article_id, &risk).await?;
+                info!("AI risk assessment completed for article: {}", task.article_id);
+                Ok(())
+            }
+            AiTaskType::ExtractTags => {
+                let tags = ai_service
+                    .extract_tags(&article.title, content)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("AI tag extraction failed: {}", e))?;
+                self.update_article_tags(task.article_id, &tags).await?;
+                info!("AI tag extraction completed for article: {}", task.article_id);
+                Ok(())
+            }
+            AiTaskType::Embed => {
+                let text = format!("{}\n\n{}", article.title, content);
+                let chunks = ai_service
+                    .embed_chunks(&text)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("AI embed_chunks failed: {}", e))?;
+                self.replace_article_chunks(task.article_id, chunks).await?;
+                self.mark_ai_embed_done(task.article_id).await?;
+                info!("AI embedding completed for article: {}", task.article_id);
+                Ok(())
             }
         }
     }
 
-    async fn update_article_with_ai(
+    async fn update_article_full(
         &self,
-        _service: &ArticleService,
         article_id: uuid::Uuid,
-        result: &ArticleAiResult,
+        classify: &ClassifyResult,
+        summary: &SummaryResult,
+        risk: &RiskAssessment,
+        tags: &TagsResult,
     ) -> anyhow::Result<()> {
-        let metadata = result.to_metadata();
+        let tasks = json!({
+            "full": true,
+            "classify": true,
+            "summarize": true,
+            "risk_assess": true,
+            "extract_tags": true,
+        });
+
+        let metadata_patch = json!({
+            "category_confidence": classify.confidence,
+            "sub_categories": &classify.sub_categories,
+            "reasoning": &classify.reasoning,
+            "key_points": &summary.key_points,
+            "entities": &summary.entities,
+            "risk_dimensions": &risk.dimensions,
+            "recommendations": &risk.recommendations,
+            "risk_level": format!("{:?}", risk.level).to_lowercase(),
+            "abstract": &summary.abstract_text,
+            "tasks": tasks,
+        });
 
         sqlx::query(
             r#"
             UPDATE articles SET
                 summary = COALESCE(NULLIF($2, ''), summary),
-                risk_score = CASE WHEN $3 > 0 THEN $3 ELSE risk_score END,
-                ai_metadata = $4,
-                status = 'ai_processed',
+                risk_score = $3,
+                category_id = (SELECT id FROM categories WHERE slug = $4),
+                tags = $5,
+                keywords = $6,
+                ai_metadata = COALESCE(ai_metadata, '{}'::jsonb) || $7::jsonb,
+                ai_processed_at = NOW(),
                 updated_at = NOW()
             WHERE id = $1
             "#,
         )
         .bind(article_id)
-        .bind(&result.summary)
-        .bind(result.risk_score as i32)
-        .bind(&metadata)
+        .bind(&summary.brief)
+        .bind(risk.score as i32)
+        .bind(&classify.category_slug)
+        .bind(&tags.tags)
+        .bind(&tags.keywords)
+        .bind(&metadata_patch)
         .execute(&self.pool)
         .await?;
 
-        if !result.category_slug.is_empty() {
+        Ok(())
+    }
+
+    async fn update_article_classify(
+        &self,
+        article_id: uuid::Uuid,
+        classify: &ClassifyResult,
+    ) -> anyhow::Result<()> {
+        let metadata_patch = json!({
+            "category_confidence": classify.confidence,
+            "sub_categories": &classify.sub_categories,
+            "reasoning": &classify.reasoning,
+        });
+
+        sqlx::query(
+            r#"
+            UPDATE articles SET
+                category_id = (SELECT id FROM categories WHERE slug = $2),
+                ai_metadata = jsonb_set(COALESCE(ai_metadata, '{}'::jsonb) || $3::jsonb, '{tasks,classify}', 'true'::jsonb, true),
+                updated_at = NOW()
+            WHERE id = $1
+            "#,
+        )
+        .bind(article_id)
+        .bind(&classify.category_slug)
+        .bind(&metadata_patch)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn update_article_summary(
+        &self,
+        article_id: uuid::Uuid,
+        summary: &SummaryResult,
+    ) -> anyhow::Result<()> {
+        let metadata_patch = json!({
+            "key_points": &summary.key_points,
+            "entities": &summary.entities,
+            "abstract": &summary.abstract_text,
+        });
+
+        sqlx::query(
+            r#"
+            UPDATE articles SET
+                summary = COALESCE(NULLIF($2, ''), summary),
+                ai_metadata = jsonb_set(COALESCE(ai_metadata, '{}'::jsonb) || $3::jsonb, '{tasks,summarize}', 'true'::jsonb, true),
+                updated_at = NOW()
+            WHERE id = $1
+            "#,
+        )
+        .bind(article_id)
+        .bind(&summary.brief)
+        .bind(&metadata_patch)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn update_article_risk(
+        &self,
+        article_id: uuid::Uuid,
+        risk: &RiskAssessment,
+    ) -> anyhow::Result<()> {
+        let metadata_patch = json!({
+            "risk_dimensions": &risk.dimensions,
+            "recommendations": &risk.recommendations,
+            "risk_level": format!("{:?}", risk.level).to_lowercase(),
+        });
+
+        sqlx::query(
+            r#"
+            UPDATE articles SET
+                risk_score = $2,
+                ai_metadata = jsonb_set(COALESCE(ai_metadata, '{}'::jsonb) || $3::jsonb, '{tasks,risk_assess}', 'true'::jsonb, true),
+                updated_at = NOW()
+            WHERE id = $1
+            "#,
+        )
+        .bind(article_id)
+        .bind(risk.score as i32)
+        .bind(&metadata_patch)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn update_article_tags(
+        &self,
+        article_id: uuid::Uuid,
+        tags: &TagsResult,
+    ) -> anyhow::Result<()> {
+        let metadata_patch = json!({
+            "tags": &tags.tags,
+            "keywords": &tags.keywords,
+        });
+
+        sqlx::query(
+            r#"
+            UPDATE articles SET
+                tags = $2,
+                keywords = $3,
+                ai_metadata = jsonb_set(COALESCE(ai_metadata, '{}'::jsonb) || $4::jsonb, '{tasks,extract_tags}', 'true'::jsonb, true),
+                updated_at = NOW()
+            WHERE id = $1
+            "#,
+        )
+        .bind(article_id)
+        .bind(&tags.tags)
+        .bind(&tags.keywords)
+        .bind(&metadata_patch)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn replace_article_chunks(
+        &self,
+        article_id: uuid::Uuid,
+        chunks: Vec<(String, law_eye_ai::EmbeddingResult)>,
+    ) -> anyhow::Result<()> {
+        const EXPECTED_VECTOR_DIM: usize = 1536;
+
+        let mut tx = self.pool.begin().await?;
+
+        sqlx::query("DELETE FROM article_chunks WHERE article_id = $1")
+            .bind(article_id)
+            .execute(&mut *tx)
+            .await?;
+
+        for (idx, (content, embedding)) in chunks.into_iter().enumerate() {
+            if embedding.vector.len() != EXPECTED_VECTOR_DIM {
+                return Err(anyhow::anyhow!(
+                    "Embedding dimension mismatch for article {} chunk {}: expected {}, got {}",
+                    article_id,
+                    idx,
+                    EXPECTED_VECTOR_DIM,
+                    embedding.vector.len()
+                ));
+            }
+
             sqlx::query(
                 r#"
-                UPDATE articles SET
-                    category_id = (SELECT id FROM categories WHERE slug = $2)
-                WHERE id = $1
+                INSERT INTO article_chunks (article_id, chunk_index, content, embedding, token_count)
+                VALUES ($1, $2, $3, $4::vector, $5)
+                ON CONFLICT (article_id, chunk_index)
+                DO UPDATE SET
+                    content = EXCLUDED.content,
+                    embedding = EXCLUDED.embedding,
+                    token_count = EXCLUDED.token_count
                 "#,
             )
             .bind(article_id)
-            .bind(&result.category_slug)
-            .execute(&self.pool)
+            .bind(idx as i32)
+            .bind(&content)
+            .bind(&embedding.vector)
+            .bind(embedding.token_count as i32)
+            .execute(&mut *tx)
             .await?;
         }
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn mark_ai_embed_done(&self, article_id: uuid::Uuid) -> anyhow::Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE articles
+            SET
+                ai_metadata = jsonb_set(COALESCE(ai_metadata, '{}'::jsonb), '{tasks,embed}', 'true'::jsonb, true),
+                updated_at = NOW()
+            WHERE id = $1
+            "#,
+        )
+        .bind(article_id)
+        .execute(&self.pool)
+        .await?;
 
         Ok(())
     }

@@ -91,6 +91,14 @@ impl AiService {
     pub async fn embed(&self, text: &str) -> Result<crate::EmbeddingResult> {
         self.embedder.embed(text).await
     }
+
+    /// 分块嵌入（用于 RAG / 向量检索）
+    pub async fn embed_chunks(
+        &self,
+        text: &str,
+    ) -> Result<Vec<(String, crate::EmbeddingResult)>> {
+        self.embedder.embed_chunks(text).await
+    }
 }
 
 /// 文章 AI 处理结果

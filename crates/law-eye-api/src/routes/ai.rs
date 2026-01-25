@@ -104,6 +104,16 @@ pub(crate) async fn process_article(
             .into_response();
     }
 
+    if state.ai_service.is_none() {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "AI service not available".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
     // Enqueue AI task
     let task = AiTask {
         article_id,
@@ -186,6 +196,16 @@ pub(crate) async fn classify_article(
             StatusCode::NOT_FOUND,
             Json(ErrorResponse {
                 error: "Article not found".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
+    if state.ai_service.is_none() {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "AI service not available".to_string(),
             }),
         )
             .into_response();
@@ -277,6 +297,16 @@ pub(crate) async fn summarize_article(
             .into_response();
     }
 
+    if state.ai_service.is_none() {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "AI service not available".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
     let task = AiTask {
         article_id,
         task_type: AiTaskType::Summarize,
@@ -358,6 +388,16 @@ pub(crate) async fn assess_risk(
             StatusCode::NOT_FOUND,
             Json(ErrorResponse {
                 error: "Article not found".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
+    if state.ai_service.is_none() {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "AI service not available".to_string(),
             }),
         )
             .into_response();
