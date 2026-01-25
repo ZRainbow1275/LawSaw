@@ -12,7 +12,11 @@ import { Modal, ModalBody, ModalFooter, ModalHeader } from "@/components/ui/moda
 import { useArticles } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
 import { apiClient } from "@/lib/api";
-import { assertBatchStatusResponse, assertDeleteResponse } from "@/lib/api/types";
+import {
+	assertBatchStatusResponse,
+	assertDeleteResponse,
+	getArticleRiskLevel,
+} from "@/lib/api/types";
 import { useToast } from "@/stores/toast-store";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -338,13 +342,19 @@ export default function DataPage() {
 												) : (
 													filteredArticles.map((article) => {
 														const status = statusConfig[article.status];
-														const riskScore = article.risk_score ?? 0;
+														const riskScore = article.risk_score;
+														const riskLevel = getArticleRiskLevel(riskScore);
+														const riskText =
+															riskScore == null ? "未评估" : `${riskScore}%`;
 														let riskVariant:
+															| "outline"
 															| "success"
 															| "warning"
-															| "destructive" = "success";
-														if (riskScore > 70) riskVariant = "destructive";
-														else if (riskScore > 30) riskVariant = "warning";
+															| "destructive" = "outline";
+														if (riskLevel === "low") riskVariant = "success";
+														else if (riskLevel === "medium") riskVariant = "warning";
+														else if (riskLevel === "high" || riskLevel === "critical")
+															riskVariant = "destructive";
 
 														return (
 															<tr
@@ -372,7 +382,7 @@ export default function DataPage() {
 																</td>
 																<td className="px-3 py-3">
 																	<Badge variant={riskVariant}>
-																		{riskScore}%
+																		{riskText}
 																	</Badge>
 																</td>
 																<td className="px-3 py-3 text-sm text-neutral-500">

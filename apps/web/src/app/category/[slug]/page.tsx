@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useArticles } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
+import { getArticleRiskLevel, type ArticleRiskLevel } from "@/lib/api/types";
 import {
 	ArrowLeft,
 	ArrowUpRight,
@@ -21,25 +22,23 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 
-type RiskLevel = "low" | "medium" | "high";
+type RiskBadgeVariant = "success" | "warning" | "destructive" | "outline";
 
-const riskColors: Record<RiskLevel, "success" | "warning" | "destructive"> = {
+const riskColors: Record<ArticleRiskLevel, RiskBadgeVariant> = {
+	unknown: "outline",
 	low: "success",
 	medium: "warning",
 	high: "destructive",
+	critical: "destructive",
 };
 
-const riskLabels: Record<RiskLevel, string> = {
+const riskLabels: Record<ArticleRiskLevel, string> = {
+	unknown: "未评估",
 	low: "低风险",
 	medium: "中风险",
 	high: "高风险",
+	critical: "严重",
 };
-
-function getRiskLevel(score: number | null): RiskLevel {
-	if (!score || score <= 30) return "low";
-	if (score <= 70) return "medium";
-	return "high";
-}
 
 function formatTime(dateStr: string | null): string {
 	if (!dateStr) return "未知时间";
@@ -161,13 +160,13 @@ export default function CategoryPage() {
 									<p className="py-12 text-center text-neutral-500">
 										该分类暂无资讯
 									</p>
-								) : (
-									<div className="space-y-4">
-										{articles.map((article) => {
-											const riskLevel = getRiskLevel(article.risk_score);
+					) : (
+						<div className="space-y-4">
+							{articles.map((article) => {
+								const riskLevel = getArticleRiskLevel(article.risk_score);
 
-											return (
-												<div
+								return (
+									<div
 													key={article.id}
 													className="group flex items-start justify-between rounded-lg border border-neutral-100 p-4 transition-all hover:border-primary-200 hover:bg-primary-50/50"
 												>

@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useArticles, useArticleTrends } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
 import { useSources } from "@/hooks/use-sources";
+import { getArticleRiskLevel, type ArticleRiskLevel } from "@/lib/api/types";
 import {
 	Activity,
 	AlertTriangle,
@@ -62,16 +63,24 @@ export default function AnalyticsPage() {
 		{} as Record<string, number>,
 	);
 
-	const riskDistribution = articles.reduce(
-		(acc, article) => {
-			const score = article.risk_score ?? 0;
-			if (score <= 30) acc.low++;
-			else if (score <= 70) acc.medium++;
-			else acc.high++;
-			return acc;
-		},
-		{ low: 0, medium: 0, high: 0 },
-	);
+	const riskDistribution: Record<ArticleRiskLevel, number> = {
+		unknown: 0,
+		low: 0,
+		medium: 0,
+		high: 0,
+		critical: 0,
+	};
+	for (const article of articles) {
+		riskDistribution[getArticleRiskLevel(article.risk_score)]++;
+	}
+	const riskTotalForChart = articles.length;
+	const riskRows: Array<{ key: ArticleRiskLevel; label: string; color: string }> = [
+		{ key: "unknown", label: "未评估", color: "bg-neutral-400" },
+		{ key: "low", label: "低风险", color: "bg-success" },
+		{ key: "medium", label: "中风险", color: "bg-warning" },
+		{ key: "high", label: "高风险", color: "bg-orange-500" },
+		{ key: "critical", label: "严重", color: "bg-destructive" },
+	];
 
 	const sentimentCounts = articles.reduce(
 		(acc, article) => {
@@ -185,63 +194,30 @@ export default function AnalyticsPage() {
 								</CardHeader>
 								<CardContent>
 									<div className="space-y-4">
-										<div className="flex items-center justify-between">
-											<div className="flex items-center gap-2">
-												<div className="h-3 w-3 rounded-full bg-success" />
-												<span className="text-sm">低风险</span>
-											</div>
-											<div className="flex items-center gap-2">
-												<span className="text-sm font-medium">
-													{riskDistribution.low}
-												</span>
-												<div className="h-2 w-24 overflow-hidden rounded-full bg-neutral-100">
-													<div
-														className="h-full bg-success"
-														style={{
-															width: `${totalArticles ? (riskDistribution.low / totalArticles) * 100 : 0}%`,
-														}}
-													/>
+										{riskRows.map(({ key, label, color }) => (
+											<div
+												key={key}
+												className="flex items-center justify-between"
+											>
+												<div className="flex items-center gap-2">
+													<div className={`h-3 w-3 rounded-full ${color}`} />
+													<span className="text-sm">{label}</span>
+												</div>
+												<div className="flex items-center gap-2">
+													<span className="text-sm font-medium">
+														{riskDistribution[key] ?? 0}
+													</span>
+													<div className="h-2 w-24 overflow-hidden rounded-full bg-neutral-100">
+														<div
+															className={`h-full ${color}`}
+															style={{
+																width: `${riskTotalForChart ? ((riskDistribution[key] ?? 0) / riskTotalForChart) * 100 : 0}%`,
+															}}
+														/>
+													</div>
 												</div>
 											</div>
-										</div>
-										<div className="flex items-center justify-between">
-											<div className="flex items-center gap-2">
-												<div className="h-3 w-3 rounded-full bg-warning" />
-												<span className="text-sm">中风险</span>
-											</div>
-											<div className="flex items-center gap-2">
-												<span className="text-sm font-medium">
-													{riskDistribution.medium}
-												</span>
-												<div className="h-2 w-24 overflow-hidden rounded-full bg-neutral-100">
-													<div
-														className="h-full bg-warning"
-														style={{
-															width: `${totalArticles ? (riskDistribution.medium / totalArticles) * 100 : 0}%`,
-														}}
-													/>
-												</div>
-											</div>
-										</div>
-										<div className="flex items-center justify-between">
-											<div className="flex items-center gap-2">
-												<div className="h-3 w-3 rounded-full bg-destructive" />
-												<span className="text-sm">高风险</span>
-											</div>
-											<div className="flex items-center gap-2">
-												<span className="text-sm font-medium">
-													{riskDistribution.high}
-												</span>
-												<div className="h-2 w-24 overflow-hidden rounded-full bg-neutral-100">
-													<div
-														className="h-full bg-destructive"
-														style={{
-															width: `${totalArticles ? (riskDistribution.high / totalArticles) * 100 : 0}%`,
-														}}
-													/>
-												</div>
-											</div>
-										</div>
+										))}
 									</div>
 								</CardContent>
 							</Card>

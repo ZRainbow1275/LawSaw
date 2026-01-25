@@ -19,6 +19,25 @@ export interface Article {
 	updated_at: string;
 }
 
+export type ArticleRiskLevel = "unknown" | "low" | "medium" | "high" | "critical";
+
+/**
+ * 统一的风险分级口径（与后端 AI 风险评估提示词一致）：
+ * - 0-25: low
+ * - 26-50: medium
+ * - 51-75: high
+ * - 76-100: critical
+ *
+ * 注意：`null/undefined` 表示“未评估”，不得默认当作低风险。
+ */
+export function getArticleRiskLevel(score: number | null | undefined): ArticleRiskLevel {
+	if (score == null) return "unknown";
+	if (score <= 25) return "low";
+	if (score <= 50) return "medium";
+	if (score <= 75) return "high";
+	return "critical";
+}
+
 export interface Source {
 	id: string;
 	name: string;

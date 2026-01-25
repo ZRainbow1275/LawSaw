@@ -2,7 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { Article } from "@/lib/api/types";
+import { getArticleRiskLevel, type Article, type ArticleRiskLevel } from "@/lib/api/types";
 import { buttonTapEffect, cardHoverEffect, fadeVariants } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -12,18 +12,17 @@ import {
 	BookmarkCheck,
 	Clock,
 	ExternalLink,
+	HelpCircle,
 	Shield,
 	ShieldAlert,
 	ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
-import { forwardRef } from "react";
+import { forwardRef, type ReactNode } from "react";
 
 // ============================================
 // 类型定义
 // ============================================
-
-type RiskLevel = "low" | "medium" | "high" | "critical";
 
 interface ArticleCardProps {
 	article: Article;
@@ -52,15 +51,22 @@ interface ArticleCardProps {
 // ============================================
 
 const riskConfig: Record<
-	RiskLevel,
+	ArticleRiskLevel,
 	{
 		label: string;
 		color: string;
 		bgColor: string;
 		borderColor: string;
-		icon: React.ReactNode;
+		icon: ReactNode;
 	}
 > = {
+	unknown: {
+		label: "未评估",
+		color: "text-neutral-700",
+		bgColor: "bg-neutral-100",
+		borderColor: "border-neutral-200",
+		icon: <HelpCircle className="h-3.5 w-3.5" />,
+	},
 	low: {
 		label: "低风险",
 		color: "text-green-700",
@@ -90,17 +96,6 @@ const riskConfig: Record<
 		icon: <AlertTriangle className="h-3.5 w-3.5" />,
 	},
 };
-
-// ============================================
-// 工具函数
-// ============================================
-
-function getRiskLevel(score: number | null | undefined): RiskLevel {
-	if (!score || score < 30) return "low";
-	if (score < 60) return "medium";
-	if (score < 80) return "high";
-	return "critical";
-}
 
 function formatRelativeTime(date: string | null | undefined): string {
 	if (!date) return "";
@@ -138,7 +133,7 @@ export const ArticleCard = forwardRef<HTMLDivElement, ArticleCardProps>(
 		},
 		ref,
 	) => {
-		const riskLevel = getRiskLevel(article.risk_score);
+		const riskLevel = getArticleRiskLevel(article.risk_score);
 		const risk = riskConfig[riskLevel];
 		const relativeTime = formatRelativeTime(article.published_at);
 
@@ -163,6 +158,7 @@ export const ArticleCard = forwardRef<HTMLDivElement, ArticleCardProps>(
 					"hover:shadow-lg hover:border-primary-200",
 					// 左侧风险指示条
 					"before:absolute before:left-0 before:top-3 before:bottom-3 before:w-1 before:rounded-full before:transition-all",
+					riskLevel === "unknown" && "before:bg-neutral-300",
 					riskLevel === "low" && "before:bg-green-400",
 					riskLevel === "medium" && "before:bg-amber-400",
 					riskLevel === "high" && "before:bg-orange-400",
