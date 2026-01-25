@@ -20,7 +20,7 @@ use url::Url;
 use std::net::SocketAddr;
 
 use crate::auth::AuthBackend;
-use crate::middleware::RequestIdLayer;
+use crate::middleware::{CsrfLayer, RequestIdLayer};
 use crate::state::AppState;
 
 fn redact_sensitive_url(raw: &str) -> String {
@@ -109,9 +109,12 @@ async fn main() -> anyhow::Result<()> {
         "http://127.0.0.1:3333".parse().unwrap(),
     ];
 
+    let csrf = CsrfLayer::new(allowed_origins.clone());
+
+    let cors_allowed_origins = allowed_origins.clone();
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(move |origin, _| {
-            allowed_origins.iter().any(|allowed| allowed == origin)
+            cors_allowed_origins.iter().any(|allowed| allowed == origin)
         }))
         .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE, Method::OPTIONS])
         .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION, header::COOKIE])
@@ -120,6 +123,7 @@ async fn main() -> anyhow::Result<()> {
     // Build application with middleware layers
     let app = routes::create_router(state)
         .layer(auth_layer)
+        .layer(csrf)
         .layer(RequestIdLayer::new()) // Add request ID tracking
         .layer(cors);
 
