@@ -1,10 +1,11 @@
 "use client";
 
 import { apiClient } from "@/lib/api";
-import type {
-	Article,
-	ArticleListResponse,
-	ArticleStats,
+import {
+	assertArticle,
+	assertArticleListResponse,
+	assertArticleStats,
+	assertDeleteResponse,
 } from "@/lib/api/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -27,8 +28,9 @@ export function useArticles(filters: ArticleFilters = {}) {
 	return useQuery({
 		queryKey: ["articles", filters],
 		queryFn: () =>
-			apiClient.get<ArticleListResponse>(
+			apiClient.get(
 				`/api/v1/articles?${queryParams.toString()}`,
+				assertArticleListResponse,
 			),
 	});
 }
@@ -36,7 +38,7 @@ export function useArticles(filters: ArticleFilters = {}) {
 export function useArticle(id: string) {
 	return useQuery({
 		queryKey: ["article", id],
-		queryFn: () => apiClient.get<Article>(`/api/v1/articles/${id}`),
+		queryFn: () => apiClient.get(`/api/v1/articles/${id}`, assertArticle),
 		enabled: !!id,
 	});
 }
@@ -44,7 +46,7 @@ export function useArticle(id: string) {
 export function useArticleStats() {
 	return useQuery({
 		queryKey: ["articleStats"],
-		queryFn: () => apiClient.get<ArticleStats>("/api/v1/articles/stats"),
+		queryFn: () => apiClient.get("/api/v1/articles/stats", assertArticleStats),
 		staleTime: 30000,
 	});
 }
@@ -54,7 +56,7 @@ export function usePublishArticle() {
 
 	return useMutation({
 		mutationFn: (id: string) =>
-			apiClient.post<Article>(`/api/v1/articles/${id}/publish`),
+			apiClient.post(`/api/v1/articles/${id}/publish`, undefined, assertArticle),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["articles"] });
 			queryClient.invalidateQueries({ queryKey: ["articleStats"] });
@@ -67,7 +69,7 @@ export function useArchiveArticle() {
 
 	return useMutation({
 		mutationFn: (id: string) =>
-			apiClient.post<Article>(`/api/v1/articles/${id}/archive`),
+			apiClient.post(`/api/v1/articles/${id}/archive`, undefined, assertArticle),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["articles"] });
 			queryClient.invalidateQueries({ queryKey: ["articleStats"] });
@@ -80,7 +82,7 @@ export function useDeleteArticle() {
 
 	return useMutation({
 		mutationFn: (id: string) =>
-			apiClient.delete<void>(`/api/v1/articles/${id}`),
+			apiClient.delete(`/api/v1/articles/${id}`, assertDeleteResponse),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["articles"] });
 			queryClient.invalidateQueries({ queryKey: ["articleStats"] });

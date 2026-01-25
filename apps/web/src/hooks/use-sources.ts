@@ -1,7 +1,7 @@
 "use client";
 
 import { apiClient } from "@/lib/api";
-import type { Source } from "@/lib/api/types";
+import { assertSource, assertSourceList } from "@/lib/api/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 interface CreateSourceInput {
@@ -16,14 +16,14 @@ interface CreateSourceInput {
 export function useSources() {
 	return useQuery({
 		queryKey: ["sources"],
-		queryFn: () => apiClient.get<Source[]>("/api/v1/sources"),
+		queryFn: () => apiClient.get("/api/v1/sources", assertSourceList),
 	});
 }
 
 export function useSource(id: string) {
 	return useQuery({
 		queryKey: ["source", id],
-		queryFn: () => apiClient.get<Source>(`/api/v1/sources/${id}`),
+		queryFn: () => apiClient.get(`/api/v1/sources/${id}`, assertSource),
 		enabled: !!id,
 	});
 }
@@ -33,7 +33,7 @@ export function useCreateSource() {
 
 	return useMutation({
 		mutationFn: (data: CreateSourceInput) =>
-			apiClient.post<Source>("/api/v1/sources", data),
+			apiClient.post("/api/v1/sources", data, assertSource),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["sources"] });
 		},

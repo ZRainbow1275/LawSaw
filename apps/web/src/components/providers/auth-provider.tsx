@@ -1,7 +1,7 @@
 "use client";
 
 import { apiClient } from "@/lib/api";
-import type { AuthResponse } from "@/lib/api/types";
+import { assertAuthResponse } from "@/lib/api/types";
 import { useAuthStore } from "@/stores/auth-store";
 import { type ReactNode, useEffect } from "react";
 
@@ -30,7 +30,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 		const checkSession = async () => {
 			setLoading(true);
 			try {
-				const response = await apiClient.get<AuthResponse>("/api/v1/auth/me");
+				const response = await apiClient.get("/api/v1/auth/me", assertAuthResponse);
 				setUser(response.user);
 			} catch {
 				setUser(null);

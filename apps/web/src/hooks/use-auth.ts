@@ -1,7 +1,7 @@
 "use client";
 
 import { apiClient } from "@/lib/api";
-import type { AuthResponse } from "@/lib/api/types";
+import { assertAuthResponse } from "@/lib/api/types";
 import { useAuthStore } from "@/stores/auth-store";
 import { useCallback, useEffect } from "react";
 
@@ -29,7 +29,7 @@ export function useAuth() {
 	useEffect(() => {
 		const checkSession = async () => {
 			try {
-				const response = await apiClient.get<AuthResponse>("/api/v1/auth/me");
+				const response = await apiClient.get("/api/v1/auth/me", assertAuthResponse);
 				setUser(response.user);
 			} catch {
 				setUser(null);
@@ -43,9 +43,10 @@ export function useAuth() {
 		async (credentials: LoginCredentials) => {
 			setLoading(true);
 			try {
-				const response = await apiClient.post<AuthResponse>(
+				const response = await apiClient.post(
 					"/api/v1/auth/login",
 					credentials,
+					assertAuthResponse,
 				);
 				if (response.success && response.user) {
 					setUser(response.user);
@@ -66,9 +67,10 @@ export function useAuth() {
 		async (data: RegisterData) => {
 			setLoading(true);
 			try {
-				const response = await apiClient.post<AuthResponse>(
+				const response = await apiClient.post(
 					"/api/v1/auth/register",
 					data,
+					assertAuthResponse,
 				);
 				if (response.success && response.user) {
 					setUser(response.user);
