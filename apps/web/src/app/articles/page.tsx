@@ -23,6 +23,7 @@ import { useArticles } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
 import { fadeVariants, staggerContainerVariants } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { useReadingStore } from "@/stores/reading-store";
 import { useToast } from "@/stores/toast-store";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -84,6 +85,8 @@ export default function ArticlesPage() {
 	const [showMobileHint, setShowMobileHint] = useState(true);
 
 	const { success: showSuccess } = useToast();
+	const bookmarks = useReadingStore((s) => s.bookmarks);
+	const toggleBookmark = useReadingStore((s) => s.toggleBookmark);
 
 	const { data: articlesData, isLoading: articlesLoading } = useArticles({
 		limit: PAGE_SIZE,
@@ -110,9 +113,13 @@ export default function ArticlesPage() {
 	// 收藏处理
 	const handleBookmark = useCallback(
 		(articleId: string) => {
-			showSuccess("已收藏", "文章已添加到收藏夹");
+			const newState = toggleBookmark(articleId);
+			showSuccess(
+				newState ? "已添加收藏" : "已取消收藏",
+				newState ? "文章已添加到收藏夹" : "文章已从收藏夹移除",
+			);
 		},
-		[showSuccess],
+		[toggleBookmark, showSuccess],
 	);
 
 	// 分享处理
@@ -129,6 +136,7 @@ export default function ArticlesPage() {
 	const renderArticleCard = useCallback(
 		(article: (typeof articles)[0], index: number) => {
 			const { name, icon } = getCategoryInfo(article.category_id);
+			const isBookmarked = bookmarks.includes(article.id);
 
 			const card = (
 				<ArticleCard
@@ -137,6 +145,7 @@ export default function ArticlesPage() {
 					categoryIcon={icon ?? undefined}
 					variant={viewMode === "grid" ? "compact" : "default"}
 					showSummary={viewMode === "list"}
+					isBookmarked={isBookmarked}
 					onBookmark={handleBookmark}
 					animationDelay={index * 0.03}
 				/>
@@ -149,7 +158,10 @@ export default function ArticlesPage() {
 					<div className="md:hidden">
 						<SwipeableCard
 							rightActions={[
-								swipeActionPresets.bookmark(() => handleBookmark(article.id)),
+								swipeActionPresets.bookmark(
+									() => handleBookmark(article.id),
+									isBookmarked,
+								),
 								swipeActionPresets.share(() => handleShare(article.id)),
 							]}
 							onSwipeStart={() => setShowMobileHint(false)}
@@ -162,7 +174,7 @@ export default function ArticlesPage() {
 				</div>
 			);
 		},
-		[getCategoryInfo, viewMode, handleBookmark, handleShare],
+		[getCategoryInfo, viewMode, bookmarks, handleBookmark, handleShare],
 	);
 
 	return (
