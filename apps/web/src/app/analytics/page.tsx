@@ -9,7 +9,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useArticles, useArticleTrends } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
 import { useSources } from "@/hooks/use-sources";
-import { getArticleRiskLevel, type ArticleRiskLevel } from "@/lib/api/types";
+import {
+	getArticleRiskLevel,
+	normalizeArticleSentiment,
+	type ArticleRiskLevel,
+	type ArticleSentimentLabel,
+} from "@/lib/api/types";
 import {
 	Activity,
 	AlertTriangle,
@@ -82,14 +87,28 @@ export default function AnalyticsPage() {
 		{ key: "critical", label: "严重", color: "bg-destructive" },
 	];
 
-	const sentimentCounts = articles.reduce(
-		(acc, article) => {
-			const sentiment = article.sentiment ?? "neutral";
-			acc[sentiment] = (acc[sentiment] || 0) + 1;
-			return acc;
-		},
-		{} as Record<string, number>,
-	);
+	const sentimentCounts: Record<ArticleSentimentLabel, number> = {
+		unknown: 0,
+		positive: 0,
+		neutral: 0,
+		negative: 0,
+		mixed: 0,
+	};
+	for (const article of articles) {
+		sentimentCounts[normalizeArticleSentiment(article.sentiment)]++;
+	}
+	const sentimentTotalForChart = articles.length;
+	const sentimentRows: Array<{
+		key: ArticleSentimentLabel;
+		label: string;
+		color: string;
+	}> = [
+		{ key: "unknown", label: "未分析", color: "bg-neutral-300" },
+		{ key: "positive", label: "正面", color: "bg-success" },
+		{ key: "neutral", label: "中性", color: "bg-neutral-400" },
+		{ key: "negative", label: "负面", color: "bg-destructive" },
+		{ key: "mixed", label: "混合", color: "bg-warning" },
+	];
 
 	const categoryCounts = articles.reduce(
 		(acc, article) => {
@@ -232,20 +251,7 @@ export default function AnalyticsPage() {
 								</CardHeader>
 								<CardContent>
 									<div className="space-y-4">
-										{[
-											{ key: "positive", label: "正面", color: "bg-success" },
-											{
-												key: "neutral",
-												label: "中性",
-												color: "bg-neutral-400",
-											},
-											{
-												key: "negative",
-												label: "负面",
-												color: "bg-destructive",
-											},
-											{ key: "mixed", label: "混合", color: "bg-warning" },
-										].map(({ key, label, color }) => (
+										{sentimentRows.map(({ key, label, color }) => (
 											<div
 												key={key}
 												className="flex items-center justify-between"
@@ -262,7 +268,7 @@ export default function AnalyticsPage() {
 														<div
 															className={`h-full ${color}`}
 															style={{
-																width: `${totalArticles ? ((sentimentCounts[key] ?? 0) / totalArticles) * 100 : 0}%`,
+																width: `${sentimentTotalForChart ? ((sentimentCounts[key] ?? 0) / sentimentTotalForChart) * 100 : 0}%`,
 															}}
 														/>
 													</div>

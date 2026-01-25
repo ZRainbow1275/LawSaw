@@ -38,6 +38,14 @@ export function getArticleRiskLevel(score: number | null | undefined): ArticleRi
 	return "critical";
 }
 
+export type ArticleSentimentLabel = "unknown" | NonNullable<Article["sentiment"]>;
+
+export function normalizeArticleSentiment(
+	sentiment: Article["sentiment"],
+): ArticleSentimentLabel {
+	return sentiment ?? "unknown";
+}
+
 export interface Source {
 	id: string;
 	name: string;
