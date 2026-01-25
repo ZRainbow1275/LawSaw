@@ -13,6 +13,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 use crate::auth::{AuthSession, AuthenticatedUser, Credentials};
+use crate::middleware::rate_limit::RateLimitLayer;
 use crate::state::AppState;
 
 static EMAIL_RE: Lazy<Regex> = Lazy::new(|| {
@@ -21,8 +22,8 @@ static EMAIL_RE: Lazy<Regex> = Lazy::new(|| {
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/register", post(register))
-        .route("/login", post(login))
+        .route("/register", post(register).layer(RateLimitLayer::register()))
+        .route("/login", post(login).layer(RateLimitLayer::login()))
         .route("/logout", post(logout))
         .route("/me", get(get_current_user))
 }

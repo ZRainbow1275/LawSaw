@@ -17,6 +17,7 @@ use tower_sessions_redis_store::{fred::prelude::{ClientLike, Client as RedisClie
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use url::Url;
+use std::net::SocketAddr;
 
 use crate::auth::AuthBackend;
 use crate::middleware::RequestIdLayer;
@@ -126,7 +127,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Server listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
 
     Ok(())
 }
