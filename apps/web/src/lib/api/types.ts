@@ -169,6 +169,10 @@ export interface ArticleTrendPoint {
 	count: number;
 }
 
+export interface BatchStatusResponse {
+	updated: number;
+}
+
 export interface Feedback {
 	id: string;
 	user_id: string | null;
@@ -514,6 +518,14 @@ export function assertArticleTrends(
 	path = "articleTrends",
 ): asserts value is ArticleTrendPoint[] {
 	assertArray(value, path, assertArticleTrendPoint);
+}
+
+export function assertBatchStatusResponse(
+	value: unknown,
+	path = "batchStatusResponse",
+): asserts value is BatchStatusResponse {
+	assertRecord(value, path);
+	assertNumber(getRequired(value, "updated", path), `${path}.updated`);
 }
 
 export function assertDeleteResponse(

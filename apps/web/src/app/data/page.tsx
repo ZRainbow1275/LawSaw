@@ -8,8 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Modal, ModalBody, ModalFooter, ModalHeader } from "@/components/ui/modal";
 import { useArticles } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
+import { apiClient } from "@/lib/api";
+import { assertBatchStatusResponse, assertDeleteResponse } from "@/lib/api/types";
+import { useToast } from "@/stores/toast-store";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
 	Archive,
 	CheckCircle,
@@ -23,6 +28,7 @@ import {
 	Trash2,
 	XCircle,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 type ArticleStatus =
@@ -49,12 +55,17 @@ const statusConfig: Record<
 const PAGE_SIZE = 20;
 
 export default function DataPage() {
+	const router = useRouter();
 	const [page, setPage] = useState(0);
 	const [searchTerm, setSearchTerm] = useState("");
 	const [statusFilter, setStatusFilter] = useState<ArticleStatus | "all">(
 		"all",
 	);
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+	const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+
+	const queryClient = useQueryClient();
+	const { success: toastSuccess, error: toastError } = useToast();
 
 	const { data: articlesData, isLoading } = useArticles({
 		limit: PAGE_SIZE,
@@ -66,6 +77,57 @@ export default function DataPage() {
 	const articles = articlesData?.data ?? [];
 	const total = articlesData?.total ?? 0;
 	const totalPages = Math.ceil(total / PAGE_SIZE);
+
+	const selectedIdList = Array.from(selectedIds);
+
+	const batchStatusMutation = useMutation({
+		mutationFn: (input: { ids: string[]; status: ArticleStatus }) =>
+			apiClient.post(
+				"/api/v1/articles/batch-status",
+				input,
+				assertBatchStatusResponse,
+			),
+		onSuccess: (data, variables) => {
+			const actionLabel = variables.status === "published" ? "发布" : "归档";
+			toastSuccess(`已${actionLabel}`, `已更新 ${data.updated} 条资讯`);
+			setSelectedIds(new Set());
+			queryClient.invalidateQueries({ queryKey: ["articles"] });
+			queryClient.invalidateQueries({ queryKey: ["articleStats"] });
+		},
+		onError: (cause) => {
+			const message = cause instanceof Error ? cause.message : "操作失败";
+			toastError("批量更新失败", message);
+		},
+	});
+
+	const batchDeleteMutation = useMutation({
+		mutationFn: async (ids: string[]) => {
+			const results = await Promise.allSettled(
+				ids.map((id) => apiClient.delete(`/api/v1/articles/${id}`, assertDeleteResponse)),
+			);
+
+			const deleted = results.filter((r) => r.status === "fulfilled").length;
+			const failed = results.length - deleted;
+
+			return { deleted, failed };
+		},
+		onSuccess: ({ deleted, failed }) => {
+			if (deleted > 0) {
+				toastSuccess("删除完成", `已删除 ${deleted} 条资讯`);
+			}
+			if (failed > 0) {
+				toastError("部分删除失败", `失败 ${failed} 条（可能是权限不足或不存在）`);
+			}
+
+			setSelectedIds(new Set());
+			queryClient.invalidateQueries({ queryKey: ["articles"] });
+			queryClient.invalidateQueries({ queryKey: ["articleStats"] });
+		},
+		onError: (cause) => {
+			const message = cause instanceof Error ? cause.message : "操作失败";
+			toastError("批量删除失败", message);
+		},
+	});
 
 	// 过滤文章
 	const filteredArticles = articles.filter((article) => {
@@ -156,11 +218,37 @@ export default function DataPage() {
 											<span className="text-sm text-neutral-500">
 												已选 {selectedIds.size} 项
 											</span>
-											<Button variant="outline" size="sm">
+											<Button
+												variant="outline"
+												size="sm"
+												onClick={() =>
+													batchStatusMutation.mutate({
+														ids: selectedIdList,
+														status: "archived",
+													})
+												}
+												disabled={
+													batchStatusMutation.isPending ||
+													batchDeleteMutation.isPending
+												}
+											>
 												<Archive className="mr-1 h-3 w-3" />
 												归档
 											</Button>
-											<Button variant="outline" size="sm">
+											<Button
+												variant="outline"
+												size="sm"
+												onClick={() =>
+													batchStatusMutation.mutate({
+														ids: selectedIdList,
+														status: "published",
+													})
+												}
+												disabled={
+													batchStatusMutation.isPending ||
+													batchDeleteMutation.isPending
+												}
+											>
 												<CheckCircle className="mr-1 h-3 w-3" />
 												发布
 											</Button>
@@ -168,6 +256,11 @@ export default function DataPage() {
 												variant="outline"
 												size="sm"
 												className="text-destructive"
+												onClick={() => setDeleteConfirmOpen(true)}
+												disabled={
+													batchStatusMutation.isPending ||
+													batchDeleteMutation.isPending
+												}
 											>
 												<Trash2 className="mr-1 h-3 w-3" />
 												删除
@@ -286,7 +379,12 @@ export default function DataPage() {
 																	{formatDate(article.published_at)}
 																</td>
 																<td className="px-3 py-3">
-																	<Button variant="ghost" size="icon">
+																	<Button
+																		variant="ghost"
+																		size="icon"
+																		aria-label="查看详情"
+																		onClick={() => router.push(`/articles/${article.id}`)}
+																	>
 																		<MoreHorizontal className="h-4 w-4" />
 																	</Button>
 																</td>
@@ -338,6 +436,46 @@ export default function DataPage() {
 					</div>
 				</MainContent>
 			</div>
+
+			{/* 批量删除确认 */}
+			<Modal
+				isOpen={deleteConfirmOpen}
+				onClose={() => setDeleteConfirmOpen(false)}
+				size="sm"
+			>
+				<ModalHeader>
+					<h2 className="text-lg font-semibold text-neutral-900">确认删除</h2>
+				</ModalHeader>
+				<ModalBody>
+					<p className="text-sm text-neutral-600">
+						将删除已选择的 <span className="font-semibold">{selectedIds.size}</span>{" "}
+						条资讯。该操作不可撤销。
+					</p>
+				</ModalBody>
+				<ModalFooter>
+					<Button
+						variant="outline"
+						onClick={() => setDeleteConfirmOpen(false)}
+						disabled={batchDeleteMutation.isPending}
+					>
+						取消
+					</Button>
+					<Button
+						variant="destructive"
+						onClick={async () => {
+							try {
+								await batchDeleteMutation.mutateAsync(selectedIdList);
+								setDeleteConfirmOpen(false);
+							} catch {
+								// 错误已由 mutation 统一 toast
+							}
+						}}
+						disabled={batchDeleteMutation.isPending || selectedIdList.length === 0}
+					>
+						确认删除
+					</Button>
+				</ModalFooter>
+			</Modal>
 		</ProtectedRoute>
 	);
 }
