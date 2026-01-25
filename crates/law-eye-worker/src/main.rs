@@ -1,6 +1,6 @@
 use law_eye_ai::{AiService, ArticleAiResult};
 use law_eye_common::AppConfig;
-use law_eye_core::ArticleService;
+use law_eye_core::{ArticleService, SourceService};
 use law_eye_crawler::{RawArticle, RssFetcher, SpiderConfig, WebSpider};
 use law_eye_db::{create_pool, CreateArticle};
 use law_eye_queue::{AiTask, AiTaskType, IngestTask, PushTask, TaskQueue};
@@ -76,20 +76,26 @@ impl Worker {
     async fn process_ingest_task(&self, task: IngestTask) {
         info!("Processing ingest task for source: {}", task.source_id);
 
+        let source_service = SourceService::new(self.pool.clone());
+
         let articles = match task.source_type.as_str() {
             "rss" => self.rss_fetcher.fetch(&task.url).await,
             "spider" => {
                 let config: SpiderConfig = match serde_json::from_value(task.config) {
                     Ok(c) => c,
                     Err(e) => {
-                        error!("Failed to parse spider config: {}", e);
+                        let msg = format!("Failed to parse spider config: {}", e);
+                        error!("{}", msg);
+                        let _ = source_service.update_last_fetch(task.source_id, Some(msg.as_str())).await;
                         return;
                     }
                 };
                 self.web_spider.fetch(&task.url, &config).await
             }
             _ => {
-                error!("Unknown source type: {}", task.source_type);
+                let msg = format!("Unknown source type: {}", task.source_type);
+                error!("{}", msg);
+                let _ = source_service.update_last_fetch(task.source_id, Some(msg.as_str())).await;
                 return;
             }
         };
@@ -124,9 +130,13 @@ impl Worker {
                 }
 
                 info!("Saved {} articles from source {}", saved, task.source_id);
+                let _ = source_service.update_last_fetch(task.source_id, None).await;
             }
             Err(e) => {
-                error!("Failed to fetch articles: {}", e);
+                let msg = e.to_string();
+                let msg = msg.chars().take(500).collect::<String>();
+                error!("Failed to fetch articles: {}", msg);
+                let _ = source_service.update_last_fetch(task.source_id, Some(msg.as_str())).await;
             }
         }
     }
