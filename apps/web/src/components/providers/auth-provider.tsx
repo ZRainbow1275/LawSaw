@@ -13,6 +13,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
 	const { setUser, setLoading } = useAuthStore();
 
 	useEffect(() => {
+		// 清理历史版本遗留的本地持久化用户信息（PII 风险）。
+		try {
+			localStorage.removeItem("law-eye-auth");
+		} catch {
+			// ignore
+		}
+
 		const checkSession = async () => {
 			setLoading(true);
 			try {
