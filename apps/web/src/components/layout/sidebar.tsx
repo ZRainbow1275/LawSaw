@@ -1,90 +1,56 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { useCategories } from "@/hooks/use-categories";
 import { useSidebarStore } from "@/stores/sidebar-store";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-	BarChart3,
-	Briefcase,
-	Building2,
-	ChevronLeft,
 	ChevronRight,
 	Database,
 	Eye,
 	FileText,
-	Flame,
-	Globe2,
-	GraduationCap,
 	LayoutDashboard,
-	type LucideIcon,
 	MessageSquarePlus,
 	Rss,
-	Scale,
-	ScrollText,
 	Settings,
-	Shield,
-	ShieldCheck,
 	Sparkles,
 	TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const categoryStyles: Record<string, string> = {
-	legislation: "text-blue-500 bg-blue-50",
-	regulation: "text-purple-500 bg-purple-50",
-	enforcement: "text-rose-500 bg-rose-50",
-	industry: "text-amber-500 bg-amber-50",
-	compliance: "text-emerald-500 bg-emerald-50",
-	data: "text-cyan-500 bg-cyan-50",
-	security: "text-red-500 bg-red-50",
-	academic: "text-indigo-500 bg-indigo-50",
-	events: "text-orange-500 bg-orange-50",
-	international: "text-teal-500 bg-teal-50",
-};
+function parseHexColor(input: string): { r: number; g: number; b: number } | null {
+	const hex = input.trim();
+	if (!hex.startsWith("#")) return null;
+	const value = hex.slice(1);
+	if (!/^[0-9a-fA-F]{3}$/.test(value) && !/^[0-9a-fA-F]{6}$/.test(value)) return null;
 
-const categories: {
-	slug: string;
-	name: string;
-	Icon: LucideIcon;
-	color: string;
-}[] = [
-	{
-		slug: "legislation",
-		name: "立法前沿",
-		Icon: ScrollText,
-		color: "legislation",
-	},
-	{
-		slug: "regulation",
-		name: "监管动向",
-		Icon: Building2,
-		color: "regulation",
-	},
-	{ slug: "enforcement", name: "执法案例", Icon: Scale, color: "enforcement" },
-	{ slug: "industry", name: "业界资讯", Icon: Briefcase, color: "industry" },
-	{
-		slug: "compliance",
-		name: "合规前沿",
-		Icon: ShieldCheck,
-		color: "compliance",
-	},
-	{ slug: "data", name: "数据动态", Icon: BarChart3, color: "data" },
-	{ slug: "security", name: "安全前哨", Icon: Shield, color: "security" },
-	{
-		slug: "academic",
-		name: "学术文章",
-		Icon: GraduationCap,
-		color: "academic",
-	},
-	{ slug: "events", name: "重大事件", Icon: Flame, color: "events" },
-	{
-		slug: "international",
-		name: "国际视野",
-		Icon: Globe2,
-		color: "international",
-	},
-];
+	const expanded =
+		value.length === 3
+			? value
+					.split("")
+					.map((c) => `${c}${c}`)
+					.join("")
+			: value;
+
+	const r = Number.parseInt(expanded.slice(0, 2), 16);
+	const g = Number.parseInt(expanded.slice(2, 4), 16);
+	const b = Number.parseInt(expanded.slice(4, 6), 16);
+	if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) return null;
+
+	return { r, g, b };
+}
+
+function getCategoryBadgeStyle(color: string | null): React.CSSProperties | undefined {
+	if (!color) return undefined;
+	const parsed = parseHexColor(color);
+	if (!parsed) return undefined;
+
+	return {
+		color: `rgb(${parsed.r} ${parsed.g} ${parsed.b})`,
+		backgroundColor: `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, 0.12)`,
+	};
+}
 
 const navigation = [
 	{ name: "数据看板", href: "/", icon: LayoutDashboard },
@@ -99,6 +65,9 @@ const navigation = [
 export function Sidebar() {
 	const pathname = usePathname();
 	const { collapsed, toggle } = useSidebarStore();
+	const categoriesQuery = useCategories();
+	const categories = categoriesQuery.data ?? [];
+	const categoryCount = categories.length;
 
 	return (
 		<motion.aside
@@ -244,44 +213,80 @@ export function Sidebar() {
 								animate={{ opacity: 1 }}
 								transition={{ delay: 0.1 }}
 							>
-								10 板块
+								{categoriesQuery.isLoading
+									? "板块加载中"
+									: categoriesQuery.isError
+										? "板块加载失败"
+										: `${categoryCount} 板块`}
 							</motion.p>
-							<div className="space-y-0.5">
-								{categories.map((category, index) => {
-									const isActive = pathname === `/category/${category.slug}`;
-									return (
-										<motion.div
-											key={category.slug}
-											initial={{ opacity: 0, x: -20 }}
-											animate={{ opacity: 1, x: 0 }}
-											transition={{ delay: 0.15 + index * 0.03 }}
-										>
-											<Link
-												href={`/category/${category.slug}`}
-												className={cn(
-													"group flex items-center gap-3 rounded-xl px-3 py-2 text-sm",
-													"transition-all duration-200",
-													isActive
-														? "bg-neutral-100 text-neutral-900 font-medium"
-														: "text-neutral-600 hover:bg-neutral-50/80 hover:text-neutral-900",
-												)}
+							{categoriesQuery.isLoading ? (
+								<div className="space-y-1 px-3">
+									{Array.from({ length: 8 }, (_, idx) => `cat-skel-${idx}`).map(
+										(key) => (
+											<div
+												key={key}
+												className="h-9 rounded-xl bg-neutral-100 animate-pulse"
+											/>
+										),
+									)}
+								</div>
+							) : categoriesQuery.isError ? (
+								<div className="px-3 py-2 text-xs text-neutral-500">
+									<p>无法加载板块数据（请检查 API / 登录状态）。</p>
+									<button
+										type="button"
+										onClick={() => categoriesQuery.refetch()}
+										className="mt-2 inline-flex items-center justify-center rounded-lg border border-neutral-200 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700"
+									>
+										重试
+									</button>
+								</div>
+							) : (
+								<div className="space-y-0.5">
+									{categories.map((category, index) => {
+										const isActive = pathname === `/category/${category.slug}`;
+										const iconText =
+											category.icon?.trim() ||
+											category.name.trim().slice(0, 1) ||
+											"#";
+										const badgeStyle = getCategoryBadgeStyle(category.color);
+
+										return (
+											<motion.div
+												key={category.id}
+												initial={{ opacity: 0, x: -20 }}
+												animate={{ opacity: 1, x: 0 }}
+												transition={{ delay: 0.15 + index * 0.03 }}
 											>
-												<motion.div
+												<Link
+													href={`/category/${category.slug}`}
 													className={cn(
-														"flex h-7 w-7 items-center justify-center rounded-lg",
-														categoryStyles[category.color],
+														"group flex items-center gap-3 rounded-xl px-3 py-2 text-sm",
+														"transition-all duration-200",
+														isActive
+															? "bg-neutral-100 text-neutral-900 font-medium"
+															: "text-neutral-600 hover:bg-neutral-50/80 hover:text-neutral-900",
 													)}
-													whileHover={{ scale: 1.15, rotate: 10 }}
-													transition={{ type: "spring", stiffness: 400 }}
 												>
-													<category.Icon className="h-4 w-4" />
-												</motion.div>
-												<span>{category.name}</span>
-											</Link>
-										</motion.div>
-									);
-								})}
-							</div>
+													<motion.div
+														className={cn(
+															"flex h-7 w-7 items-center justify-center rounded-lg text-xs font-semibold",
+															badgeStyle ? "" : "bg-neutral-100 text-neutral-600",
+														)}
+														style={badgeStyle}
+														whileHover={{ scale: 1.15, rotate: 10 }}
+														transition={{ type: "spring", stiffness: 400 }}
+														aria-hidden="true"
+													>
+														{iconText}
+													</motion.div>
+													<span>{category.name}</span>
+												</Link>
+											</motion.div>
+										);
+									})}
+								</div>
+							)}
 						</motion.div>
 					)}
 				</AnimatePresence>
