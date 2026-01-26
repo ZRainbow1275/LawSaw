@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { useAskQuestion, useSearch } from "@/hooks/use-search";
+import { useAiAvailability, useAskQuestion, useSearch } from "@/hooks/use-search";
+import { useToast } from "@/stores/toast-store";
 import {
 	ArrowUpRight,
 	MessageCircle,
@@ -29,6 +30,16 @@ function SearchContent() {
 	const [question, setQuestion] = useState("");
 	const [showAI, setShowAI] = useState(false);
 
+	const { error: toastError } = useToast();
+	const aiAvailabilityQuery = useAiAvailability();
+	const aiAvailable = aiAvailabilityQuery.data?.available ?? false;
+	const aiDisabled =
+		aiAvailabilityQuery.isLoading || aiAvailabilityQuery.isError || !aiAvailable;
+	const aiAvailabilityError =
+		aiAvailabilityQuery.error instanceof Error
+			? aiAvailabilityQuery.error.message
+			: null;
+
 	const { data: searchData, isLoading: searching } = useSearch(searchTerm);
 	const askMutation = useAskQuestion();
 
@@ -40,6 +51,12 @@ function SearchContent() {
 		}
 	}, [searchParams]);
 
+	useEffect(() => {
+		if (!aiAvailabilityQuery.isLoading && !aiAvailable && showAI) {
+			setShowAI(false);
+		}
+	}, [aiAvailabilityQuery.isLoading, aiAvailable, showAI]);
+
 	const handleSearch = (e: React.FormEvent) => {
 		e.preventDefault();
 		setSearchTerm(query);
@@ -48,7 +65,15 @@ function SearchContent() {
 	const handleAsk = async (e: React.FormEvent) => {
 		e.preventDefault();
 		if (!question.trim()) return;
-		askMutation.mutate({ question, top_k: 5 });
+		askMutation.mutate(
+			{ question, top_k: 5 },
+			{
+				onError: (err) => {
+					const message = err instanceof Error ? err.message : "未知错误";
+					toastError("AI 问答失败", message);
+				},
+			},
+		);
 	};
 
 	return (
@@ -93,12 +118,25 @@ function SearchContent() {
 				<Button
 					variant={showAI ? "default" : "outline"}
 					size="sm"
+					disabled={aiDisabled}
 					onClick={() => setShowAI(true)}
 				>
 					<Sparkles className="mr-2 h-4 w-4" />
 					AI 问答
 				</Button>
 			</div>
+
+			{aiAvailabilityQuery.isLoading ? (
+				<p className="mb-6 text-xs text-neutral-500">AI 服务检测中...</p>
+			) : aiAvailabilityQuery.isError ? (
+				<p className="mb-6 text-xs text-neutral-500">
+					AI 服务检测失败：{aiAvailabilityError ?? "未知错误"}。请稍后重试或联系管理员。
+				</p>
+			) : !aiAvailable ? (
+				<p className="mb-6 text-xs text-neutral-500">
+					AI 服务未启用：当前环境未配置 AI 服务，AI 问答已禁用。如需启用，请联系管理员配置后端 AI API Key。
+				</p>
+			) : null}
 
 			{showAI ? (
 				/* AI Q&A Section */

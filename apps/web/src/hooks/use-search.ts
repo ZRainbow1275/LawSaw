@@ -2,11 +2,20 @@
 
 import { apiClient } from "@/lib/api";
 import {
+	assertAiAvailabilityResponse,
 	assertAskResponse,
 	assertSearchResponse,
 	assertSemanticSearchResponse,
 } from "@/lib/api/types";
 import { useMutation, useQuery } from "@tanstack/react-query";
+
+export function useAiAvailability() {
+	return useQuery({
+		queryKey: ["ai", "available"],
+		queryFn: () => apiClient.get("/api/v1/ai/available", assertAiAvailabilityResponse),
+		staleTime: 30_000,
+	});
+}
 
 export function useSearch(query: string, limit = 10) {
 	return useQuery({
