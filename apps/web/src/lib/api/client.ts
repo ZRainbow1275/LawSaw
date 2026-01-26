@@ -28,23 +28,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-async function readErrorMessage(response: Response): Promise<string> {
+async function readErrorInfo(
+	response: Response,
+): Promise<{ message: string; requestId: string | null }> {
 	const contentType = response.headers.get("content-type") || "";
 	if (contentType.includes("application/json")) {
 		try {
 			const data: unknown = await response.json();
-			if (typeof data === "string") return data;
+			if (typeof data === "string") return { message: data, requestId: null };
 			if (isRecord(data)) {
-				if (typeof data.error === "string") return data.error;
-				if (typeof data.message === "string") return data.message;
+				const message =
+					typeof data.error === "string"
+						? data.error
+						: typeof data.message === "string"
+							? data.message
+							: JSON.stringify(data);
+
+				const requestId = typeof data.request_id === "string" ? data.request_id : null;
+				return { message, requestId };
 			}
-			return JSON.stringify(data);
+			return { message: JSON.stringify(data), requestId: null };
 		} catch {
 			// fallthrough
 		}
 	}
 
-	return response.text().catch(() => "Unknown error");
+	const message = await response.text().catch(() => "Unknown error");
+	return { message, requestId: null };
 }
 
 export class ApiClient {
@@ -82,10 +92,11 @@ export class ApiClient {
 			});
 		}
 
-		const requestId = response.headers.get("x-request-id");
+		const requestIdFromHeader = response.headers.get("x-request-id");
 
 		if (!response.ok) {
-			const message = await readErrorMessage(response);
+			const { message, requestId: requestIdFromBody } = await readErrorInfo(response);
+			const requestId = requestIdFromHeader ?? requestIdFromBody;
 			throw new ApiClientError(
 				requestId ? `${message} (request_id=${requestId})` : message,
 				{
@@ -95,6 +106,8 @@ export class ApiClient {
 				},
 			);
 		}
+
+		const requestId = requestIdFromHeader;
 
 		// Handle empty responses
 		const text = await response.text();

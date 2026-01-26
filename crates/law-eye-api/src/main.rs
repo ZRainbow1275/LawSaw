@@ -6,7 +6,7 @@ mod routes;
 mod state;
 pub use error::{ApiError, ApiResult, AppError};
 
-use axum::http::{header, HeaderValue, Method};
+use axum::http::{header, HeaderName, HeaderValue, Method};
 use axum_login::AuthManagerLayerBuilder;
 use law_eye_ai::{AiService, LlmGateway};
 use law_eye_common::AppConfig;
@@ -113,12 +113,19 @@ async fn main() -> anyhow::Result<()> {
     let csrf = CsrfLayer::new(allowed_origins.clone());
 
     let cors_allowed_origins = allowed_origins.clone();
+    let request_id_header = HeaderName::from_static("x-request-id");
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(move |origin, _| {
             cors_allowed_origins.iter().any(|allowed| allowed == origin)
         }))
         .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE, Method::OPTIONS])
-        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION, header::COOKIE])
+        .allow_headers([
+            header::CONTENT_TYPE,
+            header::AUTHORIZATION,
+            header::COOKIE,
+            request_id_header.clone(),
+        ])
+        .expose_headers([request_id_header])
         .allow_credentials(true);
 
     // Build application with middleware layers
