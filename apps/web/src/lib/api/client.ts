@@ -71,12 +71,20 @@ export class ApiClient {
 	): Promise<T> {
 		const url = `${this.baseUrl}${endpoint}`;
 
+		const headers = new Headers(options.headers);
+		if (!headers.has("Accept")) {
+			headers.set("Accept", "application/json");
+		}
+
+		const hasBody = options.body !== undefined && options.body !== null;
+		// Avoid unnecessary CORS preflight for GET by not setting a non-simple Content-Type.
+		if (hasBody && !headers.has("Content-Type")) {
+			headers.set("Content-Type", "application/json");
+		}
+
 		const config: RequestInit = {
 			...options,
-			headers: {
-				"Content-Type": "application/json",
-				...options.headers,
-			},
+			headers,
 			credentials: "include", // Include cookies for session auth
 		};
 
