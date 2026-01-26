@@ -44,7 +44,7 @@ import {
 	Trash2,
 	User,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 
 type Theme = "light" | "dark" | "system";
 
@@ -91,7 +91,7 @@ function parseCsv(value: string): string[] {
 		.filter((s) => s.length > 0);
 }
 
-export default function SettingsPage() {
+function SettingsContent() {
 	const { user } = useAuth();
 	const setUser = useAuthStore((s) => s.setUser);
 	const queryClient = useQueryClient();
@@ -910,5 +910,21 @@ export default function SettingsPage() {
 				</MainContent>
 			</div>
 		</ProtectedRoute>
+	);
+}
+
+function SettingsLoading() {
+	return (
+		<div className="flex min-h-screen items-center justify-center">
+			<div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent" />
+		</div>
+	);
+}
+
+export default function SettingsPage() {
+	return (
+		<Suspense fallback={<SettingsLoading />}>
+			<SettingsContent />
+		</Suspense>
 	);
 }
