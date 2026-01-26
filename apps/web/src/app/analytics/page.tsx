@@ -6,7 +6,11 @@ import { MainContent } from "@/components/layout/main-content";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useArticles, useArticleTrends } from "@/hooks/use-articles";
+import {
+	useArticleCategoryCounts,
+	useArticles,
+	useArticleTrends,
+} from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
 import { useSources } from "@/hooks/use-sources";
 import {
@@ -55,6 +59,11 @@ export default function AnalyticsPage() {
 	const { data: categories } = useCategories();
 	const { data: sources } = useSources();
 	const { data: trendPoints, isLoading: trendsLoading } = useArticleTrends(7);
+	const {
+		data: categoryCountRows,
+		isLoading: categoryCountsLoading,
+		isError: categoryCountsError,
+	} = useArticleCategoryCounts();
 
 	const articles = articlesData?.data ?? [];
 	const totalArticles = articlesData?.total ?? 0;
@@ -110,14 +119,15 @@ export default function AnalyticsPage() {
 		{ key: "mixed", label: "混合", color: "bg-warning" },
 	];
 
-	const categoryCounts = articles.reduce(
-		(acc, article) => {
-			const catId = article.category_id ?? "uncategorized";
-			acc[catId] = (acc[catId] || 0) + 1;
-			return acc;
-		},
-		{} as Record<string, number>,
-	);
+	const categoryCountsById = new Map<string, number>();
+	let uncategorizedCount = 0;
+	for (const row of categoryCountRows ?? []) {
+		if (!row.category_id) {
+			uncategorizedCount = row.count;
+			continue;
+		}
+		categoryCountsById.set(row.category_id, row.count);
+	}
 
 	const activeSources = sources?.filter((s) => s.is_active).length ?? 0;
 	const errorSources = sources?.filter((s) => s.last_error).length ?? 0;
@@ -386,32 +396,58 @@ export default function AnalyticsPage() {
 								</CardTitle>
 							</CardHeader>
 							<CardContent>
-								<div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-									{categories?.map((category) => {
-										const iconInfo = categoryIconMap[category.slug];
-										const IconComponent = iconInfo?.Icon;
-										return (
+								{categoryCountsLoading ? (
+									<div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+										{Array.from(
+											{ length: Math.min(10, categories?.length ?? 10) },
+											(_, idx) => `cat-stats-skel-${idx}`,
+										).map((key) => (
 											<div
-												key={category.id}
-												className="flex flex-col items-center rounded-lg border border-neutral-100 p-4 text-center"
-											>
-												{IconComponent ? (
-													<IconComponent
-														className={`h-6 w-6 ${iconInfo.color}`}
-													/>
-												) : (
-													<BarChart3 className="h-6 w-6 text-neutral-400" />
-												)}
+												key={key}
+												className="h-[124px] rounded-lg border border-neutral-100 bg-neutral-50 animate-pulse"
+											/>
+										))}
+									</div>
+								) : (
+									<div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+										{uncategorizedCount > 0 && (
+											<div className="flex flex-col items-center rounded-lg border border-neutral-100 p-4 text-center">
+												<FileText className="h-6 w-6 text-neutral-500" />
 												<span className="mt-2 text-sm font-medium">
-													{category.name}
+													未分类
 												</span>
 												<span className="mt-1 text-2xl font-bold text-primary-600">
-													{categoryCounts[category.id] ?? 0}
+													{categoryCountsError ? "—" : uncategorizedCount}
 												</span>
 											</div>
-										);
-									})}
-								</div>
+										)}
+										{categories?.map((category) => {
+											const iconInfo = categoryIconMap[category.slug];
+											const IconComponent = iconInfo?.Icon;
+											const count = categoryCountsById.get(category.id) ?? 0;
+											return (
+												<div
+													key={category.id}
+													className="flex flex-col items-center rounded-lg border border-neutral-100 p-4 text-center"
+												>
+													{IconComponent ? (
+														<IconComponent
+															className={`h-6 w-6 ${iconInfo.color}`}
+														/>
+													) : (
+														<BarChart3 className="h-6 w-6 text-neutral-400" />
+													)}
+													<span className="mt-2 text-sm font-medium">
+														{category.name}
+													</span>
+													<span className="mt-1 text-2xl font-bold text-primary-600">
+														{categoryCountsError ? "—" : count}
+													</span>
+												</div>
+											);
+										})}
+									</div>
+								)}
 							</CardContent>
 						</Card>
 					</div>
