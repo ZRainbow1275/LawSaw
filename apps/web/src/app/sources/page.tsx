@@ -306,8 +306,145 @@ export default function SourcesPage() {
 													onChange={(e) =>
 														setNewSource({ ...newSource, url: e.target.value })
 													}
-											/>
-										</div>
+												/>
+											</div>
+
+											{newSource.source_type === "spider" && (
+												<div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 space-y-4">
+													<div>
+														<p className="text-sm font-medium text-neutral-700">
+															爬虫配置
+														</p>
+														<p className="mt-1 text-xs text-neutral-500">
+															必填：list/title/link selector。可选：content/date selector 与延迟（ms）。
+														</p>
+													</div>
+													<div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+														<div>
+															<label
+																htmlFor="spider-list-selector"
+																className="mb-1 block text-sm font-medium"
+															>
+																list_selector <span className="text-red-500">*</span>
+															</label>
+															<Input
+																id="spider-list-selector"
+																placeholder="例如：.article-list a"
+																value={spiderConfig.list_selector}
+																onChange={(e) =>
+																	setSpiderConfig({
+																		...spiderConfig,
+																		list_selector: e.target.value,
+																	})
+																}
+																required
+															/>
+														</div>
+														<div>
+															<label
+																htmlFor="spider-title-selector"
+																className="mb-1 block text-sm font-medium"
+															>
+																title_selector <span className="text-red-500">*</span>
+															</label>
+															<Input
+																id="spider-title-selector"
+																placeholder="例如：.title"
+																value={spiderConfig.title_selector}
+																onChange={(e) =>
+																	setSpiderConfig({
+																		...spiderConfig,
+																		title_selector: e.target.value,
+																	})
+																}
+																required
+															/>
+														</div>
+														<div>
+															<label
+																htmlFor="spider-link-selector"
+																className="mb-1 block text-sm font-medium"
+															>
+																link_selector <span className="text-red-500">*</span>
+															</label>
+															<Input
+																id="spider-link-selector"
+																placeholder="例如：a"
+																value={spiderConfig.link_selector}
+																onChange={(e) =>
+																	setSpiderConfig({
+																		...spiderConfig,
+																		link_selector: e.target.value,
+																	})
+																}
+																required
+															/>
+														</div>
+													</div>
+													<div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+														<div>
+															<label
+																htmlFor="spider-content-selector"
+																className="mb-1 block text-sm font-medium"
+															>
+																content_selector（选填）
+															</label>
+															<Input
+																id="spider-content-selector"
+																placeholder="例如：article"
+																value={spiderConfig.content_selector}
+																onChange={(e) =>
+																	setSpiderConfig({
+																		...spiderConfig,
+																		content_selector: e.target.value,
+																	})
+																}
+															/>
+														</div>
+														<div>
+															<label
+																htmlFor="spider-date-selector"
+																className="mb-1 block text-sm font-medium"
+															>
+																date_selector（选填）
+															</label>
+															<Input
+																id="spider-date-selector"
+																placeholder="例如：time"
+																value={spiderConfig.date_selector}
+																onChange={(e) =>
+																	setSpiderConfig({
+																		...spiderConfig,
+																		date_selector: e.target.value,
+																	})
+																}
+															/>
+														</div>
+														<div>
+															<label
+																htmlFor="spider-delay-ms"
+																className="mb-1 block text-sm font-medium"
+															>
+																delay_ms（选填）
+															</label>
+															<Input
+																id="spider-delay-ms"
+																type="number"
+																min={0}
+																placeholder="例如：500"
+																value={spiderConfig.delay_ms}
+																onChange={(e) =>
+																	setSpiderConfig({
+																		...spiderConfig,
+																		delay_ms: e.target.value,
+																	})
+																}
+															/>
+														</div>
+													</div>
+												</div>
+											)}
+
 										<div className="flex justify-end gap-2">
 											<Button
 												type="button"
