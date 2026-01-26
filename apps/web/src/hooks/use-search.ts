@@ -17,15 +17,17 @@ export function useAiAvailability() {
 	});
 }
 
-export function useSearch(query: string, limit = 10) {
+export function useSearch(query: string, limit = 10, offset = 0) {
+	const trimmed = query.trim();
+
 	return useQuery({
-		queryKey: ["search", query, limit],
+		queryKey: ["search", trimmed, limit, offset],
 		queryFn: () =>
 			apiClient.get(
-				`/api/v1/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+				`/api/v1/search?q=${encodeURIComponent(trimmed)}&limit=${limit}&offset=${offset}`,
 				assertSearchResponse,
 			),
-		enabled: query.length > 2,
+		enabled: trimmed.length > 2,
 	});
 }
 
