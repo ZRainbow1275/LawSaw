@@ -14,7 +14,7 @@ use law_eye_common::AppConfig;
 use law_eye_db::create_pool;
 use law_eye_queue::TaskQueue;
 use metrics_exporter_prometheus::PrometheusBuilder;
-use std::net::SocketAddr;
+use std::{collections::HashSet, net::SocketAddr};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tower_sessions::{Expiry, SessionManagerLayer};
@@ -24,7 +24,7 @@ use tower_sessions_redis_store::{
 };
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use url::Url;
+use url::{Host, Url};
 
 use crate::auth::AuthBackend;
 use crate::middleware::{CsrfLayer, RequestIdLayer};
@@ -41,6 +41,67 @@ fn redact_sensitive_url(raw: &str) -> String {
         }
         Err(_) => "<redacted>".to_string(),
     }
+}
+
+fn normalize_origin(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let url = Url::parse(trimmed).ok()?;
+    let scheme = url.scheme();
+    if scheme != "http" && scheme != "https" {
+        return None;
+    }
+
+    let path = url.path();
+    if (path != "/" && !path.is_empty()) || url.query().is_some() || url.fragment().is_some() {
+        return None;
+    }
+
+    let host = match url.host() {
+        Some(Host::Domain(host)) => host.to_string(),
+        Some(Host::Ipv4(ip)) => ip.to_string(),
+        Some(Host::Ipv6(ip)) => format!("[{ip}]"),
+        None => return None,
+    };
+
+    let port = url.port_or_known_default()?;
+    let default_port = match scheme {
+        "http" => 80,
+        "https" => 443,
+        _ => port,
+    };
+
+    if port == default_port {
+        Some(format!("{scheme}://{host}"))
+    } else {
+        Some(format!("{scheme}://{host}:{port}"))
+    }
+}
+
+fn build_allowed_origins(origins: &[String]) -> Vec<HeaderValue> {
+    let mut unique = HashSet::new();
+    let mut values = Vec::new();
+
+    for raw in origins {
+        let Some(origin) = normalize_origin(raw) else {
+            warn!(origin = %raw, "Invalid origin in allowlist (expected scheme://host[:port])");
+            continue;
+        };
+
+        if !unique.insert(origin.clone()) {
+            continue;
+        }
+
+        match HeaderValue::from_str(&origin) {
+            Ok(value) => values.push(value),
+            Err(_) => warn!(origin = %origin, "Invalid origin header value in allowlist"),
+        }
+    }
+
+    values
 }
 
 #[tokio::main]
@@ -134,16 +195,10 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // CORS configuration - use predicate for dynamic origin validation
-    let allowed_origins: Vec<HeaderValue> = vec![
-        "http://localhost:3000".parse().unwrap(),
-        "http://localhost:8849".parse().unwrap(),
-        "http://localhost:3002".parse().unwrap(),
-        "http://localhost:3333".parse().unwrap(),
-        "http://127.0.0.1:3000".parse().unwrap(),
-        "http://127.0.0.1:8849".parse().unwrap(),
-        "http://127.0.0.1:3002".parse().unwrap(),
-        "http://127.0.0.1:3333".parse().unwrap(),
-    ];
+    let allowed_origins = build_allowed_origins(&config.server.allowed_origins);
+    if std::env::var_os("PRODUCTION").is_some() && allowed_origins.is_empty() {
+        anyhow::bail!("LAW_EYE__SERVER__ALLOWED_ORIGINS must be set in production");
+    }
 
     let csrf = CsrfLayer::new(allowed_origins.clone());
 
