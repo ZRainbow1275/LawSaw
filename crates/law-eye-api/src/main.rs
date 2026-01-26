@@ -6,12 +6,14 @@ mod routes;
 mod state;
 pub use error::{ApiError, ApiResult, AppError};
 
+use anyhow::Context;
 use axum::http::{header, HeaderName, HeaderValue, Method};
 use axum_login::AuthManagerLayerBuilder;
 use law_eye_ai::{AiService, LlmGateway};
 use law_eye_common::AppConfig;
 use law_eye_db::create_pool;
 use law_eye_queue::TaskQueue;
+use metrics_exporter_prometheus::PrometheusBuilder;
 use std::net::SocketAddr;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
@@ -49,6 +51,10 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = AppConfig::load().unwrap_or_default();
+
+    let metrics_handle = PrometheusBuilder::new()
+        .install_recorder()
+        .context("install prometheus metrics recorder")?;
 
     info!("Starting Law Eye API server...");
     info!(
@@ -103,7 +109,29 @@ async fn main() -> anyhow::Result<()> {
         (None, None)
     };
 
-    let state = AppState::new(pool, task_queue, ai_service, llm_gateway);
+    if std::env::var_os("PRODUCTION").is_some() {
+        if config
+            .metrics
+            .token
+            .as_deref()
+            .is_some_and(|token| !token.trim().is_empty())
+        {
+            info!("Metrics enabled at /metrics (token protected)");
+        } else {
+            warn!("Metrics disabled in production (LAW_EYE__METRICS__TOKEN not set)");
+        }
+    } else {
+        info!("Metrics enabled at /metrics (development mode)");
+    }
+
+    let state = AppState::new(
+        pool,
+        task_queue,
+        ai_service,
+        llm_gateway,
+        metrics_handle,
+        config.metrics.token.clone(),
+    );
 
     // CORS configuration - use predicate for dynamic origin validation
     let allowed_origins: Vec<HeaderValue> = vec![

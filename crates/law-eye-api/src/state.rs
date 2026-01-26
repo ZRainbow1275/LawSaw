@@ -4,6 +4,7 @@ use law_eye_core::{
     KnowledgeService, RagService, SourceService, UserService,
 };
 use law_eye_queue::TaskQueue;
+use metrics_exporter_prometheus::PrometheusHandle;
 use sqlx::PgPool;
 use std::sync::Arc;
 
@@ -24,6 +25,8 @@ pub struct AppState {
     #[allow(dead_code)] // Reserved for future knowledge base features
     pub knowledge_service: Arc<KnowledgeService>,
     pub apikey_service: Arc<ApiKeyService>,
+    pub metrics_handle: PrometheusHandle,
+    pub metrics_token: Option<String>,
 }
 
 impl AppState {
@@ -32,6 +35,8 @@ impl AppState {
         task_queue: TaskQueue,
         ai_service: Option<AiService>,
         llm_gateway: Option<LlmGateway>,
+        metrics_handle: PrometheusHandle,
+        metrics_token: Option<String>,
     ) -> Self {
         let gateway = Arc::new(llm_gateway.unwrap_or_else(|| {
             LlmGateway::new(
@@ -54,6 +59,8 @@ impl AppState {
             rag_service: Arc::new(RagService::new(pool.clone(), gateway.clone())),
             knowledge_service: Arc::new(KnowledgeService::new(pool.clone(), gateway)),
             apikey_service: Arc::new(ApiKeyService::new(pool)),
+            metrics_handle,
+            metrics_token,
         }
     }
 }

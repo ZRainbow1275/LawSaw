@@ -7,6 +7,8 @@ pub struct AppConfig {
     pub redis: RedisConfig,
     #[serde(default)]
     pub ai: AiConfig,
+    #[serde(default)]
+    pub metrics: MetricsConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -45,6 +47,12 @@ impl Default for AiConfig {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct MetricsConfig {
+    /// Prometheus scrape token (production-only). If unset in production, `/metrics` returns 404.
+    pub token: Option<String>,
+}
+
 impl AppConfig {
     pub fn load() -> crate::Result<Self> {
         dotenvy::dotenv().ok();
@@ -73,6 +81,7 @@ impl Default for AppConfig {
                 url: "redis://localhost:6380".to_string(),
             },
             ai: AiConfig::default(),
+            metrics: MetricsConfig::default(),
         }
     }
 }
