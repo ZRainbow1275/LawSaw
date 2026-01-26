@@ -23,6 +23,20 @@ import { Suspense, useEffect, useState } from "react";
 
 const PAGE_SIZE = 10;
 
+function normalizeExcerpt(excerpt: string): string {
+	const trimmed = excerpt.trim();
+	if (!trimmed) return "";
+	if (!trimmed.includes("<")) return trimmed;
+
+	try {
+		const doc = new DOMParser().parseFromString(trimmed, "text/html");
+		const text = doc.body.textContent ?? "";
+		return text.replace(/\s+/g, " ").trim();
+	} catch {
+		return trimmed.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+	}
+}
+
 function SearchContent() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
@@ -265,7 +279,7 @@ function SearchContent() {
 												>
 													<p className="text-sm font-medium">{source.title}</p>
 													<p className="mt-1 text-xs text-neutral-500">
-														{source.excerpt}
+														{normalizeExcerpt(source.excerpt)}
 													</p>
 												</div>
 											))}
@@ -337,7 +351,7 @@ function SearchContent() {
 												{result.title}
 											</Link>
 											<p className="mt-1 line-clamp-2 text-xs text-neutral-500">
-												{result.excerpt}
+												{normalizeExcerpt(result.excerpt)}
 											</p>
 											<p className="mt-2 text-xs text-neutral-400">
 												相关度: {(result.score * 100).toFixed(0)}%

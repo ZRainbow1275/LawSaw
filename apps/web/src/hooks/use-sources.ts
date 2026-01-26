@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 interface CreateSourceInput {
 	name: string;
 	url: string;
-	source_type: "rss" | "spider" | "api";
+	source_type: "rss" | "spider";
 	config?: Record<string, unknown>;
 	schedule?: string;
 	priority?: number;
@@ -36,7 +36,7 @@ export function useCreateSource() {
 
 	return useMutation({
 		mutationFn: (data: CreateSourceInput) =>
-			apiClient.post("/api/v1/sources", data, assertSource),
+			apiClient.post("/api/v1/sources", { ...data, config: data.config ?? {} }, assertSource),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["sources"] });
 		},

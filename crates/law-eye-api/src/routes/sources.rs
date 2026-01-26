@@ -14,12 +14,36 @@ use crate::state::AppState;
 use crate::{ApiError, ApiResult, AppError};
 use law_eye_db::CreateSource;
 use law_eye_queue::IngestTask;
+use serde_json::Value;
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_sources).post(create_source))
         .route("/{id}", get(get_source))
         .route("/{id}/fetch", post(trigger_fetch))
+}
+
+fn validate_spider_config(config: &Value) -> Result<(), AppError> {
+    let obj = config
+        .as_object()
+        .ok_or_else(|| AppError::validation("Spider config must be a JSON object"))?;
+
+    for field in ["list_selector", "title_selector", "link_selector"] {
+        let value = obj
+            .get(field)
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|v| !v.is_empty());
+
+        if value.is_none() {
+            return Err(AppError::validation(format!(
+                "Spider config missing required field: {}",
+                field
+            )));
+        }
+    }
+
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -177,6 +201,7 @@ pub(crate) async fn get_source(
     ),
     responses(
         (status = 201, description = "Source created", body = SourceResponse),
+        (status = 400, description = "Validation error", body = ApiError),
         (status = 401, description = "Not authenticated", body = ApiError),
         (status = 403, description = "Admin permission required", body = ApiError),
         (status = 500, description = "Server error", body = ApiError)
@@ -198,6 +223,17 @@ pub(crate) async fn create_source(
         .map_err(AppError::from)?;
     if !is_admin {
         return Err(AppError::forbidden("Admin permission required"));
+    }
+
+    match input.source_type.as_str() {
+        "rss" => {}
+        "spider" => validate_spider_config(&input.config)?,
+        "api" => {
+            return Err(AppError::validation(
+                "API source type is not supported yet (worker does not implement it)",
+            ))
+        }
+        _ => return Err(AppError::validation("Invalid source type")),
     }
 
     let source = state

@@ -17,6 +17,7 @@ import {
 	assertDeleteResponse,
 	getArticleRiskLevel,
 } from "@/lib/api/types";
+import { useAuthStore } from "@/stores/auth-store";
 import { useToast } from "@/stores/toast-store";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -70,6 +71,11 @@ export default function DataPage() {
 
 	const queryClient = useQueryClient();
 	const { success: toastSuccess, error: toastError } = useToast();
+	const { permissions } = useAuthStore();
+	const canWriteArticles =
+		permissions.includes("*") || permissions.includes("articles:write");
+	const canPublishArticles =
+		permissions.includes("*") || permissions.includes("articles:publish");
 
 	const { data: articlesData, isLoading } = useArticles({
 		limit: PAGE_SIZE,
@@ -225,16 +231,22 @@ export default function DataPage() {
 											<Button
 												variant="outline"
 												size="sm"
-												onClick={() =>
+												onClick={() => {
+													if (!canPublishArticles) {
+														toastError("权限不足", "需要文章发布权限");
+														return;
+													}
 													batchStatusMutation.mutate({
 														ids: selectedIdList,
 														status: "archived",
-													})
-												}
+													});
+												}}
 												disabled={
+													!canPublishArticles ||
 													batchStatusMutation.isPending ||
 													batchDeleteMutation.isPending
 												}
+												title={!canPublishArticles ? "需要文章发布权限" : undefined}
 											>
 												<Archive className="mr-1 h-3 w-3" />
 												归档
@@ -242,16 +254,22 @@ export default function DataPage() {
 											<Button
 												variant="outline"
 												size="sm"
-												onClick={() =>
+												onClick={() => {
+													if (!canPublishArticles) {
+														toastError("权限不足", "需要文章发布权限");
+														return;
+													}
 													batchStatusMutation.mutate({
 														ids: selectedIdList,
 														status: "published",
-													})
-												}
+													});
+												}}
 												disabled={
+													!canPublishArticles ||
 													batchStatusMutation.isPending ||
 													batchDeleteMutation.isPending
 												}
+												title={!canPublishArticles ? "需要文章发布权限" : undefined}
 											>
 												<CheckCircle className="mr-1 h-3 w-3" />
 												发布
@@ -260,11 +278,19 @@ export default function DataPage() {
 												variant="outline"
 												size="sm"
 												className="text-destructive"
-												onClick={() => setDeleteConfirmOpen(true)}
+												onClick={() => {
+													if (!canWriteArticles) {
+														toastError("权限不足", "需要文章写权限");
+														return;
+													}
+													setDeleteConfirmOpen(true);
+												}}
 												disabled={
+													!canWriteArticles ||
 													batchStatusMutation.isPending ||
 													batchDeleteMutation.isPending
 												}
+												title={!canWriteArticles ? "需要文章写权限" : undefined}
 											>
 												<Trash2 className="mr-1 h-3 w-3" />
 												删除
@@ -473,6 +499,10 @@ export default function DataPage() {
 					<Button
 						variant="destructive"
 						onClick={async () => {
+							if (!canWriteArticles) {
+								toastError("权限不足", "需要文章写权限");
+								return;
+							}
 							try {
 								await batchDeleteMutation.mutateAsync(selectedIdList);
 								setDeleteConfirmOpen(false);

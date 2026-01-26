@@ -67,7 +67,15 @@ export default function SourcesPage() {
 	const [newSource, setNewSource] = useState({
 		name: "",
 		url: "",
-		source_type: "rss" as Source["source_type"],
+		source_type: "rss" as "rss" | "spider",
+	});
+	const [spiderConfig, setSpiderConfig] = useState({
+		list_selector: "",
+		title_selector: "",
+		link_selector: "",
+		content_selector: "",
+		date_selector: "",
+		delay_ms: "",
 	});
 
 	const handleTriggerFetch = (id: string) => {
@@ -90,10 +98,57 @@ export default function SourcesPage() {
 			return;
 		}
 		if (!newSource.name || !newSource.url) return;
-		createSource.mutate(newSource, {
+
+		const name = newSource.name.trim();
+		const url = newSource.url.trim();
+		if (!name || !url) return;
+
+		let config: Record<string, unknown> = {};
+		if (newSource.source_type === "spider") {
+			const list_selector = spiderConfig.list_selector.trim();
+			const title_selector = spiderConfig.title_selector.trim();
+			const link_selector = spiderConfig.link_selector.trim();
+
+			if (!list_selector || !title_selector || !link_selector) {
+				toastError(
+					"爬虫配置不完整",
+					"请填写 list_selector、title_selector、link_selector",
+				);
+				return;
+			}
+
+			let delay_ms: number | undefined;
+			if (spiderConfig.delay_ms.trim()) {
+				const parsed = Number(spiderConfig.delay_ms);
+				if (!Number.isFinite(parsed) || parsed < 0) {
+					toastError("爬虫配置无效", "delay_ms 必须是非负数字");
+					return;
+				}
+				delay_ms = parsed;
+			}
+
+			config = {
+				list_selector,
+				title_selector,
+				link_selector,
+				content_selector: spiderConfig.content_selector.trim() || undefined,
+				date_selector: spiderConfig.date_selector.trim() || undefined,
+				delay_ms,
+			};
+		}
+
+		createSource.mutate({ name, url, source_type: newSource.source_type, config }, {
 			onSuccess: () => {
 				setShowAddForm(false);
 				setNewSource({ name: "", url: "", source_type: "rss" });
+				setSpiderConfig({
+					list_selector: "",
+					title_selector: "",
+					link_selector: "",
+					content_selector: "",
+					date_selector: "",
+					delay_ms: "",
+				});
 				toastSuccess("添加成功", "信息源已创建");
 			},
 			onError: (cause) => {
@@ -228,14 +283,12 @@ export default function SourcesPage() {
 														onChange={(e) =>
 															setNewSource({
 																...newSource,
-															source_type: e.target
-																.value as Source["source_type"],
-														})
-													}
+																source_type: e.target.value as "rss" | "spider",
+															})
+														}
 												>
 													<option value="rss">RSS 订阅</option>
 													<option value="spider">网页爬虫</option>
-													<option value="api">API 接口</option>
 													</select>
 												</div>
 											</div>
