@@ -3,6 +3,7 @@
 import { apiClient } from "@/lib/api";
 import {
 	assertArticle,
+	assertArticleAnalyticsSummary,
 	assertArticleListResponse,
 	assertArticleCategoryCounts,
 	assertArticleStats,
@@ -73,6 +74,18 @@ export function useArticleCategoryCounts() {
 		queryKey: ["articleCategoryCounts"],
 		queryFn: () =>
 			apiClient.get("/api/v1/articles/category-counts", assertArticleCategoryCounts),
+		staleTime: 30000,
+	});
+}
+
+export function useArticleAnalyticsSummary() {
+	return useQuery({
+		queryKey: ["articleAnalyticsSummary"],
+		queryFn: () =>
+			apiClient.get(
+				"/api/v1/articles/analytics-summary",
+				assertArticleAnalyticsSummary,
+			),
 		staleTime: 30000,
 	});
 }

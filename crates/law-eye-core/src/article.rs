@@ -29,6 +29,41 @@ pub struct ArticleCategoryCount {
     pub count: i64,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ArticleStatusCounts {
+    pub pending: i64,
+    pub processing: i64,
+    pub published: i64,
+    pub archived: i64,
+    pub rejected: i64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ArticleRiskCounts {
+    pub unknown: i64,
+    pub low: i64,
+    pub medium: i64,
+    pub high: i64,
+    pub critical: i64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ArticleSentimentCounts {
+    pub unknown: i64,
+    pub positive: i64,
+    pub neutral: i64,
+    pub negative: i64,
+    pub mixed: i64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ArticleAnalyticsSummary {
+    pub total: i64,
+    pub status: ArticleStatusCounts,
+    pub risk: ArticleRiskCounts,
+    pub sentiment: ArticleSentimentCounts,
+}
+
 impl ArticleService {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
@@ -347,6 +382,98 @@ impl ArticleService {
             .into_iter()
             .map(|(category_id, count)| ArticleCategoryCount { category_id, count })
             .collect())
+    }
+
+    pub async fn get_analytics_summary(&self) -> Result<ArticleAnalyticsSummary> {
+        let row: (
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+        ) = sqlx::query_as(
+            r#"
+            SELECT
+                COUNT(*)::bigint AS total,
+
+                COUNT(*) FILTER (WHERE status = 'pending')::bigint AS pending,
+                COUNT(*) FILTER (WHERE status = 'processing')::bigint AS processing,
+                COUNT(*) FILTER (WHERE status = 'published')::bigint AS published,
+                COUNT(*) FILTER (WHERE status = 'archived')::bigint AS archived,
+                COUNT(*) FILTER (WHERE status = 'rejected')::bigint AS rejected,
+
+                COUNT(*) FILTER (WHERE risk_score IS NULL)::bigint AS risk_unknown,
+                COUNT(*) FILTER (WHERE risk_score BETWEEN 0 AND 25)::bigint AS risk_low,
+                COUNT(*) FILTER (WHERE risk_score BETWEEN 26 AND 50)::bigint AS risk_medium,
+                COUNT(*) FILTER (WHERE risk_score BETWEEN 51 AND 75)::bigint AS risk_high,
+                COUNT(*) FILTER (WHERE risk_score >= 76)::bigint AS risk_critical,
+
+                COUNT(*) FILTER (WHERE sentiment IS NULL)::bigint AS sentiment_unknown,
+                COUNT(*) FILTER (WHERE sentiment = 'positive')::bigint AS sentiment_positive,
+                COUNT(*) FILTER (WHERE sentiment = 'neutral')::bigint AS sentiment_neutral,
+                COUNT(*) FILTER (WHERE sentiment = 'negative')::bigint AS sentiment_negative,
+                COUNT(*) FILTER (WHERE sentiment = 'mixed')::bigint AS sentiment_mixed
+            FROM articles
+            "#,
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        let (
+            total,
+            pending,
+            processing,
+            published,
+            archived,
+            rejected,
+            risk_unknown,
+            risk_low,
+            risk_medium,
+            risk_high,
+            risk_critical,
+            sentiment_unknown,
+            sentiment_positive,
+            sentiment_neutral,
+            sentiment_negative,
+            sentiment_mixed,
+        ) = row;
+
+        Ok(ArticleAnalyticsSummary {
+            total,
+            status: ArticleStatusCounts {
+                pending,
+                processing,
+                published,
+                archived,
+                rejected,
+            },
+            risk: ArticleRiskCounts {
+                unknown: risk_unknown,
+                low: risk_low,
+                medium: risk_medium,
+                high: risk_high,
+                critical: risk_critical,
+            },
+            sentiment: ArticleSentimentCounts {
+                unknown: sentiment_unknown,
+                positive: sentiment_positive,
+                neutral: sentiment_neutral,
+                negative: sentiment_negative,
+                mixed: sentiment_mixed,
+            },
+        })
     }
 }
 

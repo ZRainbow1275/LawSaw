@@ -201,6 +201,37 @@ export interface ArticleCategoryCount {
 	count: number;
 }
 
+export interface ArticleStatusCounts {
+	pending: number;
+	processing: number;
+	published: number;
+	archived: number;
+	rejected: number;
+}
+
+export interface ArticleRiskCounts {
+	unknown: number;
+	low: number;
+	medium: number;
+	high: number;
+	critical: number;
+}
+
+export interface ArticleSentimentCounts {
+	unknown: number;
+	positive: number;
+	neutral: number;
+	negative: number;
+	mixed: number;
+}
+
+export interface ArticleAnalyticsSummary {
+	total: number;
+	status: ArticleStatusCounts;
+	risk: ArticleRiskCounts;
+	sentiment: ArticleSentimentCounts;
+}
+
 export interface BatchStatusResponse {
 	updated: number;
 }
@@ -534,6 +565,53 @@ export function assertArticleStats(
 	assertNumber(getRequired(value, "published_count", path), `${path}.published_count`);
 	assertNumber(getRequired(value, "high_risk_count", path), `${path}.high_risk_count`);
 	assertNumber(getRequired(value, "today_count", path), `${path}.today_count`);
+}
+
+function assertArticleStatusCounts(
+	value: unknown,
+	path: string,
+): asserts value is ArticleStatusCounts {
+	assertRecord(value, path);
+	assertNumber(getRequired(value, "pending", path), `${path}.pending`);
+	assertNumber(getRequired(value, "processing", path), `${path}.processing`);
+	assertNumber(getRequired(value, "published", path), `${path}.published`);
+	assertNumber(getRequired(value, "archived", path), `${path}.archived`);
+	assertNumber(getRequired(value, "rejected", path), `${path}.rejected`);
+}
+
+function assertArticleRiskCounts(
+	value: unknown,
+	path: string,
+): asserts value is ArticleRiskCounts {
+	assertRecord(value, path);
+	assertNumber(getRequired(value, "unknown", path), `${path}.unknown`);
+	assertNumber(getRequired(value, "low", path), `${path}.low`);
+	assertNumber(getRequired(value, "medium", path), `${path}.medium`);
+	assertNumber(getRequired(value, "high", path), `${path}.high`);
+	assertNumber(getRequired(value, "critical", path), `${path}.critical`);
+}
+
+function assertArticleSentimentCounts(
+	value: unknown,
+	path: string,
+): asserts value is ArticleSentimentCounts {
+	assertRecord(value, path);
+	assertNumber(getRequired(value, "unknown", path), `${path}.unknown`);
+	assertNumber(getRequired(value, "positive", path), `${path}.positive`);
+	assertNumber(getRequired(value, "neutral", path), `${path}.neutral`);
+	assertNumber(getRequired(value, "negative", path), `${path}.negative`);
+	assertNumber(getRequired(value, "mixed", path), `${path}.mixed`);
+}
+
+export function assertArticleAnalyticsSummary(
+	value: unknown,
+	path = "articleAnalyticsSummary",
+): asserts value is ArticleAnalyticsSummary {
+	assertRecord(value, path);
+	assertNumber(getRequired(value, "total", path), `${path}.total`);
+	assertArticleStatusCounts(getRequired(value, "status", path), `${path}.status`);
+	assertArticleRiskCounts(getRequired(value, "risk", path), `${path}.risk`);
+	assertArticleSentimentCounts(getRequired(value, "sentiment", path), `${path}.sentiment`);
 }
 
 export function assertArticleTrendPoint(

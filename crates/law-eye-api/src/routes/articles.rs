@@ -91,6 +91,41 @@ pub struct ArticleCategoryCountResponse {
     pub count: i64,
 }
 
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ArticleStatusCountsResponse {
+    pub pending: i64,
+    pub processing: i64,
+    pub published: i64,
+    pub archived: i64,
+    pub rejected: i64,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ArticleRiskCountsResponse {
+    pub unknown: i64,
+    pub low: i64,
+    pub medium: i64,
+    pub high: i64,
+    pub critical: i64,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ArticleSentimentCountsResponse {
+    pub unknown: i64,
+    pub positive: i64,
+    pub neutral: i64,
+    pub negative: i64,
+    pub mixed: i64,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ArticleAnalyticsSummaryResponse {
+    pub total: i64,
+    pub status: ArticleStatusCountsResponse,
+    pub risk: ArticleRiskCountsResponse,
+    pub sentiment: ArticleSentimentCountsResponse,
+}
+
 #[derive(Deserialize, ToSchema)]
 pub struct TrendParams {
     pub days: Option<i64>,
@@ -131,6 +166,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_articles))
         .route("/stats", get(get_stats))
+        .route("/analytics-summary", get(get_analytics_summary))
         .route("/category-counts", get(get_category_counts))
         .route("/trends", get(get_trends))
         .route("/recent", get(list_recent))
@@ -286,6 +322,84 @@ pub(crate) async fn get_stats(
         published_count: stats.published,
         high_risk_count: stats.high_risk,
         today_count: stats.today,
+    }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/articles/analytics-summary",
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "Analytics summary (status/risk/sentiment distributions)", body = ArticleAnalyticsSummaryResponse),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
+    )
+)]
+pub(crate) async fn get_analytics_summary(
+    State(state): State<AppState>,
+    auth_session: AuthSession,
+) -> Result<Json<ArticleAnalyticsSummaryResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let user = auth_session.user.ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Not authenticated".to_string(),
+                code: "UNAUTHORIZED".to_string(),
+            }),
+        )
+    })?;
+
+    let can_read = state
+        .user_service
+        .has_permission(user.id, "articles:read")
+        .await
+        .unwrap_or(false);
+    if !can_read {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Permission denied".to_string(),
+                code: "FORBIDDEN".to_string(),
+            }),
+        ));
+    }
+
+    let summary = state.article_service.get_analytics_summary().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+                code: "STATS_ERROR".to_string(),
+            }),
+        )
+    })?;
+
+    Ok(Json(ArticleAnalyticsSummaryResponse {
+        total: summary.total,
+        status: ArticleStatusCountsResponse {
+            pending: summary.status.pending,
+            processing: summary.status.processing,
+            published: summary.status.published,
+            archived: summary.status.archived,
+            rejected: summary.status.rejected,
+        },
+        risk: ArticleRiskCountsResponse {
+            unknown: summary.risk.unknown,
+            low: summary.risk.low,
+            medium: summary.risk.medium,
+            high: summary.risk.high,
+            critical: summary.risk.critical,
+        },
+        sentiment: ArticleSentimentCountsResponse {
+            unknown: summary.sentiment.unknown,
+            positive: summary.sentiment.positive,
+            neutral: summary.sentiment.neutral,
+            negative: summary.sentiment.negative,
+            mixed: summary.sentiment.mixed,
+        },
     }))
 }
 

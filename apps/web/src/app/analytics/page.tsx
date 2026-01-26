@@ -8,17 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
 	useArticleCategoryCounts,
-	useArticles,
+	useArticleAnalyticsSummary,
 	useArticleTrends,
 } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
 import { useSources } from "@/hooks/use-sources";
-import {
-	getArticleRiskLevel,
-	normalizeArticleSentiment,
-	type ArticleRiskLevel,
-	type ArticleSentimentLabel,
-} from "@/lib/api/types";
+import type { ArticleRiskLevel, ArticleSentimentLabel } from "@/lib/api/types";
 import {
 	Activity,
 	AlertTriangle,
@@ -55,7 +50,11 @@ const categoryIconMap: Record<string, { Icon: LucideIcon; color: string }> = {
 };
 
 export default function AnalyticsPage() {
-	const { data: articlesData } = useArticles({ limit: 1000, offset: 0 });
+	const {
+		data: analyticsSummary,
+		isLoading: analyticsSummaryLoading,
+		isError: analyticsSummaryError,
+	} = useArticleAnalyticsSummary();
 	const { data: categories } = useCategories();
 	const { data: sources } = useSources();
 	const { data: trendPoints, isLoading: trendsLoading } = useArticleTrends(7);
@@ -65,29 +64,10 @@ export default function AnalyticsPage() {
 		isError: categoryCountsError,
 	} = useArticleCategoryCounts();
 
-	const articles = articlesData?.data ?? [];
-	const totalArticles = articlesData?.total ?? 0;
-
-	// 计算统计数据
-	const statusCounts = articles.reduce(
-		(acc, article) => {
-			acc[article.status] = (acc[article.status] || 0) + 1;
-			return acc;
-		},
-		{} as Record<string, number>,
-	);
-
-	const riskDistribution: Record<ArticleRiskLevel, number> = {
-		unknown: 0,
-		low: 0,
-		medium: 0,
-		high: 0,
-		critical: 0,
-	};
-	for (const article of articles) {
-		riskDistribution[getArticleRiskLevel(article.risk_score)]++;
-	}
-	const riskTotalForChart = articles.length;
+	const analyticsReady =
+		!!analyticsSummary && !analyticsSummaryLoading && !analyticsSummaryError;
+	const totalArticles = analyticsReady ? (analyticsSummary?.total ?? null) : null;
+	const riskTotalForChart = analyticsReady ? (analyticsSummary?.total ?? 0) : 0;
 	const riskRows: Array<{ key: ArticleRiskLevel; label: string; color: string }> = [
 		{ key: "unknown", label: "未评估", color: "bg-neutral-400" },
 		{ key: "low", label: "低风险", color: "bg-success" },
@@ -96,17 +76,7 @@ export default function AnalyticsPage() {
 		{ key: "critical", label: "严重", color: "bg-destructive" },
 	];
 
-	const sentimentCounts: Record<ArticleSentimentLabel, number> = {
-		unknown: 0,
-		positive: 0,
-		neutral: 0,
-		negative: 0,
-		mixed: 0,
-	};
-	for (const article of articles) {
-		sentimentCounts[normalizeArticleSentiment(article.sentiment)]++;
-	}
-	const sentimentTotalForChart = articles.length;
+	const sentimentTotalForChart = analyticsReady ? (analyticsSummary?.total ?? 0) : 0;
 	const sentimentRows: Array<{
 		key: ArticleSentimentLabel;
 		label: string;
@@ -139,6 +109,34 @@ export default function AnalyticsPage() {
 		})) ?? [];
 	const maxTrendCount = Math.max(1, ...last7Days.map((day) => day.count));
 
+	const statusRows = [
+		{
+			key: "pending",
+			label: "待处理",
+			variant: "outline" as const,
+		},
+		{
+			key: "processing",
+			label: "处理中",
+			variant: "warning" as const,
+		},
+		{
+			key: "published",
+			label: "已发布",
+			variant: "success" as const,
+		},
+		{
+			key: "archived",
+			label: "已归档",
+			variant: "outline" as const,
+		},
+		{
+			key: "rejected",
+			label: "已拒绝",
+			variant: "destructive" as const,
+		},
+	] as const;
+
 	return (
 		<ProtectedRoute>
 			<div className="flex min-h-screen bg-neutral-50">
@@ -163,7 +161,9 @@ export default function AnalyticsPage() {
 											<FileText className="h-5 w-5 text-primary-600" />
 										</div>
 										<div>
-											<p className="text-2xl font-bold">{totalArticles}</p>
+											<p className="text-2xl font-bold">
+												{totalArticles ?? "—"}
+											</p>
 											<p className="text-sm text-neutral-500">总资讯数</p>
 										</div>
 									</div>
@@ -234,13 +234,15 @@ export default function AnalyticsPage() {
 												</div>
 												<div className="flex items-center gap-2">
 													<span className="text-sm font-medium">
-														{riskDistribution[key] ?? 0}
+														{analyticsReady
+															? (analyticsSummary?.risk?.[key] ?? 0)
+															: "—"}
 													</span>
 													<div className="h-2 w-24 overflow-hidden rounded-full bg-neutral-100">
 														<div
 															className={`h-full ${color}`}
 															style={{
-																width: `${riskTotalForChart ? ((riskDistribution[key] ?? 0) / riskTotalForChart) * 100 : 0}%`,
+																width: `${riskTotalForChart ? ((analyticsSummary?.risk?.[key] ?? 0) / riskTotalForChart) * 100 : 0}%`,
 															}}
 														/>
 													</div>
@@ -272,13 +274,15 @@ export default function AnalyticsPage() {
 												</div>
 												<div className="flex items-center gap-2">
 													<span className="text-sm font-medium">
-														{sentimentCounts[key] ?? 0}
+														{analyticsReady
+															? (analyticsSummary?.sentiment?.[key] ?? 0)
+															: "—"}
 													</span>
 													<div className="h-2 w-24 overflow-hidden rounded-full bg-neutral-100">
 														<div
 															className={`h-full ${color}`}
 															style={{
-																width: `${sentimentTotalForChart ? ((sentimentCounts[key] ?? 0) / sentimentTotalForChart) * 100 : 0}%`,
+																width: `${sentimentTotalForChart ? ((analyticsSummary?.sentiment?.[key] ?? 0) / sentimentTotalForChart) * 100 : 0}%`,
 															}}
 														/>
 													</div>
@@ -299,40 +303,16 @@ export default function AnalyticsPage() {
 								</CardHeader>
 								<CardContent>
 									<div className="grid grid-cols-2 gap-4">
-										{[
-											{
-												key: "pending",
-												label: "待处理",
-												variant: "outline" as const,
-											},
-											{
-												key: "processing",
-												label: "处理中",
-												variant: "warning" as const,
-											},
-											{
-												key: "published",
-												label: "已发布",
-												variant: "success" as const,
-											},
-											{
-												key: "archived",
-												label: "已归档",
-												variant: "outline" as const,
-											},
-											{
-												key: "rejected",
-												label: "已拒绝",
-												variant: "destructive" as const,
-											},
-										].map(({ key, label, variant }) => (
+										{statusRows.map(({ key, label, variant }) => (
 											<div
 												key={key}
 												className="flex items-center justify-between rounded-lg border border-neutral-100 p-3"
 											>
 												<Badge variant={variant}>{label}</Badge>
 												<span className="text-lg font-semibold">
-													{statusCounts[key] ?? 0}
+													{analyticsReady
+														? (analyticsSummary?.status?.[key] ?? 0)
+														: "—"}
 												</span>
 											</div>
 										))}
