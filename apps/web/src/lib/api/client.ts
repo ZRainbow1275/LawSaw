@@ -1,5 +1,26 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 const DEFAULT_API_TIMEOUT_MS = 15_000;
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1"]);
+
+function stripTrailingSlash(value: string): string {
+	return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+function normalizeLoopbackBaseUrl(baseUrl: string): string {
+	const cleaned = stripTrailingSlash(baseUrl);
+	if (typeof window === "undefined") return cleaned;
+	const currentHost = window.location.hostname;
+	if (!LOOPBACK_HOSTS.has(currentHost)) return cleaned;
+
+	try {
+		const parsed = new URL(cleaned);
+		if (!LOOPBACK_HOSTS.has(parsed.hostname)) return cleaned;
+		parsed.hostname = currentHost;
+		return stripTrailingSlash(parsed.toString());
+	} catch {
+		return cleaned;
+	}
+}
 
 function parseTimeoutMs(value: string | undefined): number | null {
 	if (!value) return DEFAULT_API_TIMEOUT_MS;
@@ -73,7 +94,7 @@ export class ApiClient {
 	private timeoutMs: number | null;
 
 	constructor(baseUrl: string = API_BASE_URL, timeoutMs: number | null = API_TIMEOUT_MS) {
-		this.baseUrl = baseUrl;
+		this.baseUrl = normalizeLoopbackBaseUrl(baseUrl);
 		this.timeoutMs = timeoutMs;
 	}
 
