@@ -127,8 +127,8 @@ pub struct SuccessResponse {
 }
 
 /// 检查用户是否有管理员权限
-async fn check_admin_permission(state: &AppState, user_id: Uuid) -> bool {
-    state.user_service.has_permission(user_id, "*").await.unwrap_or(false)
+async fn check_admin_permission(state: &AppState, user_id: Uuid) -> Result<bool, crate::AppError> {
+    Ok(state.user_service.has_permission(user_id, "*").await?)
 }
 
 /// 获取用户列表 (需要管理员权限)
@@ -167,7 +167,11 @@ pub(crate) async fn list_users(
         }
     };
 
-    if !check_admin_permission(&state, user.id).await {
+    let is_admin = match check_admin_permission(&state, user.id).await {
+        Ok(value) => value,
+        Err(err) => return err.into_response(),
+    };
+    if !is_admin {
         return (
             StatusCode::FORBIDDEN,
             Json(ErrorResponse {
@@ -236,7 +240,10 @@ pub(crate) async fn get_user(
     };
 
     // Allow users to view their own profile, or admins to view any
-    let is_admin = check_admin_permission(&state, current_user.id).await;
+    let is_admin = match check_admin_permission(&state, current_user.id).await {
+        Ok(value) => value,
+        Err(err) => return err.into_response(),
+    };
     if current_user.id != id && !is_admin {
         return (
             StatusCode::FORBIDDEN,
@@ -317,7 +324,10 @@ pub(crate) async fn update_user(
     };
 
     // Allow users to update their own profile, or admins to update any
-    let is_admin = check_admin_permission(&state, current_user.id).await;
+    let is_admin = match check_admin_permission(&state, current_user.id).await {
+        Ok(value) => value,
+        Err(err) => return err.into_response(),
+    };
     if current_user.id != id && !is_admin {
         return (
             StatusCode::FORBIDDEN,
@@ -398,7 +408,11 @@ pub(crate) async fn update_user_roles(
         }
     };
 
-    if !check_admin_permission(&state, current_user.id).await {
+    let is_admin = match check_admin_permission(&state, current_user.id).await {
+        Ok(value) => value,
+        Err(err) => return err.into_response(),
+    };
+    if !is_admin {
         return (
             StatusCode::FORBIDDEN,
             Json(ErrorResponse {

@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
+use crate::AppError;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -138,11 +139,10 @@ pub(crate) async fn search(
         }
     };
 
-    let can_read = state
-        .user_service
-        .has_permission(user.id, "articles:read")
-        .await
-        .unwrap_or(false);
+    let can_read = match state.user_service.has_permission(user.id, "articles:read").await {
+        Ok(value) => value,
+        Err(err) => return AppError::from(err).into_response(),
+    };
     if !can_read {
         return (
             StatusCode::FORBIDDEN,
@@ -224,11 +224,10 @@ pub(crate) async fn semantic_search(
         }
     };
 
-    let can_read = state
-        .user_service
-        .has_permission(user.id, "articles:read")
-        .await
-        .unwrap_or(false);
+    let can_read = match state.user_service.has_permission(user.id, "articles:read").await {
+        Ok(value) => value,
+        Err(err) => return AppError::from(err).into_response(),
+    };
     if !can_read {
         return (
             StatusCode::FORBIDDEN,
@@ -309,11 +308,10 @@ pub(crate) async fn ask_question(
         }
     };
 
-    let can_read = state
-        .user_service
-        .has_permission(user.id, "articles:read")
-        .await
-        .unwrap_or(false);
+    let can_read = match state.user_service.has_permission(user.id, "articles:read").await {
+        Ok(value) => value,
+        Err(err) => return AppError::from(err).into_response(),
+    };
     if !can_read {
         return (
             StatusCode::FORBIDDEN,

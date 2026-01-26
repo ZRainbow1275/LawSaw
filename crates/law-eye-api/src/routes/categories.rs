@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
+use crate::AppError;
 
 pub fn router() -> Router<AppState> {
     Router::new().route("/", get(list_categories))
@@ -75,11 +76,14 @@ pub(crate) async fn list_categories(
         }
     };
 
-    let can_read = state
+    let can_read = match state
         .user_service
         .has_permission(user.id, "categories:read")
         .await
-        .unwrap_or(false);
+    {
+        Ok(value) => value,
+        Err(err) => return AppError::from(err).into_response(),
+    };
     if !can_read {
         return (
             StatusCode::FORBIDDEN,

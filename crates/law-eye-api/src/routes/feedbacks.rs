@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
+use crate::AppError;
 use law_eye_db::{CreateFeedback, UpdateFeedback};
 
 pub fn router() -> Router<AppState> {
@@ -134,7 +135,10 @@ pub(crate) async fn list_feedbacks(
         }
     };
 
-    let is_admin = state.user_service.has_permission(user.id, "*").await.unwrap_or(false);
+    let is_admin = match state.user_service.has_permission(user.id, "*").await {
+        Ok(value) => value,
+        Err(err) => return AppError::from(err).into_response(),
+    };
     if !is_admin {
         return (
             StatusCode::FORBIDDEN,
@@ -334,7 +338,10 @@ pub(crate) async fn get_feedback(
         }
     };
 
-    let is_admin = state.user_service.has_permission(user.id, "*").await.unwrap_or(false);
+    let is_admin = match state.user_service.has_permission(user.id, "*").await {
+        Ok(value) => value,
+        Err(err) => return AppError::from(err).into_response(),
+    };
     match state.feedback_service.get_by_id(id).await {
         Ok(row) => {
             if !is_admin && row.user_id != Some(user.id) {
@@ -406,7 +413,10 @@ pub(crate) async fn update_feedback(
         }
     };
 
-    let is_admin = state.user_service.has_permission(user.id, "*").await.unwrap_or(false);
+    let is_admin = match state.user_service.has_permission(user.id, "*").await {
+        Ok(value) => value,
+        Err(err) => return AppError::from(err).into_response(),
+    };
     if !is_admin {
         return (
             StatusCode::FORBIDDEN,

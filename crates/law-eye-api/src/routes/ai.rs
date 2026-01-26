@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
+use crate::AppError;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -79,11 +80,14 @@ pub(crate) async fn get_ai_availability(
         }
     };
 
-    let can_read = state
+    let can_read = match state
         .user_service
         .has_permission(user.id, "articles:read")
         .await
-        .unwrap_or(false);
+    {
+        Ok(value) => value,
+        Err(err) => return AppError::from(err).into_response(),
+    };
     if !can_read {
         return (
             StatusCode::FORBIDDEN,
@@ -138,11 +142,14 @@ pub(crate) async fn process_article(
         }
     };
 
-    let can_write = state
+    let can_write = match state
         .user_service
         .has_permission(user.id, "articles:write")
         .await
-        .unwrap_or(false);
+    {
+        Ok(value) => value,
+        Err(err) => return AppError::from(err).into_response(),
+    };
     if !can_write {
         return (
             StatusCode::FORBIDDEN,
@@ -236,11 +243,14 @@ pub(crate) async fn classify_article(
         }
     };
 
-    let can_write = state
+    let can_write = match state
         .user_service
         .has_permission(user.id, "articles:write")
         .await
-        .unwrap_or(false);
+    {
+        Ok(value) => value,
+        Err(err) => return AppError::from(err).into_response(),
+    };
     if !can_write {
         return (
             StatusCode::FORBIDDEN,
@@ -332,11 +342,14 @@ pub(crate) async fn summarize_article(
         }
     };
 
-    let can_write = state
+    let can_write = match state
         .user_service
         .has_permission(user.id, "articles:write")
         .await
-        .unwrap_or(false);
+    {
+        Ok(value) => value,
+        Err(err) => return AppError::from(err).into_response(),
+    };
     if !can_write {
         return (
             StatusCode::FORBIDDEN,
@@ -428,11 +441,14 @@ pub(crate) async fn assess_risk(
         }
     };
 
-    let can_write = state
+    let can_write = match state
         .user_service
         .has_permission(user.id, "articles:write")
         .await
-        .unwrap_or(false);
+    {
+        Ok(value) => value,
+        Err(err) => return AppError::from(err).into_response(),
+    };
     if !can_write {
         return (
             StatusCode::FORBIDDEN,
@@ -523,11 +539,14 @@ pub(crate) async fn get_ai_status(
         }
     };
 
-    let can_read = state
+    let can_read = match state
         .user_service
         .has_permission(user.id, "articles:read")
         .await
-        .unwrap_or(false);
+    {
+        Ok(value) => value,
+        Err(err) => return AppError::from(err).into_response(),
+    };
     if !can_read {
         return (
             StatusCode::FORBIDDEN,

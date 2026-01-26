@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
+use crate::AppError;
 use law_eye_db::CreateSource;
 use law_eye_queue::IngestTask;
 
@@ -121,11 +122,10 @@ pub(crate) async fn list_sources(
         }
     };
 
-    let can_read = state
-        .user_service
-        .has_permission(user.id, "sources:read")
-        .await
-        .unwrap_or(false);
+    let can_read = match state.user_service.has_permission(user.id, "sources:read").await {
+        Ok(value) => value,
+        Err(err) => return AppError::from(err).into_response(),
+    };
     if !can_read {
         return (
             StatusCode::FORBIDDEN,
@@ -185,11 +185,10 @@ pub(crate) async fn get_source(
         }
     };
 
-    let can_read = state
-        .user_service
-        .has_permission(user.id, "sources:read")
-        .await
-        .unwrap_or(false);
+    let can_read = match state.user_service.has_permission(user.id, "sources:read").await {
+        Ok(value) => value,
+        Err(err) => return AppError::from(err).into_response(),
+    };
     if !can_read {
         return (
             StatusCode::FORBIDDEN,
@@ -245,7 +244,10 @@ pub(crate) async fn create_source(
         }
     };
 
-    let is_admin = state.user_service.has_permission(user.id, "*").await.unwrap_or(false);
+    let is_admin = match state.user_service.has_permission(user.id, "*").await {
+        Ok(value) => value,
+        Err(err) => return AppError::from(err).into_response(),
+    };
     if !is_admin {
         return (
             StatusCode::FORBIDDEN,
@@ -302,7 +304,10 @@ pub(crate) async fn trigger_fetch(
         }
     };
 
-    let is_admin = state.user_service.has_permission(user.id, "*").await.unwrap_or(false);
+    let is_admin = match state.user_service.has_permission(user.id, "*").await {
+        Ok(value) => value,
+        Err(err) => return AppError::from(err).into_response(),
+    };
     if !is_admin {
         return (
             StatusCode::FORBIDDEN,

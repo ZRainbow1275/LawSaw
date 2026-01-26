@@ -156,6 +156,17 @@ pub struct ErrorResponse {
     pub code: String,
 }
 
+fn permission_check_failed(err: Error) -> (StatusCode, Json<ErrorResponse>) {
+    tracing::error!(error = %err, "permission check failed");
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Internal server error".to_string(),
+            code: "INTERNAL_ERROR".to_string(),
+        }),
+    )
+}
+
 #[derive(Serialize, ToSchema)]
 pub struct DeleteResponse {
     pub success: bool,
@@ -222,7 +233,7 @@ pub(crate) async fn list_articles(
         .user_service
         .has_permission(user.id, "articles:read")
         .await
-        .unwrap_or(false);
+        .map_err(permission_check_failed)?;
     if !can_read {
         return Err((
             StatusCode::FORBIDDEN,
@@ -303,7 +314,7 @@ pub(crate) async fn get_stats(
         .user_service
         .has_permission(user.id, "articles:read")
         .await
-        .unwrap_or(false);
+        .map_err(permission_check_failed)?;
     if !can_read {
         return Err((
             StatusCode::FORBIDDEN,
@@ -356,7 +367,7 @@ pub(crate) async fn get_analytics_summary(
         .user_service
         .has_permission(user.id, "articles:read")
         .await
-        .unwrap_or(false);
+        .map_err(permission_check_failed)?;
     if !can_read {
         return Err((
             StatusCode::FORBIDDEN,
@@ -434,7 +445,7 @@ pub(crate) async fn get_category_counts(
         .user_service
         .has_permission(user.id, "articles:read")
         .await
-        .unwrap_or(false);
+        .map_err(permission_check_failed)?;
     if !can_read {
         return Err((
             StatusCode::FORBIDDEN,
@@ -501,7 +512,7 @@ pub(crate) async fn get_trends(
         .user_service
         .has_permission(user.id, "articles:read")
         .await
-        .unwrap_or(false);
+        .map_err(permission_check_failed)?;
     if !can_read {
         return Err((
             StatusCode::FORBIDDEN,
@@ -579,7 +590,7 @@ pub(crate) async fn list_recent(
         .user_service
         .has_permission(user.id, "articles:read")
         .await
-        .unwrap_or(false);
+        .map_err(permission_check_failed)?;
     if !can_read {
         return Err((
             StatusCode::FORBIDDEN,
@@ -631,7 +642,7 @@ pub(crate) async fn get_article(
         .user_service
         .has_permission(user.id, "articles:read")
         .await
-        .unwrap_or(false);
+        .map_err(permission_check_failed)?;
     if !can_read {
         return Err((
             StatusCode::FORBIDDEN,
@@ -681,7 +692,7 @@ pub(crate) async fn delete_article(
         .user_service
         .has_permission(user.id, "articles:write")
         .await
-        .unwrap_or(false);
+        .map_err(permission_check_failed)?;
     if !can_write {
         return Err((
             StatusCode::FORBIDDEN,
@@ -745,7 +756,7 @@ pub(crate) async fn publish_article(
         .user_service
         .has_permission(user.id, "articles:publish")
         .await
-        .unwrap_or(false);
+        .map_err(permission_check_failed)?;
     if !can_publish {
         return Err((
             StatusCode::FORBIDDEN,
@@ -794,7 +805,7 @@ pub(crate) async fn archive_article(
         .user_service
         .has_permission(user.id, "articles:publish")
         .await
-        .unwrap_or(false);
+        .map_err(permission_check_failed)?;
     if !can_publish {
         return Err((
             StatusCode::FORBIDDEN,
@@ -844,7 +855,7 @@ pub(crate) async fn batch_update_status(
         .user_service
         .has_permission(user.id, "articles:publish")
         .await
-        .unwrap_or(false);
+        .map_err(permission_check_failed)?;
     if !can_publish {
         return Err((
             StatusCode::FORBIDDEN,
