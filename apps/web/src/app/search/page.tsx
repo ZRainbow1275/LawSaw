@@ -26,14 +26,22 @@ const PAGE_SIZE = 10;
 function normalizeExcerpt(excerpt: string): string {
 	const trimmed = excerpt.trim();
 	if (!trimmed) return "";
-	if (!trimmed.includes("<")) return trimmed;
+	if (!trimmed.includes("<") && !trimmed.includes("&")) {
+		return trimmed.replace(/\s+/g, " ").trim();
+	}
+
+	const withoutScriptOrStyle = trimmed
+		.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+		.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ");
+
+	const strippedTags = withoutScriptOrStyle.replace(/<[^>]+>/g, " ");
 
 	try {
-		const doc = new DOMParser().parseFromString(trimmed, "text/html");
-		const text = doc.body.textContent ?? "";
+		const doc = new DOMParser().parseFromString(strippedTags, "text/html");
+		const text = doc.body.textContent ?? strippedTags;
 		return text.replace(/\s+/g, " ").trim();
 	} catch {
-		return trimmed.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+		return strippedTags.replace(/\s+/g, " ").trim();
 	}
 }
 
