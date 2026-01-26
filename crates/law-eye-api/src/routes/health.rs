@@ -37,18 +37,18 @@ pub(crate) async fn health_check(
 ) -> (StatusCode, Json<HealthResponse>) {
     let check_timeout = Duration::from_secs(2);
 
-    let postgres_ok = match timeout(check_timeout, sqlx::query("SELECT 1").execute(&state.pool)).await
-    {
-        Ok(Ok(_)) => true,
-        Ok(Err(err)) => {
-            warn!(error = %err, "healthcheck: postgres query failed");
-            false
-        }
-        Err(_) => {
-            warn!("healthcheck: postgres query timed out");
-            false
-        }
-    };
+    let postgres_ok =
+        match timeout(check_timeout, sqlx::query("SELECT 1").execute(&state.pool)).await {
+            Ok(Ok(_)) => true,
+            Ok(Err(err)) => {
+                warn!(error = %err, "healthcheck: postgres query failed");
+                false
+            }
+            Err(_) => {
+                warn!("healthcheck: postgres query timed out");
+                false
+            }
+        };
 
     let redis_ok = match timeout(check_timeout, state.task_queue.ping()).await {
         Ok(Ok(())) => true,
@@ -72,7 +72,11 @@ pub(crate) async fn health_check(
     (
         status_code,
         Json(HealthResponse {
-            status: if ok { "ok".to_string() } else { "error".to_string() },
+            status: if ok {
+                "ok".to_string()
+            } else {
+                "error".to_string()
+            },
             version: env!("CARGO_PKG_VERSION").to_string(),
             postgres: DependencyHealth { ok: postgres_ok },
             redis: DependencyHealth { ok: redis_ok },

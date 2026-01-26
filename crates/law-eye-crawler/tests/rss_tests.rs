@@ -42,7 +42,10 @@ fn test_feed_rs_parsing_valid_rss() {
     assert_eq!(feed.entries.len(), 2);
 
     let first_entry = &feed.entries[0];
-    assert_eq!(first_entry.title.as_ref().unwrap().content, "新数据安全法正式实施");
+    assert_eq!(
+        first_entry.title.as_ref().unwrap().content,
+        "新数据安全法正式实施"
+    );
     assert!(!first_entry.links.is_empty());
 }
 
@@ -100,7 +103,10 @@ fn test_feed_rs_parsing_atom_feed() {
 
     let feed = feed_rs::parser::parse(atom_feed.as_bytes()).unwrap();
     assert_eq!(feed.entries.len(), 1);
-    assert_eq!(feed.entries[0].title.as_ref().unwrap().content, "Atom 格式的文章");
+    assert_eq!(
+        feed.entries[0].title.as_ref().unwrap().content,
+        "Atom 格式的文章"
+    );
 }
 
 // 网络测试标记为 ignored，因为需要真实网络

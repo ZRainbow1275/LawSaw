@@ -1,6 +1,6 @@
+use chrono::NaiveDate;
 use law_eye_common::{Error, Result};
 use law_eye_db::{Article, CreateArticle};
-use chrono::NaiveDate;
 use sqlx::{PgPool, Postgres, QueryBuilder};
 use uuid::Uuid;
 
@@ -73,6 +73,26 @@ pub struct ArticleAnalyticsSummary {
     pub sentiment: ArticleSentimentCounts,
 }
 
+#[derive(Debug, sqlx::FromRow)]
+struct ArticleAnalyticsSummaryRow {
+    total: i64,
+    pending: i64,
+    processing: i64,
+    published: i64,
+    archived: i64,
+    rejected: i64,
+    risk_unknown: i64,
+    risk_low: i64,
+    risk_medium: i64,
+    risk_high: i64,
+    risk_critical: i64,
+    sentiment_unknown: i64,
+    sentiment_positive: i64,
+    sentiment_neutral: i64,
+    sentiment_negative: i64,
+    sentiment_mixed: i64,
+}
+
 impl ArticleService {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
@@ -107,8 +127,7 @@ impl ArticleService {
         category_id: Option<Uuid>,
         status: Option<&'a str>,
     ) -> Result<i64> {
-        let mut qb: QueryBuilder<'a, Postgres> =
-            QueryBuilder::new("SELECT COUNT(*) FROM articles");
+        let mut qb: QueryBuilder<'a, Postgres> = QueryBuilder::new("SELECT COUNT(*) FROM articles");
         push_article_filters(&mut qb, category_id, status);
 
         let result: (i64,) = qb
@@ -194,9 +213,10 @@ impl ArticleService {
         .bind(content)
         .bind(summary)
         .bind(category_id)
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await
-        .map_err(|e| Error::Database(e.to_string()))
+        .map_err(|e| Error::Database(e.to_string()))?
+        .ok_or_else(|| Error::NotFound(format!("Article {} not found", id)))
     }
 
     /// Delete article
@@ -361,12 +381,14 @@ impl ArticleService {
         let total = rows.first().map(|(_, _, _, _, total)| *total).unwrap_or(0);
         let hits = rows
             .into_iter()
-            .map(|(article_id, title, excerpt, score, _total)| ArticleSearchHit {
-                article_id,
-                title,
-                excerpt,
-                score,
-            })
+            .map(
+                |(article_id, title, excerpt, score, _total)| ArticleSearchHit {
+                    article_id,
+                    title,
+                    excerpt,
+                    score,
+                },
+            )
             .collect();
 
         Ok((hits, total))
@@ -379,28 +401,30 @@ impl ArticleService {
             .await
             .map_err(|e| Error::Database(e.to_string()))?;
 
-        let published: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM articles WHERE status = 'published'")
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+        let published: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM articles WHERE status = 'published'")
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-        let pending: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM articles WHERE status = 'pending'")
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+        let pending: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM articles WHERE status = 'pending'")
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
         // Count high risk articles (risk_score > 70). `NULL` risk_score will be excluded naturally.
-        let high_risk: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM articles WHERE risk_score > 70")
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+        let high_risk: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM articles WHERE risk_score > 70")
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-        let today: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM articles WHERE created_at >= CURRENT_DATE"
-        )
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+        let today: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM articles WHERE created_at >= CURRENT_DATE")
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
         Ok(ArticleStats {
             total: total.0,
@@ -480,24 +504,7 @@ impl ArticleService {
     }
 
     pub async fn get_analytics_summary(&self) -> Result<ArticleAnalyticsSummary> {
-        let row: (
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-        ) = sqlx::query_as(
+        let row: ArticleAnalyticsSummaryRow = sqlx::query_as(
             r#"
             SELECT
                 COUNT(*)::bigint AS total,
@@ -526,47 +533,28 @@ impl ArticleService {
         .await
         .map_err(|e| Error::Database(e.to_string()))?;
 
-        let (
-            total,
-            pending,
-            processing,
-            published,
-            archived,
-            rejected,
-            risk_unknown,
-            risk_low,
-            risk_medium,
-            risk_high,
-            risk_critical,
-            sentiment_unknown,
-            sentiment_positive,
-            sentiment_neutral,
-            sentiment_negative,
-            sentiment_mixed,
-        ) = row;
-
         Ok(ArticleAnalyticsSummary {
-            total,
+            total: row.total,
             status: ArticleStatusCounts {
-                pending,
-                processing,
-                published,
-                archived,
-                rejected,
+                pending: row.pending,
+                processing: row.processing,
+                published: row.published,
+                archived: row.archived,
+                rejected: row.rejected,
             },
             risk: ArticleRiskCounts {
-                unknown: risk_unknown,
-                low: risk_low,
-                medium: risk_medium,
-                high: risk_high,
-                critical: risk_critical,
+                unknown: row.risk_unknown,
+                low: row.risk_low,
+                medium: row.risk_medium,
+                high: row.risk_high,
+                critical: row.risk_critical,
             },
             sentiment: ArticleSentimentCounts {
-                unknown: sentiment_unknown,
-                positive: sentiment_positive,
-                neutral: sentiment_neutral,
-                negative: sentiment_negative,
-                mixed: sentiment_mixed,
+                unknown: row.sentiment_unknown,
+                positive: row.sentiment_positive,
+                neutral: row.sentiment_neutral,
+                negative: row.sentiment_negative,
+                mixed: row.sentiment_mixed,
             },
         })
     }

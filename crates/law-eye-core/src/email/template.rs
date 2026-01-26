@@ -273,7 +273,10 @@ impl EmailTemplateEngine {
     fn render_risk_badge(risk_score: Option<i32>) -> String {
         match risk_score {
             Some(score) if score >= 70 => {
-                format!(r#"<span class="category-badge risk-high">风险: {}</span>"#, score)
+                format!(
+                    r#"<span class="category-badge risk-high">风险: {}</span>"#,
+                    score
+                )
             }
             Some(score) if score >= 40 => {
                 format!(
@@ -282,7 +285,10 @@ impl EmailTemplateEngine {
                 )
             }
             Some(score) if score > 0 => {
-                format!(r#"<span class="category-badge risk-low">风险: {}</span>"#, score)
+                format!(
+                    r#"<span class="category-badge risk-low">风险: {}</span>"#,
+                    score
+                )
             }
             _ => String::new(),
         }

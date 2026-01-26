@@ -1,7 +1,7 @@
 mod auth;
 mod error;
-mod openapi;
 mod middleware;
+mod openapi;
 mod routes;
 mod state;
 pub use error::{ApiError, ApiResult, AppError};
@@ -12,14 +12,17 @@ use law_eye_ai::{AiService, LlmGateway};
 use law_eye_common::AppConfig;
 use law_eye_db::create_pool;
 use law_eye_queue::TaskQueue;
+use std::net::SocketAddr;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tower_sessions::{Expiry, SessionManagerLayer};
-use tower_sessions_redis_store::{fred::prelude::{ClientLike, Client as RedisClient, Config as RedisConfig}, RedisStore};
+use tower_sessions_redis_store::{
+    fred::prelude::{Client as RedisClient, ClientLike, Config as RedisConfig},
+    RedisStore,
+};
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use url::Url;
-use std::net::SocketAddr;
 
 use crate::auth::AuthBackend;
 use crate::middleware::{CsrfLayer, RequestIdLayer};
@@ -48,7 +51,10 @@ async fn main() -> anyhow::Result<()> {
     let config = AppConfig::load().unwrap_or_default();
 
     info!("Starting Law Eye API server...");
-    info!("Database URL: {}", redact_sensitive_url(&config.database.url));
+    info!(
+        "Database URL: {}",
+        redact_sensitive_url(&config.database.url)
+    );
     info!("Redis URL: {}", redact_sensitive_url(&config.redis.url));
     info!("Server Port: {}", config.server.port);
 
@@ -119,7 +125,13 @@ async fn main() -> anyhow::Result<()> {
         .allow_origin(AllowOrigin::predicate(move |origin, _| {
             cors_allowed_origins.iter().any(|allowed| allowed == origin)
         }))
-        .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE, Method::OPTIONS])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
         .allow_headers([
             header::CONTENT_TYPE,
             header::AUTHORIZATION,
@@ -156,7 +168,11 @@ async fn main() -> anyhow::Result<()> {
     info!("Server listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
 
     Ok(())
 }

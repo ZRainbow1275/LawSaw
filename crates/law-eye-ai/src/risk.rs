@@ -82,7 +82,15 @@ impl RiskAssessor {
 
         // 高风险关键词
         let high_risk_keywords = [
-            "处罚", "罚款", "违法", "违规", "责令", "整改", "约谈", "警示", "通报批评",
+            "处罚",
+            "罚款",
+            "违法",
+            "违规",
+            "责令",
+            "整改",
+            "约谈",
+            "警示",
+            "通报批评",
         ];
         for kw in high_risk_keywords {
             if text.contains(kw) {

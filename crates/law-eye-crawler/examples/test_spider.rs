@@ -24,15 +24,23 @@ async fn main() -> anyhow::Result<()> {
         delay_ms: None,
     };
 
-    match spider.fetch("https://news.ycombinator.com/", &hn_config).await {
+    match spider
+        .fetch("https://news.ycombinator.com/", &hn_config)
+        .await
+    {
         Ok(articles) => {
             println!("   ✅ 成功获取 {} 篇文章", articles.len());
             for (i, article) in articles.iter().take(5).enumerate() {
                 let title_preview: String = article.title.chars().take(60).collect();
-                println!("      {}. {}{}",
+                println!(
+                    "      {}. {}{}",
                     i + 1,
                     title_preview,
-                    if article.title.chars().count() > 60 { "..." } else { "" }
+                    if article.title.chars().count() > 60 {
+                        "..."
+                    } else {
+                        ""
+                    }
                 );
             }
         }
@@ -51,7 +59,10 @@ async fn main() -> anyhow::Result<()> {
         delay_ms: None,
     };
 
-    match spider.fetch("https://github.com/trending/rust?since=daily", &gh_config).await {
+    match spider
+        .fetch("https://github.com/trending/rust?since=daily", &gh_config)
+        .await
+    {
         Ok(articles) => {
             println!("   ✅ 成功获取 {} 个项目", articles.len());
             for (i, article) in articles.iter().take(5).enumerate() {
@@ -74,7 +85,13 @@ async fn main() -> anyhow::Result<()> {
         delay_ms: None,
     };
 
-    match spider.fetch("https://www.moj.gov.cn/pub/sfbgw/ywdt/ywdt.html", &moj_config).await {
+    match spider
+        .fetch(
+            "https://www.moj.gov.cn/pub/sfbgw/ywdt/ywdt.html",
+            &moj_config,
+        )
+        .await
+    {
         Ok(articles) => {
             if articles.is_empty() {
                 println!("   ⚠️ 未匹配到文章 (可能需要调整选择器)");

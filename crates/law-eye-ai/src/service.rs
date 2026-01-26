@@ -1,6 +1,4 @@
-use crate::{
-    Classifier, Embedder, LlmGateway, RiskAssessor, Summarizer, TagExtractor,
-};
+use crate::{Classifier, Embedder, LlmGateway, RiskAssessor, Summarizer, TagExtractor};
 use law_eye_common::Result;
 use serde_json::json;
 use std::sync::Arc;
@@ -28,11 +26,7 @@ impl AiService {
     }
 
     /// 完整的 AI 处理流程
-    pub async fn process_article(
-        &self,
-        title: &str,
-        content: &str,
-    ) -> Result<ArticleAiResult> {
+    pub async fn process_article(&self, title: &str, content: &str) -> Result<ArticleAiResult> {
         info!("Starting full AI processing for article: {}", title);
 
         // 并行执行分类、摘要、风险评估
@@ -93,10 +87,7 @@ impl AiService {
     }
 
     /// 分块嵌入（用于 RAG / 向量检索）
-    pub async fn embed_chunks(
-        &self,
-        text: &str,
-    ) -> Result<Vec<(String, crate::EmbeddingResult)>> {
+    pub async fn embed_chunks(&self, text: &str) -> Result<Vec<(String, crate::EmbeddingResult)>> {
         self.embedder.embed_chunks(text).await
     }
 }

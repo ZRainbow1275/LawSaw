@@ -41,7 +41,9 @@ impl McpServer {
         let result = InitializeResult {
             protocol_version: "2024-11-05".to_string(),
             capabilities: ServerCapabilities {
-                tools: Some(ToolsCapability { list_changed: false }),
+                tools: Some(ToolsCapability {
+                    list_changed: false,
+                }),
                 resources: Some(ResourcesCapability {
                     subscribe: false,
                     list_changed: false,
@@ -79,7 +81,8 @@ impl McpServer {
             },
             Tool {
                 name: "semantic_search".to_string(),
-                description: "语义搜索法律资讯。使用向量相似度进行语义匹配，适合复杂查询。".to_string(),
+                description: "语义搜索法律资讯。使用向量相似度进行语义匹配，适合复杂查询。"
+                    .to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -98,7 +101,8 @@ impl McpServer {
             },
             Tool {
                 name: "ask_question".to_string(),
-                description: "基于知识库回答法律相关问题。使用 RAG 技术，结合相关文章生成答案。".to_string(),
+                description: "基于知识库回答法律相关问题。使用 RAG 技术，结合相关文章生成答案。"
+                    .to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -139,7 +143,9 @@ impl McpServer {
         let params: CallToolParams = match params {
             Some(p) => match serde_json::from_value(p) {
                 Ok(p) => p,
-                Err(e) => return JsonRpcResponse::error(id, -32602, &format!("Invalid params: {}", e)),
+                Err(e) => {
+                    return JsonRpcResponse::error(id, -32602, &format!("Invalid params: {}", e))
+                }
             },
             None => return JsonRpcResponse::error(id, -32602, "Missing params"),
         };
@@ -172,14 +178,14 @@ impl McpServer {
 
     async fn tool_search_articles(&self, args: Option<Value>) -> Result<String, String> {
         let args = args.ok_or("Missing arguments")?;
-        let query = args.get("query")
+        let query = args
+            .get("query")
             .and_then(|v| v.as_str())
             .ok_or("Missing query parameter")?;
-        let limit = args.get("limit")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(10);
+        let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(10);
 
-        let articles = self.article_service
+        let articles = self
+            .article_service
             .search(query, limit)
             .await
             .map_err(|e| e.to_string())?;
@@ -196,7 +202,10 @@ impl McpServer {
                 article.title,
                 article.id,
                 article.summary.as_deref().unwrap_or("无摘要"),
-                article.published_at.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_default()
+                article
+                    .published_at
+                    .map(|d| d.format("%Y-%m-%d").to_string())
+                    .unwrap_or_default()
             ));
         }
 
@@ -205,14 +214,14 @@ impl McpServer {
 
     async fn tool_semantic_search(&self, args: Option<Value>) -> Result<String, String> {
         let args = args.ok_or("Missing arguments")?;
-        let query = args.get("query")
+        let query = args
+            .get("query")
             .and_then(|v| v.as_str())
             .ok_or("Missing query parameter")?;
-        let limit = args.get("limit")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(5);
+        let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(5);
 
-        let results = self.rag_service
+        let results = self
+            .rag_service
             .search(query, limit)
             .await
             .map_err(|e| e.to_string())?;
@@ -237,19 +246,20 @@ impl McpServer {
 
     async fn tool_ask_question(&self, args: Option<Value>) -> Result<String, String> {
         let args = args.ok_or("Missing arguments")?;
-        let question = args.get("question")
+        let question = args
+            .get("question")
             .and_then(|v| v.as_str())
             .ok_or("Missing question parameter")?;
-        let top_k = args.get("top_k")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(5);
+        let top_k = args.get("top_k").and_then(|v| v.as_i64()).unwrap_or(5);
 
-        let answer = self.rag_service
+        let answer = self
+            .rag_service
             .answer(question, top_k)
             .await
             .map_err(|e| e.to_string())?;
 
-        let mut output = format!("**回答** (置信度: {:.0}%)\n\n{}\n\n",
+        let mut output = format!(
+            "**回答** (置信度: {:.0}%)\n\n{}\n\n",
             answer.confidence * 100.0,
             answer.answer
         );
@@ -276,7 +286,8 @@ impl McpServer {
             .and_then(|v| v.as_i64())
             .unwrap_or(10);
 
-        let articles = self.article_service
+        let articles = self
+            .article_service
             .list(limit, 0)
             .await
             .map_err(|e| e.to_string())?;
@@ -292,8 +303,14 @@ impl McpServer {
                 i + 1,
                 article.title,
                 article.status,
-                article.category_id.map(|id| id.to_string()).unwrap_or_else(|| "未分类".to_string()),
-                article.published_at.map(|d| d.format("%Y-%m-%d %H:%M").to_string()).unwrap_or_default()
+                article
+                    .category_id
+                    .map(|id| id.to_string())
+                    .unwrap_or_else(|| "未分类".to_string()),
+                article
+                    .published_at
+                    .map(|d| d.format("%Y-%m-%d %H:%M").to_string())
+                    .unwrap_or_default()
             ));
         }
 
@@ -320,11 +337,17 @@ impl McpServer {
         JsonRpcResponse::success(id, serde_json::to_value(result).unwrap())
     }
 
-    async fn handle_read_resource(&self, id: Option<Value>, params: Option<Value>) -> JsonRpcResponse {
+    async fn handle_read_resource(
+        &self,
+        id: Option<Value>,
+        params: Option<Value>,
+    ) -> JsonRpcResponse {
         let params: ReadResourceParams = match params {
             Some(p) => match serde_json::from_value(p) {
                 Ok(p) => p,
-                Err(e) => return JsonRpcResponse::error(id, -32602, &format!("Invalid params: {}", e)),
+                Err(e) => {
+                    return JsonRpcResponse::error(id, -32602, &format!("Invalid params: {}", e))
+                }
             },
             None => return JsonRpcResponse::error(id, -32602, "Missing params"),
         };
@@ -370,16 +393,17 @@ impl McpServer {
                     }
                 };
 
-                let categories_total: (i64,) = match sqlx::query_as("SELECT COUNT(*) FROM categories")
-                    .fetch_one(&self.pool)
-                    .await
-                {
-                    Ok(v) => v,
-                    Err(e) => {
-                        error!("Failed to count categories: {}", e);
-                        return JsonRpcResponse::error(id, -32603, "Failed to compute stats");
-                    }
-                };
+                let categories_total: (i64,) =
+                    match sqlx::query_as("SELECT COUNT(*) FROM categories")
+                        .fetch_one(&self.pool)
+                        .await
+                    {
+                        Ok(v) => v,
+                        Err(e) => {
+                            error!("Failed to count categories: {}", e);
+                            return JsonRpcResponse::error(id, -32603, "Failed to compute stats");
+                        }
+                    };
 
                 let sources_total: (i64,) = match sqlx::query_as("SELECT COUNT(*) FROM sources")
                     .fetch_one(&self.pool)
@@ -412,7 +436,8 @@ impl McpServer {
                         "sources": sources_total.0,
                         "users": users_total.0
                     }
-                }).to_string()
+                })
+                .to_string()
             }
             _ => return JsonRpcResponse::error(id, -32602, "Unknown resource URI"),
         };

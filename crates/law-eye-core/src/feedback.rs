@@ -32,7 +32,12 @@ impl FeedbackService {
         .map_err(|e| Error::Database(e.to_string()))
     }
 
-    pub async fn list_by_user(&self, user_id: Uuid, limit: i64, offset: i64) -> Result<Vec<Feedback>> {
+    pub async fn list_by_user(
+        &self,
+        user_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Feedback>> {
         sqlx::query_as::<_, Feedback>(
             r#"
             SELECT * FROM feedbacks

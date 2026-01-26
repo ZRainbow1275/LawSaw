@@ -4,7 +4,6 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use serde::Serialize;
 use std::{
     collections::HashSet,
     future::Future,
@@ -15,10 +14,7 @@ use std::{
 use tower::{Layer, Service};
 use url::{Host, Url};
 
-#[derive(Debug, Serialize)]
-struct CsrfError {
-    error: String,
-}
+use crate::ApiError;
 
 #[derive(Clone)]
 pub struct CsrfLayer {
@@ -109,9 +105,7 @@ where
 
             Ok((
                 StatusCode::FORBIDDEN,
-                Json(CsrfError {
-                    error: "CSRF validation failed".to_string(),
-                }),
+                Json(ApiError::new("CSRF validation failed").with_code("CSRF_FAILED")),
             )
                 .into_response())
         })

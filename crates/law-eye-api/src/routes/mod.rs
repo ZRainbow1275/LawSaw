@@ -14,6 +14,7 @@ use axum::Router;
 
 use axum::middleware;
 
+use crate::middleware::rate_limit::RateLimitLayer;
 use crate::middleware::RequireAuth;
 use crate::state::AppState;
 
@@ -29,7 +30,8 @@ pub fn create_router(state: AppState) -> Router {
         .nest("/apikeys", apikeys::router())
         // Default deny: everything under /api/v1 requires an authenticated session,
         // except routes explicitly mounted outside this protected router (e.g. /api/v1/auth/*).
-        .layer(middleware::from_extractor::<RequireAuth>());
+        .layer(middleware::from_extractor::<RequireAuth>())
+        .layer(RateLimitLayer::api());
 
     Router::new()
         .merge(openapi::router())

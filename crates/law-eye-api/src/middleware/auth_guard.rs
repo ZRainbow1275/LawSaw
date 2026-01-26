@@ -1,19 +1,13 @@
 use axum::{
     extract::FromRequestParts,
-    http::{request::Parts, StatusCode},
+    http::request::Parts,
     response::{IntoResponse, Response},
-    Json,
 };
-use serde::Serialize;
 
-use crate::auth::{AuthSession, AuthenticatedUser};
+use crate::auth::AuthSession;
+use crate::AppError;
 
-#[derive(Debug, Serialize)]
-struct AuthError {
-    error: String,
-}
-
-pub struct RequireAuth(pub AuthenticatedUser);
+pub struct RequireAuth;
 
 impl<S> FromRequestParts<S> for RequireAuth
 where
@@ -27,14 +21,8 @@ where
             .map_err(|e| e.into_response())?;
 
         match auth_session.user {
-            Some(user) => Ok(RequireAuth(user)),
-            None => Err((
-                StatusCode::UNAUTHORIZED,
-                Json(AuthError {
-                    error: "Authentication required".to_string(),
-                }),
-            )
-                .into_response()),
+            Some(_) => Ok(RequireAuth),
+            None => Err(AppError::unauthorized("Authentication required").into_response()),
         }
     }
 }

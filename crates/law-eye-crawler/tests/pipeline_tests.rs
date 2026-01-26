@@ -124,10 +124,10 @@ fn test_pipeline_batch_processing() {
     let pipeline = Pipeline::new().add_stage(FilterShortTitles);
 
     let articles = vec![
-        make_article("短", None),      // 1 char - 过滤
-        make_article("两字", None),    // 2 chars - 过滤
-        make_article("三个字", None),  // 3 chars - 过滤
-        make_article("这是四个字", None), // 5 chars - 保留
+        make_article("短", None),           // 1 char - 过滤
+        make_article("两字", None),         // 2 chars - 过滤
+        make_article("三个字", None),       // 3 chars - 过滤
+        make_article("这是四个字", None),   // 5 chars - 保留
         make_article("另一个长标题", None), // 6 chars - 保留
     ];
 

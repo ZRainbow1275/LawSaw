@@ -193,11 +193,7 @@ impl KnowledgeService {
     }
 
     /// Get entities by type
-    pub async fn get_entities_by_type(
-        &self,
-        entity_type: &str,
-        limit: i64,
-    ) -> Result<Vec<Entity>> {
+    pub async fn get_entities_by_type(&self, entity_type: &str, limit: i64) -> Result<Vec<Entity>> {
         let entities = sqlx::query_as::<_, Entity>(
             "SELECT * FROM entities WHERE entity_type = $1 ORDER BY mention_count DESC LIMIT $2",
         )

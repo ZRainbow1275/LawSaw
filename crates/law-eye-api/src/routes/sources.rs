@@ -159,7 +159,11 @@ pub(crate) async fn get_source(
         return Err(AppError::forbidden("Permission denied"));
     }
 
-    let source = state.source_service.get_by_id(id).await.map_err(AppError::from)?;
+    let source = state
+        .source_service
+        .get_by_id(id)
+        .await
+        .map_err(AppError::from)?;
     Ok(Json(SourceResponse::from(source)))
 }
 
@@ -238,7 +242,11 @@ pub(crate) async fn trigger_fetch(
         return Err(AppError::forbidden("Admin permission required"));
     }
 
-    let source = state.source_service.get_by_id(id).await.map_err(AppError::from)?;
+    let source = state
+        .source_service
+        .get_by_id(id)
+        .await
+        .map_err(AppError::from)?;
 
     let task = IngestTask {
         source_id: source.id,

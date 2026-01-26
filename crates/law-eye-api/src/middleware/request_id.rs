@@ -70,7 +70,8 @@ where
                 .insert("x-request-id", request_id_header.clone());
 
             // Best-effort: inject `request_id` into JSON error responses to make debugging easier.
-            let is_error = response.status().is_client_error() || response.status().is_server_error();
+            let is_error =
+                response.status().is_client_error() || response.status().is_server_error();
             let is_json = response
                 .headers()
                 .get(header::CONTENT_TYPE)

@@ -30,7 +30,9 @@ impl ApiKeyService {
             .map_err(|e| Error::Internal(format!("Failed to hash API key: {}", e)))?
             .to_string();
 
-        let permissions = input.permissions.unwrap_or_else(|| vec!["read".to_string()]);
+        let permissions = input
+            .permissions
+            .unwrap_or_else(|| vec!["read".to_string()]);
         let rate_limit = input.rate_limit.unwrap_or(100);
 
         let api_key = sqlx::query_as::<_, ApiKey>(

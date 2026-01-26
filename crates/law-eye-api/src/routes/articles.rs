@@ -165,7 +165,12 @@ pub fn router() -> Router<AppState> {
         .route("/trends", get(get_trends))
         .route("/recent", get(list_recent))
         .route("/batch-status", post(batch_update_status))
-        .route("/{id}", get(get_article).delete(delete_article))
+        .route(
+            "/{id}",
+            get(get_article)
+                .patch(update_article)
+                .delete(delete_article),
+        )
         .route("/{id}/publish", post(publish_article))
         .route("/{id}/archive", post(archive_article))
 }
@@ -237,7 +242,12 @@ pub(crate) async fn list_articles(
         .map_err(|e| AppError::internal_with_code("COUNT_ERROR", e.to_string()))?;
     let data: Vec<ArticleResponse> = articles.into_iter().map(|a| a.into()).collect();
 
-    Ok(Json(ArticleListResponse { data, total, limit, offset }))
+    Ok(Json(ArticleListResponse {
+        data,
+        total,
+        limit,
+        offset,
+    }))
 }
 
 #[utoipa::path(
@@ -526,7 +536,89 @@ pub(crate) async fn get_article(
         return Err(AppError::forbidden("Permission denied"));
     }
 
-    let article = state.article_service.get_by_id(id).await.map_err(AppError::from)?;
+    let article = state
+        .article_service
+        .get_by_id(id)
+        .await
+        .map_err(AppError::from)?;
+    Ok(Json(article.into()))
+}
+
+#[utoipa::path(
+    patch,
+    path = "/api/v1/articles/{id}",
+    params(("id" = Uuid, Path, description = "Article ID")),
+    request_body = UpdateArticleRequest,
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "Article updated", body = ArticleResponse),
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 404, description = "Not found", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
+    )
+)]
+pub(crate) async fn update_article(
+    State(state): State<AppState>,
+    auth_session: AuthSession,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdateArticleRequest>,
+) -> ApiResult<Json<ArticleResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+
+    let can_write = state
+        .user_service
+        .has_permission(user.id, "articles:write")
+        .await
+        .map_err(AppError::from)?;
+    if !can_write {
+        return Err(AppError::forbidden("Permission denied"));
+    }
+
+    let title = req.title.as_deref().map(str::trim);
+    let content = req.content.as_deref().map(str::trim);
+    let summary = req.summary.as_deref().map(str::trim);
+
+    if matches!(title, Some("")) {
+        return Err(AppError::validation("title cannot be empty"));
+    }
+
+    if matches!(content, Some("")) {
+        return Err(AppError::validation("content cannot be empty"));
+    }
+
+    if matches!(summary, Some("")) {
+        return Err(AppError::validation("summary cannot be empty"));
+    }
+
+    let has_changes =
+        title.is_some() || content.is_some() || summary.is_some() || req.category_id.is_some();
+    if !has_changes {
+        return Err(AppError::validation("No fields to update"));
+    }
+
+    if let Some(category_id) = req.category_id {
+        state
+            .category_service
+            .get_by_id(category_id)
+            .await
+            .map_err(|e| match e {
+                Error::NotFound(_) => AppError::validation("Invalid category_id"),
+                _ => AppError::from(e),
+            })?;
+    }
+
+    let article = state
+        .article_service
+        .update(id, title, content, summary, req.category_id)
+        .await
+        .map_err(AppError::from)?;
+
     Ok(Json(article.into()))
 }
 

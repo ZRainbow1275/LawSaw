@@ -23,8 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting Law Eye MCP Server...");
 
     // 连接数据库
-    let database_url = std::env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set");
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
     let pool = PgPoolOptions::new()
         .max_connections(5)
@@ -36,11 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 创建 LLM Gateway
     let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
     let base_url = std::env::var("OPENAI_BASE_URL").ok();
-    let gateway = Arc::new(LlmGateway::new(
-        &api_key,
-        base_url.as_deref(),
-        None,
-    ));
+    let gateway = Arc::new(LlmGateway::new(&api_key, base_url.as_deref(), None));
 
     // 创建 MCP 服务器
     let server = McpServer::new(pool, gateway);

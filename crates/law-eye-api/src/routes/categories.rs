@@ -71,11 +71,12 @@ pub(crate) async fn list_categories(
         return Err(AppError::forbidden("Permission denied"));
     }
 
-    let categories = state.category_service.list().await.map_err(AppError::from)?;
+    let categories = state
+        .category_service
+        .list()
+        .await
+        .map_err(AppError::from)?;
     Ok(Json(
-        categories
-            .into_iter()
-            .map(CategoryResponse::from)
-            .collect(),
+        categories.into_iter().map(CategoryResponse::from).collect(),
     ))
 }

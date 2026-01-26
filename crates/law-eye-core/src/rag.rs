@@ -72,12 +72,14 @@ impl RagService {
 
         let search_results: Vec<RagSearchResult> = results
             .into_iter()
-            .map(|(chunk_id, article_id, content, similarity)| RagSearchResult {
-                chunk_id,
-                article_id,
-                content,
-                similarity,
-            })
+            .map(
+                |(chunk_id, article_id, content, similarity)| RagSearchResult {
+                    chunk_id,
+                    article_id,
+                    content,
+                    similarity,
+                },
+            )
             .collect();
 
         info!("Found {} relevant chunks for query", search_results.len());
@@ -149,10 +151,7 @@ impl RagService {
             confidence: f32,
         }
 
-        let response: LlmResponse = match self
-            .gateway
-            .chat_json(system_prompt, &user_prompt)
-            .await
+        let response: LlmResponse = match self.gateway.chat_json(system_prompt, &user_prompt).await
         {
             Ok(r) => r,
             Err(e) => {
@@ -208,12 +207,14 @@ impl RagService {
 
         Ok(results
             .into_iter()
-            .map(|(chunk_id, article_id, content, similarity)| RagSearchResult {
-                chunk_id,
-                article_id,
-                content,
-                similarity,
-            })
+            .map(
+                |(chunk_id, article_id, content, similarity)| RagSearchResult {
+                    chunk_id,
+                    article_id,
+                    content,
+                    similarity,
+                },
+            )
             .collect())
     }
 
@@ -264,12 +265,14 @@ impl RagService {
 
         Ok(results
             .into_iter()
-            .map(|(chunk_id, article_id, content, similarity)| RagSearchResult {
-                chunk_id,
-                article_id,
-                content,
-                similarity,
-            })
+            .map(
+                |(chunk_id, article_id, content, similarity)| RagSearchResult {
+                    chunk_id,
+                    article_id,
+                    content,
+                    similarity,
+                },
+            )
             .collect())
     }
 }

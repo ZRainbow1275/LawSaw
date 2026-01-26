@@ -19,7 +19,10 @@ async fn main() -> anyhow::Result<()> {
         // NPR 新闻
         ("NPR News", "https://feeds.npr.org/1001/rss.xml"),
         // 纽约时报世界新闻
-        ("NYT World", "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"),
+        (
+            "NYT World",
+            "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+        ),
         // The Guardian 法律版块
         ("Guardian Law", "https://www.theguardian.com/law/rss"),
         // Hacker News
@@ -45,10 +48,15 @@ async fn main() -> anyhow::Result<()> {
                 // 显示前 3 篇文章标题
                 for (i, article) in processed.iter().take(3).enumerate() {
                     let title_preview: String = article.title.chars().take(50).collect();
-                    println!("      {}. {}{}",
+                    println!(
+                        "      {}. {}{}",
                         i + 1,
                         title_preview,
-                        if article.title.chars().count() > 50 { "..." } else { "" }
+                        if article.title.chars().count() > 50 {
+                            "..."
+                        } else {
+                            ""
+                        }
                     );
                 }
 

@@ -135,9 +135,7 @@ pub(crate) async fn list_feedbacks(
         .list_all(limit, offset)
         .await
         .map_err(AppError::from)?;
-    Ok(Json(
-        rows.into_iter().map(FeedbackResponse::from).collect(),
-    ))
+    Ok(Json(rows.into_iter().map(FeedbackResponse::from).collect()))
 }
 
 /// Current user: list my feedbacks
@@ -175,9 +173,7 @@ pub(crate) async fn list_my_feedbacks(
         .await
         .map_err(AppError::from)?;
 
-    Ok(Json(
-        rows.into_iter().map(FeedbackResponse::from).collect(),
-    ))
+    Ok(Json(rows.into_iter().map(FeedbackResponse::from).collect()))
 }
 
 /// Create a feedback (any authenticated user)
@@ -222,7 +218,11 @@ pub(crate) async fn create_feedback(
         source_name: req.source_name,
     };
 
-    let row = state.feedback_service.create(input).await.map_err(AppError::from)?;
+    let row = state
+        .feedback_service
+        .create(input)
+        .await
+        .map_err(AppError::from)?;
     Ok((StatusCode::CREATED, Json(FeedbackResponse::from(row))))
 }
 

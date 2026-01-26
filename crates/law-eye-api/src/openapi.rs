@@ -7,7 +7,9 @@ pub struct SecurityAddon;
 
 impl Modify for SecurityAddon {
     fn modify(&self, openapi: &mut openapi::OpenApi) {
-        let components = openapi.components.get_or_insert_with(openapi::Components::new);
+        let components = openapi
+            .components
+            .get_or_insert_with(openapi::Components::new);
         components.add_security_scheme(
             "session",
             SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::with_description(
@@ -34,6 +36,7 @@ impl Modify for SecurityAddon {
         crate::routes::articles::get_trends,
         crate::routes::articles::list_recent,
         crate::routes::articles::get_article,
+        crate::routes::articles::update_article,
         crate::routes::articles::delete_article,
         crate::routes::articles::publish_article,
         crate::routes::articles::archive_article,

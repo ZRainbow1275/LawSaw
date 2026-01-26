@@ -85,7 +85,11 @@ impl AuthnBackend for AuthBackend {
         &self,
         creds: Self::Credentials,
     ) -> Result<Option<Self::User>, Self::Error> {
-        match self.user_service.verify_password(&creds.email, &creds.password).await {
+        match self
+            .user_service
+            .verify_password(&creds.email, &creds.password)
+            .await
+        {
             Ok(user) => Ok(Some(AuthenticatedUser::from_db_user(&user))),
             Err(_) => Ok(None),
         }

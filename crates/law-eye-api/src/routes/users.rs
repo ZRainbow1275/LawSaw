@@ -206,7 +206,11 @@ pub(crate) async fn get_user(
         return Err(AppError::forbidden("Access denied"));
     }
 
-    let user = state.user_service.get_by_id(id).await.map_err(AppError::from)?;
+    let user = state
+        .user_service
+        .get_by_id(id)
+        .await
+        .map_err(AppError::from)?;
     let roles = state
         .user_service
         .get_user_roles(id)
@@ -323,7 +327,11 @@ pub(crate) async fn update_user_roles(
     }
 
     // Verify user exists
-    state.user_service.get_by_id(id).await.map_err(AppError::from)?;
+    state
+        .user_service
+        .get_by_id(id)
+        .await
+        .map_err(AppError::from)?;
 
     let add_roles = normalize_role_names(req.add_roles).map_err(AppError::validation)?;
     let remove_roles = normalize_role_names(req.remove_roles).map_err(AppError::validation)?;

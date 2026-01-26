@@ -71,7 +71,10 @@ impl Classifier {
         let text = format!("{} {}", title, content).to_lowercase();
 
         // 立法前沿
-        if contains_any(&text, &["法律", "法规", "条例", "草案", "立法", "修订", "出台"]) {
+        if contains_any(
+            &text,
+            &["法律", "法规", "条例", "草案", "立法", "修订", "出台"],
+        ) {
             return Some(ClassifyResult {
                 category_slug: "legislation".to_string(),
                 confidence: 0.85,
@@ -106,7 +109,14 @@ impl Classifier {
         // 数据动态
         if contains_any(
             &text,
-            &["数据安全", "个人信息", "隐私", "数据出境", "跨境传输", "数据保护"],
+            &[
+                "数据安全",
+                "个人信息",
+                "隐私",
+                "数据出境",
+                "跨境传输",
+                "数据保护",
+            ],
         ) {
             return Some(ClassifyResult {
                 category_slug: "data".to_string(),

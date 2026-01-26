@@ -2,8 +2,10 @@ use axum::{
     body::Body,
     extract::ConnectInfo,
     http::{Request, Response, StatusCode},
+    response::IntoResponse,
+    Json,
 };
-use serde::Serialize;
+use serde_json::json;
 use std::{
     collections::HashMap,
     future::Future,
@@ -16,11 +18,7 @@ use std::{
 use tokio::sync::RwLock;
 use tower::{Layer, Service};
 
-#[derive(Debug, Serialize)]
-struct RateLimitError {
-    error: String,
-    retry_after_seconds: u64,
-}
+use crate::ApiError;
 
 #[derive(Debug, Clone)]
 struct RateLimitEntry {
@@ -81,9 +79,8 @@ impl RateLimitState {
     pub async fn cleanup_expired(&self) {
         let now = Instant::now();
         let mut entries = self.entries.write().await;
-        entries.retain(|_, entry| {
-            now.duration_since(entry.window_start) < self.window_duration * 2
-        });
+        entries
+            .retain(|_, entry| now.duration_since(entry.window_start) < self.window_duration * 2);
     }
 }
 
@@ -176,19 +173,15 @@ where
             match state.check_rate_limit(&client_ip).await {
                 Ok(()) => inner.call(req).await,
                 Err(retry_after) => {
-                    let error_response = RateLimitError {
-                        error: "Too many requests. Please try again later.".to_string(),
-                        retry_after_seconds: retry_after,
-                    };
+                    let body = ApiError::new("Too many requests. Please try again later.")
+                        .with_code("RATE_LIMITED")
+                        .with_details(json!({ "retry_after_seconds": retry_after }));
 
-                    let body = serde_json::to_string(&error_response).unwrap_or_default();
-
-                    Ok(Response::builder()
-                        .status(StatusCode::TOO_MANY_REQUESTS)
-                        .header("Retry-After", retry_after.to_string())
-                        .header("Content-Type", "application/json")
-                        .body(Body::from(body))
-                        .unwrap())
+                    let mut response = (StatusCode::TOO_MANY_REQUESTS, Json(body)).into_response();
+                    if let Ok(value) = retry_after.to_string().parse() {
+                        response.headers_mut().insert("Retry-After", value);
+                    }
+                    Ok(response)
                 }
             }
         })

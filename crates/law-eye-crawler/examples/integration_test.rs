@@ -60,7 +60,10 @@ async fn main() -> anyhow::Result<()> {
         delay_ms: None,
     };
 
-    match spider.fetch("https://news.ycombinator.com/", &hn_config).await {
+    match spider
+        .fetch("https://news.ycombinator.com/", &hn_config)
+        .await
+    {
         Ok(articles) => {
             println!("  ✅ Hacker News - {} 篇文章", articles.len());
         }
@@ -104,12 +107,17 @@ async fn main() -> anyhow::Result<()> {
 
     for article in &processed {
         let is_trimmed = !article.title.starts_with(' ') && !article.title.ends_with(' ');
-        let is_html_cleaned = article.content.as_ref()
+        let is_html_cleaned = article
+            .content
+            .as_ref()
             .map(|c| !c.contains('<') && !c.contains('>'))
             .unwrap_or(true);
 
         if is_trimmed && is_html_cleaned {
-            println!("  ✅ 标题: \"{}\" - 已清洗", article.title.chars().take(30).collect::<String>());
+            println!(
+                "  ✅ 标题: \"{}\" - 已清洗",
+                article.title.chars().take(30).collect::<String>()
+            );
         } else {
             println!("  ❌ 清洗失败: {}", article.title);
             all_passed = false;
@@ -125,7 +133,10 @@ async fn main() -> anyhow::Result<()> {
     println!("└──────────────────────────────────────────────────────────┘");
 
     // 获取真实数据检验
-    match rss_fetcher.fetch("https://feeds.bbci.co.uk/zhongwen/simp/rss.xml").await {
+    match rss_fetcher
+        .fetch("https://feeds.bbci.co.uk/zhongwen/simp/rss.xml")
+        .await
+    {
         Ok(articles) => {
             let processed = pipeline.process_batch(articles);
 

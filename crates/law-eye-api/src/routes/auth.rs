@@ -16,13 +16,15 @@ use crate::middleware::rate_limit::RateLimitLayer;
 use crate::state::AppState;
 use crate::{ApiError, ApiResult, AppError};
 
-static EMAIL_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap()
-});
+static EMAIL_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap());
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/register", post(register).layer(RateLimitLayer::register()))
+        .route(
+            "/register",
+            post(register).layer(RateLimitLayer::register()),
+        )
         .route("/login", post(login).layer(RateLimitLayer::login()))
         .route("/logout", post(logout))
         .route("/me", get(get_current_user))

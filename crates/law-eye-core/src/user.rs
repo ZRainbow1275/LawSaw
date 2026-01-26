@@ -271,7 +271,12 @@ impl UserService {
         Ok(permissions.contains(&permission.to_string()))
     }
 
-    pub async fn assign_role(&self, user_id: Uuid, role_name: &str, granted_by: Option<Uuid>) -> Result<()> {
+    pub async fn assign_role(
+        &self,
+        user_id: Uuid,
+        role_name: &str,
+        granted_by: Option<Uuid>,
+    ) -> Result<()> {
         assign_role_inner(&self.pool, user_id, role_name, granted_by).await
     }
 

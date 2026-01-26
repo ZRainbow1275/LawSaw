@@ -1,7 +1,7 @@
 use law_eye_ai::{AiService, LlmGateway};
 use law_eye_core::{
-    ApiKeyService, ArticleService, AuditService, CategoryService, FeedbackService, KnowledgeService,
-    RagService, SourceService, UserService,
+    ApiKeyService, ArticleService, AuditService, CategoryService, FeedbackService,
+    KnowledgeService, RagService, SourceService, UserService,
 };
 use law_eye_queue::TaskQueue;
 use sqlx::PgPool;
@@ -35,9 +35,7 @@ impl AppState {
     ) -> Self {
         let gateway = Arc::new(llm_gateway.unwrap_or_else(|| {
             LlmGateway::new(
-                std::env::var("OPENAI_API_KEY")
-                    .unwrap_or_default()
-                    .as_str(),
+                std::env::var("OPENAI_API_KEY").unwrap_or_default().as_str(),
                 std::env::var("OPENAI_BASE_URL").ok().as_deref(),
                 None,
             )

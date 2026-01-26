@@ -34,7 +34,12 @@ struct Worker {
 }
 
 impl Worker {
-    fn new(pool: PgPool, task_queue: TaskQueue, ai_service: Option<AiService>, shutdown: Arc<AtomicBool>) -> Self {
+    fn new(
+        pool: PgPool,
+        task_queue: TaskQueue,
+        ai_service: Option<AiService>,
+        shutdown: Arc<AtomicBool>,
+    ) -> Self {
         Self {
             pool,
             task_queue: Arc::new(task_queue),
@@ -59,7 +64,11 @@ impl Worker {
                 last_maintenance = Instant::now();
             }
 
-            if let Some(reserved) = self.task_queue.reserve_retryable::<IngestTask>(QUEUE_INGEST, 5).await? {
+            if let Some(reserved) = self
+                .task_queue
+                .reserve_retryable::<IngestTask>(QUEUE_INGEST, 5)
+                .await?
+            {
                 self.handle_ingest_reserved(reserved).await;
             }
 
@@ -67,7 +76,11 @@ impl Worker {
                 break;
             }
 
-            if let Some(reserved) = self.task_queue.reserve_retryable::<AiTask>(QUEUE_AI, 1).await? {
+            if let Some(reserved) = self
+                .task_queue
+                .reserve_retryable::<AiTask>(QUEUE_AI, 1)
+                .await?
+            {
                 self.handle_ai_reserved(reserved).await;
             }
 
@@ -75,7 +88,11 @@ impl Worker {
                 break;
             }
 
-            if let Some(reserved) = self.task_queue.reserve_retryable::<PushTask>(QUEUE_PUSH, 1).await? {
+            if let Some(reserved) = self
+                .task_queue
+                .reserve_retryable::<PushTask>(QUEUE_PUSH, 1)
+                .await?
+            {
                 self.handle_push_reserved(reserved).await;
             }
         }
@@ -114,7 +131,11 @@ impl Worker {
 
         match self.task_queue.is_done(queue, task_id).await {
             Ok(true) => {
-                if let Err(e) = self.task_queue.ack_reserved(queue, &reserved.raw_payload).await {
+                if let Err(e) = self
+                    .task_queue
+                    .ack_reserved(queue, &reserved.raw_payload)
+                    .await
+                {
                     error!("Failed to ack duplicate ingest task {}: {}", task_id, e);
                 }
                 return;
@@ -132,7 +153,11 @@ impl Worker {
                 if let Err(e) = self.task_queue.mark_done(queue, task_id).await {
                     error!("Failed to mark ingest task {} done: {}", task_id, e);
                 }
-                if let Err(e) = self.task_queue.ack_reserved(queue, &reserved.raw_payload).await {
+                if let Err(e) = self
+                    .task_queue
+                    .ack_reserved(queue, &reserved.raw_payload)
+                    .await
+                {
                     error!("Failed to ack ingest task {}: {}", task_id, e);
                 }
             }
@@ -144,14 +169,19 @@ impl Worker {
                     .await
                 {
                     Ok(_) => {
-                        if let Err(e) =
-                            self.task_queue.ack_reserved(queue, &reserved.raw_payload).await
+                        if let Err(e) = self
+                            .task_queue
+                            .ack_reserved(queue, &reserved.raw_payload)
+                            .await
                         {
                             error!("Failed to ack failed ingest task {}: {}", task_id, e);
                         }
                     }
                     Err(e) => {
-                        error!("Failed to schedule retry/DLQ for ingest task {}: {}", task_id, e);
+                        error!(
+                            "Failed to schedule retry/DLQ for ingest task {}: {}",
+                            task_id, e
+                        );
                     }
                 }
             }
@@ -165,7 +195,11 @@ impl Worker {
 
         match self.task_queue.is_done(queue, task_id).await {
             Ok(true) => {
-                if let Err(e) = self.task_queue.ack_reserved(queue, &reserved.raw_payload).await {
+                if let Err(e) = self
+                    .task_queue
+                    .ack_reserved(queue, &reserved.raw_payload)
+                    .await
+                {
                     error!("Failed to ack duplicate AI task {}: {}", task_id, e);
                 }
                 return;
@@ -183,7 +217,11 @@ impl Worker {
                 if let Err(e) = self.task_queue.mark_done(queue, task_id).await {
                     error!("Failed to mark AI task {} done: {}", task_id, e);
                 }
-                if let Err(e) = self.task_queue.ack_reserved(queue, &reserved.raw_payload).await {
+                if let Err(e) = self
+                    .task_queue
+                    .ack_reserved(queue, &reserved.raw_payload)
+                    .await
+                {
                     error!("Failed to ack AI task {}: {}", task_id, e);
                 }
             }
@@ -195,14 +233,19 @@ impl Worker {
                     .await
                 {
                     Ok(_) => {
-                        if let Err(e) =
-                            self.task_queue.ack_reserved(queue, &reserved.raw_payload).await
+                        if let Err(e) = self
+                            .task_queue
+                            .ack_reserved(queue, &reserved.raw_payload)
+                            .await
                         {
                             error!("Failed to ack failed AI task {}: {}", task_id, e);
                         }
                     }
                     Err(e) => {
-                        error!("Failed to schedule retry/DLQ for AI task {}: {}", task_id, e);
+                        error!(
+                            "Failed to schedule retry/DLQ for AI task {}: {}",
+                            task_id, e
+                        );
                     }
                 }
             }
@@ -216,7 +259,11 @@ impl Worker {
 
         match self.task_queue.is_done(queue, task_id).await {
             Ok(true) => {
-                if let Err(e) = self.task_queue.ack_reserved(queue, &reserved.raw_payload).await {
+                if let Err(e) = self
+                    .task_queue
+                    .ack_reserved(queue, &reserved.raw_payload)
+                    .await
+                {
                     error!("Failed to ack duplicate push task {}: {}", task_id, e);
                 }
                 return;
@@ -234,7 +281,11 @@ impl Worker {
                 if let Err(e) = self.task_queue.mark_done(queue, task_id).await {
                     error!("Failed to mark push task {} done: {}", task_id, e);
                 }
-                if let Err(e) = self.task_queue.ack_reserved(queue, &reserved.raw_payload).await {
+                if let Err(e) = self
+                    .task_queue
+                    .ack_reserved(queue, &reserved.raw_payload)
+                    .await
+                {
                     error!("Failed to ack push task {}: {}", task_id, e);
                 }
             }
@@ -246,14 +297,19 @@ impl Worker {
                     .await
                 {
                     Ok(_) => {
-                        if let Err(e) =
-                            self.task_queue.ack_reserved(queue, &reserved.raw_payload).await
+                        if let Err(e) = self
+                            .task_queue
+                            .ack_reserved(queue, &reserved.raw_payload)
+                            .await
                         {
                             error!("Failed to ack failed push task {}: {}", task_id, e);
                         }
                     }
                     Err(e) => {
-                        error!("Failed to schedule retry/DLQ for push task {}: {}", task_id, e);
+                        error!(
+                            "Failed to schedule retry/DLQ for push task {}: {}",
+                            task_id, e
+                        );
                     }
                 }
             }
@@ -308,7 +364,9 @@ impl Worker {
                                     article_id,
                                     task_type: AiTaskType::Full,
                                 };
-                                if let Err(e) = self.task_queue.enqueue_retryable(QUEUE_AI, ai_task).await {
+                                if let Err(e) =
+                                    self.task_queue.enqueue_retryable(QUEUE_AI, ai_task).await
+                                {
                                     error!("Failed to enqueue AI task: {}", e);
                                 }
                             }
@@ -328,7 +386,9 @@ impl Worker {
                 let msg = e.to_string();
                 let msg = msg.chars().take(500).collect::<String>();
                 error!("Failed to fetch articles: {}", msg);
-                let _ = source_service.update_last_fetch(task.source_id, Some(msg.as_str())).await;
+                let _ = source_service
+                    .update_last_fetch(task.source_id, Some(msg.as_str()))
+                    .await;
                 Err(anyhow::anyhow!(msg))
             }
         }
@@ -377,13 +437,20 @@ impl Worker {
             Ok(a) => a,
             Err(e) => {
                 error!("Failed to get article {}: {}", task.article_id, e);
-                return Err(anyhow::anyhow!("Failed to get article {}: {}", task.article_id, e));
+                return Err(anyhow::anyhow!(
+                    "Failed to get article {}: {}",
+                    task.article_id,
+                    e
+                ));
             }
         };
 
         let content = article.content.as_deref().unwrap_or("").trim();
         if content.is_empty() {
-            warn!("Article {} has no content, skipping AI processing", task.article_id);
+            warn!(
+                "Article {} has no content, skipping AI processing",
+                task.article_id
+            );
             return Ok(());
         }
 
@@ -405,14 +472,21 @@ impl Worker {
                     article_id: task.article_id,
                     task_type: AiTaskType::Embed,
                 };
-                if let Err(e) = self.task_queue.enqueue_retryable(QUEUE_AI, embed_task).await {
+                if let Err(e) = self
+                    .task_queue
+                    .enqueue_retryable(QUEUE_AI, embed_task)
+                    .await
+                {
                     warn!(
                         "Failed to enqueue embed task for article {}: {}",
                         task.article_id, e
                     );
                 }
 
-                info!("AI full processing completed for article: {}", task.article_id);
+                info!(
+                    "AI full processing completed for article: {}",
+                    task.article_id
+                );
                 Ok(())
             }
             AiTaskType::Classify => {
@@ -441,7 +515,10 @@ impl Worker {
                     .await
                     .map_err(|e| anyhow::anyhow!("AI risk assessment failed: {}", e))?;
                 self.update_article_risk(task.article_id, &risk).await?;
-                info!("AI risk assessment completed for article: {}", task.article_id);
+                info!(
+                    "AI risk assessment completed for article: {}",
+                    task.article_id
+                );
                 Ok(())
             }
             AiTaskType::ExtractTags => {
@@ -450,7 +527,10 @@ impl Worker {
                     .await
                     .map_err(|e| anyhow::anyhow!("AI tag extraction failed: {}", e))?;
                 self.update_article_tags(task.article_id, &tags).await?;
-                info!("AI tag extraction completed for article: {}", task.article_id);
+                info!(
+                    "AI tag extraction completed for article: {}",
+                    task.article_id
+                );
                 Ok(())
             }
             AiTaskType::Embed => {
@@ -707,7 +787,10 @@ impl Worker {
     }
 
     async fn process_push_task(&self, task: PushTask) -> anyhow::Result<()> {
-        info!("Processing push task for {} articles", task.article_ids.len());
+        info!(
+            "Processing push task for {} articles",
+            task.article_ids.len()
+        );
 
         let client = reqwest::Client::new();
         let article_service = ArticleService::new(self.pool.clone());
@@ -737,7 +820,10 @@ impl Worker {
                     Ok(())
                 } else {
                     error!("Push failed with status: {}", resp.status());
-                    Err(anyhow::anyhow!("Push failed with status: {}", resp.status()))
+                    Err(anyhow::anyhow!(
+                        "Push failed with status: {}",
+                        resp.status()
+                    ))
                 }
             }
             Err(e) => {
@@ -749,20 +835,28 @@ impl Worker {
 }
 
 fn format_push_message(articles: &[law_eye_db::Article]) -> String {
-    let mut msg = String::from("📰 法眼资讯速递
+    let mut msg = String::from(
+        "📰 法眼资讯速递
 
-");
+",
+    );
 
     for article in articles.iter().take(10) {
-        msg.push_str(&format!("- {}
+        msg.push_str(&format!(
+            "- {}
   {}
 
-", article.title, article.link));
+",
+            article.title, article.link
+        ));
     }
 
     if articles.len() > 10 {
-        msg.push_str(&format!("... 及其他 {} 条资讯
-", articles.len() - 10));
+        msg.push_str(&format!(
+            "... 及其他 {} 条资讯
+",
+            articles.len() - 10
+        ));
     }
 
     msg

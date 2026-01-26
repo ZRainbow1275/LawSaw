@@ -27,7 +27,8 @@ fn test_llm_gateway_with_provider() {
 
 #[test]
 fn test_llm_gateway_with_embedding_model() {
-    let gateway = LlmGateway::new("test", None, None).with_embedding_model("text-embedding-ada-002");
+    let gateway =
+        LlmGateway::new("test", None, None).with_embedding_model("text-embedding-ada-002");
     let _ = gateway;
 }
 
@@ -107,7 +108,9 @@ fn test_risk_level_variants() {
 
     for (json, expected) in levels {
         let level: RiskLevel = serde_json::from_str(json).unwrap();
-        assert!(matches!(level, ref e if std::mem::discriminant(&level) == std::mem::discriminant(e)));
+        assert!(
+            matches!(level, ref e if std::mem::discriminant(&level) == std::mem::discriminant(e))
+        );
         let _ = expected;
     }
 }
@@ -136,7 +139,10 @@ fn test_summary_result_deserialization() {
     assert_eq!(result.brief, "一句话摘要");
     assert_eq!(result.key_points.len(), 2);
     assert_eq!(result.entities.len(), 1);
-    assert!(matches!(result.entities[0].entity_type, EntityType::Organization));
+    assert!(matches!(
+        result.entities[0].entity_type,
+        EntityType::Organization
+    ));
 }
 
 // ========== TagExtractor Tests ==========

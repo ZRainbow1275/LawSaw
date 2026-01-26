@@ -97,7 +97,11 @@ impl TaskQueue {
         self.enqueue(queue, &retryable).await
     }
 
-    pub async fn dequeue<T: DeserializeOwned>(&self, queue: &str, timeout: u64) -> Result<Option<T>> {
+    pub async fn dequeue<T: DeserializeOwned>(
+        &self,
+        queue: &str,
+        timeout: u64,
+    ) -> Result<Option<T>> {
         let mut conn = self
             .pool
             .get()
@@ -173,8 +177,8 @@ impl TaskQueue {
                     "error": err_msg,
                     "failed_at": chrono::Utc::now().timestamp()
                 });
-                let poison_payload =
-                    serde_json::to_string(&poison).unwrap_or_else(|_| "{\"error\":\"dlq_poison_serialize_failed\"}".to_string());
+                let poison_payload = serde_json::to_string(&poison)
+                    .unwrap_or_else(|_| "{\"error\":\"dlq_poison_serialize_failed\"}".to_string());
 
                 conn.zrem::<_, _, ()>(&inflight_queue, &raw_payload)
                     .await
@@ -190,10 +194,7 @@ impl TaskQueue {
             }
         };
 
-        Ok(Some(ReservedTask {
-            raw_payload,
-            task,
-        }))
+        Ok(Some(ReservedTask { raw_payload, task }))
     }
 
     pub async fn ack_reserved(&self, queue: &str, raw_payload: &str) -> Result<()> {
@@ -351,7 +352,8 @@ impl TaskQueue {
                 .await
                 .map_err(|e| Error::Internal(e.to_string()))?;
 
-            let payload = serde_json::to_string(&task).map_err(|e| Error::Internal(e.to_string()))?;
+            let payload =
+                serde_json::to_string(&task).map_err(|e| Error::Internal(e.to_string()))?;
 
             conn.zadd::<_, _, _, ()>(&delayed_queue, &payload, retry_at)
                 .await
@@ -363,7 +365,7 @@ impl TaskQueue {
                 "Task {} exceeded max retries, moving to dead letter queue: {}",
                 task.id, error_msg
             );
-            
+
             let dlq = format!("{}:dlq", queue);
             self.enqueue(&dlq, &task).await?;
             Ok(false)
@@ -373,7 +375,7 @@ impl TaskQueue {
     pub async fn process_delayed_tasks(&self, queue: &str) -> Result<u32> {
         let delayed_queue = format!("{}:delayed", queue);
         let now = chrono::Utc::now().timestamp_millis();
-        
+
         let mut conn = self
             .pool
             .get()
@@ -393,7 +395,7 @@ impl TaskQueue {
             conn.zrem::<_, _, ()>(&delayed_queue, &task_payload)
                 .await
                 .map_err(|e| Error::Internal(e.to_string()))?;
-            
+
             conn.rpush::<_, _, ()>(queue, &task_payload)
                 .await
                 .map_err(|e| Error::Internal(e.to_string()))?;
@@ -427,7 +429,7 @@ impl TaskQueue {
 
     pub async fn delayed_length(&self, queue: &str) -> Result<usize> {
         let delayed_queue = format!("{}:delayed", queue);
-        
+
         let mut conn = self
             .pool
             .get()
@@ -451,8 +453,8 @@ fn parse_retryable_or_wrap<T: DeserializeOwned>(raw_payload: &str) -> Result<Ret
     match serde_json::from_str::<RetryableTask<T>>(raw_payload) {
         Ok(task) => Ok(task),
         Err(_) => {
-            let payload =
-                serde_json::from_str::<T>(raw_payload).map_err(|e| Error::Internal(e.to_string()))?;
+            let payload = serde_json::from_str::<T>(raw_payload)
+                .map_err(|e| Error::Internal(e.to_string()))?;
             Ok(RetryableTask::new(payload))
         }
     }
