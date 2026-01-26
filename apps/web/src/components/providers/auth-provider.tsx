@@ -1,7 +1,7 @@
 "use client";
 
 import { apiClient } from "@/lib/api";
-import { assertAuthResponse } from "@/lib/api/types";
+import { assertAuthResponse, assertUserDetailResponse } from "@/lib/api/types";
 import { useAuthStore } from "@/stores/auth-store";
 import { type ReactNode, useEffect } from "react";
 
@@ -10,7 +10,7 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
-	const { setUser, setLoading } = useAuthStore();
+	const { setUser, setAuthz, setLoading } = useAuthStore();
 
 	useEffect(() => {
 		// 清理历史版本遗留的本地持久化用户信息（PII 风险）。
@@ -32,13 +32,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			try {
 				const response = await apiClient.get("/api/v1/auth/me", assertAuthResponse);
 				setUser(response.user);
+
+				if (response.user) {
+					try {
+						const detail = await apiClient.get(
+							`/api/v1/users/${response.user.id}`,
+							assertUserDetailResponse,
+						);
+						setAuthz({ roles: detail.roles, permissions: detail.permissions });
+					} catch {
+						setAuthz(null);
+					}
+				} else {
+					setAuthz(null);
+				}
 			} catch {
 				setUser(null);
+				setAuthz(null);
 			}
 		};
 
 		checkSession();
-	}, [setUser, setLoading]);
+	}, [setUser, setAuthz, setLoading]);
 
 	return <>{children}</>;
 }

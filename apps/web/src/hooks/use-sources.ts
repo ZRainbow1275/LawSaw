@@ -17,6 +17,9 @@ export function useSources() {
 	return useQuery({
 		queryKey: ["sources"],
 		queryFn: () => apiClient.get("/api/v1/sources", assertSourceList),
+		// 真实运行场景下，信息源状态可能被 worker 异步更新（last_fetch/last_error）。
+		// 轻量轮询可让 UI 更接近实时状态，而不依赖手动刷新。
+		refetchInterval: 30_000,
 	});
 }
 

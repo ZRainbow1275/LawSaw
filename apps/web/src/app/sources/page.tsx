@@ -14,6 +14,8 @@ import {
 	useTriggerFetch,
 } from "@/hooks/use-sources";
 import type { Source } from "@/lib/api/types";
+import { useAuthStore } from "@/stores/auth-store";
+import { useToast } from "@/stores/toast-store";
 import {
 	AlertCircle,
 	CheckCircle2,
@@ -58,6 +60,9 @@ export default function SourcesPage() {
 	const { data: sources, isLoading } = useSources();
 	const triggerFetch = useTriggerFetch();
 	const createSource = useCreateSource();
+	const { permissions } = useAuthStore();
+	const isAdmin = permissions.includes("*");
+	const { success: toastSuccess, error: toastError } = useToast();
 	const [showAddForm, setShowAddForm] = useState(false);
 	const [newSource, setNewSource] = useState({
 		name: "",
@@ -66,16 +71,34 @@ export default function SourcesPage() {
 	});
 
 	const handleTriggerFetch = (id: string) => {
-		triggerFetch.mutate(id);
+		if (!isAdmin) return;
+		triggerFetch.mutate(id, {
+			onSuccess: () => {
+				toastSuccess("已触发抓取", "采集任务已加入队列");
+			},
+			onError: (cause) => {
+				const message = cause instanceof Error ? cause.message : "触发抓取失败";
+				toastError("触发抓取失败", message);
+			},
+		});
 	};
 
 	const handleAddSource = (e: React.FormEvent) => {
 		e.preventDefault();
+		if (!isAdmin) {
+			toastError("权限不足", "仅管理员可添加信息源");
+			return;
+		}
 		if (!newSource.name || !newSource.url) return;
 		createSource.mutate(newSource, {
 			onSuccess: () => {
 				setShowAddForm(false);
 				setNewSource({ name: "", url: "", source_type: "rss" });
+				toastSuccess("添加成功", "信息源已创建");
+			},
+			onError: (cause) => {
+				const message = cause instanceof Error ? cause.message : "添加信息源失败";
+				toastError("添加信息源失败", message);
 			},
 		});
 	};
@@ -102,7 +125,11 @@ export default function SourcesPage() {
 									管理和监控所有数据采集源
 								</p>
 							</div>
-							<Button onClick={() => setShowAddForm(true)}>
+							<Button
+								onClick={() => setShowAddForm(true)}
+								disabled={!isAdmin}
+								title={!isAdmin ? "需要管理员权限" : undefined}
+							>
 								<Plus className="mr-2 h-4 w-4" />
 								添加信息源
 							</Button>
@@ -221,7 +248,7 @@ export default function SourcesPage() {
 												</label>
 												<Input
 													id="new-source-url"
-													placeholder="https://example.com/rss"
+													placeholder="https://www.theguardian.com/law/rss"
 													value={newSource.url}
 													onChange={(e) =>
 														setNewSource({ ...newSource, url: e.target.value })
@@ -314,7 +341,8 @@ export default function SourcesPage() {
 														variant="outline"
 														size="sm"
 														onClick={() => handleTriggerFetch(source.id)}
-														disabled={triggerFetch.isPending}
+														disabled={!isAdmin || triggerFetch.isPending}
+														title={!isAdmin ? "需要管理员权限" : undefined}
 													>
 														<RefreshCw
 															className={`mr-1 h-3 w-3 ${

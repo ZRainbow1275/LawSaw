@@ -1,7 +1,7 @@
 "use client";
 
 import { apiClient } from "@/lib/api";
-import { assertAuthResponse } from "@/lib/api/types";
+import { assertAuthResponse, assertUserDetailResponse } from "@/lib/api/types";
 import { useAuthStore } from "@/stores/auth-store";
 import { useCallback, useEffect } from "react";
 
@@ -22,6 +22,7 @@ export function useAuth() {
 		isAuthenticated,
 		isLoading,
 		setUser,
+		setAuthz,
 		setLoading,
 		logout: storeLogout,
 	} = useAuthStore();
@@ -31,13 +32,28 @@ export function useAuth() {
 			try {
 				const response = await apiClient.get("/api/v1/auth/me", assertAuthResponse);
 				setUser(response.user);
+
+				if (response.user) {
+					try {
+						const detail = await apiClient.get(
+							`/api/v1/users/${response.user.id}`,
+							assertUserDetailResponse,
+						);
+						setAuthz({ roles: detail.roles, permissions: detail.permissions });
+					} catch {
+						setAuthz(null);
+					}
+				} else {
+					setAuthz(null);
+				}
 			} catch {
 				setUser(null);
+				setAuthz(null);
 			}
 		};
 
 		checkSession();
-	}, [setUser]);
+	}, [setUser, setAuthz]);
 
 	const login = useCallback(
 		async (credentials: LoginCredentials) => {
@@ -50,6 +66,15 @@ export function useAuth() {
 				);
 				if (response.success && response.user) {
 					setUser(response.user);
+					try {
+						const detail = await apiClient.get(
+							`/api/v1/users/${response.user.id}`,
+							assertUserDetailResponse,
+						);
+						setAuthz({ roles: detail.roles, permissions: detail.permissions });
+					} catch {
+						setAuthz(null);
+					}
 					return { success: true };
 				}
 				return { success: false, error: response.message };
@@ -60,7 +85,7 @@ export function useAuth() {
 				setLoading(false);
 			}
 		},
-		[setUser, setLoading],
+		[setUser, setAuthz, setLoading],
 	);
 
 	const register = useCallback(
@@ -74,6 +99,15 @@ export function useAuth() {
 				);
 				if (response.success && response.user) {
 					setUser(response.user);
+					try {
+						const detail = await apiClient.get(
+							`/api/v1/users/${response.user.id}`,
+							assertUserDetailResponse,
+						);
+						setAuthz({ roles: detail.roles, permissions: detail.permissions });
+					} catch {
+						setAuthz(null);
+					}
 					return { success: true };
 				}
 				return { success: false, error: response.message };
@@ -84,7 +118,7 @@ export function useAuth() {
 				setLoading(false);
 			}
 		},
-		[setUser, setLoading],
+		[setUser, setAuthz, setLoading],
 	);
 
 	const logout = useCallback(async () => {
