@@ -1,4 +1,15 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+const DEFAULT_API_TIMEOUT_MS = 15_000;
+
+function parseTimeoutMs(value: string | undefined): number | null {
+	if (!value) return DEFAULT_API_TIMEOUT_MS;
+	const parsed = Number.parseInt(value, 10);
+	if (!Number.isFinite(parsed)) return DEFAULT_API_TIMEOUT_MS;
+	if (parsed <= 0) return null;
+	return parsed;
+}
+
+const API_TIMEOUT_MS = parseTimeoutMs(process.env.NEXT_PUBLIC_API_TIMEOUT_MS);
 
 export type ResponseValidator<T> = (value: unknown) => asserts value is T;
 
@@ -59,9 +70,11 @@ async function readErrorInfo(
 
 export class ApiClient {
 	private baseUrl: string;
+	private timeoutMs: number | null;
 
-	constructor(baseUrl: string = API_BASE_URL) {
+	constructor(baseUrl: string = API_BASE_URL, timeoutMs: number | null = API_TIMEOUT_MS) {
 		this.baseUrl = baseUrl;
+		this.timeoutMs = timeoutMs;
 	}
 
 	private async request<T>(
@@ -88,16 +101,56 @@ export class ApiClient {
 			credentials: "include", // Include cookies for session auth
 		};
 
+		const controller = new AbortController();
+		let timeoutId: ReturnType<typeof setTimeout> | null = null;
+		let didTimeout = false;
+		let abortListener: (() => void) | null = null;
+		let externalSignal: AbortSignal | null = null;
+
+		if (options.signal) {
+			if (options.signal.aborted) {
+				controller.abort(options.signal.reason);
+			} else {
+				externalSignal = options.signal;
+				abortListener = () => controller.abort(externalSignal?.reason);
+				externalSignal.addEventListener("abort", abortListener, { once: true });
+			}
+		}
+
+		if (this.timeoutMs !== null) {
+			timeoutId = setTimeout(() => {
+				didTimeout = true;
+				controller.abort();
+			}, this.timeoutMs);
+		}
+
 		let response: Response;
 		try {
-			response = await fetch(url, config);
+			response = await fetch(url, { ...config, signal: controller.signal });
 		} catch (cause) {
+			if (cause instanceof Error && cause.name === "AbortError") {
+				throw new ApiClientError(
+					didTimeout ? `Request timed out after ${this.timeoutMs}ms` : "Request aborted",
+					{
+						status: 0,
+						endpoint,
+						requestId: null,
+						cause,
+					},
+				);
+			}
+
 			throw new ApiClientError("Network request failed", {
 				status: 0,
 				endpoint,
 				requestId: null,
 				cause,
 			});
+		} finally {
+			if (timeoutId) clearTimeout(timeoutId);
+			if (externalSignal && abortListener) {
+				externalSignal.removeEventListener("abort", abortListener);
+			}
 		}
 
 		const requestIdFromHeader = response.headers.get("x-request-id");
