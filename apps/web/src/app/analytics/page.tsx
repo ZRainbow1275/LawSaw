@@ -5,7 +5,9 @@ import { Header } from "@/components/layout/header";
 import { MainContent } from "@/components/layout/main-content";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
 	useArticleCategoryCounts,
 	useArticleAnalyticsSummary,
@@ -55,14 +57,40 @@ export default function AnalyticsPage() {
 		isLoading: analyticsSummaryLoading,
 		isError: analyticsSummaryError,
 	} = useArticleAnalyticsSummary();
-	const { data: categories } = useCategories();
-	const { data: sources } = useSources();
-	const { data: trendPoints, isLoading: trendsLoading } = useArticleTrends(7);
+	const {
+		data: categories,
+		isLoading: categoriesLoading,
+		isError: categoriesError,
+		error: categoriesErrorDetail,
+		refetch: refetchCategories,
+	} = useCategories();
+	const {
+		data: sources,
+		isLoading: sourcesLoading,
+		isError: sourcesError,
+		refetch: refetchSources,
+	} = useSources();
+	const {
+		data: trendPoints,
+		isLoading: trendsLoading,
+		isError: trendsError,
+		error: trendsErrorDetail,
+		refetch: refetchTrends,
+	} = useArticleTrends(7);
 	const {
 		data: categoryCountRows,
 		isLoading: categoryCountsLoading,
 		isError: categoryCountsError,
+		refetch: refetchCategoryCounts,
 	} = useArticleCategoryCounts();
+
+	const infraErrors: string[] = [];
+	if (sourcesError) infraErrors.push("信息源");
+	if (categoriesError) infraErrors.push("分类");
+	const hasInfraError = infraErrors.length > 0;
+
+	const categoriesCount =
+		categories && !categoriesLoading && !categoriesError ? categories.length : null;
 
 	const analyticsReady =
 		!!analyticsSummary && !analyticsSummaryLoading && !analyticsSummaryError;
@@ -99,8 +127,14 @@ export default function AnalyticsPage() {
 		categoryCountsById.set(row.category_id, row.count);
 	}
 
-	const activeSources = sources?.filter((s) => s.is_active).length ?? 0;
-	const errorSources = sources?.filter((s) => s.last_error).length ?? 0;
+	const activeSources =
+		sources && !sourcesLoading && !sourcesError
+			? sources.filter((s) => s.is_active).length
+			: null;
+	const errorSources =
+		sources && !sourcesLoading && !sourcesError
+			? sources.filter((s) => s.last_error).length
+			: null;
 
 	const last7Days =
 		trendPoints?.map((point) => ({
@@ -176,7 +210,9 @@ export default function AnalyticsPage() {
 											<Rss className="h-5 w-5 text-success" />
 										</div>
 										<div>
-											<p className="text-2xl font-bold">{activeSources}</p>
+											<p className="text-2xl font-bold">
+												{activeSources ?? "—"}
+											</p>
 											<p className="text-sm text-neutral-500">活跃信息源</p>
 										</div>
 									</div>
@@ -190,7 +226,7 @@ export default function AnalyticsPage() {
 										</div>
 										<div>
 											<p className="text-2xl font-bold">
-												{categories?.length ?? 0}
+												{categoriesCount ?? "—"}
 											</p>
 											<p className="text-sm text-neutral-500">分类板块</p>
 										</div>
@@ -204,13 +240,33 @@ export default function AnalyticsPage() {
 											<AlertTriangle className="h-5 w-5 text-destructive" />
 										</div>
 										<div>
-											<p className="text-2xl font-bold">{errorSources}</p>
+											<p className="text-2xl font-bold">
+												{errorSources ?? "—"}
+											</p>
 											<p className="text-sm text-neutral-500">异常信息源</p>
 										</div>
 									</div>
 								</CardContent>
 							</Card>
 						</div>
+
+						{hasInfraError ? (
+							<div className="mb-6 flex items-center justify-between rounded-lg border border-red-100 bg-red-50 px-3 py-2">
+								<p className="text-xs text-red-700">
+									基础数据加载失败：{infraErrors.join(" / ")}（已隐藏不可靠数值）
+								</p>
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={() => {
+										refetchSources();
+										refetchCategories();
+									}}
+								>
+									重试
+								</Button>
+							</div>
+						) : null}
 
 						<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
 							{/* 风险分布 */}
@@ -343,6 +399,24 @@ export default function AnalyticsPage() {
 												),
 											)}
 										</div>
+									) : trendsError ? (
+										<EmptyState
+											variant="error"
+											title="趋势数据加载失败"
+											description={
+												trendsErrorDetail instanceof Error
+													? trendsErrorDetail.message
+													: "未知错误"
+											}
+											action={{ label: "重试", onClick: () => refetchTrends() }}
+											className="py-10"
+										/>
+									) : last7Days.length === 0 ? (
+										<EmptyState
+											title="暂无趋势数据"
+											description="近 7 天没有可展示的数据"
+											className="py-10"
+										/>
 									) : (
 										<div className="flex h-40 items-end justify-between gap-2">
 											{last7Days.map((day) => (
@@ -376,7 +450,25 @@ export default function AnalyticsPage() {
 								</CardTitle>
 							</CardHeader>
 							<CardContent>
-								{categoryCountsLoading ? (
+								{categoriesError ? (
+									<EmptyState
+										variant="error"
+										title="分类数据加载失败"
+										description={
+											categoriesErrorDetail instanceof Error
+												? categoriesErrorDetail.message
+												: "未知错误"
+										}
+										action={{
+											label: "重试",
+											onClick: () => {
+												refetchCategories();
+												refetchCategoryCounts();
+											},
+										}}
+										className="py-10"
+									/>
+								) : categoryCountsLoading || categoriesLoading ? (
 									<div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
 										{Array.from(
 											{ length: Math.min(10, categories?.length ?? 10) },
@@ -390,6 +482,20 @@ export default function AnalyticsPage() {
 									</div>
 								) : (
 									<div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+										{categoryCountsError ? (
+											<div className="col-span-2 flex items-center justify-between rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 sm:col-span-3 lg:col-span-5">
+												<p className="text-xs text-amber-800">
+													分类统计加载失败（已隐藏不可靠数值）
+												</p>
+												<Button
+													variant="outline"
+													size="sm"
+													onClick={() => refetchCategoryCounts()}
+												>
+													重试
+												</Button>
+											</div>
+										) : null}
 										{uncategorizedCount > 0 && (
 											<div className="flex flex-col items-center rounded-lg border border-neutral-100 p-4 text-center">
 												<FileText className="h-6 w-6 text-neutral-500" />
