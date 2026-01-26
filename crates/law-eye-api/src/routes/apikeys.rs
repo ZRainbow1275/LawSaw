@@ -1,7 +1,6 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::IntoResponse,
     routing::{delete, get, post},
     Json, Router,
 };
@@ -11,6 +10,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
+use crate::{ApiError, ApiResult, AppError};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -51,11 +51,6 @@ pub struct KeyListResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct ErrorResponse {
-    pub error: String,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
 pub struct SuccessResponse {
     pub success: bool,
     pub message: String,
@@ -70,54 +65,39 @@ pub struct SuccessResponse {
     ),
     responses(
         (status = 200, description = "List of API keys", body = KeyListResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn list_keys(
     State(state): State<AppState>,
     auth_session: AuthSession,
-) -> impl IntoResponse {
-    let user = match auth_session.user {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Not authenticated".to_string(),
-                }),
-            )
-                .into_response();
-        }
-    };
+) -> ApiResult<Json<KeyListResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    match state.apikey_service.list_by_user(user.id).await {
-        Ok(keys) => {
-            let response = KeyListResponse {
-                keys: keys
-                    .into_iter()
-                    .map(|k| ApiKeyResponse {
-                        id: k.id,
-                        name: k.name,
-                        key_prefix: k.key_prefix,
-                        permissions: k.permissions,
-                        rate_limit: k.rate_limit,
-                        is_active: k.is_active,
-                        last_used: k.last_used,
-                        created_at: k.created_at,
-                    })
-                    .collect(),
-            };
-            (StatusCode::OK, Json(response)).into_response()
-        }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-            .into_response(),
-    }
+    let keys = state
+        .apikey_service
+        .list_by_user(user.id)
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(Json(KeyListResponse {
+        keys: keys
+            .into_iter()
+            .map(|k| ApiKeyResponse {
+                id: k.id,
+                name: k.name,
+                key_prefix: k.key_prefix,
+                permissions: k.permissions,
+                rate_limit: k.rate_limit,
+                is_active: k.is_active,
+                last_used: k.last_used,
+                created_at: k.created_at,
+            })
+            .collect(),
+    }))
 }
 
 /// Create a new API key
@@ -130,27 +110,18 @@ pub(crate) async fn list_keys(
     ),
     responses(
         (status = 201, description = "API key created", body = CreateKeyResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn create_key(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Json(req): Json<CreateKeyRequest>,
-) -> impl IntoResponse {
-    let user = match auth_session.user {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Not authenticated".to_string(),
-                }),
-            )
-                .into_response();
-        }
-    };
+) -> ApiResult<(StatusCode, Json<CreateKeyResponse>)> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
     let input = law_eye_db::CreateApiKey {
         user_id: Some(user.id),
@@ -160,31 +131,28 @@ pub(crate) async fn create_key(
         expires_at: None,
     };
 
-    match state.apikey_service.create(input).await {
-        Ok((key, raw_key)) => {
-            let response = CreateKeyResponse {
-                key: ApiKeyResponse {
-                    id: key.id,
-                    name: key.name,
-                    key_prefix: key.key_prefix,
-                    permissions: key.permissions,
-                    rate_limit: key.rate_limit,
-                    is_active: key.is_active,
-                    last_used: key.last_used,
-                    created_at: key.created_at,
-                },
-                raw_key,
-            };
-            (StatusCode::CREATED, Json(response)).into_response()
-        }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-            .into_response(),
-    }
+    let (key, raw_key) = state
+        .apikey_service
+        .create(input)
+        .await
+        .map_err(AppError::from)?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(CreateKeyResponse {
+            key: ApiKeyResponse {
+                id: key.id,
+                name: key.name,
+                key_prefix: key.key_prefix,
+                permissions: key.permissions,
+                rate_limit: key.rate_limit,
+                is_active: key.is_active,
+                last_used: key.last_used,
+                created_at: key.created_at,
+            },
+            raw_key,
+        }),
+    ))
 }
 
 /// Revoke an API key
@@ -197,53 +165,30 @@ pub(crate) async fn create_key(
     ),
     responses(
         (status = 200, description = "Key revoked", body = SuccessResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 404, description = "Key not found", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 404, description = "Key not found", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn revoke_key(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
-) -> impl IntoResponse {
-    let user = match auth_session.user {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Not authenticated".to_string(),
-                }),
-            )
-                .into_response();
-        }
-    };
+) -> ApiResult<Json<SuccessResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    match state.apikey_service.revoke(id, user.id).await {
-        Ok(()) => (
-            StatusCode::OK,
-            Json(SuccessResponse {
-                success: true,
-                message: "API key revoked".to_string(),
-            }),
-        )
-            .into_response(),
-        Err(e) => {
-            let status = if e.to_string().contains("not found") {
-                StatusCode::NOT_FOUND
-            } else {
-                StatusCode::INTERNAL_SERVER_ERROR
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: e.to_string(),
-                }),
-            )
-                .into_response()
-        }
-    }
+    state
+        .apikey_service
+        .revoke(id, user.id)
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(Json(SuccessResponse {
+        success: true,
+        message: "API key revoked".to_string(),
+    }))
 }
 
 /// Delete an API key
@@ -256,51 +201,28 @@ pub(crate) async fn revoke_key(
     ),
     responses(
         (status = 200, description = "Key deleted", body = SuccessResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 404, description = "Key not found", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 404, description = "Key not found", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn delete_key(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
-) -> impl IntoResponse {
-    let user = match auth_session.user {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Not authenticated".to_string(),
-                }),
-            )
-                .into_response();
-        }
-    };
+) -> ApiResult<Json<SuccessResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    match state.apikey_service.delete(id, user.id).await {
-        Ok(()) => (
-            StatusCode::OK,
-            Json(SuccessResponse {
-                success: true,
-                message: "API key deleted".to_string(),
-            }),
-        )
-            .into_response(),
-        Err(e) => {
-            let status = if e.to_string().contains("not found") {
-                StatusCode::NOT_FOUND
-            } else {
-                StatusCode::INTERNAL_SERVER_ERROR
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: e.to_string(),
-                }),
-            )
-                .into_response()
-        }
-    }
+    state
+        .apikey_service
+        .delete(id, user.id)
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(Json(SuccessResponse {
+        success: true,
+        message: "API key deleted".to_string(),
+    }))
 }

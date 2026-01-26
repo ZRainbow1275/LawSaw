@@ -1,7 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::IntoResponse,
     routing::get,
     Json, Router,
 };
@@ -12,7 +11,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
-use crate::AppError;
+use crate::{ApiError, ApiResult, AppError};
 use law_eye_db::{CreateFeedback, UpdateFeedback};
 
 pub fn router() -> Router<AppState> {
@@ -92,12 +91,6 @@ pub struct UpdateFeedbackRequest {
     pub admin_response: Option<String>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ErrorResponse {
-    pub error: String,
-    pub code: String,
-}
-
 /// Admin: list all feedbacks
 #[utoipa::path(
     get,
@@ -111,62 +104,40 @@ pub struct ErrorResponse {
     ),
     responses(
         (status = 200, description = "Feedback list", body = Vec<FeedbackResponse>),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Admin permission required", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Admin permission required", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn list_feedbacks(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Query(params): Query<ListParams>,
-) -> impl IntoResponse {
-    let user = match auth_session.user {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Not authenticated".to_string(),
-                    code: "UNAUTHORIZED".to_string(),
-                }),
-            )
-                .into_response()
-        }
-    };
+) -> ApiResult<Json<Vec<FeedbackResponse>>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let is_admin = match state.user_service.has_permission(user.id, "*").await {
-        Ok(value) => value,
-        Err(err) => return AppError::from(err).into_response(),
-    };
+    let is_admin = state
+        .user_service
+        .has_permission(user.id, "*")
+        .await
+        .map_err(AppError::from)?;
     if !is_admin {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Admin permission required".to_string(),
-                code: "FORBIDDEN".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::forbidden("Admin permission required"));
     }
 
     let limit = params.limit.unwrap_or(50).min(200);
     let offset = params.offset.unwrap_or(0);
 
-    match state.feedback_service.list_all(limit, offset).await {
-        Ok(rows) => {
-            let rows: Vec<FeedbackResponse> = rows.into_iter().map(FeedbackResponse::from).collect();
-            (StatusCode::OK, Json(rows)).into_response()
-        }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-                code: "FETCH_ERROR".to_string(),
-            }),
-        )
-            .into_response(),
-    }
+    let rows = state
+        .feedback_service
+        .list_all(limit, offset)
+        .await
+        .map_err(AppError::from)?;
+    Ok(Json(
+        rows.into_iter().map(FeedbackResponse::from).collect(),
+    ))
 }
 
 /// Current user: list my feedbacks
@@ -182,46 +153,31 @@ pub(crate) async fn list_feedbacks(
     ),
     responses(
         (status = 200, description = "My feedback list", body = Vec<FeedbackResponse>),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn list_my_feedbacks(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Query(params): Query<ListParams>,
-) -> impl IntoResponse {
-    let user = match auth_session.user {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Not authenticated".to_string(),
-                    code: "UNAUTHORIZED".to_string(),
-                }),
-            )
-                .into_response()
-        }
-    };
+) -> ApiResult<Json<Vec<FeedbackResponse>>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
     let limit = params.limit.unwrap_or(50).min(200);
     let offset = params.offset.unwrap_or(0);
 
-    match state.feedback_service.list_by_user(user.id, limit, offset).await {
-        Ok(rows) => {
-            let rows: Vec<FeedbackResponse> = rows.into_iter().map(FeedbackResponse::from).collect();
-            (StatusCode::OK, Json(rows)).into_response()
-        }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-                code: "FETCH_ERROR".to_string(),
-            }),
-        )
-            .into_response(),
-    }
+    let rows = state
+        .feedback_service
+        .list_by_user(user.id, limit, offset)
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(Json(
+        rows.into_iter().map(FeedbackResponse::from).collect(),
+    ))
 }
 
 /// Create a feedback (any authenticated user)
@@ -234,50 +190,26 @@ pub(crate) async fn list_my_feedbacks(
     ),
     responses(
         (status = 201, description = "Feedback created", body = FeedbackResponse),
-        (status = 400, description = "Validation error", body = ErrorResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn create_feedback(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Json(req): Json<CreateFeedbackRequest>,
-) -> impl IntoResponse {
-    let user = match auth_session.user {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Not authenticated".to_string(),
-                    code: "UNAUTHORIZED".to_string(),
-                }),
-            )
-                .into_response()
-        }
-    };
+) -> ApiResult<(StatusCode, Json<FeedbackResponse>)> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
     if req.title.trim().is_empty() || req.content.trim().is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "title/content is required".to_string(),
-                code: "VALIDATION_ERROR".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::validation("title/content is required"));
     }
 
     if !is_valid_feedback_type(&req.feedback_type) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Invalid feedback type".to_string(),
-                code: "VALIDATION_ERROR".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::validation("Invalid feedback type"));
     }
 
     let input = CreateFeedback {
@@ -290,17 +222,8 @@ pub(crate) async fn create_feedback(
         source_name: req.source_name,
     };
 
-    match state.feedback_service.create(input).await {
-        Ok(row) => (StatusCode::CREATED, Json(FeedbackResponse::from(row))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-                code: "CREATE_ERROR".to_string(),
-            }),
-        )
-            .into_response(),
-    }
+    let row = state.feedback_service.create(input).await.map_err(AppError::from)?;
+    Ok((StatusCode::CREATED, Json(FeedbackResponse::from(row))))
 }
 
 /// Get a feedback by id (owner or admin)
@@ -313,66 +236,38 @@ pub(crate) async fn create_feedback(
     ),
     responses(
         (status = 200, description = "Feedback", body = FeedbackResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Forbidden", body = ErrorResponse),
-        (status = 404, description = "Not found", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Forbidden", body = ApiError),
+        (status = 404, description = "Not found", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn get_feedback(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
-) -> impl IntoResponse {
-    let user = match auth_session.user {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Not authenticated".to_string(),
-                    code: "UNAUTHORIZED".to_string(),
-                }),
-            )
-                .into_response()
-        }
-    };
+) -> ApiResult<Json<FeedbackResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let is_admin = match state.user_service.has_permission(user.id, "*").await {
-        Ok(value) => value,
-        Err(err) => return AppError::from(err).into_response(),
-    };
-    match state.feedback_service.get_by_id(id).await {
-        Ok(row) => {
-            if !is_admin && row.user_id != Some(user.id) {
-                return (
-                    StatusCode::FORBIDDEN,
-                    Json(ErrorResponse {
-                        error: "Access denied".to_string(),
-                        code: "FORBIDDEN".to_string(),
-                    }),
-                )
-                    .into_response();
-            }
+    let is_admin = state
+        .user_service
+        .has_permission(user.id, "*")
+        .await
+        .map_err(AppError::from)?;
 
-            (StatusCode::OK, Json(FeedbackResponse::from(row))).into_response()
-        }
-        Err(e) => {
-            let (status, code) = if matches!(e, law_eye_common::Error::NotFound(_)) {
-                (StatusCode::NOT_FOUND, "NOT_FOUND")
-            } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, "FETCH_ERROR")
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: e.to_string(),
-                    code: code.to_string(),
-                }),
-            )
-                .into_response()
-        }
+    let row = state
+        .feedback_service
+        .get_by_id(id)
+        .await
+        .map_err(AppError::from)?;
+
+    if !is_admin && row.user_id != Some(user.id) {
+        return Err(AppError::forbidden("Access denied"));
     }
+
+    Ok(Json(FeedbackResponse::from(row)))
 }
 
 /// Admin: update a feedback status / response
@@ -386,11 +281,11 @@ pub(crate) async fn get_feedback(
     ),
     responses(
         (status = 200, description = "Feedback updated", body = FeedbackResponse),
-        (status = 400, description = "Validation error", body = ErrorResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Admin permission required", body = ErrorResponse),
-        (status = 404, description = "Not found", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Admin permission required", body = ApiError),
+        (status = 404, description = "Not found", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn update_feedback(
@@ -398,46 +293,23 @@ pub(crate) async fn update_feedback(
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateFeedbackRequest>,
-) -> impl IntoResponse {
-    let user = match auth_session.user {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Not authenticated".to_string(),
-                    code: "UNAUTHORIZED".to_string(),
-                }),
-            )
-                .into_response()
-        }
-    };
+) -> ApiResult<Json<FeedbackResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let is_admin = match state.user_service.has_permission(user.id, "*").await {
-        Ok(value) => value,
-        Err(err) => return AppError::from(err).into_response(),
-    };
+    let is_admin = state
+        .user_service
+        .has_permission(user.id, "*")
+        .await
+        .map_err(AppError::from)?;
     if !is_admin {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Admin permission required".to_string(),
-                code: "FORBIDDEN".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::forbidden("Admin permission required"));
     }
 
     if let Some(status) = req.status.as_deref() {
         if !is_valid_feedback_status(status) {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: "Invalid status".to_string(),
-                    code: "VALIDATION_ERROR".to_string(),
-                }),
-            )
-                .into_response();
+            return Err(AppError::validation("Invalid status"));
         }
     }
 
@@ -446,22 +318,11 @@ pub(crate) async fn update_feedback(
         admin_response: req.admin_response,
     };
 
-    match state.feedback_service.update(id, input).await {
-        Ok(row) => (StatusCode::OK, Json(FeedbackResponse::from(row))).into_response(),
-        Err(e) => {
-            let (status, code) = if matches!(e, law_eye_common::Error::NotFound(_)) {
-                (StatusCode::NOT_FOUND, "NOT_FOUND")
-            } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, "UPDATE_ERROR")
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: e.to_string(),
-                    code: code.to_string(),
-                }),
-            )
-                .into_response()
-        }
-    }
+    let row = state
+        .feedback_service
+        .update(id, input)
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(Json(FeedbackResponse::from(row)))
 }

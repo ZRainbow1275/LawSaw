@@ -1,7 +1,6 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
@@ -12,7 +11,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
-use crate::AppError;
+use crate::{ApiError, ApiResult, AppError};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -45,11 +44,6 @@ pub struct AiAvailabilityResponse {
     pub available: bool,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ErrorResponse {
-    pub error: String,
-}
-
 /// AI 服务是否可用（仅检测 API 侧配置，不做外部 LLM 探测）
 #[utoipa::path(
     get,
@@ -59,52 +53,31 @@ pub struct ErrorResponse {
     ),
     responses(
         (status = 200, description = "AI availability", body = AiAvailabilityResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn get_ai_availability(
     State(state): State<AppState>,
     auth_session: AuthSession,
-) -> impl IntoResponse {
-    let user = match auth_session.user {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Not authenticated".to_string(),
-                }),
-            )
-                .into_response()
-        }
-    };
+) -> ApiResult<Json<AiAvailabilityResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_read = match state
+    let can_read = state
         .user_service
         .has_permission(user.id, "articles:read")
         .await
-    {
-        Ok(value) => value,
-        Err(err) => return AppError::from(err).into_response(),
-    };
+        .map_err(AppError::from)?;
     if !can_read {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::forbidden("Permission denied"));
     }
 
-    (
-        StatusCode::OK,
-        Json(AiAvailabilityResponse {
-            available: state.ai_service.is_some(),
-        }),
-    )
-        .into_response()
+    Ok(Json(AiAvailabilityResponse {
+        available: state.ai_service.is_some(),
+    }))
 }
 
 /// 触发文章完整 AI 处理
@@ -117,68 +90,40 @@ pub(crate) async fn get_ai_availability(
     ),
     responses(
         (status = 202, description = "AI processing task enqueued", body = AiProcessResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 404, description = "Article not found", body = ErrorResponse),
-        (status = 500, description = "Failed to enqueue task", body = ErrorResponse),
-        (status = 503, description = "AI service not available", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 404, description = "Article not found", body = ApiError),
+        (status = 500, description = "Failed to enqueue task", body = ApiError),
+        (status = 503, description = "AI service not available", body = ApiError)
     )
 )]
 pub(crate) async fn process_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(article_id): Path<Uuid>,
-) -> impl IntoResponse {
-    let user = match auth_session.user {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Not authenticated".to_string(),
-                }),
-            )
-                .into_response()
-        }
-    };
+) -> ApiResult<(StatusCode, Json<AiProcessResponse>)> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_write = match state
+    let can_write = state
         .user_service
         .has_permission(user.id, "articles:write")
         .await
-    {
-        Ok(value) => value,
-        Err(err) => return AppError::from(err).into_response(),
-    };
+        .map_err(AppError::from)?;
     if !can_write {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::forbidden("Permission denied"));
     }
 
     // Verify article exists
-    if state.article_service.get_by_id(article_id).await.is_err() {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Article not found".to_string(),
-            }),
-        )
-            .into_response();
-    }
+    state
+        .article_service
+        .get_by_id(article_id)
+        .await
+        .map_err(AppError::from)?;
 
     if state.ai_service.is_none() {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse {
-                error: "AI service not available".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::service_unavailable("AI service not available"));
     }
 
     // Enqueue AI task
@@ -187,25 +132,20 @@ pub(crate) async fn process_article(
         task_type: AiTaskType::Full,
     };
 
-    if let Err(e) = state.task_queue.enqueue_retryable("queue:ai", task).await {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: format!("Failed to enqueue task: {}", e),
-            }),
-        )
-            .into_response();
-    }
+    state
+        .task_queue
+        .enqueue_retryable("queue:ai", task)
+        .await
+        .map_err(AppError::from)?;
 
-    (
+    Ok((
         StatusCode::ACCEPTED,
         Json(AiProcessResponse {
             message: "AI processing task enqueued".to_string(),
             article_id,
             task_type: "full".to_string(),
         }),
-    )
-        .into_response()
+    ))
 }
 
 /// 触发文章分类
@@ -218,67 +158,39 @@ pub(crate) async fn process_article(
     ),
     responses(
         (status = 202, description = "Classification task enqueued", body = AiProcessResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 404, description = "Article not found", body = ErrorResponse),
-        (status = 500, description = "Failed to enqueue task", body = ErrorResponse),
-        (status = 503, description = "AI service not available", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 404, description = "Article not found", body = ApiError),
+        (status = 500, description = "Failed to enqueue task", body = ApiError),
+        (status = 503, description = "AI service not available", body = ApiError)
     )
 )]
 pub(crate) async fn classify_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(article_id): Path<Uuid>,
-) -> impl IntoResponse {
-    let user = match auth_session.user {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Not authenticated".to_string(),
-                }),
-            )
-                .into_response()
-        }
-    };
+) -> ApiResult<(StatusCode, Json<AiProcessResponse>)> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_write = match state
+    let can_write = state
         .user_service
         .has_permission(user.id, "articles:write")
         .await
-    {
-        Ok(value) => value,
-        Err(err) => return AppError::from(err).into_response(),
-    };
+        .map_err(AppError::from)?;
     if !can_write {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::forbidden("Permission denied"));
     }
 
-    if state.article_service.get_by_id(article_id).await.is_err() {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Article not found".to_string(),
-            }),
-        )
-            .into_response();
-    }
+    state
+        .article_service
+        .get_by_id(article_id)
+        .await
+        .map_err(AppError::from)?;
 
     if state.ai_service.is_none() {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse {
-                error: "AI service not available".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::service_unavailable("AI service not available"));
     }
 
     let task = AiTask {
@@ -286,25 +198,20 @@ pub(crate) async fn classify_article(
         task_type: AiTaskType::Classify,
     };
 
-    if let Err(e) = state.task_queue.enqueue_retryable("queue:ai", task).await {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: format!("Failed to enqueue task: {}", e),
-            }),
-        )
-            .into_response();
-    }
+    state
+        .task_queue
+        .enqueue_retryable("queue:ai", task)
+        .await
+        .map_err(AppError::from)?;
 
-    (
+    Ok((
         StatusCode::ACCEPTED,
         Json(AiProcessResponse {
             message: "Classification task enqueued".to_string(),
             article_id,
             task_type: "classify".to_string(),
         }),
-    )
-        .into_response()
+    ))
 }
 
 /// 触发文章摘要生成
@@ -317,67 +224,39 @@ pub(crate) async fn classify_article(
     ),
     responses(
         (status = 202, description = "Summarization task enqueued", body = AiProcessResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 404, description = "Article not found", body = ErrorResponse),
-        (status = 500, description = "Failed to enqueue task", body = ErrorResponse),
-        (status = 503, description = "AI service not available", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 404, description = "Article not found", body = ApiError),
+        (status = 500, description = "Failed to enqueue task", body = ApiError),
+        (status = 503, description = "AI service not available", body = ApiError)
     )
 )]
 pub(crate) async fn summarize_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(article_id): Path<Uuid>,
-) -> impl IntoResponse {
-    let user = match auth_session.user {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Not authenticated".to_string(),
-                }),
-            )
-                .into_response()
-        }
-    };
+) -> ApiResult<(StatusCode, Json<AiProcessResponse>)> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_write = match state
+    let can_write = state
         .user_service
         .has_permission(user.id, "articles:write")
         .await
-    {
-        Ok(value) => value,
-        Err(err) => return AppError::from(err).into_response(),
-    };
+        .map_err(AppError::from)?;
     if !can_write {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::forbidden("Permission denied"));
     }
 
-    if state.article_service.get_by_id(article_id).await.is_err() {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Article not found".to_string(),
-            }),
-        )
-            .into_response();
-    }
+    state
+        .article_service
+        .get_by_id(article_id)
+        .await
+        .map_err(AppError::from)?;
 
     if state.ai_service.is_none() {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse {
-                error: "AI service not available".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::service_unavailable("AI service not available"));
     }
 
     let task = AiTask {
@@ -385,25 +264,20 @@ pub(crate) async fn summarize_article(
         task_type: AiTaskType::Summarize,
     };
 
-    if let Err(e) = state.task_queue.enqueue_retryable("queue:ai", task).await {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: format!("Failed to enqueue task: {}", e),
-            }),
-        )
-            .into_response();
-    }
+    state
+        .task_queue
+        .enqueue_retryable("queue:ai", task)
+        .await
+        .map_err(AppError::from)?;
 
-    (
+    Ok((
         StatusCode::ACCEPTED,
         Json(AiProcessResponse {
             message: "Summarization task enqueued".to_string(),
             article_id,
             task_type: "summarize".to_string(),
         }),
-    )
-        .into_response()
+    ))
 }
 
 /// 触发风险评估
@@ -416,67 +290,39 @@ pub(crate) async fn summarize_article(
     ),
     responses(
         (status = 202, description = "Risk assessment task enqueued", body = AiProcessResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 404, description = "Article not found", body = ErrorResponse),
-        (status = 500, description = "Failed to enqueue task", body = ErrorResponse),
-        (status = 503, description = "AI service not available", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 404, description = "Article not found", body = ApiError),
+        (status = 500, description = "Failed to enqueue task", body = ApiError),
+        (status = 503, description = "AI service not available", body = ApiError)
     )
 )]
 pub(crate) async fn assess_risk(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(article_id): Path<Uuid>,
-) -> impl IntoResponse {
-    let user = match auth_session.user {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Not authenticated".to_string(),
-                }),
-            )
-                .into_response()
-        }
-    };
+) -> ApiResult<(StatusCode, Json<AiProcessResponse>)> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_write = match state
+    let can_write = state
         .user_service
         .has_permission(user.id, "articles:write")
         .await
-    {
-        Ok(value) => value,
-        Err(err) => return AppError::from(err).into_response(),
-    };
+        .map_err(AppError::from)?;
     if !can_write {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::forbidden("Permission denied"));
     }
 
-    if state.article_service.get_by_id(article_id).await.is_err() {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Article not found".to_string(),
-            }),
-        )
-            .into_response();
-    }
+    state
+        .article_service
+        .get_by_id(article_id)
+        .await
+        .map_err(AppError::from)?;
 
     if state.ai_service.is_none() {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse {
-                error: "AI service not available".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::service_unavailable("AI service not available"));
     }
 
     let task = AiTask {
@@ -484,25 +330,20 @@ pub(crate) async fn assess_risk(
         task_type: AiTaskType::RiskAssess,
     };
 
-    if let Err(e) = state.task_queue.enqueue_retryable("queue:ai", task).await {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: format!("Failed to enqueue task: {}", e),
-            }),
-        )
-            .into_response();
-    }
+    state
+        .task_queue
+        .enqueue_retryable("queue:ai", task)
+        .await
+        .map_err(AppError::from)?;
 
-    (
+    Ok((
         StatusCode::ACCEPTED,
         Json(AiProcessResponse {
             message: "Risk assessment task enqueued".to_string(),
             article_id,
             task_type: "risk_assess".to_string(),
         }),
-    )
-        .into_response()
+    ))
 }
 
 /// 获取文章 AI 处理状态
@@ -515,78 +356,51 @@ pub(crate) async fn assess_risk(
     ),
     responses(
         (status = 200, description = "AI processing status", body = AiStatusResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 404, description = "Article not found", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 404, description = "Article not found", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn get_ai_status(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(article_id): Path<Uuid>,
-) -> impl IntoResponse {
-    let user = match auth_session.user {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Not authenticated".to_string(),
-                }),
-            )
-                .into_response()
-        }
-    };
+) -> ApiResult<Json<AiStatusResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_read = match state
+    let can_read = state
         .user_service
         .has_permission(user.id, "articles:read")
         .await
-    {
-        Ok(value) => value,
-        Err(err) => return AppError::from(err).into_response(),
-    };
+        .map_err(AppError::from)?;
     if !can_read {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::forbidden("Permission denied"));
     }
 
-    match state.article_service.get_by_id(article_id).await {
-        Ok(article) => {
-            let ai_processed = article.ai_processed_at.is_some();
-            let category = match article.category_id {
-                Some(category_id) => state
-                    .category_service
-                    .get_by_id(category_id)
-                    .await
-                    .ok()
-                    .map(|c| c.name),
-                None => None,
-            };
-            (
-                StatusCode::OK,
-                Json(AiStatusResponse {
-                    article_id,
-                    ai_processed,
-                    category,
-                    risk_score: article.risk_score,
-                    summary: article.summary,
-                }),
-            )
-                .into_response()
-        }
-        Err(_) => (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Article not found".to_string(),
-            }),
-        )
-            .into_response(),
-    }
+    let article = state
+        .article_service
+        .get_by_id(article_id)
+        .await
+        .map_err(AppError::from)?;
+
+    let ai_processed = article.ai_processed_at.is_some();
+    let category = match article.category_id {
+        Some(category_id) => match state.category_service.get_by_id(category_id).await {
+            Ok(c) => Some(c.name),
+            Err(law_eye_common::Error::NotFound(_)) => None,
+            Err(err) => return Err(AppError::from(err)),
+        },
+        None => None,
+    };
+
+    Ok(Json(AiStatusResponse {
+        article_id,
+        ai_processed,
+        category,
+        risk_score: article.risk_score,
+        summary: article.summary,
+    }))
 }

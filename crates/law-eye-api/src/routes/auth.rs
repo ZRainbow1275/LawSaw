@@ -1,7 +1,6 @@
 use axum::{
     extract::State,
     http::StatusCode,
-    response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
@@ -15,6 +14,7 @@ use regex::Regex;
 use crate::auth::{AuthSession, AuthenticatedUser, Credentials};
 use crate::middleware::rate_limit::RateLimitLayer;
 use crate::state::AppState;
+use crate::{ApiError, ApiResult, AppError};
 
 static EMAIL_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap()
@@ -75,11 +75,6 @@ impl From<law_eye_db::User> for UserResponse {
     }
 }
 
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ErrorResponse {
-    pub error: String,
-}
-
 /// 用户注册
 #[utoipa::path(
     post,
@@ -87,34 +82,25 @@ pub struct ErrorResponse {
     request_body = RegisterRequest,
     responses(
         (status = 201, description = "Registration successful", body = AuthResponse),
-        (status = 400, description = "Validation error", body = ErrorResponse),
-        (status = 409, description = "Email already exists", body = ErrorResponse)
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 409, description = "Email already exists", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn register(
     State(state): State<AppState>,
     mut auth_session: AuthSession,
     Json(req): Json<RegisterRequest>,
-) -> impl IntoResponse {
+) -> ApiResult<(StatusCode, Json<AuthResponse>)> {
     // Validate input
     if req.email.is_empty() || !EMAIL_RE.is_match(&req.email) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Invalid email address".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::validation("Invalid email address"));
     }
 
     if req.password.len() < 8 {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Password must be at least 8 characters".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::validation(
+            "Password must be at least 8 characters",
+        ));
     }
 
     let create_user = CreateUser {
@@ -123,46 +109,34 @@ pub(crate) async fn register(
         display_name: req.display_name,
     };
 
-    match state.user_service.create(create_user).await {
-        Ok(user) => {
-            // Assign default viewer role
-            let _ = state.user_service.assign_role(user.id, "viewer", None).await;
-
-            // Auto login after registration
-            let auth_user = AuthenticatedUser::from_db_user(&user);
-            let _ = auth_session.login(&auth_user).await;
-
-            (
-                StatusCode::CREATED,
-                Json(AuthResponse {
-                    success: true,
-                    message: "Registration successful".to_string(),
-                    user: Some(user.into()),
-                }),
-            )
-                .into_response()
+    let user = match state.user_service.create(create_user).await {
+        Ok(user) => user,
+        Err(law_eye_common::Error::Validation(msg)) if msg.contains("already exists") => {
+            return Err(AppError::conflict("Email already registered"))
         }
-        Err(e) => {
-            let error_msg = e.to_string();
-            if error_msg.contains("already exists") {
-                (
-                    StatusCode::CONFLICT,
-                    Json(ErrorResponse {
-                        error: "Email already registered".to_string(),
-                    }),
-                )
-                    .into_response()
-            } else {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: format!("Registration failed: {}", error_msg),
-                    }),
-                )
-                    .into_response()
-            }
-        }
-    }
+        Err(err) => return Err(AppError::from(err)),
+    };
+
+    state
+        .user_service
+        .assign_role(user.id, "viewer", None)
+        .await
+        .map_err(AppError::from)?;
+
+    let auth_user = AuthenticatedUser::from_db_user(&user);
+    auth_session
+        .login(&auth_user)
+        .await
+        .map_err(|e| AppError::internal(format!("Session error: {}", e)))?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(AuthResponse {
+            success: true,
+            message: "Registration successful".to_string(),
+            user: Some(user.into()),
+        }),
+    ))
 }
 
 /// 用户登录
@@ -172,50 +146,30 @@ pub(crate) async fn register(
     request_body = Credentials,
     responses(
         (status = 200, description = "Login successful", body = AuthResponse),
-        (status = 401, description = "Invalid credentials", body = ErrorResponse)
+        (status = 401, description = "Invalid credentials", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn login(
     mut auth_session: AuthSession,
     Json(creds): Json<Credentials>,
-) -> impl IntoResponse {
-    match auth_session.authenticate(creds).await {
-        Ok(Some(user)) => {
-            if let Err(e) = auth_session.login(&user).await {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: format!("Session error: {}", e),
-                    }),
-                )
-                    .into_response();
-            }
+) -> ApiResult<Json<AuthResponse>> {
+    let user = auth_session
+        .authenticate(creds)
+        .await
+        .map_err(|e| AppError::internal(format!("Auth backend error: {}", e)))?
+        .ok_or_else(|| AppError::unauthorized("Invalid email or password"))?;
 
-            (
-                StatusCode::OK,
-                Json(AuthResponse {
-                    success: true,
-                    message: "Login successful".to_string(),
-                    user: Some(user.into()),
-                }),
-            )
-                .into_response()
-        }
-        Ok(None) => (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Invalid email or password".to_string(),
-            }),
-        )
-            .into_response(),
-        Err(_) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Authentication error".to_string(),
-            }),
-        )
-            .into_response(),
-    }
+    auth_session
+        .login(&user)
+        .await
+        .map_err(|e| AppError::internal(format!("Session error: {}", e)))?;
+
+    Ok(Json(AuthResponse {
+        success: true,
+        message: "Login successful".to_string(),
+        user: Some(user.into()),
+    }))
 }
 
 /// 用户登出
@@ -226,7 +180,7 @@ pub(crate) async fn login(
         (status = 200, description = "Logout successful", body = AuthResponse)
     )
 )]
-pub(crate) async fn logout(mut auth_session: AuthSession) -> impl IntoResponse {
+pub(crate) async fn logout(mut auth_session: AuthSession) -> (StatusCode, Json<AuthResponse>) {
     let _ = auth_session.logout().await;
 
     (
@@ -248,26 +202,17 @@ pub(crate) async fn logout(mut auth_session: AuthSession) -> impl IntoResponse {
     ),
     responses(
         (status = 200, description = "Current user", body = AuthResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError)
     )
 )]
-pub(crate) async fn get_current_user(auth_session: AuthSession) -> impl IntoResponse {
-    match auth_session.user {
-        Some(user) => (
-            StatusCode::OK,
-            Json(AuthResponse {
-                success: true,
-                message: "Authenticated".to_string(),
-                user: Some(user.into()),
-            }),
-        )
-            .into_response(),
-        None => (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Not authenticated".to_string(),
-            }),
-        )
-            .into_response(),
-    }
+pub(crate) async fn get_current_user(auth_session: AuthSession) -> ApiResult<Json<AuthResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+
+    Ok(Json(AuthResponse {
+        success: true,
+        message: "Authenticated".to_string(),
+        user: Some(user.into()),
+    }))
 }

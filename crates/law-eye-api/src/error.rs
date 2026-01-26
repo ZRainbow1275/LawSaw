@@ -88,6 +88,13 @@ impl AppError {
         }
     }
 
+    pub fn internal_with_code(code: impl Into<String>, msg: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            body: ApiError::new(msg).with_code(code),
+        }
+    }
+
     pub fn rate_limited(msg: impl Into<String>) -> Self {
         Self {
             status: StatusCode::TOO_MANY_REQUESTS,
@@ -95,9 +102,16 @@ impl AppError {
         }
     }
 
+    pub fn service_unavailable(msg: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            body: ApiError::new(msg).with_code("SERVICE_UNAVAILABLE"),
+        }
+    }
+
     pub fn validation(msg: impl Into<String>) -> Self {
         Self {
-            status: StatusCode::UNPROCESSABLE_ENTITY,
+            status: StatusCode::BAD_REQUEST,
             body: ApiError::new(msg).with_code("VALIDATION_ERROR"),
         }
     }

@@ -1,7 +1,5 @@
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
-    response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
@@ -11,7 +9,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
-use crate::AppError;
+use crate::{ApiError, ApiResult, AppError};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -93,11 +91,6 @@ pub struct AskResponse {
     pub confidence: f32,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ErrorResponse {
-    pub error: String,
-}
-
 const KEYWORD_SEARCH_MAX_LIMIT: i64 = 50;
 const SEMANTIC_SEARCH_MAX_LIMIT: i64 = 20;
 const ASK_MAX_TOP_K: i64 = 20;
@@ -116,79 +109,55 @@ const ASK_MAX_TOP_K: i64 = 20;
     ),
     responses(
         (status = 200, description = "Search results", body = SearchResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn search(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Query(query): Query<SearchQuery>,
-) -> impl IntoResponse {
-    let user = match auth_session.user {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Not authenticated".to_string(),
-                }),
-            )
-                .into_response()
-        }
-    };
+) -> ApiResult<Json<SearchResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_read = match state.user_service.has_permission(user.id, "articles:read").await {
-        Ok(value) => value,
-        Err(err) => return AppError::from(err).into_response(),
-    };
+    let can_read = state
+        .user_service
+        .has_permission(user.id, "articles:read")
+        .await
+        .map_err(AppError::from)?;
     if !can_read {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::forbidden("Permission denied"));
     }
 
     let q = query.q.trim();
     if q.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Query cannot be empty".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::validation("Query cannot be empty"));
     }
 
     let limit = query.limit.clamp(1, KEYWORD_SEARCH_MAX_LIMIT);
     let offset = query.offset.max(0);
 
-    match state.article_service.search_ranked(q, limit, offset).await {
-        Ok((hits, total)) => {
-            let results: Vec<SearchResultItem> = hits
-                .into_iter()
-                .map(|h| SearchResultItem {
-                    article_id: h.article_id,
-                    title: h.title,
-                    excerpt: h.excerpt,
-                    score: h.score,
-                })
-                .collect();
+    let (hits, total) = state
+        .article_service
+        .search_ranked(q, limit, offset)
+        .await
+        .map_err(AppError::from)?;
 
-            (StatusCode::OK, Json(SearchResponse { results, total })).into_response()
-        }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-            .into_response(),
-    }
+    let results: Vec<SearchResultItem> = hits
+        .into_iter()
+        .map(|h| SearchResultItem {
+            article_id: h.article_id,
+            title: h.title,
+            excerpt: h.excerpt,
+            score: h.score,
+        })
+        .collect();
+
+    Ok(Json(SearchResponse { results, total }))
 }
 
 /// Semantic vector search
@@ -201,78 +170,59 @@ pub(crate) async fn search(
     ),
     responses(
         (status = 200, description = "Semantic search results", body = SemanticSearchResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 503, description = "AI service unavailable", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn semantic_search(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Json(req): Json<SemanticSearchRequest>,
-) -> impl IntoResponse {
-    let user = match auth_session.user {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Not authenticated".to_string(),
-                }),
-            )
-                .into_response()
-        }
-    };
+) -> ApiResult<Json<SemanticSearchResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_read = match state.user_service.has_permission(user.id, "articles:read").await {
-        Ok(value) => value,
-        Err(err) => return AppError::from(err).into_response(),
-    };
+    let can_read = state
+        .user_service
+        .has_permission(user.id, "articles:read")
+        .await
+        .map_err(AppError::from)?;
     if !can_read {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::forbidden("Permission denied"));
     }
 
     if state.ai_service.is_none() {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse {
-                error: "AI service not available".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::service_unavailable("AI service not available"));
+    }
+
+    let query = req.query.trim();
+    if query.is_empty() {
+        return Err(AppError::validation("Query cannot be empty"));
     }
 
     let limit = req.limit.clamp(1, SEMANTIC_SEARCH_MAX_LIMIT);
 
-    match state.rag_service.search(&req.query, limit).await {
-        Ok(results) => {
-            let response = SemanticSearchResponse {
-                results: results
-                    .into_iter()
-                    .map(|r| SemanticSearchResult {
-                        chunk_id: r.chunk_id,
-                        article_id: r.article_id,
-                        content: r.content,
-                        similarity: r.similarity,
-                    })
-                    .collect(),
-            };
-            (StatusCode::OK, Json(response)).into_response()
-        }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-            .into_response(),
-    }
+    let results = state
+        .rag_service
+        .search(query, limit)
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(Json(SemanticSearchResponse {
+        results: results
+            .into_iter()
+            .map(|r| SemanticSearchResult {
+                chunk_id: r.chunk_id,
+                article_id: r.article_id,
+                content: r.content,
+                similarity: r.similarity,
+            })
+            .collect(),
+    }))
 }
 
 /// RAG Q&A endpoint
@@ -285,79 +235,60 @@ pub(crate) async fn semantic_search(
     ),
     responses(
         (status = 200, description = "AI-generated answer", body = AskResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 503, description = "AI service unavailable", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn ask_question(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Json(req): Json<AskRequest>,
-) -> impl IntoResponse {
-    let user = match auth_session.user {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Not authenticated".to_string(),
-                }),
-            )
-                .into_response()
-        }
-    };
+) -> ApiResult<Json<AskResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_read = match state.user_service.has_permission(user.id, "articles:read").await {
-        Ok(value) => value,
-        Err(err) => return AppError::from(err).into_response(),
-    };
+    let can_read = state
+        .user_service
+        .has_permission(user.id, "articles:read")
+        .await
+        .map_err(AppError::from)?;
     if !can_read {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::forbidden("Permission denied"));
     }
 
     if state.ai_service.is_none() {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse {
-                error: "AI service not available".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::service_unavailable("AI service not available"));
+    }
+
+    let question = req.question.trim();
+    if question.is_empty() {
+        return Err(AppError::validation("Question cannot be empty"));
     }
 
     let top_k = req.top_k.clamp(1, ASK_MAX_TOP_K);
 
-    match state.rag_service.answer(&req.question, top_k).await {
-        Ok(answer) => {
-            let response = AskResponse {
-                answer: answer.answer,
-                sources: answer
-                    .sources
-                    .into_iter()
-                    .map(|s| AnswerSource {
-                        article_id: s.article_id,
-                        title: s.title,
-                        excerpt: s.excerpt,
-                        relevance: s.relevance,
-                    })
-                    .collect(),
-                confidence: answer.confidence,
-            };
-            (StatusCode::OK, Json(response)).into_response()
-        }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-            .into_response(),
-    }
+    let answer = state
+        .rag_service
+        .answer(question, top_k)
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(Json(AskResponse {
+        answer: answer.answer,
+        sources: answer
+            .sources
+            .into_iter()
+            .map(|s| AnswerSource {
+                article_id: s.article_id,
+                title: s.title,
+                excerpt: s.excerpt,
+                relevance: s.relevance,
+            })
+            .collect(),
+        confidence: answer.confidence,
+    }))
 }

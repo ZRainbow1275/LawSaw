@@ -1,4 +1,4 @@
-use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::get, Json, Router};
+use axum::{extract::State, routing::get, Json, Router};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -6,15 +6,10 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
-use crate::AppError;
+use crate::{ApiError, ApiResult, AppError};
 
 pub fn router() -> Router<AppState> {
     Router::new().route("/", get(list_categories))
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ErrorResponse {
-    pub error: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -54,58 +49,33 @@ impl From<law_eye_db::Category> for CategoryResponse {
     ),
     responses(
         (status = 200, description = "Categories", body = Vec<CategoryResponse>),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn list_categories(
     State(state): State<AppState>,
     auth_session: AuthSession,
-) -> impl IntoResponse {
-    let user = match auth_session.user {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Not authenticated".to_string(),
-                }),
-            )
-                .into_response();
-        }
-    };
+) -> ApiResult<Json<Vec<CategoryResponse>>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_read = match state
+    let can_read = state
         .user_service
         .has_permission(user.id, "categories:read")
         .await
-    {
-        Ok(value) => value,
-        Err(err) => return AppError::from(err).into_response(),
-    };
+        .map_err(AppError::from)?;
     if !can_read {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-            }),
-        )
-            .into_response();
+        return Err(AppError::forbidden("Permission denied"));
     }
 
-    match state.category_service.list().await {
-        Ok(categories) => {
-            let categories: Vec<CategoryResponse> =
-                categories.into_iter().map(CategoryResponse::from).collect();
-            (StatusCode::OK, Json(categories)).into_response()
-        }
-        Err(_) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Failed to fetch categories".to_string(),
-            }),
-        )
-            .into_response(),
-    }
+    let categories = state.category_service.list().await.map_err(AppError::from)?;
+    Ok(Json(
+        categories
+            .into_iter()
+            .map(CategoryResponse::from)
+            .collect(),
+    ))
 }

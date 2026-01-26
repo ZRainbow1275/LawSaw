@@ -87,9 +87,9 @@ impl FeedbackService {
         .bind(id)
         .bind(&input.status)
         .bind(&input.admin_response)
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await
-        .map_err(|e| Error::Database(e.to_string()))
+        .map_err(|e| Error::Database(e.to_string()))?
+        .ok_or_else(|| Error::NotFound(format!("Feedback {} not found", id)))
     }
 }
-

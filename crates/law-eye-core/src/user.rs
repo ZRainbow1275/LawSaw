@@ -198,9 +198,10 @@ impl UserService {
         .bind(&input.display_name)
         .bind(&input.avatar_url)
         .bind(&input.preferences)
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        .map_err(|e| Error::Database(e.to_string()))?
+        .ok_or_else(|| Error::NotFound(format!("User {} not found", id)))?;
 
         Ok(user)
     }

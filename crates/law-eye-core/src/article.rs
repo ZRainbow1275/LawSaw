@@ -232,9 +232,10 @@ impl ArticleService {
         )
         .bind(id)
         .bind(status)
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await
-        .map_err(|e| Error::Database(e.to_string()))
+        .map_err(|e| Error::Database(e.to_string()))?
+        .ok_or_else(|| Error::NotFound(format!("Article {} not found", id)))
     }
 
     /// Batch update status

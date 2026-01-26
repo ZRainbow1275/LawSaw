@@ -50,6 +50,7 @@ impl Modify for SecurityAddon {
         crate::routes::ai::classify_article,
         crate::routes::ai::summarize_article,
         crate::routes::ai::assess_risk,
+        crate::routes::ai::get_ai_availability,
         crate::routes::ai::get_ai_status,
         crate::routes::users::list_users,
         crate::routes::users::get_user,

@@ -1,6 +1,5 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
     routing::{get, post},
     Json, Router,
 };
@@ -12,6 +11,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
+use crate::{ApiError, ApiResult, AppError};
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ArticleResponse {
@@ -151,23 +151,6 @@ pub struct BatchStatusResponse {
 }
 
 #[derive(Serialize, ToSchema)]
-pub struct ErrorResponse {
-    pub error: String,
-    pub code: String,
-}
-
-fn permission_check_failed(err: Error) -> (StatusCode, Json<ErrorResponse>) {
-    tracing::error!(error = %err, "permission check failed");
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(ErrorResponse {
-            error: "Internal server error".to_string(),
-            code: "INTERNAL_ERROR".to_string(),
-        }),
-    )
-}
-
-#[derive(Serialize, ToSchema)]
 pub struct DeleteResponse {
     pub success: bool,
     pub message: String,
@@ -208,40 +191,28 @@ fn is_valid_status(status: &str) -> bool {
     ),
     responses(
         (status = 200, description = "Article list", body = ArticleListResponse),
-        (status = 400, description = "Validation error", body = ErrorResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn list_articles(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Query(params): Query<ListParams>,
-) -> Result<Json<ArticleListResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let user = auth_session.user.ok_or_else(|| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Not authenticated".to_string(),
-                code: "UNAUTHORIZED".to_string(),
-            }),
-        )
-    })?;
+) -> ApiResult<Json<ArticleListResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
     let can_read = state
         .user_service
         .has_permission(user.id, "articles:read")
         .await
-        .map_err(permission_check_failed)?;
+        .map_err(AppError::from)?;
     if !can_read {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-                code: "FORBIDDEN".to_string(),
-            }),
-        ));
+        return Err(AppError::forbidden("Permission denied"));
     }
 
     let limit = params.limit.unwrap_or(20).min(100);
@@ -249,13 +220,7 @@ pub(crate) async fn list_articles(
 
     if let Some(status) = params.status.as_deref() {
         if !is_valid_status(status) {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: "Invalid status".to_string(),
-                    code: "VALIDATION_ERROR".to_string(),
-                }),
-            ));
+            return Err(AppError::validation("Invalid status"));
         }
     }
 
@@ -263,21 +228,13 @@ pub(crate) async fn list_articles(
         .article_service
         .list_filtered(limit, offset, params.category_id, params.status.as_deref())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string(), code: "FETCH_ERROR".to_string() })))?;
+        .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?;
 
     let total = state
         .article_service
         .count_filtered(params.category_id, params.status.as_deref())
         .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: e.to_string(),
-                    code: "COUNT_ERROR".to_string(),
-                }),
-            )
-        })?;
+        .map_err(|e| AppError::internal_with_code("COUNT_ERROR", e.to_string()))?;
     let data: Vec<ArticleResponse> = articles.into_iter().map(|a| a.into()).collect();
 
     Ok(Json(ArticleListResponse { data, total, limit, offset }))
@@ -291,42 +248,33 @@ pub(crate) async fn list_articles(
     ),
     responses(
         (status = 200, description = "Article stats", body = ArticleStatsResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn get_stats(
     State(state): State<AppState>,
     auth_session: AuthSession,
-) -> Result<Json<ArticleStatsResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let user = auth_session.user.ok_or_else(|| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Not authenticated".to_string(),
-                code: "UNAUTHORIZED".to_string(),
-            }),
-        )
-    })?;
+) -> ApiResult<Json<ArticleStatsResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
     let can_read = state
         .user_service
         .has_permission(user.id, "articles:read")
         .await
-        .map_err(permission_check_failed)?;
+        .map_err(AppError::from)?;
     if !can_read {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-                code: "FORBIDDEN".to_string(),
-            }),
-        ));
+        return Err(AppError::forbidden("Permission denied"));
     }
 
-    let stats = state.article_service.get_stats().await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string(), code: "STATS_ERROR".to_string() })))?;
+    let stats = state
+        .article_service
+        .get_stats()
+        .await
+        .map_err(|e| AppError::internal_with_code("STATS_ERROR", e.to_string()))?;
     Ok(Json(ArticleStatsResponse {
         total_articles: stats.total,
         pending_count: stats.pending,
@@ -344,49 +292,33 @@ pub(crate) async fn get_stats(
     ),
     responses(
         (status = 200, description = "Analytics summary (status/risk/sentiment distributions)", body = ArticleAnalyticsSummaryResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn get_analytics_summary(
     State(state): State<AppState>,
     auth_session: AuthSession,
-) -> Result<Json<ArticleAnalyticsSummaryResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let user = auth_session.user.ok_or_else(|| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Not authenticated".to_string(),
-                code: "UNAUTHORIZED".to_string(),
-            }),
-        )
-    })?;
+) -> ApiResult<Json<ArticleAnalyticsSummaryResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
     let can_read = state
         .user_service
         .has_permission(user.id, "articles:read")
         .await
-        .map_err(permission_check_failed)?;
+        .map_err(AppError::from)?;
     if !can_read {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-                code: "FORBIDDEN".to_string(),
-            }),
-        ));
+        return Err(AppError::forbidden("Permission denied"));
     }
 
-    let summary = state.article_service.get_analytics_summary().await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-                code: "STATS_ERROR".to_string(),
-            }),
-        )
-    })?;
+    let summary = state
+        .article_service
+        .get_analytics_summary()
+        .await
+        .map_err(|e| AppError::internal_with_code("STATS_ERROR", e.to_string()))?;
 
     Ok(Json(ArticleAnalyticsSummaryResponse {
         total: summary.total,
@@ -422,49 +354,33 @@ pub(crate) async fn get_analytics_summary(
     ),
     responses(
         (status = 200, description = "Article counts grouped by category_id (NULL = uncategorized)", body = Vec<ArticleCategoryCountResponse>),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn get_category_counts(
     State(state): State<AppState>,
     auth_session: AuthSession,
-) -> Result<Json<Vec<ArticleCategoryCountResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    let user = auth_session.user.ok_or_else(|| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Not authenticated".to_string(),
-                code: "UNAUTHORIZED".to_string(),
-            }),
-        )
-    })?;
+) -> ApiResult<Json<Vec<ArticleCategoryCountResponse>>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
     let can_read = state
         .user_service
         .has_permission(user.id, "articles:read")
         .await
-        .map_err(permission_check_failed)?;
+        .map_err(AppError::from)?;
     if !can_read {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-                code: "FORBIDDEN".to_string(),
-            }),
-        ));
+        return Err(AppError::forbidden("Permission denied"));
     }
 
-    let rows = state.article_service.get_category_counts().await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-                code: "STATS_ERROR".to_string(),
-            }),
-        )
-    })?;
+    let rows = state
+        .article_service
+        .get_category_counts()
+        .await
+        .map_err(|e| AppError::internal_with_code("STATS_ERROR", e.to_string()))?;
 
     Ok(Json(
         rows.into_iter()
@@ -487,62 +403,40 @@ pub(crate) async fn get_category_counts(
     ),
     responses(
         (status = 200, description = "Daily article trend", body = Vec<ArticleTrendPointResponse>),
-        (status = 400, description = "Validation error", body = ErrorResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn get_trends(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Query(params): Query<TrendParams>,
-) -> Result<Json<Vec<ArticleTrendPointResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    let user = auth_session.user.ok_or_else(|| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Not authenticated".to_string(),
-                code: "UNAUTHORIZED".to_string(),
-            }),
-        )
-    })?;
+) -> ApiResult<Json<Vec<ArticleTrendPointResponse>>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
     let can_read = state
         .user_service
         .has_permission(user.id, "articles:read")
         .await
-        .map_err(permission_check_failed)?;
+        .map_err(AppError::from)?;
     if !can_read {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-                code: "FORBIDDEN".to_string(),
-            }),
-        ));
+        return Err(AppError::forbidden("Permission denied"));
     }
 
     let days = params.days.unwrap_or(7);
     if !(1..=90).contains(&days) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Invalid days".to_string(),
-                code: "VALIDATION_ERROR".to_string(),
-            }),
-        ));
+        return Err(AppError::validation("Invalid days"));
     }
 
-    let points = state.article_service.get_daily_trend(days).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-                code: "STATS_ERROR".to_string(),
-            }),
-        )
-    })?;
+    let points = state
+        .article_service
+        .get_daily_trend(days)
+        .await
+        .map_err(|e| AppError::internal_with_code("STATS_ERROR", e.to_string()))?;
 
     Ok(Json(
         points
@@ -566,44 +460,35 @@ pub(crate) async fn get_trends(
     ),
     responses(
         (status = 200, description = "Recent articles", body = Vec<ArticleResponse>),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn list_recent(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Query(params): Query<ListParams>,
-) -> Result<Json<Vec<ArticleResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    let user = auth_session.user.ok_or_else(|| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Not authenticated".to_string(),
-                code: "UNAUTHORIZED".to_string(),
-            }),
-        )
-    })?;
+) -> ApiResult<Json<Vec<ArticleResponse>>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
     let can_read = state
         .user_service
         .has_permission(user.id, "articles:read")
         .await
-        .map_err(permission_check_failed)?;
+        .map_err(AppError::from)?;
     if !can_read {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-                code: "FORBIDDEN".to_string(),
-            }),
-        ));
+        return Err(AppError::forbidden("Permission denied"));
     }
 
     let limit = params.limit.unwrap_or(10).min(50);
-    let articles = state.article_service.list_recent(limit).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string(), code: "FETCH_ERROR".to_string() })))?;
+    let articles = state
+        .article_service
+        .list_recent(limit)
+        .await
+        .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?;
     let data: Vec<ArticleResponse> = articles.into_iter().map(|a| a.into()).collect();
     Ok(Json(data))
 }
@@ -617,44 +502,31 @@ pub(crate) async fn list_recent(
     ),
     responses(
         (status = 200, description = "Article details", body = ArticleResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 404, description = "Not found", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 404, description = "Not found", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn get_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
-) -> Result<Json<ArticleResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let user = auth_session.user.ok_or_else(|| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Not authenticated".to_string(),
-                code: "UNAUTHORIZED".to_string(),
-            }),
-        )
-    })?;
+) -> ApiResult<Json<ArticleResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
     let can_read = state
         .user_service
         .has_permission(user.id, "articles:read")
         .await
-        .map_err(permission_check_failed)?;
+        .map_err(AppError::from)?;
     if !can_read {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-                code: "FORBIDDEN".to_string(),
-            }),
-        ));
+        return Err(AppError::forbidden("Permission denied"));
     }
 
-    let article = state.article_service.get_by_id(id).await
-        .map_err(|e| (StatusCode::NOT_FOUND, Json(ErrorResponse { error: e.to_string(), code: "NOT_FOUND".to_string() })))?;
+    let article = state.article_service.get_by_id(id).await.map_err(AppError::from)?;
     Ok(Json(article.into()))
 }
 
@@ -667,55 +539,38 @@ pub(crate) async fn get_article(
     ),
     responses(
         (status = 200, description = "Article deleted", body = DeleteResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 404, description = "Not found", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 404, description = "Not found", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn delete_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
-) -> Result<Json<DeleteResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let user = auth_session.user.ok_or_else(|| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Not authenticated".to_string(),
-                code: "UNAUTHORIZED".to_string(),
-            }),
-        )
-    })?;
+) -> ApiResult<Json<DeleteResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
     let can_write = state
         .user_service
         .has_permission(user.id, "articles:write")
         .await
-        .map_err(permission_check_failed)?;
+        .map_err(AppError::from)?;
     if !can_write {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-                code: "FORBIDDEN".to_string(),
-            }),
-        ));
+        return Err(AppError::forbidden("Permission denied"));
     }
 
-    state.article_service.delete(id).await.map_err(|e| {
-        let (status, code) = match e {
-            Error::NotFound(_) => (StatusCode::NOT_FOUND, "NOT_FOUND"),
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, "DELETE_ERROR"),
-        };
-        (
-            status,
-            Json(ErrorResponse {
-                error: e.to_string(),
-                code: code.to_string(),
-            }),
-        )
-    })?;
+    state
+        .article_service
+        .delete(id)
+        .await
+        .map_err(|e| match e {
+            Error::NotFound(_) => AppError::from(e),
+            _ => AppError::internal_with_code("DELETE_ERROR", e.to_string()),
+        })?;
 
     Ok(Json(DeleteResponse {
         success: true,
@@ -732,43 +587,38 @@ pub(crate) async fn delete_article(
     ),
     responses(
         (status = 200, description = "Article published", body = ArticleResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 404, description = "Not found", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn publish_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
-) -> Result<Json<ArticleResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let user = auth_session.user.ok_or_else(|| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Not authenticated".to_string(),
-                code: "UNAUTHORIZED".to_string(),
-            }),
-        )
-    })?;
+) -> ApiResult<Json<ArticleResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
     let can_publish = state
         .user_service
         .has_permission(user.id, "articles:publish")
         .await
-        .map_err(permission_check_failed)?;
+        .map_err(AppError::from)?;
     if !can_publish {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-                code: "FORBIDDEN".to_string(),
-            }),
-        ));
+        return Err(AppError::forbidden("Permission denied"));
     }
 
-    let article = state.article_service.update_status(id, "published").await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string(), code: "PUBLISH_ERROR".to_string() })))?;
+    let article = state
+        .article_service
+        .update_status(id, "published")
+        .await
+        .map_err(|e| match e {
+            Error::NotFound(_) => AppError::from(e),
+            _ => AppError::internal_with_code("PUBLISH_ERROR", e.to_string()),
+        })?;
     Ok(Json(article.into()))
 }
 
@@ -781,43 +631,38 @@ pub(crate) async fn publish_article(
     ),
     responses(
         (status = 200, description = "Article archived", body = ArticleResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 404, description = "Not found", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn archive_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
-) -> Result<Json<ArticleResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let user = auth_session.user.ok_or_else(|| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Not authenticated".to_string(),
-                code: "UNAUTHORIZED".to_string(),
-            }),
-        )
-    })?;
+) -> ApiResult<Json<ArticleResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
     let can_publish = state
         .user_service
         .has_permission(user.id, "articles:publish")
         .await
-        .map_err(permission_check_failed)?;
+        .map_err(AppError::from)?;
     if !can_publish {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-                code: "FORBIDDEN".to_string(),
-            }),
-        ));
+        return Err(AppError::forbidden("Permission denied"));
     }
 
-    let article = state.article_service.update_status(id, "archived").await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string(), code: "ARCHIVE_ERROR".to_string() })))?;
+    let article = state
+        .article_service
+        .update_status(id, "archived")
+        .await
+        .map_err(|e| match e {
+            Error::NotFound(_) => AppError::from(e),
+            _ => AppError::internal_with_code("ARCHIVE_ERROR", e.to_string()),
+        })?;
     Ok(Json(article.into()))
 }
 
@@ -830,43 +675,42 @@ pub(crate) async fn archive_article(
     ),
     responses(
         (status = 200, description = "Batch status updated", body = BatchStatusResponse),
-        (status = 400, description = "Validation error", body = ErrorResponse),
-        (status = 401, description = "Not authenticated", body = ErrorResponse),
-        (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 500, description = "Server error", body = ErrorResponse)
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
     )
 )]
 pub(crate) async fn batch_update_status(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Json(req): Json<BatchStatusRequest>,
-) -> Result<Json<BatchStatusResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let user = auth_session.user.ok_or_else(|| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Not authenticated".to_string(),
-                code: "UNAUTHORIZED".to_string(),
-            }),
-        )
-    })?;
+) -> ApiResult<Json<BatchStatusResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
     let can_publish = state
         .user_service
         .has_permission(user.id, "articles:publish")
         .await
-        .map_err(permission_check_failed)?;
+        .map_err(AppError::from)?;
     if !can_publish {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Permission denied".to_string(),
-                code: "FORBIDDEN".to_string(),
-            }),
-        ));
+        return Err(AppError::forbidden("Permission denied"));
     }
 
-    let updated = state.article_service.batch_update_status(&req.ids, &req.status).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string(), code: "BATCH_ERROR".to_string() })))?;
+    if req.ids.is_empty() {
+        return Err(AppError::validation("ids cannot be empty"));
+    }
+
+    if !is_valid_status(&req.status) {
+        return Err(AppError::validation("Invalid status"));
+    }
+
+    let updated = state
+        .article_service
+        .batch_update_status(&req.ids, &req.status)
+        .await
+        .map_err(|e| AppError::internal_with_code("BATCH_ERROR", e.to_string()))?;
     Ok(Json(BatchStatusResponse { updated }))
 }
