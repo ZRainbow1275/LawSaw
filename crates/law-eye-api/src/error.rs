@@ -4,6 +4,7 @@ use axum::{
     Json,
 };
 use serde::Serialize;
+use tracing::error;
 use utoipa::ToSchema;
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -11,6 +12,8 @@ pub struct ApiError {
     pub error: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
 }
@@ -20,6 +23,7 @@ impl ApiError {
         Self {
             error: error.into(),
             code: None,
+            request_id: None,
             details: None,
         }
     }
@@ -105,6 +109,10 @@ impl IntoResponse for AppError {
     }
 }
 
+fn is_production() -> bool {
+    std::env::var_os("PRODUCTION").is_some()
+}
+
 impl From<law_eye_common::Error> for AppError {
     fn from(err: law_eye_common::Error) -> Self {
         match err {
@@ -112,11 +120,39 @@ impl From<law_eye_common::Error> for AppError {
             law_eye_common::Error::Validation(msg) => Self::validation(msg),
             law_eye_common::Error::Unauthorized(msg) => Self::unauthorized(msg),
             law_eye_common::Error::Forbidden(msg) => Self::forbidden(msg),
-            law_eye_common::Error::Database(msg) => Self::internal(format!("Database error: {}", msg)),
-            law_eye_common::Error::Config(msg) => Self::internal(format!("Config error: {}", msg)),
-            law_eye_common::Error::Http(msg) => Self::internal(format!("HTTP error: {}", msg)),
             law_eye_common::Error::Parse(msg) => Self::bad_request(format!("Parse error: {}", msg)),
-            law_eye_common::Error::Internal(msg) => Self::internal(msg),
+            law_eye_common::Error::Database(msg) => {
+                error!(error = %msg, error_type = "database", "internal error");
+                if is_production() {
+                    Self::internal("Internal server error")
+                } else {
+                    Self::internal(format!("Database error: {}", msg))
+                }
+            }
+            law_eye_common::Error::Config(msg) => {
+                error!(error = %msg, error_type = "config", "internal error");
+                if is_production() {
+                    Self::internal("Internal server error")
+                } else {
+                    Self::internal(format!("Config error: {}", msg))
+                }
+            }
+            law_eye_common::Error::Http(msg) => {
+                error!(error = %msg, error_type = "http", "internal error");
+                if is_production() {
+                    Self::internal("Internal server error")
+                } else {
+                    Self::internal(format!("HTTP error: {}", msg))
+                }
+            }
+            law_eye_common::Error::Internal(msg) => {
+                error!(error = %msg, error_type = "internal", "internal error");
+                if is_production() {
+                    Self::internal("Internal server error")
+                } else {
+                    Self::internal(msg)
+                }
+            }
         }
     }
 }

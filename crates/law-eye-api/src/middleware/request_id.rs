@@ -106,6 +106,22 @@ where
                 if let Value::Object(ref mut map) = value {
                     map.entry("request_id".to_string())
                         .or_insert_with(|| Value::String(request_id.clone()));
+
+                    if std::env::var_os("PRODUCTION").is_some()
+                        && parts.status.is_server_error()
+                        && (map.contains_key("error")
+                            || map.contains_key("message")
+                            || map.contains_key("code")
+                            || map.contains_key("details"))
+                    {
+                        map.insert(
+                            "error".to_string(),
+                            Value::String("Internal server error".to_string()),
+                        );
+                        map.entry("code".to_string())
+                            .or_insert_with(|| Value::String("INTERNAL_ERROR".to_string()));
+                        map.remove("details");
+                    }
                 }
 
                 let body = serde_json::to_vec(&value).unwrap_or_else(|_| bytes.to_vec());

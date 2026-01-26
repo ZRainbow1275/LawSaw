@@ -13,6 +13,7 @@ use law_eye_common::AppConfig;
 use law_eye_db::create_pool;
 use law_eye_queue::TaskQueue;
 use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_http::trace::TraceLayer;
 use tower_sessions::{Expiry, SessionManagerLayer};
 use tower_sessions_redis_store::{fred::prelude::{ClientLike, Client as RedisClient, Config as RedisConfig}, RedisStore};
 use tracing::{info, warn};
@@ -128,10 +129,26 @@ async fn main() -> anyhow::Result<()> {
         .expose_headers([request_id_header])
         .allow_credentials(true);
 
+    let trace = TraceLayer::new_for_http().make_span_with(|request: &axum::http::Request<_>| {
+        let request_id = request
+            .extensions()
+            .get::<crate::middleware::request_id::RequestId>()
+            .map(|id| id.0.as_str())
+            .unwrap_or("-");
+
+        tracing::info_span!(
+            "http.request",
+            request_id = %request_id,
+            method = %request.method(),
+            uri = %request.uri()
+        )
+    });
+
     // Build application with middleware layers
     let app = routes::create_router(state)
         .layer(auth_layer)
         .layer(csrf)
+        .layer(trace)
         .layer(RequestIdLayer::new()) // Add request ID tracking
         .layer(cors);
 
