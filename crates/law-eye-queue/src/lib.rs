@@ -60,6 +60,21 @@ impl TaskQueue {
         Ok(Self { pool })
     }
 
+    pub async fn ping(&self) -> Result<()> {
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+
+        let _: String = redis::cmd("PING")
+            .query_async(&mut conn)
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+
+        Ok(())
+    }
+
     pub async fn enqueue<T: Serialize>(&self, queue: &str, task: &T) -> Result<()> {
         let mut conn = self
             .pool
