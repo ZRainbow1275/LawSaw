@@ -30,6 +30,15 @@ pub struct ArticleCategoryCount {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ArticleSearchHit {
+    pub article_id: Uuid,
+    pub title: String,
+    pub excerpt: String,
+    /// Normalized relevance score in [0, 1].
+    pub score: f64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ArticleStatusCounts {
     pub pending: i64,
     pub processing: i64,
@@ -262,6 +271,12 @@ impl ArticleService {
     }
 
     pub async fn search(&self, query: &str, limit: i64) -> Result<Vec<Article>> {
+        let query = query.trim();
+        if query.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Legacy API: return articles only (no ranking/total). Keep for backward compatibility.
         sqlx::query_as::<_, Article>(
             r#"
             SELECT * FROM articles
@@ -271,10 +286,89 @@ impl ArticleService {
             "#,
         )
         .bind(query)
-        .bind(limit)
+        .bind(limit.clamp(1, 100))
         .fetch_all(&self.pool)
         .await
         .map_err(|e| Error::Database(e.to_string()))
+    }
+
+    /// Keyword search with normalized relevance score and total count.
+    pub async fn search_ranked(
+        &self,
+        query: &str,
+        limit: i64,
+        offset: i64,
+    ) -> Result<(Vec<ArticleSearchHit>, i64)> {
+        let query = query.trim();
+        if query.is_empty() {
+            return Ok((vec![], 0));
+        }
+
+        let limit = limit.clamp(1, 50);
+        let offset = offset.max(0);
+
+        let rows: Vec<(Uuid, String, String, f64, i64)> = sqlx::query_as(
+            r#"
+            WITH q AS (
+                SELECT plainto_tsquery('simple', $1) AS query
+            ),
+            ranked AS (
+                SELECT
+                    a.id,
+                    a.title,
+                    COALESCE(a.summary, LEFT(a.content, 200), '') AS excerpt,
+                    ts_rank(
+                        to_tsvector('simple', a.title || ' ' || COALESCE(a.content, '')),
+                        q.query
+                    ) AS rank,
+                    a.created_at AS created_at,
+                    COUNT(*) OVER() AS total
+                FROM articles a, q
+                WHERE to_tsvector('simple', a.title || ' ' || COALESCE(a.content, '')) @@ q.query
+            ),
+            scored AS (
+                SELECT
+                    id,
+                    title,
+                    excerpt,
+                    created_at,
+                    total,
+                    CASE
+                        WHEN MAX(rank) OVER() > 0 THEN rank / MAX(rank) OVER()
+                        ELSE 0
+                    END AS score
+                FROM ranked
+            )
+            SELECT
+                id,
+                title,
+                excerpt,
+                GREATEST(LEAST(score, 1.0), 0.0)::float8 AS score,
+                total
+            FROM scored
+            ORDER BY score DESC, created_at DESC
+            LIMIT $2 OFFSET $3
+            "#,
+        )
+        .bind(query)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        let total = rows.first().map(|(_, _, _, _, total)| *total).unwrap_or(0);
+        let hits = rows
+            .into_iter()
+            .map(|(article_id, title, excerpt, score, _total)| ArticleSearchHit {
+                article_id,
+                title,
+                excerpt,
+                score,
+            })
+            .collect();
+
+        Ok((hits, total))
     }
 
     /// Get statistics for dashboard

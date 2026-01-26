@@ -5,7 +5,7 @@ import { Header } from "@/components/layout/header";
 import { MainContent } from "@/components/layout/main-content";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAskQuestion, useSearch } from "@/hooks/use-search";
@@ -16,6 +16,7 @@ import {
 	Send,
 	Sparkles,
 } from "lucide-react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
@@ -197,9 +198,12 @@ function SearchContent() {
 										className="group flex items-start justify-between rounded-lg border border-neutral-100 p-4 transition-all hover:border-primary-200 hover:bg-primary-50/50"
 									>
 										<div className="flex-1">
-											<h4 className="text-sm font-semibold text-neutral-900 group-hover:text-primary-600">
+											<Link
+												href={`/articles/${result.article_id}`}
+												className="text-sm font-semibold text-neutral-900 group-hover:text-primary-600 hover:underline"
+											>
 												{result.title}
-											</h4>
+											</Link>
 											<p className="mt-1 line-clamp-2 text-xs text-neutral-500">
 												{result.excerpt}
 											</p>
@@ -207,13 +211,18 @@ function SearchContent() {
 												相关度: {(result.score * 100).toFixed(0)}%
 											</p>
 										</div>
-										<Button
-											variant="ghost"
-											size="icon"
-											className="opacity-0 transition-opacity group-hover:opacity-100"
+										<Link
+											href={`/articles/${result.article_id}`}
+											aria-label="查看详情"
+											className={buttonVariants({
+												variant: "ghost",
+												size: "icon",
+												className:
+													"opacity-0 transition-opacity group-hover:opacity-100",
+											})}
 										>
 											<ArrowUpRight className="h-4 w-4" />
-										</Button>
+										</Link>
 									</div>
 								))}
 							</div>
