@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatedNumber } from "@/components/ui/animated-number";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useArticleStats } from "@/hooks/use-articles";
 import { useSources } from "@/hooks/use-sources";
@@ -25,10 +26,11 @@ import {
 
 interface StatConfig {
 	title: string;
-	value: number;
+	value: number | null;
 	icon: LucideIcon;
 	color: "primary" | "success" | "warning" | "error";
 	isLoading: boolean;
+	isError: boolean;
 }
 
 // ============================================
@@ -87,13 +89,15 @@ function StatCard({ stat, index }: { stat: StatConfig; index: number }) {
 							<p className="text-sm font-medium text-neutral-500">
 								{stat.title}
 							</p>
-							<div className="mt-2">
-								{stat.isLoading ? (
-									<div className="h-9 w-16 rounded bg-neutral-100 animate-pulse" />
-								) : (
-									<AnimatedNumber
-										value={stat.value}
-										duration={1200}
+						<div className="mt-2">
+							{stat.isLoading ? (
+								<div className="h-9 w-16 rounded bg-neutral-100 animate-pulse" />
+							) : stat.isError || stat.value === null ? (
+								<span className="text-3xl font-bold text-neutral-400">—</span>
+							) : (
+								<AnimatedNumber
+									value={stat.value}
+									duration={1200}
 										animateOnView
 										numberClassName="text-3xl font-bold text-neutral-900"
 									/>
@@ -126,52 +130,86 @@ function StatCard({ stat, index }: { stat: StatConfig; index: number }) {
 // ============================================
 
 export function StatsCards() {
-	const { data: statsData, isLoading: statsLoading } = useArticleStats();
-	const { data: sourcesData, isLoading: sourcesLoading } = useSources();
+	const statsQuery = useArticleStats();
+	const sourcesQuery = useSources();
 
-	const activeSources = sourcesData?.filter((s) => s.is_active).length ?? 0;
+	const activeSources =
+		sourcesQuery.isError || !sourcesQuery.data
+			? null
+			: sourcesQuery.data.filter((s) => s.is_active).length;
+
+	const handleRetry = () => {
+		statsQuery.refetch();
+		sourcesQuery.refetch();
+	};
+
+	const hasError = statsQuery.isError || sourcesQuery.isError;
 
 	const stats: StatConfig[] = [
 		{
 			title: "今日资讯",
-			value: statsData?.today_count ?? 0,
+			value:
+				statsQuery.isError || !statsQuery.data ? null : statsQuery.data.today_count,
 			icon: FileText,
 			color: "primary",
-			isLoading: statsLoading,
+			isLoading: statsQuery.isLoading,
+			isError: statsQuery.isError,
 		},
 		{
 			title: "活跃信息源",
 			value: activeSources,
 			icon: Rss,
 			color: "success",
-			isLoading: sourcesLoading,
+			isLoading: sourcesQuery.isLoading,
+			isError: sourcesQuery.isError,
 		},
 		{
 			title: "待处理",
-			value: statsData?.pending_count ?? 0,
+			value:
+				statsQuery.isError || !statsQuery.data
+					? null
+					: statsQuery.data.pending_count,
 			icon: Clock,
 			color: "warning",
-			isLoading: statsLoading,
+			isLoading: statsQuery.isLoading,
+			isError: statsQuery.isError,
 		},
 		{
 			title: "风险预警",
-			value: statsData?.high_risk_count ?? 0,
+			value:
+				statsQuery.isError || !statsQuery.data
+					? null
+					: statsQuery.data.high_risk_count,
 			icon: AlertTriangle,
 			color: "error",
-			isLoading: statsLoading,
+			isLoading: statsQuery.isLoading,
+			isError: statsQuery.isError,
 		},
 	];
 
 	return (
-		<motion.div
-			variants={staggerContainerVariants}
-			initial="hidden"
-			animate="visible"
-			className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
-		>
-			{stats.map((stat, index) => (
-				<StatCard key={stat.title} stat={stat} index={index} />
-			))}
-		</motion.div>
+		<div className="mb-8">
+			<motion.div
+				variants={staggerContainerVariants}
+				initial="hidden"
+				animate="visible"
+				className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+			>
+				{stats.map((stat, index) => (
+					<StatCard key={stat.title} stat={stat} index={index} />
+				))}
+			</motion.div>
+
+			{hasError ? (
+				<div className="mt-3 flex items-center justify-between rounded-lg border border-red-100 bg-red-50 px-3 py-2">
+					<p className="text-xs text-red-700">
+						部分统计数据加载失败，已隐藏不可靠数值
+					</p>
+					<Button variant="outline" size="sm" onClick={handleRetry}>
+						重试
+					</Button>
+				</div>
+			) : null}
+		</div>
 	);
 }

@@ -13,7 +13,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { NoDataState } from "@/components/ui/empty-state";
+import { EmptyState, NoDataState } from "@/components/ui/empty-state";
 import { useArticles } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
 import { fadeVariants } from "@/lib/motion";
@@ -22,13 +22,13 @@ import { ArrowUpRight, TrendingUp } from "lucide-react";
 import Link from "next/link";
 
 export function RecentArticles() {
-	const { data: articlesData, isLoading } = useArticles({
+	const articlesQuery = useArticles({
 		limit: 5,
 		status: "published",
 	});
 	const { data: categories } = useCategories();
 
-	const articles = articlesData?.data ?? [];
+	const articles = articlesQuery.data?.data ?? [];
 
 	const getCategoryInfo = (categoryId: string | null) => {
 		if (!categoryId || !categories) return { name: undefined, icon: undefined };
@@ -37,7 +37,7 @@ export function RecentArticles() {
 	};
 
 	// 加载状态
-	if (isLoading) {
+	if (articlesQuery.isLoading) {
 		return (
 			<Card className="lg:col-span-2">
 				<CardHeader>
@@ -52,6 +52,32 @@ export function RecentArticles() {
 							<ArticleCardSkeleton key={key} variant="compact" />
 						))}
 					</div>
+				</CardContent>
+			</Card>
+		);
+	}
+
+	if (articlesQuery.isError) {
+		const message =
+			articlesQuery.error instanceof Error ? articlesQuery.error.message : "未知错误";
+
+		return (
+			<Card className="lg:col-span-2">
+				<CardHeader>
+					<CardTitle className="flex items-center gap-2">
+						<TrendingUp className="h-5 w-5 text-primary-500" />
+						最新资讯
+					</CardTitle>
+					<CardDescription>数据加载失败</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<EmptyState
+						variant="error"
+						title="最新资讯加载失败"
+						description={message}
+						action={{ label: "重试", onClick: () => articlesQuery.refetch() }}
+						className="py-10"
+					/>
 				</CardContent>
 			</Card>
 		);

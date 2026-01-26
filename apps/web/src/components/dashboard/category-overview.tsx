@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
 	Card,
 	CardContent,
@@ -8,6 +9,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useArticleCategoryCounts } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
 import { cn } from "@/lib/utils";
@@ -40,12 +42,13 @@ const categoryIconMap: Record<string, { Icon: LucideIcon; style: string }> = {
 };
 
 export function CategoryOverview() {
-	const { data: categories, isLoading } = useCategories();
-	const {
-		data: categoryCounts,
-		isLoading: countsLoading,
-		isError: countsError,
-	} = useArticleCategoryCounts();
+	const categoriesQuery = useCategories();
+	const countsQuery = useArticleCategoryCounts();
+
+	const categories = categoriesQuery.data;
+	const categoryCounts = countsQuery.data;
+	const isLoading = categoriesQuery.isLoading || countsQuery.isLoading;
+	const countsError = countsQuery.isError;
 
 	const countByCategoryId = new Map<string, number>();
 	let uncategorizedCount = 0;
@@ -59,7 +62,7 @@ export function CategoryOverview() {
 		countByCategoryId.set(row.category_id, row.count);
 	}
 
-	if (isLoading || countsLoading) {
+	if (isLoading) {
 		return (
 			<Card className="lg:col-span-1">
 				<CardHeader>
@@ -81,6 +84,40 @@ export function CategoryOverview() {
 		);
 	}
 
+	if (categoriesQuery.isError) {
+		const message =
+			categoriesQuery.error instanceof Error
+				? categoriesQuery.error.message
+				: "未知错误";
+
+		return (
+			<Card className="lg:col-span-1">
+				<CardHeader>
+					<CardTitle className="flex items-center gap-2">
+						<BarChart3 className="h-5 w-5 text-primary-500" />
+						板块概览
+					</CardTitle>
+					<CardDescription>数据加载失败</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<EmptyState
+						variant="error"
+						title="板块数据加载失败"
+						description={message}
+						action={{
+							label: "重试",
+							onClick: () => {
+								categoriesQuery.refetch();
+								countsQuery.refetch();
+							},
+						}}
+						className="py-10"
+					/>
+				</CardContent>
+			</Card>
+		);
+	}
+
 	return (
 		<Card className="lg:col-span-1">
 			<CardHeader>
@@ -95,6 +132,14 @@ export function CategoryOverview() {
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
+				{countsError ? (
+					<div className="mb-3 flex items-center justify-between rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+						<p className="text-xs text-amber-800">资讯分布统计加载失败</p>
+						<Button variant="outline" size="sm" onClick={() => countsQuery.refetch()}>
+							重试
+						</Button>
+					</div>
+				) : null}
 				<div className="space-y-3">
 					{uncategorizedCount > 0 && (
 						<div className="flex items-center justify-between rounded-lg p-2 transition-colors hover:bg-neutral-50">
