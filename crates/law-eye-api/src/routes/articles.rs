@@ -85,6 +85,12 @@ pub struct ArticleTrendPointResponse {
     pub count: i64,
 }
 
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ArticleCategoryCountResponse {
+    pub category_id: Option<Uuid>,
+    pub count: i64,
+}
+
 #[derive(Deserialize, ToSchema)]
 pub struct TrendParams {
     pub days: Option<i64>,
@@ -125,6 +131,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_articles))
         .route("/stats", get(get_stats))
+        .route("/category-counts", get(get_category_counts))
         .route("/trends", get(get_trends))
         .route("/recent", get(list_recent))
         .route("/batch-status", post(batch_update_status))
@@ -280,6 +287,68 @@ pub(crate) async fn get_stats(
         high_risk_count: stats.high_risk,
         today_count: stats.today,
     }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/articles/category-counts",
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "Article counts grouped by category_id (NULL = uncategorized)", body = Vec<ArticleCategoryCountResponse>),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
+    )
+)]
+pub(crate) async fn get_category_counts(
+    State(state): State<AppState>,
+    auth_session: AuthSession,
+) -> Result<Json<Vec<ArticleCategoryCountResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    let user = auth_session.user.ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Not authenticated".to_string(),
+                code: "UNAUTHORIZED".to_string(),
+            }),
+        )
+    })?;
+
+    let can_read = state
+        .user_service
+        .has_permission(user.id, "articles:read")
+        .await
+        .unwrap_or(false);
+    if !can_read {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Permission denied".to_string(),
+                code: "FORBIDDEN".to_string(),
+            }),
+        ));
+    }
+
+    let rows = state.article_service.get_category_counts().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+                code: "STATS_ERROR".to_string(),
+            }),
+        )
+    })?;
+
+    Ok(Json(
+        rows.into_iter()
+            .map(|row| ArticleCategoryCountResponse {
+                category_id: row.category_id,
+                count: row.count,
+            })
+            .collect(),
+    ))
 }
 
 #[utoipa::path(

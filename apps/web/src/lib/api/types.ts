@@ -196,6 +196,11 @@ export interface ArticleTrendPoint {
 	count: number;
 }
 
+export interface ArticleCategoryCount {
+	category_id: string | null;
+	count: number;
+}
+
 export interface BatchStatusResponse {
 	updated: number;
 }
@@ -545,6 +550,22 @@ export function assertArticleTrends(
 	path = "articleTrends",
 ): asserts value is ArticleTrendPoint[] {
 	assertArray(value, path, assertArticleTrendPoint);
+}
+
+export function assertArticleCategoryCount(
+	value: unknown,
+	path = "articleCategoryCount",
+): asserts value is ArticleCategoryCount {
+	assertRecord(value, path);
+	assertNullable(getRequired(value, "category_id", path), `${path}.category_id`, assertString);
+	assertNumber(getRequired(value, "count", path), `${path}.count`);
+}
+
+export function assertArticleCategoryCounts(
+	value: unknown,
+	path = "articleCategoryCounts",
+): asserts value is ArticleCategoryCount[] {
+	assertArray(value, path, assertArticleCategoryCount);
 }
 
 export function assertBatchStatusResponse(

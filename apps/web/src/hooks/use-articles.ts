@@ -4,6 +4,7 @@ import { apiClient } from "@/lib/api";
 import {
 	assertArticle,
 	assertArticleListResponse,
+	assertArticleCategoryCounts,
 	assertArticleStats,
 	assertArticleTrends,
 	assertDeleteResponse,
@@ -63,6 +64,15 @@ export function useArticleTrends(days = 7) {
 				`/api/v1/articles/trends?${queryParams.toString()}`,
 				assertArticleTrends,
 			),
+		staleTime: 30000,
+	});
+}
+
+export function useArticleCategoryCounts() {
+	return useQuery({
+		queryKey: ["articleCategoryCounts"],
+		queryFn: () =>
+			apiClient.get("/api/v1/articles/category-counts", assertArticleCategoryCounts),
 		staleTime: 30000,
 	});
 }

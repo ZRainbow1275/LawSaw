@@ -23,6 +23,12 @@ pub struct ArticleDailyTrendPoint {
     pub count: i64,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ArticleCategoryCount {
+    pub category_id: Option<Uuid>,
+    pub count: i64,
+}
+
 impl ArticleService {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
@@ -322,6 +328,24 @@ impl ArticleService {
         Ok(rows
             .into_iter()
             .map(|(date, count)| ArticleDailyTrendPoint { date, count })
+            .collect())
+    }
+
+    pub async fn get_category_counts(&self) -> Result<Vec<ArticleCategoryCount>> {
+        let rows = sqlx::query_as::<_, (Option<Uuid>, i64)>(
+            r#"
+            SELECT category_id, COUNT(*)::bigint AS count
+            FROM articles
+            GROUP BY category_id
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(category_id, count)| ArticleCategoryCount { category_id, count })
             .collect())
     }
 }

@@ -29,6 +29,7 @@ impl Modify for SecurityAddon {
         crate::routes::auth::get_current_user,
         crate::routes::articles::list_articles,
         crate::routes::articles::get_stats,
+        crate::routes::articles::get_category_counts,
         crate::routes::articles::get_trends,
         crate::routes::articles::list_recent,
         crate::routes::articles::get_article,
