@@ -110,16 +110,8 @@ export function SwipeableCard({
 	const rightOpacity = useTransform(x, [-threshold, 0], [1, 0]);
 	const rightScale = useTransform(x, [-threshold, 0], [1, 0.8]);
 
-	// 计算背景颜色
-	const bgColor = useTransform(
-		x,
-		[-maxSwipe, 0, maxSwipe],
-		[
-			rightActions[0]?.bgColor || "transparent",
-			"transparent",
-			leftActions[0]?.bgColor || "transparent",
-		],
-	);
+	const leftBgClass = leftActions[0]?.bgColor ?? "bg-transparent";
+	const rightBgClass = rightActions[0]?.bgColor ?? "bg-transparent";
 
 	const handleDragStart = () => {
 		onSwipeStart?.();
@@ -175,11 +167,19 @@ export function SwipeableCard({
 
 	return (
 		<div className={cn("relative overflow-hidden rounded-xl", className)}>
-			{/* 背景色层 */}
-			<motion.div
-				className="absolute inset-0 rounded-xl"
-				style={{ backgroundColor: bgColor }}
-			/>
+			{/* 背景色层（Tailwind class → 可渲染的背景，不写入 style.backgroundColor） */}
+			{rightActions.length > 0 && (
+				<motion.div
+					className={cn("absolute inset-0 rounded-xl", rightBgClass)}
+					style={{ opacity: rightOpacity }}
+				/>
+			)}
+			{leftActions.length > 0 && (
+				<motion.div
+					className={cn("absolute inset-0 rounded-xl", leftBgClass)}
+					style={{ opacity: leftOpacity }}
+				/>
+			)}
 
 			{/* 左侧操作按钮（右滑显示） */}
 			{leftActions.length > 0 && (
@@ -195,6 +195,7 @@ export function SwipeableCard({
 							className={cn(
 								"flex flex-col items-center justify-center h-full transition-transform",
 								action.color,
+								action.bgColor,
 							)}
 							style={{ width: actionButtonWidth }}
 						>
@@ -245,18 +246,18 @@ export function SwipeableCard({
 				{children}
 			</motion.div>
 
-				{/* 点击遮罩（打开状态时点击关闭） */}
-				{isOpen && (
-					<button
-						type="button"
-						className="absolute inset-0 z-10 bg-transparent p-0"
-						onClick={handleClose}
-						aria-label="关闭"
-					/>
-				)}
-			</div>
-		);
-	}
+			{/* 点击遮罩（打开状态时点击关闭） */}
+			{isOpen && (
+				<button
+					type="button"
+					className="absolute inset-0 z-10 bg-transparent p-0"
+					onClick={handleClose}
+					aria-label="关闭"
+				/>
+			)}
+		</div>
+	);
+}
 
 // ============================================
 // SwipeHint 滑动提示组件
