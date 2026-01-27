@@ -56,10 +56,20 @@ export function Header() {
 					<Input
 						type="search"
 						placeholder="搜索资讯、法规、关键词..."
-						className="pl-10"
+						className="pl-10 pr-10"
 						value={searchQuery}
 						onChange={(e) => setSearchQuery(e.target.value)}
 					/>
+					<Button
+						type="submit"
+						variant="ghost"
+						size="icon"
+						className="absolute right-1 top-1/2 -translate-y-1/2"
+						aria-label="搜索"
+						disabled={!searchQuery.trim()}
+					>
+						<Search className="h-4 w-4" />
+					</Button>
 				</form>
 			</div>
 
