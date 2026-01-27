@@ -67,7 +67,13 @@ impl Modify for SecurityAddon {
         crate::routes::feedbacks::list_my_feedbacks,
         crate::routes::feedbacks::create_feedback,
         crate::routes::feedbacks::get_feedback,
-        crate::routes::feedbacks::update_feedback
+        crate::routes::feedbacks::update_feedback,
+        crate::routes::knowledge::list_top_entities,
+        crate::routes::knowledge::search_entities,
+        crate::routes::knowledge::get_entity,
+        crate::routes::knowledge::get_related_entities,
+        crate::routes::knowledge::get_entity_articles,
+        crate::routes::knowledge::backfill
     ),
     tags(
         (name = "health", description = "Health"),
@@ -79,7 +85,8 @@ impl Modify for SecurityAddon {
         (name = "search", description = "Search"),
         (name = "ai", description = "AI"),
         (name = "users", description = "Users"),
-        (name = "apikeys", description = "API keys")
+        (name = "apikeys", description = "API keys"),
+        (name = "knowledge", description = "Knowledge graph")
     )
 )]
 pub struct ApiDoc;

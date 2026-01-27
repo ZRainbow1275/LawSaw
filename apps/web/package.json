@@ -4,12 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev -p 8849",
-    "build": "next build",
-    "start": "next start",
-    "lint": "biome lint src",
-    "format": "biome format --write src",
-    "typecheck": "tsc --noEmit --incremental false",
+    "dev": "node ./node_modules/next/dist/bin/next dev -p 8849",
+    "build": "node ./node_modules/next/dist/bin/next build",
+    "start": "node ./node_modules/next/dist/bin/next start",
+    "lint": "node ./node_modules/@biomejs/biome/bin/biome lint src",
+    "format": "node ./node_modules/@biomejs/biome/bin/biome format --write src",
+    "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit --incremental false",
     "test": "pnpm typecheck && pnpm lint"
   },
   "dependencies": {

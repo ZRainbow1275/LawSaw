@@ -280,9 +280,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // Build application with middleware layers
-    let mut app = routes::create_router(state)
-        .layer(auth_layer)
-        .layer(csrf);
+    let mut app = routes::create_router(state).layer(auth_layer).layer(csrf);
 
     if is_production {
         if config.server.request_timeout_ms == 0 {
@@ -323,9 +321,12 @@ async fn main() -> anyhow::Result<()> {
     info!("Server listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
 
     Ok(())
 }

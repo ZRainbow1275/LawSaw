@@ -294,6 +294,44 @@ export interface AiAvailabilityResponse {
 	available: boolean;
 }
 
+// Knowledge Graph 相关类型
+export interface KnowledgeEntity {
+	id: string;
+	name: string;
+	entity_type: string;
+	aliases: string[];
+	properties: Record<string, unknown>;
+	mention_count: number;
+	first_seen: string;
+	last_seen: string;
+	created_at: string;
+	updated_at: string;
+}
+
+export type KnowledgeRelationDirection = "outgoing" | "incoming";
+
+export interface KnowledgeRelatedEntity {
+	entity: KnowledgeEntity;
+	relation_type: string;
+	weight: number;
+	direction: KnowledgeRelationDirection;
+}
+
+export interface KnowledgeEntityArticle {
+	article_id: string;
+	title: string;
+	published_at: string | null;
+	status: string;
+	relevance_score: number | null;
+}
+
+export interface KnowledgeBackfillResponse {
+	articles_considered: number;
+	entities_upserted: number;
+	article_entities_inserted: number;
+	relations_upserted: number;
+}
+
 type JsonRecord = Record<string, unknown>;
 
 const ARTICLE_STATUSES = [
@@ -832,4 +870,103 @@ export function assertFeedbackList(
 	path = "feedbacks",
 ): asserts value is Feedback[] {
 	assertArray(value, path, assertFeedback);
+}
+
+export function assertKnowledgeEntity(
+	value: unknown,
+	path = "knowledgeEntity",
+): asserts value is KnowledgeEntity {
+	assertRecord(value, path);
+	assertString(getRequired(value, "id", path), `${path}.id`);
+	assertString(getRequired(value, "name", path), `${path}.name`);
+	assertString(getRequired(value, "entity_type", path), `${path}.entity_type`);
+	const aliases = getRequired(value, "aliases", path);
+	assertArray(aliases, `${path}.aliases`, assertString);
+	const properties = getRequired(value, "properties", path);
+	assertRecord(properties, `${path}.properties`);
+	assertNumber(getRequired(value, "mention_count", path), `${path}.mention_count`);
+	assertString(getRequired(value, "first_seen", path), `${path}.first_seen`);
+	assertString(getRequired(value, "last_seen", path), `${path}.last_seen`);
+	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
+	assertString(getRequired(value, "updated_at", path), `${path}.updated_at`);
+}
+
+export function assertKnowledgeEntityList(
+	value: unknown,
+	path = "knowledgeEntities",
+): asserts value is KnowledgeEntity[] {
+	assertArray(value, path, assertKnowledgeEntity);
+}
+
+const KNOWLEDGE_RELATION_DIRECTIONS = ["outgoing", "incoming"] as const;
+
+export function assertKnowledgeRelatedEntity(
+	value: unknown,
+	path = "knowledgeRelatedEntity",
+): asserts value is KnowledgeRelatedEntity {
+	assertRecord(value, path);
+
+	const entity = getRequired(value, "entity", path);
+	assertKnowledgeEntity(entity, `${path}.entity`);
+	assertString(getRequired(value, "relation_type", path), `${path}.relation_type`);
+	assertNumber(getRequired(value, "weight", path), `${path}.weight`);
+	assertOneOf(
+		getRequired(value, "direction", path),
+		`${path}.direction`,
+		KNOWLEDGE_RELATION_DIRECTIONS,
+	);
+}
+
+export function assertKnowledgeRelatedEntityList(
+	value: unknown,
+	path = "knowledgeRelatedEntities",
+): asserts value is KnowledgeRelatedEntity[] {
+	assertArray(value, path, assertKnowledgeRelatedEntity);
+}
+
+export function assertKnowledgeEntityArticle(
+	value: unknown,
+	path = "knowledgeEntityArticle",
+): asserts value is KnowledgeEntityArticle {
+	assertRecord(value, path);
+	assertString(getRequired(value, "article_id", path), `${path}.article_id`);
+	assertString(getRequired(value, "title", path), `${path}.title`);
+	assertNullable(
+		getRequired(value, "published_at", path),
+		`${path}.published_at`,
+		assertString,
+	);
+	assertString(getRequired(value, "status", path), `${path}.status`);
+	assertNullable(
+		getRequired(value, "relevance_score", path),
+		`${path}.relevance_score`,
+		assertNumber,
+	);
+}
+
+export function assertKnowledgeEntityArticleList(
+	value: unknown,
+	path = "knowledgeEntityArticles",
+): asserts value is KnowledgeEntityArticle[] {
+	assertArray(value, path, assertKnowledgeEntityArticle);
+}
+
+export function assertKnowledgeBackfillResponse(
+	value: unknown,
+	path = "knowledgeBackfillResponse",
+): asserts value is KnowledgeBackfillResponse {
+	assertRecord(value, path);
+	assertNumber(
+		getRequired(value, "articles_considered", path),
+		`${path}.articles_considered`,
+	);
+	assertNumber(getRequired(value, "entities_upserted", path), `${path}.entities_upserted`);
+	assertNumber(
+		getRequired(value, "article_entities_inserted", path),
+		`${path}.article_entities_inserted`,
+	);
+	assertNumber(
+		getRequired(value, "relations_upserted", path),
+		`${path}.relations_upserted`,
+	);
 }
