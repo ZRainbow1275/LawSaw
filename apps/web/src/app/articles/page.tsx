@@ -54,6 +54,17 @@ import { useCallback, useState } from "react";
 
 const PAGE_SIZE = 20;
 
+const statusOptions = [
+	{ value: "all", label: "全部状态" },
+	{ value: "pending", label: "待处理" },
+	{ value: "processing", label: "处理中" },
+	{ value: "published", label: "已发布" },
+	{ value: "archived", label: "已归档" },
+	{ value: "rejected", label: "已驳回" },
+] as const;
+
+type StatusFilter = (typeof statusOptions)[number]["value"];
+
 // 分类图标映射 (替代 emoji)
 const categoryIconMap: Record<string, { Icon: LucideIcon; color: string }> = {
 	legislation: { Icon: ScrollText, color: "text-blue-500" },
@@ -83,6 +94,8 @@ export default function ArticlesPage() {
 	const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 	const [viewMode, setViewMode] = useState<ViewMode>("list");
 	const [showMobileHint, setShowMobileHint] = useState(true);
+	const [filtersOpen, setFiltersOpen] = useState(false);
+	const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
 	const { success: showSuccess } = useToast();
 	const bookmarks = useReadingStore((s) => s.bookmarks);
@@ -92,6 +105,7 @@ export default function ArticlesPage() {
 		limit: PAGE_SIZE,
 		offset: page * PAGE_SIZE,
 		category_id: selectedCategory ?? undefined,
+		status: statusFilter === "all" ? undefined : statusFilter,
 	});
 
 	const { data: categories } = useCategories();
@@ -99,6 +113,9 @@ export default function ArticlesPage() {
 	const articles = articlesData?.data ?? [];
 	const total = articlesData?.total ?? 0;
 	const totalPages = Math.ceil(total / PAGE_SIZE);
+	const activeStatusLabel =
+		statusOptions.find((option) => option.value === statusFilter)?.label ??
+		"全部状态";
 
 	const getCategoryInfo = useCallback(
 		(categoryId: string | null) => {
@@ -227,12 +244,74 @@ export default function ArticlesPage() {
 										<LayoutGrid className="h-4 w-4" />
 									</Button>
 								</div>
-								<Button variant="outline" size="sm">
+								<Button
+									variant="outline"
+									size="sm"
+									aria-expanded={filtersOpen}
+									aria-controls="articles-filters"
+									onClick={() => setFiltersOpen((open) => !open)}
+								>
 									<SlidersHorizontal className="mr-2 h-4 w-4" />
 									筛选
 								</Button>
 							</div>
 						</div>
+
+						{/* 状态筛选（真实过滤：GET /api/v1/articles?status=...） */}
+						<AnimatePresence initial={false}>
+							{filtersOpen && (
+								<motion.div
+									id="articles-filters"
+									variants={fadeVariants}
+									initial="hidden"
+									animate="visible"
+									exit="hidden"
+									className="mb-6"
+								>
+									<Card className="border border-neutral-200/60 bg-white/80 backdrop-blur">
+										<CardContent className="p-4">
+											<div className="flex flex-wrap items-center gap-2">
+												<span className="text-sm font-medium text-neutral-700">
+													状态
+												</span>
+												{statusOptions.map((option) => (
+													<Badge
+														key={option.value}
+														variant={
+															statusFilter === option.value
+																? "default"
+																: "outline"
+														}
+														className="cursor-pointer transition-all hover:scale-105"
+														onClick={() => {
+															setStatusFilter(option.value);
+															setPage(0);
+														}}
+													>
+														{option.label}
+													</Badge>
+												))}
+												<div className="ml-auto flex items-center gap-2">
+													<span className="text-xs text-neutral-500">
+														当前：{activeStatusLabel}
+													</span>
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => {
+															setStatusFilter("all");
+															setPage(0);
+														}}
+													>
+														重置
+													</Button>
+												</div>
+											</div>
+										</CardContent>
+									</Card>
+								</motion.div>
+							)}
+						</AnimatePresence>
 
 						{/* 分类筛选 */}
 						<motion.div
