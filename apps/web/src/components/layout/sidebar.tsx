@@ -16,9 +16,11 @@ import {
 	Settings,
 	Sparkles,
 	TrendingUp,
+	X,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 
 function parseHexColor(input: string): { r: number; g: number; b: number } | null {
 	const hex = input.trim();
@@ -64,25 +66,38 @@ const navigation = [
 	{ name: "系统设置", href: "/settings", icon: Settings },
 ];
 
-export function Sidebar() {
-	const pathname = usePathname();
-	const { collapsed, toggle } = useSidebarStore();
-	const categoriesQuery = useCategories();
-	const categories = categoriesQuery.data ?? [];
-	const categoryCount = categories.length;
+type CategoriesQuery = ReturnType<typeof useCategories>;
+type CategoryList = NonNullable<CategoriesQuery["data"]>;
 
+interface SidebarPanelProps {
+	collapsed: boolean;
+	pathname: string;
+	categoriesQuery: CategoriesQuery;
+	categories: CategoryList;
+	categoryCount: number;
+	layoutIdPrefix: string;
+	onNavigate?: () => void;
+	showCollapseToggle?: boolean;
+	onToggleCollapsed?: () => void;
+	showCloseButton?: boolean;
+	onRequestClose?: () => void;
+}
+
+function SidebarPanel({
+	collapsed,
+	pathname,
+	categoriesQuery,
+	categories,
+	categoryCount,
+	layoutIdPrefix,
+	onNavigate,
+	showCollapseToggle,
+	onToggleCollapsed,
+	showCloseButton,
+	onRequestClose,
+}: SidebarPanelProps) {
 	return (
-		<motion.aside
-			initial={false}
-			animate={{ width: collapsed ? 64 : 280 }}
-			transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-			className={cn(
-				"fixed left-0 top-0 z-30 flex h-screen flex-col",
-				"bg-white/90 backdrop-blur-xl",
-				"border-r border-neutral-200/60",
-				"shadow-lg shadow-neutral-200/20",
-			)}
-		>
+		<>
 			{/* Logo - 带呼吸动画 */}
 			<div className="flex h-16 items-center gap-3 border-b border-neutral-100 px-4">
 				<motion.div
@@ -117,6 +132,20 @@ export function Sidebar() {
 						</motion.div>
 					)}
 				</AnimatePresence>
+				{showCloseButton && (
+					<button
+						type="button"
+						className={cn(
+							"ml-auto inline-flex h-9 w-9 items-center justify-center rounded-xl",
+							"text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900",
+							"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40",
+						)}
+						aria-label="关闭导航菜单"
+						onClick={() => onRequestClose?.()}
+					>
+						<X className="h-5 w-5" aria-hidden="true" />
+					</button>
+				)}
 			</div>
 
 			{/* Navigation */}
@@ -145,6 +174,7 @@ export function Sidebar() {
 							>
 								<Link
 									href={item.href}
+									onClick={onNavigate}
 									className={cn(
 										"group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium",
 										"transition-all duration-200",
@@ -157,7 +187,7 @@ export function Sidebar() {
 									{/* 活跃状态背景 */}
 									{isActive && (
 										<motion.div
-											layoutId="activeNav"
+											layoutId={`${layoutIdPrefix}-activeNav`}
 											className="absolute inset-0 rounded-xl bg-gradient-to-r from-primary-50 to-primary-100 shadow-sm"
 											transition={{
 												type: "spring",
@@ -262,6 +292,7 @@ export function Sidebar() {
 											>
 												<Link
 													href={`/category/${category.slug}`}
+													onClick={onNavigate}
 													className={cn(
 														"group flex items-center gap-3 rounded-xl px-3 py-2 text-sm",
 														"transition-all duration-200",
@@ -295,37 +326,143 @@ export function Sidebar() {
 			</nav>
 
 			{/* Collapse Button */}
-			<div className="border-t border-neutral-100 p-3">
-				<motion.button
-					onClick={toggle}
-					className={cn(
-						"flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm",
-						"bg-gradient-to-r from-neutral-50 to-neutral-100/80 text-neutral-600",
-						"border border-neutral-200/50",
-						"hover:from-primary-50 hover:to-primary-100/50 hover:text-primary-600 hover:border-primary-200/50",
-					)}
-					whileHover={{ scale: 1.02 }}
-					whileTap={{ scale: 0.98 }}
-				>
-					<motion.div
-						animate={{ rotate: collapsed ? 0 : 180 }}
-						transition={{ duration: 0.3 }}
-					>
-						<ChevronRight className="h-4 w-4" />
-					</motion.div>
-					<AnimatePresence>
-						{!collapsed && (
-							<motion.span
-								initial={{ opacity: 0, width: 0 }}
-								animate={{ opacity: 1, width: "auto" }}
-								exit={{ opacity: 0, width: 0 }}
-							>
-								收起菜单
-							</motion.span>
+			{showCollapseToggle && onToggleCollapsed && (
+				<div className="border-t border-neutral-100 p-3">
+					<motion.button
+						onClick={onToggleCollapsed}
+						className={cn(
+							"flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm",
+							"bg-gradient-to-r from-neutral-50 to-neutral-100/80 text-neutral-600",
+							"border border-neutral-200/50",
+							"hover:from-primary-50 hover:to-primary-100/50 hover:text-primary-600 hover:border-primary-200/50",
 						)}
-					</AnimatePresence>
-				</motion.button>
-			</div>
-		</motion.aside>
+						whileHover={{ scale: 1.02 }}
+						whileTap={{ scale: 0.98 }}
+					>
+						<motion.div
+							animate={{ rotate: collapsed ? 0 : 180 }}
+							transition={{ duration: 0.3 }}
+						>
+							<ChevronRight className="h-4 w-4" />
+						</motion.div>
+						<AnimatePresence>
+							{!collapsed && (
+								<motion.span
+									initial={{ opacity: 0, width: 0 }}
+									animate={{ opacity: 1, width: "auto" }}
+									exit={{ opacity: 0, width: 0 }}
+								>
+									收起菜单
+								</motion.span>
+							)}
+						</AnimatePresence>
+					</motion.button>
+				</div>
+			)}
+		</>
+	);
+}
+
+export function Sidebar() {
+	const pathname = usePathname();
+	const { collapsed, toggle, mobileOpen, closeMobile } = useSidebarStore();
+	const categoriesQuery = useCategories();
+	const categories = categoriesQuery.data ?? [];
+	const categoryCount = categories.length;
+
+	const previousPathnameRef = useRef<string | null>(null);
+
+	useEffect(() => {
+		const previous = previousPathnameRef.current;
+		previousPathnameRef.current = pathname;
+		if (previous === null) return;
+		if (previous === pathname) return;
+		closeMobile();
+	}, [pathname, closeMobile]);
+
+	useEffect(() => {
+		if (!mobileOpen) return;
+
+		const previousOverflow = document.body.style.overflow;
+		document.body.style.overflow = "hidden";
+
+		const handleKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape") closeMobile();
+		};
+
+		window.addEventListener("keydown", handleKeyDown);
+
+		return () => {
+			window.removeEventListener("keydown", handleKeyDown);
+			document.body.style.overflow = previousOverflow;
+		};
+	}, [mobileOpen, closeMobile]);
+
+	const baseAsideClassName = cn(
+		"fixed left-0 top-0 flex h-screen flex-col",
+		"bg-white/90 backdrop-blur-xl",
+		"border-r border-neutral-200/60",
+		"shadow-lg shadow-neutral-200/20",
+	);
+
+	return (
+		<>
+			{/* Desktop */}
+			<motion.aside
+				initial={false}
+				animate={{ width: collapsed ? 64 : 280 }}
+				transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+				className={cn(baseAsideClassName, "z-30 hidden md:flex")}
+				aria-label="主导航"
+			>
+				<SidebarPanel
+					collapsed={collapsed}
+					pathname={pathname}
+					categoriesQuery={categoriesQuery}
+					categories={categories}
+					categoryCount={categoryCount}
+					layoutIdPrefix="desktop"
+					showCollapseToggle
+					onToggleCollapsed={toggle}
+				/>
+			</motion.aside>
+
+			{/* Mobile Drawer */}
+			<AnimatePresence>
+				{mobileOpen && (
+					<>
+						<motion.div
+							initial={{ opacity: 0 }}
+							animate={{ opacity: 1 }}
+							exit={{ opacity: 0 }}
+							transition={{ duration: 0.2 }}
+							className="fixed inset-0 z-40 bg-black/40 md:hidden"
+							onClick={closeMobile}
+							aria-hidden="true"
+						/>
+						<motion.aside
+							initial={{ x: -320 }}
+							animate={{ x: 0 }}
+							exit={{ x: -320 }}
+							transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+							className={cn(baseAsideClassName, "z-50 w-[280px] md:hidden")}
+							aria-label="主导航"
+						>
+							<SidebarPanel
+								collapsed={false}
+								pathname={pathname}
+								categoriesQuery={categoriesQuery}
+								categories={categories}
+								categoryCount={categoryCount}
+								layoutIdPrefix="mobile"
+								onNavigate={closeMobile}
+								showCloseButton
+								onRequestClose={closeMobile}
+							/>
+						</motion.aside>
+					</>
+				)}
+			</AnimatePresence>
+		</>
 	);
 }

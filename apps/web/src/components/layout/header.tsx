@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { useAuthStore } from "@/stores/auth-store";
-import { Bell, LogOut, Search, Settings } from "lucide-react";
+import { useSidebarStore } from "@/stores/sidebar-store";
+import { Bell, LogOut, Menu, Search, Settings } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -12,6 +13,7 @@ export function Header() {
 	const router = useRouter();
 	const { user } = useAuthStore();
 	const { logout } = useAuth();
+	const { toggleMobile } = useSidebarStore();
 	const [showMenu, setShowMenu] = useState(false);
 	const [searchQuery, setSearchQuery] = useState("");
 
@@ -32,21 +34,37 @@ export function Header() {
 	const initials = displayName.charAt(0).toUpperCase();
 
 	return (
-		<header className="sticky top-0 z-20 flex h-16 items-center justify-between px-6 glass border-b border-neutral-100/50">
-			{/* Search */}
-			<form onSubmit={handleSearch} className="relative w-full max-w-md">
-				<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-				<Input
-					type="search"
-					placeholder="搜索资讯、法规、关键词..."
-					className="pl-10"
-					value={searchQuery}
-					onChange={(e) => setSearchQuery(e.target.value)}
-				/>
-			</form>
+		<header className="sticky top-0 z-20 flex h-16 items-center gap-4 px-4 md:px-6 glass border-b border-neutral-100/50">
+			<div className="flex flex-1 items-center gap-3 min-w-0">
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon"
+					className="md:hidden"
+					aria-label="打开导航菜单"
+					onClick={() => toggleMobile()}
+				>
+					<Menu className="h-5 w-5" />
+				</Button>
+
+				{/* Search */}
+				<form
+					onSubmit={handleSearch}
+					className="relative w-full min-w-0 md:max-w-md"
+				>
+					<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+					<Input
+						type="search"
+						placeholder="搜索资讯、法规、关键词..."
+						className="pl-10"
+						value={searchQuery}
+						onChange={(e) => setSearchQuery(e.target.value)}
+					/>
+				</form>
+			</div>
 
 			{/* Right Actions */}
-			<div className="flex items-center gap-4">
+			<div className="flex items-center gap-2 md:gap-4">
 				{/* Notifications */}
 				<Button
 					variant="ghost"
@@ -76,7 +94,7 @@ export function Header() {
 								<span className="text-sm font-medium">{initials}</span>
 							)}
 						</div>
-						<span className="text-sm font-medium text-neutral-700">
+						<span className="hidden sm:inline text-sm font-medium text-neutral-700">
 							{displayName}
 						</span>
 					</Button>
