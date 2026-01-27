@@ -1,9 +1,10 @@
 "use client";
 
 import { apiClient } from "@/lib/api";
+import type { User } from "@/lib/api/types";
 import { assertAuthResponse, assertUserDetailResponse } from "@/lib/api/types";
 import { useAuthStore } from "@/stores/auth-store";
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 
 interface LoginCredentials {
 	email: string;
@@ -27,33 +28,37 @@ export function useAuth() {
 		logout: storeLogout,
 	} = useAuthStore();
 
-	useEffect(() => {
-		const checkSession = async () => {
-			try {
-				const response = await apiClient.get("/api/v1/auth/me", assertAuthResponse);
-				setUser(response.user);
+	const refreshAuthz = useCallback(
+		async (nextUser: User | null) => {
+			if (!nextUser) {
+				setAuthz(null);
+				return;
+			}
 
-				if (response.user) {
-					try {
-						const detail = await apiClient.get(
-							`/api/v1/users/${response.user.id}`,
-							assertUserDetailResponse,
-						);
-						setAuthz({ roles: detail.roles, permissions: detail.permissions });
-					} catch {
-						setAuthz(null);
-					}
-				} else {
-					setAuthz(null);
-				}
+			try {
+				const detail = await apiClient.get(
+					`/api/v1/users/${nextUser.id}`,
+					assertUserDetailResponse,
+				);
+				setAuthz({ roles: detail.roles, permissions: detail.permissions });
 			} catch {
-				setUser(null);
 				setAuthz(null);
 			}
-		};
+		},
+		[setAuthz],
+	);
 
-		checkSession();
-	}, [setUser, setAuthz]);
+	const refreshSession = useCallback(async () => {
+		setLoading(true);
+		try {
+			const response = await apiClient.get("/api/v1/auth/me", assertAuthResponse);
+			setUser(response.user);
+			await refreshAuthz(response.user);
+		} catch {
+			setUser(null);
+			setAuthz(null);
+		}
+	}, [setUser, setAuthz, setLoading, refreshAuthz]);
 
 	const login = useCallback(
 		async (credentials: LoginCredentials) => {
@@ -66,15 +71,7 @@ export function useAuth() {
 				);
 				if (response.success && response.user) {
 					setUser(response.user);
-					try {
-						const detail = await apiClient.get(
-							`/api/v1/users/${response.user.id}`,
-							assertUserDetailResponse,
-						);
-						setAuthz({ roles: detail.roles, permissions: detail.permissions });
-					} catch {
-						setAuthz(null);
-					}
+					await refreshAuthz(response.user);
 					return { success: true };
 				}
 				return { success: false, error: response.message };
@@ -85,7 +82,7 @@ export function useAuth() {
 				setLoading(false);
 			}
 		},
-		[setUser, setAuthz, setLoading],
+		[setUser, setLoading, refreshAuthz],
 	);
 
 	const register = useCallback(
@@ -99,15 +96,7 @@ export function useAuth() {
 				);
 				if (response.success && response.user) {
 					setUser(response.user);
-					try {
-						const detail = await apiClient.get(
-							`/api/v1/users/${response.user.id}`,
-							assertUserDetailResponse,
-						);
-						setAuthz({ roles: detail.roles, permissions: detail.permissions });
-					} catch {
-						setAuthz(null);
-					}
+					await refreshAuthz(response.user);
 					return { success: true };
 				}
 				return { success: false, error: response.message };
@@ -118,7 +107,7 @@ export function useAuth() {
 				setLoading(false);
 			}
 		},
-		[setUser, setAuthz, setLoading],
+		[setUser, setLoading, refreshAuthz],
 	);
 
 	const logout = useCallback(async () => {
@@ -135,6 +124,7 @@ export function useAuth() {
 		user,
 		isAuthenticated,
 		isLoading,
+		refreshSession,
 		login,
 		register,
 		logout,
