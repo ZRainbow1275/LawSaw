@@ -21,6 +21,16 @@ pub struct ServerConfig {
     /// configured for your deployed frontend domains.
     #[serde(default = "default_allowed_origins")]
     pub allowed_origins: Vec<String>,
+    /// Max duration for handling a single HTTP request.
+    ///
+    /// Set to 0 to disable (not recommended for production).
+    #[serde(default = "default_request_timeout_ms")]
+    pub request_timeout_ms: u64,
+    /// Max request body size in bytes.
+    ///
+    /// Set to 0 to disable (not recommended for production).
+    #[serde(default = "default_max_body_bytes")]
+    pub max_body_bytes: usize,
 }
 
 fn default_allowed_origins() -> Vec<String> {
@@ -34,6 +44,14 @@ fn default_allowed_origins() -> Vec<String> {
         "http://127.0.0.1:3002".to_string(),
         "http://127.0.0.1:3333".to_string(),
     ]
+}
+
+fn default_request_timeout_ms() -> u64 {
+    30_000
+}
+
+fn default_max_body_bytes() -> usize {
+    1024 * 1024
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -92,6 +110,8 @@ impl Default for AppConfig {
                 host: "0.0.0.0".to_string(),
                 port: 3001,
                 allowed_origins: default_allowed_origins(),
+                request_timeout_ms: default_request_timeout_ms(),
+                max_body_bytes: default_max_body_bytes(),
             },
             database: DatabaseConfig {
                 url: "postgres://law_eye:law_eye@localhost:5435/law_eye".to_string(),

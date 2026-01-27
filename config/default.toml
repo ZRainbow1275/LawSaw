@@ -11,6 +11,10 @@ allowed_origins = [
   "http://127.0.0.1:3002",
   "http://127.0.0.1:3333",
 ]
+# Request timeout in milliseconds (0 to disable; not recommended for production).
+request_timeout_ms = 30000
+# Max request body size in bytes (0 to disable; not recommended for production).
+max_body_bytes = 1048576
 
 [database]
 url = "postgres://law_eye:law_eye@localhost:5435/law_eye"

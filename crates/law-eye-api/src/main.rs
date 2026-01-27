@@ -7,14 +7,18 @@ mod state;
 pub use error::{ApiError, ApiResult, AppError};
 
 use anyhow::Context;
+use axum::error_handling::HandleErrorLayer;
+use axum::extract::DefaultBodyLimit;
 use axum::http::{header, HeaderName, HeaderValue, Method};
+use axum::response::IntoResponse;
 use axum_login::AuthManagerLayerBuilder;
 use law_eye_ai::{AiService, LlmGateway};
 use law_eye_common::AppConfig;
 use law_eye_db::create_pool;
 use law_eye_queue::TaskQueue;
 use metrics_exporter_prometheus::PrometheusBuilder;
-use std::{collections::HashSet, net::SocketAddr};
+use std::{collections::HashSet, net::SocketAddr, time::Duration};
+use tower::{timeout::TimeoutLayer, BoxError, ServiceBuilder};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tower_sessions::{Expiry, SessionManagerLayer};
@@ -240,12 +244,44 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // Build application with middleware layers
-    let app = routes::create_router(state)
+    let mut app = routes::create_router(state)
         .layer(auth_layer)
-        .layer(csrf)
-        .layer(trace)
-        .layer(RequestIdLayer::new()) // Add request ID tracking
-        .layer(cors);
+        .layer(csrf);
+
+    if std::env::var_os("PRODUCTION").is_some() {
+        if config.server.request_timeout_ms == 0 {
+            warn!("Request timeout disabled in production (LAW_EYE__SERVER__REQUEST_TIMEOUT_MS=0)");
+        }
+        if config.server.max_body_bytes == 0 {
+            warn!("Request body limit disabled in production (LAW_EYE__SERVER__MAX_BODY_BYTES=0)");
+        }
+    }
+
+    if config.server.max_body_bytes > 0 {
+        app = app.layer(DefaultBodyLimit::max(config.server.max_body_bytes));
+    }
+
+    if config.server.request_timeout_ms > 0 {
+        app = app.layer(
+            ServiceBuilder::new()
+                .layer(HandleErrorLayer::new(|err: BoxError| async move {
+                    if err.is::<tower::timeout::error::Elapsed>() {
+                        AppError {
+                            status: axum::http::StatusCode::REQUEST_TIMEOUT,
+                            body: ApiError::new("Request timed out").with_code("REQUEST_TIMEOUT"),
+                        }
+                        .into_response()
+                    } else {
+                        AppError::internal("Internal server error").into_response()
+                    }
+                }))
+                .layer(TimeoutLayer::new(Duration::from_millis(
+                    config.server.request_timeout_ms,
+                ))),
+        );
+    }
+
+    let app = app.layer(trace).layer(RequestIdLayer::new()).layer(cors);
 
     let addr = format!("{}:{}", config.server.host, config.server.port);
     info!("Server listening on {}", addr);
