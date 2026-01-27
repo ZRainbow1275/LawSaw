@@ -862,12 +862,46 @@ fn format_push_message(articles: &[law_eye_db::Article]) -> String {
     msg
 }
 
+async fn wait_for_shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal as unix_signal, SignalKind};
+
+        let mut term =
+            unix_signal(SignalKind::terminate()).expect("install SIGTERM handler for worker");
+
+        tokio::select! {
+            _ = signal::ctrl_c() => {}
+            _ = term.recv() => {}
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = signal::ctrl_c().await;
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
-        .with(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+    let is_production = std::env::var_os("PRODUCTION").is_some();
+
+    if is_production {
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::EnvFilter::from_default_env())
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .json()
+                    .with_current_span(true)
+                    .with_span_list(true),
+            )
+            .init();
+    } else {
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::fmt::layer())
+            .with(tracing_subscriber::EnvFilter::from_default_env())
+            .init();
+    }
 
     let config = AppConfig::load().unwrap_or_default();
 
@@ -893,8 +927,8 @@ async fn main() -> anyhow::Result<()> {
     let shutdown_clone = shutdown.clone();
 
     tokio::spawn(async move {
-        let _ = signal::ctrl_c().await;
-        info!("Received shutdown signal (Ctrl+C)");
+        wait_for_shutdown_signal().await;
+        info!("Received shutdown signal, shutting down gracefully");
         shutdown_clone.store(true, Ordering::Relaxed);
     });
 

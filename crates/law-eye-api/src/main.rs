@@ -108,12 +108,48 @@ fn build_allowed_origins(origins: &[String]) -> Vec<HeaderValue> {
     values
 }
 
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+
+        let mut term =
+            signal(SignalKind::terminate()).expect("install SIGTERM handler for graceful shutdown");
+
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = term.recv() => {}
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
+
+    info!("Received shutdown signal, starting graceful shutdown");
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
-        .with(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+    let is_production = std::env::var_os("PRODUCTION").is_some();
+
+    if is_production {
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::EnvFilter::from_default_env())
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .json()
+                    .with_current_span(true)
+                    .with_span_list(true),
+            )
+            .init();
+    } else {
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::fmt::layer())
+            .with(tracing_subscriber::EnvFilter::from_default_env())
+            .init();
+    }
 
     let config = AppConfig::load().unwrap_or_default();
 
@@ -145,7 +181,7 @@ async fn main() -> anyhow::Result<()> {
 
     let session_store = RedisStore::new(redis_client);
     let session_layer = SessionManagerLayer::new(session_store)
-        .with_secure(std::env::var("PRODUCTION").is_ok()) // Secure cookie in production
+        .with_secure(is_production) // Secure cookie in production
         .with_same_site(tower_sessions::cookie::SameSite::Lax) // CSRF protection
         .with_expiry(Expiry::OnInactivity(time::Duration::hours(24)));
 
@@ -174,7 +210,7 @@ async fn main() -> anyhow::Result<()> {
         (None, None)
     };
 
-    if std::env::var_os("PRODUCTION").is_some() {
+    if is_production {
         if config
             .metrics
             .token
@@ -200,7 +236,7 @@ async fn main() -> anyhow::Result<()> {
 
     // CORS configuration - use predicate for dynamic origin validation
     let allowed_origins = build_allowed_origins(&config.server.allowed_origins);
-    if std::env::var_os("PRODUCTION").is_some() && allowed_origins.is_empty() {
+    if is_production && allowed_origins.is_empty() {
         anyhow::bail!("LAW_EYE__SERVER__ALLOWED_ORIGINS must be set in production");
     }
 
@@ -248,7 +284,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(auth_layer)
         .layer(csrf);
 
-    if std::env::var_os("PRODUCTION").is_some() {
+    if is_production {
         if config.server.request_timeout_ms == 0 {
             warn!("Request timeout disabled in production (LAW_EYE__SERVER__REQUEST_TIMEOUT_MS=0)");
         }
@@ -287,11 +323,9 @@ async fn main() -> anyhow::Result<()> {
     info!("Server listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .await?;
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
 
     Ok(())
 }
