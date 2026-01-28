@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { useKnowledgeEntity, useKnowledgeRelatedEntities } from "@/hooks/use-knowledge";
 import { Button } from "@/components/ui/button";
 import { Loader2, Minus, MousePointer2, Move, Plus, RotateCcw } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Point = { x: number; y: number };
 
@@ -134,9 +134,20 @@ export function KnowledgeCanvas({
 
 	const nodes = useMemo(() => buildNodes(seed, related), [seed, related]);
 	const edges = useMemo(() => buildEdges(seed?.id, related), [seed?.id, related]);
-	useEffect(() => {
-		viewportRef.current = viewport;
-	}, [viewport]);
+
+	const setViewportAndRef = useCallback((next: Viewport | ((prev: Viewport) => Viewport)) => {
+		if (typeof next === "function") {
+			setViewport((prev) => {
+				const resolved = next(prev);
+				viewportRef.current = resolved;
+				return resolved;
+			});
+			return;
+		}
+
+		viewportRef.current = next;
+		setViewport(next);
+	}, []);
 
 	useEffect(() => {
 		const container = containerRef.current;
@@ -183,8 +194,8 @@ export function KnowledgeCanvas({
 		if (!containerSize) return;
 		if (initializedViewportRef.current === seedEntityId) return;
 		initializedViewportRef.current = seedEntityId;
-		setViewport({ panX: containerSize.width / 2, panY: containerSize.height / 2, scale: 1 });
-	}, [seedEntityId, containerSize]);
+		setViewportAndRef({ panX: containerSize.width / 2, panY: containerSize.height / 2, scale: 1 });
+	}, [seedEntityId, containerSize, setViewportAndRef]);
 
 	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
@@ -302,7 +313,7 @@ export function KnowledgeCanvas({
 
 			const dx = moveEvent.clientX - pan.start.x;
 			const dy = moveEvent.clientY - pan.start.y;
-			setViewport((prev) => ({ ...prev, panX: pan.startPan.x + dx, panY: pan.startPan.y + dy }));
+			setViewportAndRef((prev) => ({ ...prev, panX: pan.startPan.x + dx, panY: pan.startPan.y + dy }));
 		};
 
 		const handleEnd = (endEvent: PointerEvent) => {
@@ -339,11 +350,12 @@ export function KnowledgeCanvas({
 		if (!canPan) return;
 
 		event.preventDefault();
+		const currentViewport = viewportRef.current;
 		startPanFromPointer({
 			pointerId: event.pointerId,
 			pointerType: event.pointerType,
 			startClient: { x: event.clientX, y: event.clientY },
-			startPan: { x: viewport.panX, y: viewport.panY },
+			startPan: { x: currentViewport.panX, y: currentViewport.panY },
 			target: event.currentTarget,
 		});
 
@@ -383,12 +395,13 @@ export function KnowledgeCanvas({
 
 				if (panRef.current) stopPan(panRef.current.pointerId);
 
+				const currentViewport = viewportRef.current;
 				const startMid: Point = { x: (p1Rel.x + p2Rel.x) / 2, y: (p1Rel.y + p2Rel.y) / 2 };
 				pinchRef.current = {
 					pointerIds: [id1, id2],
 					startDistance,
-					startScale: viewport.scale,
-					anchorWorld: screenToWorld(startMid, viewport),
+					startScale: currentViewport.scale,
+					anchorWorld: screenToWorld(startMid, currentViewport),
 					target: event.currentTarget,
 				};
 				setIsPinching(true);
@@ -418,7 +431,7 @@ export function KnowledgeCanvas({
 					const nextScale = clamp(pinch.startScale * scaleFactor, MIN_SCALE, MAX_SCALE);
 					const nextPanX = mid.x - pinch.anchorWorld.x * nextScale;
 					const nextPanY = mid.y - pinch.anchorWorld.y * nextScale;
-					setViewport({ panX: nextPanX, panY: nextPanY, scale: nextScale });
+					setViewportAndRef({ panX: nextPanX, panY: nextPanY, scale: nextScale });
 				};
 
 				const handleEnd = (endEvent: PointerEvent) => {
@@ -442,22 +455,22 @@ export function KnowledgeCanvas({
 
 						stopPinch();
 
-						if (remaining) {
-							const [pointerId, startClient] = remaining;
-							const currentViewport = viewportRef.current;
-							try {
-								event.currentTarget.setPointerCapture(pointerId);
-							} catch {
-								// ignore
-							}
+							if (remaining) {
+								const [pointerId, startClient] = remaining;
+								const currentViewport = viewportRef.current;
+								try {
+									event.currentTarget.setPointerCapture(pointerId);
+								} catch {
+									// ignore
+								}
 
-							startPanFromPointer({
-								pointerId,
-								pointerType: "touch",
-								startClient,
-								startPan: { x: currentViewport.panX, y: currentViewport.panY },
-								target: event.currentTarget,
-							});
+								startPanFromPointer({
+									pointerId,
+									pointerType: "touch",
+									startClient,
+									startPan: { x: currentViewport.panX, y: currentViewport.panY },
+									target: event.currentTarget,
+								});
 						} else {
 							touchPointersRef.current.clear();
 						}
@@ -585,7 +598,7 @@ export function KnowledgeCanvas({
 			event.preventDefault();
 			const mouse = getRelativePoint(container, event.clientX, event.clientY);
 
-			setViewport((prev) => {
+			setViewportAndRef((prev) => {
 				if (event.ctrlKey) {
 					const zoomFactor = Math.exp(-event.deltaY * 0.001);
 					const nextScale = clamp(prev.scale * zoomFactor, MIN_SCALE, MAX_SCALE);
@@ -607,7 +620,7 @@ export function KnowledgeCanvas({
 		return () => {
 			container.removeEventListener("wheel", handleWheel);
 		};
-	}, [isPanning, isDragging, isPinching]);
+	}, [isPanning, isDragging, isPinching, setViewportAndRef]);
 
 	useEffect(() => {
 		return () => {
@@ -621,7 +634,7 @@ export function KnowledgeCanvas({
 		const container = containerRef.current;
 		if (!container || !containerSize) return;
 		const center: Point = { x: containerSize.width / 2, y: containerSize.height / 2 };
-		setViewport((prev) => {
+		setViewportAndRef((prev) => {
 			const nextScale = clamp(prev.scale + delta, MIN_SCALE, MAX_SCALE);
 			const world = screenToWorld(center, prev);
 			return {
@@ -634,7 +647,7 @@ export function KnowledgeCanvas({
 
 	const resetView = () => {
 		if (!containerSize) return;
-		setViewport({ panX: containerSize.width / 2, panY: containerSize.height / 2, scale: 1 });
+		setViewportAndRef({ panX: containerSize.width / 2, panY: containerSize.height / 2, scale: 1 });
 	};
 
 	const showEmptySeed = !seedEntityId;
