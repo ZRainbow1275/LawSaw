@@ -17,6 +17,14 @@
 target/
 *.rs.bk
 
+# Node / Frontend build artifacts
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+.turbo/
+dist/
+
 # Documentation
 *.md
 !README.md

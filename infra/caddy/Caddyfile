@@ -1,0 +1,31 @@
+{
+	# We bring our own certs for local enterprise verification.
+	auto_https off
+}
+
+http://localhost, http://127.0.0.1 {
+	redir https://{host}{uri} permanent
+}
+
+https://localhost, https://127.0.0.1 {
+	tls /etc/caddy/pki/localhost.crt /etc/caddy/pki/localhost.key {
+		protocols tls1.2 tls1.3
+	}
+
+	encode zstd gzip
+
+	header {
+		# Security headers (baseline for enterprise deployments)
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()"
+		-Server
+	}
+
+	@api path /api/* /health /metrics /docs* /swagger* /redoc*
+	reverse_proxy @api api:3001
+
+	reverse_proxy web:8849
+}

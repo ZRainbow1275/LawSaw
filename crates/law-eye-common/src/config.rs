@@ -35,6 +35,8 @@ pub struct ServerConfig {
 
 fn default_allowed_origins() -> Vec<String> {
     vec![
+        "https://localhost".to_string(),
+        "https://127.0.0.1".to_string(),
         "http://localhost:3000".to_string(),
         "http://localhost:8849".to_string(),
         "http://localhost:3002".to_string(),

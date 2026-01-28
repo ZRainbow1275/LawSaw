@@ -1,0 +1,44 @@
+services:
+  api:
+    # Enterprise mode: do not expose the API directly to the host.
+    ports: []
+    environment:
+      PRODUCTION: "1"
+
+  worker:
+    environment:
+      PRODUCTION: "1"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: law-eye-web
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - law-eye-network
+    restart: unless-stopped
+
+  gateway:
+    image: caddy:2.8-alpine
+    container_name: law-eye-gateway
+    depends_on:
+      - web
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./tmp/enterprise/pki:/etc/caddy/pki:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - law-eye-network
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

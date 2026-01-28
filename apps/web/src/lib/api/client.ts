@@ -1,4 +1,10 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+const ENV_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_BASE_URL =
+	ENV_API_BASE_URL && ENV_API_BASE_URL.trim().length > 0
+		? ENV_API_BASE_URL
+		: typeof window !== "undefined"
+			? window.location.origin
+			: "http://localhost:3000";
 const DEFAULT_API_TIMEOUT_MS = 15_000;
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1"]);
 
