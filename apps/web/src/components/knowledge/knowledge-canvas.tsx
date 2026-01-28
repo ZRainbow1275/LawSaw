@@ -114,6 +114,9 @@ export function KnowledgeCanvas({
 	const [positions, setPositions] = useState<Record<string, Point>>({});
 	const [isFocused, setIsFocused] = useState(false);
 	const [isSpacePressed, setIsSpacePressed] = useState(false);
+	const [isPanning, setIsPanning] = useState(false);
+	const [isDragging, setIsDragging] = useState(false);
+	const initializedViewportRef = useRef<string | null>(null);
 
 	const seedQuery = useKnowledgeEntity(seedEntityId);
 	const relatedQuery = useKnowledgeRelatedEntities(seedEntityId, 24);
@@ -164,10 +167,12 @@ export function KnowledgeCanvas({
 	}, [seed?.id, nodes]);
 
 	useEffect(() => {
-		if (!seed?.id) return;
+		if (!seedEntityId) return;
 		if (!containerSize) return;
+		if (initializedViewportRef.current === seedEntityId) return;
+		initializedViewportRef.current = seedEntityId;
 		setViewport({ panX: containerSize.width / 2, panY: containerSize.height / 2, scale: 1 });
-	}, [seed?.id, containerSize]);
+	}, [seedEntityId, containerSize]);
 
 	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
@@ -199,7 +204,29 @@ export function KnowledgeCanvas({
 		pointerId: number;
 		start: Point;
 		startPan: Point;
+		target: HTMLDivElement;
 	} | null>(null);
+
+	const panCleanupRef = useRef<(() => void) | null>(null);
+
+	const stopPan = (pointerId: number) => {
+		const pan = panRef.current;
+		if (!pan || pan.pointerId !== pointerId) return;
+
+		panRef.current = null;
+		setIsPanning(false);
+
+		panCleanupRef.current?.();
+		panCleanupRef.current = null;
+
+		if (pan.target.hasPointerCapture(pointerId)) {
+			try {
+				pan.target.releasePointerCapture(pointerId);
+			} catch {
+				// ignore
+			}
+		}
+	};
 
 	const handleCanvasPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
 		if (!containerRef.current) return;
@@ -215,23 +242,40 @@ export function KnowledgeCanvas({
 			pointerId: event.pointerId,
 			start,
 			startPan: { x: viewport.panX, y: viewport.panY },
+			target: event.currentTarget,
 		};
-		event.currentTarget.setPointerCapture(event.pointerId);
-	};
+		setIsPanning(true);
 
-	const handleCanvasPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-		const pan = panRef.current;
-		if (!pan || pan.pointerId !== event.pointerId) return;
+		try {
+			event.currentTarget.setPointerCapture(event.pointerId);
+		} catch {
+			// ignore
+		}
 
-		const dx = event.clientX - pan.start.x;
-		const dy = event.clientY - pan.start.y;
-		setViewport((prev) => ({ ...prev, panX: pan.startPan.x + dx, panY: pan.startPan.y + dy }));
-	};
+		panCleanupRef.current?.();
+		const handleMove = (moveEvent: PointerEvent) => {
+			const pan = panRef.current;
+			if (!pan || pan.pointerId !== moveEvent.pointerId) return;
 
-	const stopPan = (event: React.PointerEvent<HTMLDivElement>) => {
-		const pan = panRef.current;
-		if (!pan || pan.pointerId !== event.pointerId) return;
-		panRef.current = null;
+			const dx = moveEvent.clientX - pan.start.x;
+			const dy = moveEvent.clientY - pan.start.y;
+			setViewport((prev) => ({ ...prev, panX: pan.startPan.x + dx, panY: pan.startPan.y + dy }));
+		};
+
+		const handleEnd = (endEvent: PointerEvent) => {
+			const pan = panRef.current;
+			if (!pan || pan.pointerId !== endEvent.pointerId) return;
+			stopPan(endEvent.pointerId);
+		};
+
+		window.addEventListener("pointermove", handleMove);
+		window.addEventListener("pointerup", handleEnd);
+		window.addEventListener("pointercancel", handleEnd);
+		panCleanupRef.current = () => {
+			window.removeEventListener("pointermove", handleMove);
+			window.removeEventListener("pointerup", handleEnd);
+			window.removeEventListener("pointercancel", handleEnd);
+		};
 	};
 
 	const dragRef = useRef<{
@@ -239,13 +283,41 @@ export function KnowledgeCanvas({
 		nodeId: string;
 		start: Point;
 		startPos: Point;
+		startScale: number;
+		target: HTMLButtonElement;
 	} | null>(null);
+
+	const dragCleanupRef = useRef<(() => void) | null>(null);
+
+	const stopDrag = (pointerId: number) => {
+		const drag = dragRef.current;
+		if (!drag || drag.pointerId !== pointerId) return;
+
+		dragRef.current = null;
+		setIsDragging(false);
+
+		dragCleanupRef.current?.();
+		dragCleanupRef.current = null;
+
+		if (drag.target.hasPointerCapture(pointerId)) {
+			try {
+				drag.target.releasePointerCapture(pointerId);
+			} catch {
+				// ignore
+			}
+		}
+	};
 
 	const handleNodePointerDown = (
 		event: React.PointerEvent<HTMLButtonElement>,
 		nodeId: string,
 	) => {
 		if (event.button !== 0) return;
+		if (isSpacePressed) {
+			// 空格模式下优先平移画布（允许事件冒泡到画布容器）
+			event.preventDefault();
+			return;
+		}
 		event.stopPropagation();
 		event.preventDefault();
 
@@ -255,54 +327,90 @@ export function KnowledgeCanvas({
 			nodeId,
 			start: { x: event.clientX, y: event.clientY },
 			startPos,
+			startScale: viewport.scale,
+			target: event.currentTarget,
 		};
-		event.currentTarget.setPointerCapture(event.pointerId);
+		setIsDragging(true);
+
+		try {
+			event.currentTarget.setPointerCapture(event.pointerId);
+		} catch {
+			// ignore
+		}
+
+		dragCleanupRef.current?.();
+		const handleMove = (moveEvent: PointerEvent) => {
+			const drag = dragRef.current;
+			if (!drag || drag.pointerId !== moveEvent.pointerId) return;
+
+			const dx = (moveEvent.clientX - drag.start.x) / drag.startScale;
+			const dy = (moveEvent.clientY - drag.start.y) / drag.startScale;
+			setPositions((prev) => ({
+				...prev,
+				[drag.nodeId]: { x: drag.startPos.x + dx, y: drag.startPos.y + dy },
+			}));
+		};
+
+		const handleEnd = (endEvent: PointerEvent) => {
+			const drag = dragRef.current;
+			if (!drag || drag.pointerId !== endEvent.pointerId) return;
+			stopDrag(endEvent.pointerId);
+		};
+
+		window.addEventListener("pointermove", handleMove);
+		window.addEventListener("pointerup", handleEnd);
+		window.addEventListener("pointercancel", handleEnd);
+		dragCleanupRef.current = () => {
+			window.removeEventListener("pointermove", handleMove);
+			window.removeEventListener("pointerup", handleEnd);
+			window.removeEventListener("pointercancel", handleEnd);
+		};
+
 		onSelectEntity(nodeId);
 	};
 
-	const handleNodePointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
-		const drag = dragRef.current;
-		if (!drag || drag.pointerId !== event.pointerId) return;
-
-		const dx = (event.clientX - drag.start.x) / viewport.scale;
-		const dy = (event.clientY - drag.start.y) / viewport.scale;
-		setPositions((prev) => ({
-			...prev,
-			[drag.nodeId]: { x: drag.startPos.x + dx, y: drag.startPos.y + dy },
-		}));
-	};
-
-	const stopDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
-		const drag = dragRef.current;
-		if (!drag || drag.pointerId !== event.pointerId) return;
-		dragRef.current = null;
-	};
-
-	const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+	useEffect(() => {
 		const container = containerRef.current;
 		if (!container) return;
 
-		// trackpad: pan; ctrl+wheel (pinch): zoom.
-		event.preventDefault();
-		const mouse = getRelativePoint(container, event.clientX, event.clientY);
+		const handleWheel = (event: WheelEvent) => {
+			if (isPanning || isDragging) return;
+			if (!event.cancelable) return;
 
-		setViewport((prev) => {
-			if (event.ctrlKey) {
-				const zoomFactor = Math.exp(-event.deltaY * 0.001);
-				const nextScale = clamp(prev.scale * zoomFactor, MIN_SCALE, MAX_SCALE);
-				const world = screenToWorld(mouse, prev);
-				const nextPanX = mouse.x - world.x * nextScale;
-				const nextPanY = mouse.y - world.y * nextScale;
-				return { panX: nextPanX, panY: nextPanY, scale: nextScale };
-			}
+			// trackpad: pan; ctrl+wheel (pinch): zoom.
+			event.preventDefault();
+			const mouse = getRelativePoint(container, event.clientX, event.clientY);
 
-			return {
-				...prev,
-				panX: prev.panX - event.deltaX,
-				panY: prev.panY - event.deltaY,
-			};
-		});
-	};
+			setViewport((prev) => {
+				if (event.ctrlKey) {
+					const zoomFactor = Math.exp(-event.deltaY * 0.001);
+					const nextScale = clamp(prev.scale * zoomFactor, MIN_SCALE, MAX_SCALE);
+					const world = screenToWorld(mouse, prev);
+					const nextPanX = mouse.x - world.x * nextScale;
+					const nextPanY = mouse.y - world.y * nextScale;
+					return { panX: nextPanX, panY: nextPanY, scale: nextScale };
+				}
+
+				return {
+					...prev,
+					panX: prev.panX - event.deltaX,
+					panY: prev.panY - event.deltaY,
+				};
+			});
+		};
+
+		container.addEventListener("wheel", handleWheel, { passive: false });
+		return () => {
+			container.removeEventListener("wheel", handleWheel);
+		};
+	}, [isPanning, isDragging]);
+
+	useEffect(() => {
+		return () => {
+			panCleanupRef.current?.();
+			dragCleanupRef.current?.();
+		};
+	}, []);
 
 	const zoomBy = (delta: number) => {
 		const container = containerRef.current;
@@ -387,18 +495,14 @@ export function KnowledgeCanvas({
 				className={cn(
 					"relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-neutral-200 bg-[radial-gradient(circle_at_1px_1px,rgba(15,23,42,0.12)_1px,transparent_0)] [background-size:24px_24px]",
 					"outline-none",
-					isSpacePressed && "cursor-grab",
+					isPanning ? "cursor-grabbing" : isSpacePressed && "cursor-grab",
 				)}
 				onPointerEnter={() => setIsFocused(true)}
 				onPointerLeave={() => {
+					if (isPanning || isDragging) return;
 					setIsFocused(false);
-					setIsSpacePressed(false);
 				}}
 				onPointerDown={handleCanvasPointerDown}
-				onPointerMove={handleCanvasPointerMove}
-				onPointerUp={stopPan}
-				onPointerCancel={stopPan}
-				onWheel={handleWheel}
 			>
 				<svg className="absolute inset-0 pointer-events-none" aria-hidden="true">
 					<title>Knowledge graph edges</title>
@@ -461,9 +565,6 @@ export function KnowledgeCanvas({
 									transform: `translate(${pos.x}px, ${pos.y}px)`,
 								}}
 								onPointerDown={(event) => handleNodePointerDown(event, node.id)}
-								onPointerMove={handleNodePointerMove}
-								onPointerUp={stopDrag}
-								onPointerCancel={stopDrag}
 							>
 								<div className="flex items-start justify-between gap-2">
 									<div className="min-w-0">
