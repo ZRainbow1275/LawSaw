@@ -1,0 +1,19 @@
+{
+	# Local enterprise verification; provide certs manually.
+	auto_https off
+}
+
+https://api-mtls:3443 {
+	tls /etc/caddy/pki/api-mtls.crt /etc/caddy/pki/api-mtls.key {
+		protocols tls1.2 tls1.3
+
+		client_auth {
+			mode require_and_verify
+			trust_pool file /etc/caddy/pki/ca.crt
+		}
+	}
+
+	encode zstd gzip
+
+	reverse_proxy api:3001
+}

@@ -21,11 +21,27 @@ services:
       - law-eye-network
     restart: unless-stopped
 
+  api-mtls:
+    image: caddy:2.8-alpine
+    container_name: law-eye-api-mtls
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - ./infra/caddy/Caddyfile.api-mtls:/etc/caddy/Caddyfile:ro
+      - ./tmp/enterprise/pki:/etc/caddy/pki:ro
+      - caddy_api_mtls_data:/data
+      - caddy_api_mtls_config:/config
+    networks:
+      - law-eye-network
+    restart: unless-stopped
+
   gateway:
     image: caddy:2.8-alpine
     container_name: law-eye-gateway
     depends_on:
       - web
+      - api-mtls
       - api
     ports:
       - "80:80"
@@ -42,3 +58,5 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  caddy_api_mtls_data:
+  caddy_api_mtls_config:
