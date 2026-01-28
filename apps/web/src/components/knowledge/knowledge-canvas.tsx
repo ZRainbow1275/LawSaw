@@ -24,6 +24,12 @@ function clamp(value: number, min: number, max: number) {
 	return Math.max(min, Math.min(max, value));
 }
 
+function getDistance(a: Point, b: Point) {
+	const dx = a.x - b.x;
+	const dy = a.y - b.y;
+	return Math.hypot(dx, dy);
+}
+
 function buildNodes(seed: KnowledgeEntity | undefined, related: KnowledgeRelatedEntity[]) {
 	const byId = new Map<string, KnowledgeEntity>();
 	if (seed) byId.set(seed.id, seed);
@@ -111,11 +117,13 @@ export function KnowledgeCanvas({
 	);
 
 	const [viewport, setViewport] = useState<Viewport>({ panX: 0, panY: 0, scale: 1 });
+	const viewportRef = useRef(viewport);
 	const [positions, setPositions] = useState<Record<string, Point>>({});
 	const [isFocused, setIsFocused] = useState(false);
 	const [isSpacePressed, setIsSpacePressed] = useState(false);
 	const [isPanning, setIsPanning] = useState(false);
 	const [isDragging, setIsDragging] = useState(false);
+	const [isPinching, setIsPinching] = useState(false);
 	const initializedViewportRef = useRef<string | null>(null);
 
 	const seedQuery = useKnowledgeEntity(seedEntityId);
@@ -126,6 +134,10 @@ export function KnowledgeCanvas({
 
 	const nodes = useMemo(() => buildNodes(seed, related), [seed, related]);
 	const edges = useMemo(() => buildEdges(seed?.id, related), [seed?.id, related]);
+	useEffect(() => {
+		viewportRef.current = viewport;
+	}, [viewport]);
+
 	useEffect(() => {
 		const container = containerRef.current;
 		if (!container) return;
@@ -202,6 +214,7 @@ export function KnowledgeCanvas({
 
 	const panRef = useRef<{
 		pointerId: number;
+		pointerType: string;
 		start: Point;
 		startPan: Point;
 		target: HTMLDivElement;
@@ -228,34 +241,64 @@ export function KnowledgeCanvas({
 		}
 	};
 
-	const handleCanvasPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-		if (!containerRef.current) return;
-		setIsFocused(true);
+	const pinchRef = useRef<{
+		pointerIds: readonly [number, number];
+		startDistance: number;
+		startScale: number;
+		anchorWorld: Point;
+		target: HTMLDivElement;
+	} | null>(null);
 
-		const canPan =
-			event.button === 1 || (event.button === 0 && (isSpacePressed || !seedEntityId));
-		if (!canPan) return;
+	const pinchCleanupRef = useRef<(() => void) | null>(null);
+	const touchPointersRef = useRef<Map<number, Point>>(new Map());
 
-		event.preventDefault();
-		const start = { x: event.clientX, y: event.clientY };
+	const stopPinch = () => {
+		const pinch = pinchRef.current;
+		if (!pinch) return;
+		pinchRef.current = null;
+		setIsPinching(false);
+
+		pinchCleanupRef.current?.();
+		pinchCleanupRef.current = null;
+
+		for (const pointerId of pinch.pointerIds) {
+			if (pinch.target.hasPointerCapture(pointerId)) {
+				try {
+					pinch.target.releasePointerCapture(pointerId);
+				} catch {
+					// ignore
+				}
+			}
+		}
+	};
+
+	const startPanFromPointer = (options: {
+		pointerId: number;
+		pointerType: string;
+		startClient: Point;
+		target: HTMLDivElement;
+		startPan: Point;
+	}) => {
 		panRef.current = {
-			pointerId: event.pointerId,
-			start,
-			startPan: { x: viewport.panX, y: viewport.panY },
-			target: event.currentTarget,
+			pointerId: options.pointerId,
+			pointerType: options.pointerType,
+			start: options.startClient,
+			startPan: options.startPan,
+			target: options.target,
 		};
 		setIsPanning(true);
-
-		try {
-			event.currentTarget.setPointerCapture(event.pointerId);
-		} catch {
-			// ignore
-		}
 
 		panCleanupRef.current?.();
 		const handleMove = (moveEvent: PointerEvent) => {
 			const pan = panRef.current;
 			if (!pan || pan.pointerId !== moveEvent.pointerId) return;
+
+			if (pan.pointerType === "touch") {
+				touchPointersRef.current.set(moveEvent.pointerId, {
+					x: moveEvent.clientX,
+					y: moveEvent.clientY,
+				});
+			}
 
 			const dx = moveEvent.clientX - pan.start.x;
 			const dy = moveEvent.clientY - pan.start.y;
@@ -265,6 +308,11 @@ export function KnowledgeCanvas({
 		const handleEnd = (endEvent: PointerEvent) => {
 			const pan = panRef.current;
 			if (!pan || pan.pointerId !== endEvent.pointerId) return;
+
+			if (pan.pointerType === "touch") {
+				touchPointersRef.current.delete(endEvent.pointerId);
+			}
+
 			stopPan(endEvent.pointerId);
 		};
 
@@ -276,6 +324,162 @@ export function KnowledgeCanvas({
 			window.removeEventListener("pointerup", handleEnd);
 			window.removeEventListener("pointercancel", handleEnd);
 		};
+	};
+
+	const startPanGesture = (
+		event: React.PointerEvent<HTMLDivElement>,
+		options: { startPanOnLeftButton: boolean },
+	) => {
+		if (!containerRef.current) return;
+		if (isPinching) return;
+
+		const canPan =
+			event.button === 1 ||
+			(event.button === 0 && (options.startPanOnLeftButton || isSpacePressed));
+		if (!canPan) return;
+
+		event.preventDefault();
+		startPanFromPointer({
+			pointerId: event.pointerId,
+			pointerType: event.pointerType,
+			startClient: { x: event.clientX, y: event.clientY },
+			startPan: { x: viewport.panX, y: viewport.panY },
+			target: event.currentTarget,
+		});
+
+		try {
+			event.currentTarget.setPointerCapture(event.pointerId);
+		} catch {
+			// ignore
+		}
+
+	};
+
+	const handleCanvasPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+		if (!containerRef.current) return;
+		setIsFocused(true);
+
+		const container = containerRef.current;
+
+		if (event.pointerType === "touch") {
+			event.preventDefault();
+			touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+			try {
+				event.currentTarget.setPointerCapture(event.pointerId);
+			} catch {
+				// ignore
+			}
+
+			if (touchPointersRef.current.size >= 2) {
+				const pointers = Array.from(touchPointersRef.current.entries()).slice(0, 2);
+				const [id1, p1] = pointers[0];
+				const [id2, p2] = pointers[1];
+
+				const p1Rel = getRelativePoint(container, p1.x, p1.y);
+				const p2Rel = getRelativePoint(container, p2.x, p2.y);
+				const startDistance = getDistance(p1Rel, p2Rel);
+				if (startDistance < 1) return;
+
+				if (panRef.current) stopPan(panRef.current.pointerId);
+
+				const startMid: Point = { x: (p1Rel.x + p2Rel.x) / 2, y: (p1Rel.y + p2Rel.y) / 2 };
+				pinchRef.current = {
+					pointerIds: [id1, id2],
+					startDistance,
+					startScale: viewport.scale,
+					anchorWorld: screenToWorld(startMid, viewport),
+					target: event.currentTarget,
+				};
+				setIsPinching(true);
+
+				pinchCleanupRef.current?.();
+				const handleMove = (moveEvent: PointerEvent) => {
+					const pinch = pinchRef.current;
+					if (!pinch) return;
+					if (!touchPointersRef.current.has(moveEvent.pointerId)) return;
+
+					touchPointersRef.current.set(moveEvent.pointerId, {
+						x: moveEvent.clientX,
+						y: moveEvent.clientY,
+					});
+
+					const p1 = touchPointersRef.current.get(pinch.pointerIds[0]);
+					const p2 = touchPointersRef.current.get(pinch.pointerIds[1]);
+					if (!p1 || !p2) return;
+
+					const a = getRelativePoint(container, p1.x, p1.y);
+					const b = getRelativePoint(container, p2.x, p2.y);
+					const distance = getDistance(a, b);
+					if (distance < 1) return;
+
+					const mid: Point = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+					const scaleFactor = distance / pinch.startDistance;
+					const nextScale = clamp(pinch.startScale * scaleFactor, MIN_SCALE, MAX_SCALE);
+					const nextPanX = mid.x - pinch.anchorWorld.x * nextScale;
+					const nextPanY = mid.y - pinch.anchorWorld.y * nextScale;
+					setViewport({ panX: nextPanX, panY: nextPanY, scale: nextScale });
+				};
+
+				const handleEnd = (endEvent: PointerEvent) => {
+					if (!touchPointersRef.current.has(endEvent.pointerId)) return;
+					touchPointersRef.current.delete(endEvent.pointerId);
+
+					const pinch = pinchRef.current;
+					if (!pinch) return;
+					if (
+						endEvent.pointerId !== pinch.pointerIds[0] &&
+						endEvent.pointerId !== pinch.pointerIds[1]
+					) {
+						return;
+					}
+
+					if (touchPointersRef.current.size < 2) {
+						const remaining =
+							touchPointersRef.current.size === 1
+								? Array.from(touchPointersRef.current.entries())[0]
+								: null;
+
+						stopPinch();
+
+						if (remaining) {
+							const [pointerId, startClient] = remaining;
+							const currentViewport = viewportRef.current;
+							try {
+								event.currentTarget.setPointerCapture(pointerId);
+							} catch {
+								// ignore
+							}
+
+							startPanFromPointer({
+								pointerId,
+								pointerType: "touch",
+								startClient,
+								startPan: { x: currentViewport.panX, y: currentViewport.panY },
+								target: event.currentTarget,
+							});
+						} else {
+							touchPointersRef.current.clear();
+						}
+					}
+				};
+
+				window.addEventListener("pointermove", handleMove);
+				window.addEventListener("pointerup", handleEnd);
+				window.addEventListener("pointercancel", handleEnd);
+				pinchCleanupRef.current = () => {
+					window.removeEventListener("pointermove", handleMove);
+					window.removeEventListener("pointerup", handleEnd);
+					window.removeEventListener("pointercancel", handleEnd);
+				};
+				return;
+			}
+
+			startPanGesture(event, { startPanOnLeftButton: true });
+			return;
+		}
+
+		startPanGesture(event, { startPanOnLeftButton: true });
 	};
 
 	const dragRef = useRef<{
@@ -374,7 +578,7 @@ export function KnowledgeCanvas({
 		if (!container) return;
 
 		const handleWheel = (event: WheelEvent) => {
-			if (isPanning || isDragging) return;
+			if (isPanning || isDragging || isPinching) return;
 			if (!event.cancelable) return;
 
 			// trackpad: pan; ctrl+wheel (pinch): zoom.
@@ -403,12 +607,13 @@ export function KnowledgeCanvas({
 		return () => {
 			container.removeEventListener("wheel", handleWheel);
 		};
-	}, [isPanning, isDragging]);
+	}, [isPanning, isDragging, isPinching]);
 
 	useEffect(() => {
 		return () => {
 			panCleanupRef.current?.();
 			dragCleanupRef.current?.();
+			pinchCleanupRef.current?.();
 		};
 	}, []);
 
@@ -447,7 +652,7 @@ export function KnowledgeCanvas({
 						<div className="text-xs text-neutral-500">
 							{showEmptySeed
 								? "先从左侧选择一个实体作为中心节点"
-								: "滚轮/触控板平移，Ctrl+滚轮缩放；按住空格拖拽平移"}
+								: "节点可拖拽；拖拽空白处平移；滚轮/触控板平移；Ctrl+滚轮缩放；触屏双指缩放"}
 						</div>
 					</div>
 				</div>
@@ -494,12 +699,12 @@ export function KnowledgeCanvas({
 				data-testid="knowledge-canvas"
 				className={cn(
 					"relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-neutral-200 bg-[radial-gradient(circle_at_1px_1px,rgba(15,23,42,0.12)_1px,transparent_0)] [background-size:24px_24px]",
-					"outline-none",
-					isPanning ? "cursor-grabbing" : isSpacePressed && "cursor-grab",
+					"outline-none select-none touch-none",
+					isPanning ? "cursor-grabbing" : "cursor-grab",
 				)}
 				onPointerEnter={() => setIsFocused(true)}
 				onPointerLeave={() => {
-					if (isPanning || isDragging) return;
+					if (isPanning || isDragging || isPinching) return;
 					setIsFocused(false);
 				}}
 				onPointerDown={handleCanvasPointerDown}
