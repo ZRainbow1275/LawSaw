@@ -51,7 +51,6 @@ services:
       LAW_EYE__AI__MODEL: gpt-4o-mini
       LAW_EYE__AI__EMBEDDING_MODEL: text-embedding-3-small
       RUST_LOG: info
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
     ports:
       - "3001:3001"
     depends_on:

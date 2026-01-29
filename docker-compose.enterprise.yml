@@ -1,13 +1,59 @@
 services:
+  vault:
+    image: hashicorp/vault:1.15.6
+    container_name: law-eye-vault
+    cap_add:
+      - IPC_LOCK
+    command: vault server -config=/vault/config/vault.hcl
+    volumes:
+      - ./infra/vault/vault-config.hcl:/vault/config/vault.hcl:ro
+      - ./tmp/enterprise/pki:/vault/tls:ro
+      - vault_data:/vault/file
+    networks:
+      - law-eye-network
+    restart: unless-stopped
+
   api:
     # Enterprise mode: do not expose the API directly to the host.
     ports: []
     environment:
       PRODUCTION: "1"
+      # Sensitive config is loaded from Vault at startup (no plaintext DB/AI secrets in compose env).
+      LAW_EYE__SECRETS__VAULT__ENABLED: "true"
+      LAW_EYE__SECRETS__VAULT__ADDR: "https://vault:8200"
+      LAW_EYE__SECRETS__VAULT__KV_PATH: "secret/law-eye/api"
+      LAW_EYE__SECRETS__VAULT__CA_CERT_PATH: "/etc/vault/pki/ca.crt"
+      LAW_EYE__SECRETS__VAULT__CLIENT_CERT_PATH: "/etc/vault/pki/vault-api-client.crt"
+      LAW_EYE__SECRETS__VAULT__CLIENT_KEY_PATH: "/etc/vault/pki/vault-api-client.key"
+      # Clear plaintext secrets inherited from the default compose.
+      LAW_EYE__DATABASE__URL: ""
+      LAW_EYE__REDIS__URL: ""
+      LAW_EYE__AI__API_KEY: ""
+      LAW_EYE__AI__BASE_URL: ""
+    depends_on:
+      vault:
+        condition: service_started
+    volumes:
+      - ./tmp/enterprise/pki:/etc/vault/pki:ro
 
   worker:
     environment:
       PRODUCTION: "1"
+      LAW_EYE__SECRETS__VAULT__ENABLED: "true"
+      LAW_EYE__SECRETS__VAULT__ADDR: "https://vault:8200"
+      LAW_EYE__SECRETS__VAULT__KV_PATH: "secret/law-eye/worker"
+      LAW_EYE__SECRETS__VAULT__CA_CERT_PATH: "/etc/vault/pki/ca.crt"
+      LAW_EYE__SECRETS__VAULT__CLIENT_CERT_PATH: "/etc/vault/pki/vault-worker-client.crt"
+      LAW_EYE__SECRETS__VAULT__CLIENT_KEY_PATH: "/etc/vault/pki/vault-worker-client.key"
+      LAW_EYE__DATABASE__URL: ""
+      LAW_EYE__REDIS__URL: ""
+      LAW_EYE__AI__API_KEY: ""
+      LAW_EYE__AI__BASE_URL: ""
+    depends_on:
+      vault:
+        condition: service_started
+    volumes:
+      - ./tmp/enterprise/pki:/etc/vault/pki:ro
 
   web:
     build:
@@ -60,3 +106,4 @@ volumes:
   caddy_config:
   caddy_api_mtls_data:
   caddy_api_mtls_config:
+  vault_data:

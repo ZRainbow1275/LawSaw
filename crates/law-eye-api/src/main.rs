@@ -151,7 +151,9 @@ async fn main() -> anyhow::Result<()> {
             .init();
     }
 
-    let config = AppConfig::load().unwrap_or_default();
+    let config = AppConfig::load()
+        .await
+        .context("load application config (file/env + optional Vault secrets)")?;
 
     let metrics_handle = PrometheusBuilder::new()
         .install_recorder()

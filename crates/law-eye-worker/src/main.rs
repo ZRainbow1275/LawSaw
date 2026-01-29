@@ -1,3 +1,4 @@
+use anyhow::Context;
 use law_eye_ai::{AiService, ClassifyResult, RiskAssessment, SummaryResult, TagsResult};
 use law_eye_common::AppConfig;
 use law_eye_core::{ArticleService, SourceService};
@@ -903,7 +904,9 @@ async fn main() -> anyhow::Result<()> {
             .init();
     }
 
-    let config = AppConfig::load().unwrap_or_default();
+    let config = AppConfig::load()
+        .await
+        .context("load application config (file/env + optional Vault secrets)")?;
 
     info!("Starting Law Eye Worker...");
 

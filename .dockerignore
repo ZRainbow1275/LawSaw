@@ -37,6 +37,7 @@ docs/
 # Local config
 .env
 .env.local
+apps/web/.env.local
 *.local
 
 # OS files
