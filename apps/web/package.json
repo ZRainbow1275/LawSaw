@@ -20,7 +20,7 @@
     "dompurify": "^3.3.1",
     "framer-motion": "^11.15.0",
     "lucide-react": "^0.469.0",
-    "next": "^15.5.10",
+    "next": "^16.1.6",
     "nuqs": "^2.2.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -38,6 +38,11 @@
     "@types/react-dom": "^19.0.2",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "lodash": "4.17.23"
+    }
   },
   "packageManager": "pnpm@9.1.0+sha512.67f5879916a9293e5cf059c23853d571beaf4f753c707f40cb22bed5fb1578c6aad3b6c4107ccb3ba0b35be003eb621a16471ac836c87beb53f9d54bb4612724"
 }
