@@ -13,6 +13,28 @@ services:
       - law-eye-network
     restart: unless-stopped
 
+  minio:
+    image: alpine/minio:RELEASE.2025-10-15T17-29-55Z
+    container_name: law-eye-minio
+    user: "0:0"
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/minio/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - law-eye-network
+    restart: unless-stopped
+
   api:
     # Enterprise mode: do not expose the API directly to the host.
     ports: []
@@ -27,6 +49,13 @@ services:
       LAW_EYE__SECRETS__VAULT__CLIENT_KEY_PATH: "/etc/vault/pki/vault-api-client.key"
       LAW_EYE__DATABASE__SESSION_ROLE: "law_eye_app"
       LAW_EYE__ENCRYPTION__FEEDBACKS__ENABLED: "true"
+      LAW_EYE__OBJECT_STORAGE__ENABLED: "true"
+      LAW_EYE__OBJECT_STORAGE__ENDPOINT: "http://minio:9000"
+      LAW_EYE__OBJECT_STORAGE__REGION: "us-east-1"
+      LAW_EYE__OBJECT_STORAGE__BUCKET: "law-eye"
+      LAW_EYE__OBJECT_STORAGE__ACCESS_KEY_ID: "minioadmin"
+      LAW_EYE__OBJECT_STORAGE__SECRET_ACCESS_KEY: "minioadmin"
+      LAW_EYE__OBJECT_STORAGE__FORCE_PATH_STYLE: "true"
       # Clear plaintext secrets inherited from the default compose.
       LAW_EYE__DATABASE__URL: ""
       LAW_EYE__REDIS__URL: ""
@@ -35,6 +64,8 @@ services:
     depends_on:
       vault:
         condition: service_started
+      minio:
+        condition: service_healthy
     volumes:
       - ./tmp/enterprise/pki:/etc/vault/pki:ro
 
@@ -49,6 +80,13 @@ services:
       LAW_EYE__SECRETS__VAULT__CLIENT_KEY_PATH: "/etc/vault/pki/vault-worker-client.key"
       LAW_EYE__DATABASE__SESSION_ROLE: "law_eye_app"
       LAW_EYE__ENCRYPTION__FEEDBACKS__ENABLED: "true"
+      LAW_EYE__OBJECT_STORAGE__ENABLED: "true"
+      LAW_EYE__OBJECT_STORAGE__ENDPOINT: "http://minio:9000"
+      LAW_EYE__OBJECT_STORAGE__REGION: "us-east-1"
+      LAW_EYE__OBJECT_STORAGE__BUCKET: "law-eye"
+      LAW_EYE__OBJECT_STORAGE__ACCESS_KEY_ID: "minioadmin"
+      LAW_EYE__OBJECT_STORAGE__SECRET_ACCESS_KEY: "minioadmin"
+      LAW_EYE__OBJECT_STORAGE__FORCE_PATH_STYLE: "true"
       LAW_EYE__DATABASE__URL: ""
       LAW_EYE__REDIS__URL: ""
       LAW_EYE__AI__API_KEY: ""
@@ -56,6 +94,8 @@ services:
     depends_on:
       vault:
         condition: service_started
+      minio:
+        condition: service_healthy
     volumes:
       - ./tmp/enterprise/pki:/etc/vault/pki:ro
 
@@ -111,3 +151,4 @@ volumes:
   caddy_api_mtls_data:
   caddy_api_mtls_config:
   vault_data:
+  minio_data:

@@ -89,6 +89,47 @@ fn default_vault_request_timeout_ms() -> u64 {
     10_000
 }
 
+fn default_object_storage_region() -> String {
+    "us-east-1".to_string()
+}
+
+fn default_object_storage_force_path_style() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ObjectStorageConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    /// S3-compatible endpoint (e.g. `http://minio:9000`).
+    #[serde(default)]
+    pub endpoint: String,
+    #[serde(default = "default_object_storage_region")]
+    pub region: String,
+    #[serde(default)]
+    pub bucket: String,
+    #[serde(default)]
+    pub access_key_id: String,
+    #[serde(default)]
+    pub secret_access_key: String,
+    #[serde(default = "default_object_storage_force_path_style")]
+    pub force_path_style: bool,
+}
+
+impl Default for ObjectStorageConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            endpoint: String::new(),
+            region: default_object_storage_region(),
+            bucket: String::new(),
+            access_key_id: String::new(),
+            secret_access_key: String::new(),
+            force_path_style: default_object_storage_force_path_style(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppConfig {
     pub server: ServerConfig,
@@ -102,6 +143,8 @@ pub struct AppConfig {
     pub secrets: SecretsConfig,
     #[serde(default)]
     pub encryption: EncryptionConfig,
+    #[serde(default)]
+    pub object_storage: ObjectStorageConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -222,6 +265,44 @@ impl AppConfig {
                     config.ai.base_url = Some(base_url);
                 }
             }
+
+            if let Some(endpoint) = secrets.s3_endpoint {
+                if !endpoint.trim().is_empty() {
+                    config.object_storage.endpoint = endpoint;
+                }
+            }
+
+            if let Some(region) = secrets.s3_region {
+                if !region.trim().is_empty() {
+                    config.object_storage.region = region;
+                }
+            }
+
+            if let Some(bucket) = secrets.s3_bucket {
+                if !bucket.trim().is_empty() {
+                    config.object_storage.bucket = bucket;
+                }
+            }
+
+            if let Some(access_key_id) = secrets.s3_access_key_id {
+                if !access_key_id.trim().is_empty() {
+                    config.object_storage.access_key_id = access_key_id;
+                }
+            }
+
+            if let Some(secret_access_key) = secrets.s3_secret_access_key {
+                if !secret_access_key.trim().is_empty() {
+                    config.object_storage.secret_access_key = secret_access_key;
+                }
+            }
+
+            if let Some(enabled) = secrets.s3_enabled {
+                config.object_storage.enabled = enabled;
+            }
+
+            if let Some(force_path_style) = secrets.s3_force_path_style {
+                config.object_storage.force_path_style = force_path_style;
+            }
         }
 
         Ok(config)
@@ -250,6 +331,7 @@ impl Default for AppConfig {
             metrics: MetricsConfig::default(),
             secrets: SecretsConfig::default(),
             encryption: EncryptionConfig::default(),
+            object_storage: ObjectStorageConfig::default(),
         }
     }
 }
@@ -260,6 +342,13 @@ struct VaultKvSecrets {
     redis_url: String,
     openai_api_key: String,
     openai_base_url: Option<String>,
+    s3_enabled: Option<bool>,
+    s3_endpoint: Option<String>,
+    s3_region: Option<String>,
+    s3_bucket: Option<String>,
+    s3_access_key_id: Option<String>,
+    s3_secret_access_key: Option<String>,
+    s3_force_path_style: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -290,6 +379,20 @@ struct VaultLawEyeSecretsPayload {
     openai_api_key: String,
     #[serde(default)]
     openai_base_url: Option<String>,
+    #[serde(default)]
+    s3_enabled: Option<bool>,
+    #[serde(default)]
+    s3_endpoint: Option<String>,
+    #[serde(default)]
+    s3_region: Option<String>,
+    #[serde(default)]
+    s3_bucket: Option<String>,
+    #[serde(default)]
+    s3_access_key_id: Option<String>,
+    #[serde(default)]
+    s3_secret_access_key: Option<String>,
+    #[serde(default)]
+    s3_force_path_style: Option<bool>,
 }
 
 fn kv_v2_data_endpoint(kv_path: &str) -> crate::Result<String> {
@@ -403,5 +506,12 @@ async fn load_vault_kv_secrets(cfg: &VaultSecretsConfig) -> crate::Result<VaultK
         redis_url: payload.data.data.redis_url,
         openai_api_key: payload.data.data.openai_api_key,
         openai_base_url: payload.data.data.openai_base_url,
+        s3_enabled: payload.data.data.s3_enabled,
+        s3_endpoint: payload.data.data.s3_endpoint,
+        s3_region: payload.data.data.s3_region,
+        s3_bucket: payload.data.data.s3_bucket,
+        s3_access_key_id: payload.data.data.s3_access_key_id,
+        s3_secret_access_key: payload.data.data.s3_secret_access_key,
+        s3_force_path_style: payload.data.data.s3_force_path_style,
     })
 }

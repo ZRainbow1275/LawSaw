@@ -37,3 +37,14 @@ embedding_model = "text-embedding-3-small"
 enabled = false
 vault_transit_mount = "transit"
 vault_transit_key = "law-eye-feedback"
+
+[object_storage]
+# [OBJ-301] S3-compatible object storage (MinIO/AWS S3).
+# Keep disabled by default; enable in enterprise compose or via env vars.
+enabled = false
+endpoint = "http://localhost:9000"
+region = "us-east-1"
+bucket = "law-eye"
+access_key_id = ""
+secret_access_key = ""
+force_path_style = true

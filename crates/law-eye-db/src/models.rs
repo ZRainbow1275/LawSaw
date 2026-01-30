@@ -188,6 +188,33 @@ pub struct CreateAuditLog {
     pub user_agent: Option<String>,
 }
 
+// ========== Object Storage Models ==========
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Object {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub owner_user_id: Option<Uuid>,
+    pub kind: String,
+    pub bucket: String,
+    pub object_key: String,
+    pub content_type: String,
+    pub byte_size: i64,
+    pub sha256: Option<Vec<u8>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateObject {
+    pub owner_user_id: Option<Uuid>,
+    pub kind: String,
+    pub bucket: String,
+    pub object_key: String,
+    pub content_type: String,
+    pub byte_size: i64,
+    pub sha256: Option<Vec<u8>>,
+}
+
 // ========== Feedback Models ==========
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

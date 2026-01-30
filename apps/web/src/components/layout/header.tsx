@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
+import { resolveApiUrl } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
 import { useSidebarStore } from "@/stores/sidebar-store";
 import { Bell, LogOut, Menu, Search, Settings } from "lucide-react";
@@ -32,6 +33,7 @@ export function Header() {
 	const displayName =
 		user?.display_name || user?.email?.split("@")[0] || "用户";
 	const initials = displayName.charAt(0).toUpperCase();
+	const avatarSrc = user?.avatar_url ? resolveApiUrl(user.avatar_url) : null;
 
 	return (
 		<header className="sticky top-0 z-20 flex h-16 items-center gap-4 px-4 md:px-6 glass border-b border-neutral-100/50">
@@ -94,9 +96,9 @@ export function Header() {
 						onClick={() => setShowMenu(!showMenu)}
 					>
 						<div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-primary-500 to-primary-600 text-white">
-							{user?.avatar_url ? (
+							{avatarSrc ? (
 								<img
-									src={user.avatar_url}
+									src={avatarSrc}
 									alt={displayName}
 									className="h-8 w-8 rounded-full object-cover"
 								/>

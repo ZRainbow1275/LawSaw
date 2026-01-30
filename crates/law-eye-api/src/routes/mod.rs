@@ -6,6 +6,7 @@ pub mod categories;
 pub mod feedbacks;
 pub mod health;
 pub mod knowledge;
+pub mod objects;
 pub mod openapi;
 pub mod search;
 pub mod sources;
@@ -122,6 +123,7 @@ pub fn create_router(state: AppState) -> Router {
         .nest("/feedbacks", feedbacks::router())
         .nest("/ai", ai::router())
         .nest("/users", users::router())
+        .nest("/objects", objects::router())
         .nest("/search", search::router())
         .nest("/apikeys", apikeys::router())
         .nest("/knowledge", knowledge::router())

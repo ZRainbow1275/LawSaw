@@ -15,6 +15,7 @@ use axum_login::AuthManagerLayerBuilder;
 use law_eye_ai::{AiService, LlmGateway};
 use law_eye_common::vault::{PlaintextCipher, SensitiveStringCipher, VaultTransitCipher};
 use law_eye_common::AppConfig;
+use law_eye_core::ObjectService;
 use law_eye_db::{create_pool, create_pool_with_session_role};
 use law_eye_queue::TaskQueue;
 use metrics_exporter_prometheus::PrometheusBuilder;
@@ -256,11 +257,23 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(PlaintextCipher)
     };
 
+    let object_service = if config.object_storage.enabled {
+        info!(
+            "Object storage enabled (bucket: {}, endpoint: {})",
+            config.object_storage.bucket, config.object_storage.endpoint
+        );
+        Some(ObjectService::new(pool.clone(), &config.object_storage).await?)
+    } else {
+        info!("Object storage disabled");
+        None
+    };
+
     let state = AppState::new(
         pool,
         task_queue,
         ai_service,
         llm_gateway,
+        object_service,
         metrics_handle,
         config.metrics.token.clone(),
         feedback_cipher,

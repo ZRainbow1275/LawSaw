@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
-import { apiClient } from "@/lib/api";
+import { apiClient, resolveApiUrl } from "@/lib/api";
 import {
 	type ApiKey,
 	assertApiKeyListResponse,
@@ -44,7 +44,7 @@ import {
 	User,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 
 type Theme = "light" | "dark" | "system";
 
@@ -124,6 +124,18 @@ function SettingsContent() {
 		displayName: "",
 		email: "",
 	});
+
+	const avatarInputRef = useRef<HTMLInputElement | null>(null);
+	const [avatarFile, setAvatarFile] = useState<File | null>(null);
+	const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
+
+	useEffect(() => {
+		return () => {
+			if (avatarPreviewUrl) {
+				URL.revokeObjectURL(avatarPreviewUrl);
+			}
+		};
+	}, [avatarPreviewUrl]);
 
 	const [notifications, setNotifications] = useState<NotificationsPreferences>(
 		DEFAULT_NOTIFICATIONS,
@@ -248,6 +260,45 @@ function SettingsContent() {
 
 	const saving = updateUserMutation.isPending;
 
+	const uploadAvatarMutation = useMutation({
+		mutationFn: async () => {
+			if (!userId) {
+				throw new Error("缺少用户信息");
+			}
+			if (!avatarFile) {
+				throw new Error("请选择头像文件");
+			}
+
+			const form = new FormData();
+			form.append("file", avatarFile, avatarFile.name);
+
+			return apiClient.postForm(
+				`/api/v1/users/${userId}/avatar`,
+				form,
+				assertUserProfile,
+			);
+		},
+		onSuccess: (updated) => {
+			toastSuccess("头像已更新");
+			if (user) {
+				setUser({
+					...user,
+					display_name: updated.display_name,
+					avatar_url: updated.avatar_url,
+				});
+			}
+			setAvatarFile(null);
+			setAvatarPreviewUrl(null);
+			queryClient.invalidateQueries({ queryKey: ["users", userId] });
+		},
+		onError: (err) => {
+			const message = err instanceof Error ? err.message : "未知错误";
+			toastError("头像上传失败", message);
+		},
+	});
+
+	const uploadingAvatar = uploadAvatarMutation.isPending;
+
 	const [apiKeyName, setApiKeyName] = useState("");
 	const [apiKeyPermissions, setApiKeyPermissions] = useState("");
 	const [apiKeyRateLimit, setApiKeyRateLimit] = useState("");
@@ -347,6 +398,41 @@ function SettingsContent() {
 		await updateUserMutation.mutateAsync();
 	};
 
+	const AVATAR_MAX_BYTES = 1_048_576;
+	const allowedAvatarTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+	const avatarSrc =
+		avatarPreviewUrl ||
+		(user?.avatar_url ? resolveApiUrl(user.avatar_url) : null);
+	const avatarInitial = (profile.displayName || profile.email || "用户")
+		.trim()
+		.charAt(0)
+		.toUpperCase();
+
+	const handleAvatarChange = (file: File | null) => {
+		if (!file) {
+			setAvatarFile(null);
+			setAvatarPreviewUrl(null);
+			return;
+		}
+
+		if (!allowedAvatarTypes.has(file.type)) {
+			toastError("不支持的图片格式", "仅支持 PNG / JPEG / WEBP");
+			return;
+		}
+
+		if (file.size > AVATAR_MAX_BYTES) {
+			toastError(
+				"头像文件过大",
+				`最大 ${Math.floor(AVATAR_MAX_BYTES / 1024)}KB`,
+			);
+			return;
+		}
+
+		setAvatarFile(file);
+		setAvatarPreviewUrl(URL.createObjectURL(file));
+	};
+
 	const tabs = [
 		{ id: "profile", label: "个人资料", icon: User },
 		{ id: "notifications", label: "通知设置", icon: Bell },
@@ -405,6 +491,71 @@ function SettingsContent() {
 											<CardDescription>管理您的账户信息</CardDescription>
 										</CardHeader>
 										<CardContent className="space-y-4">
+											<div>
+												<label
+													htmlFor="profile-avatar"
+													className="mb-1 block text-sm font-medium"
+												>
+													头像
+												</label>
+												<div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+													<div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-neutral-100 bg-neutral-50">
+														{avatarSrc ? (
+															<img
+																src={avatarSrc}
+																alt="头像"
+																className="h-16 w-16 object-cover"
+															/>
+														) : (
+															<span className="text-lg font-semibold text-neutral-600">
+																{avatarInitial || "U"}
+															</span>
+														)}
+													</div>
+
+													<div className="space-y-2">
+														<input
+															id="profile-avatar"
+															ref={avatarInputRef}
+															type="file"
+															accept="image/png,image/jpeg,image/webp"
+															className="hidden"
+															onChange={(e) => {
+																const file = e.target.files?.[0] ?? null;
+																handleAvatarChange(file);
+																e.currentTarget.value = "";
+															}}
+														/>
+
+														<div className="flex flex-wrap gap-2">
+															<Button
+																type="button"
+																variant="outline"
+																onClick={() => avatarInputRef.current?.click()}
+																disabled={uploadingAvatar}
+															>
+																选择文件
+															</Button>
+															<Button
+																type="button"
+																onClick={() => uploadAvatarMutation.mutate()}
+																disabled={!avatarFile || uploadingAvatar}
+															>
+																{uploadingAvatar ? (
+																	<RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+																) : null}
+																上传头像
+															</Button>
+														</div>
+
+														<p className="text-xs text-neutral-500">
+															支持 PNG / JPEG / WEBP，最大{" "}
+															{Math.floor(AVATAR_MAX_BYTES / 1024)}KB
+														</p>
+													</div>
+												</div>
+											</div>
+
 											<div>
 												<label
 													htmlFor="profile-display-name"

@@ -58,7 +58,9 @@ impl Modify for SecurityAddon {
         crate::routes::users::list_users,
         crate::routes::users::get_user,
         crate::routes::users::update_user,
+        crate::routes::users::upload_user_avatar,
         crate::routes::users::update_user_roles,
+        crate::routes::objects::get_object,
         crate::routes::apikeys::list_keys,
         crate::routes::apikeys::create_key,
         crate::routes::apikeys::revoke_key,
@@ -85,6 +87,7 @@ impl Modify for SecurityAddon {
         (name = "search", description = "Search"),
         (name = "ai", description = "AI"),
         (name = "users", description = "Users"),
+        (name = "objects", description = "Object storage"),
         (name = "apikeys", description = "API keys"),
         (name = "knowledge", description = "Knowledge graph")
     )

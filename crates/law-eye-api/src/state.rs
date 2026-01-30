@@ -2,7 +2,7 @@ use law_eye_ai::{AiService, LlmGateway};
 use law_eye_common::vault::SensitiveStringCipher;
 use law_eye_core::{
     ApiKeyService, ArticleService, AuditService, CategoryService, FeedbackService,
-    KnowledgeService, RagService, SourceService, TenantService, UserService,
+    KnowledgeService, ObjectService, RagService, SourceService, TenantService, UserService,
 };
 use law_eye_queue::TaskQueue;
 use metrics_exporter_prometheus::PrometheusHandle;
@@ -20,6 +20,7 @@ pub struct AppState {
     pub user_service: Arc<UserService>,
     pub tenant_service: Arc<TenantService>,
     pub audit_service: Arc<AuditService>,
+    pub object_service: Option<Arc<ObjectService>>,
     pub task_queue: Arc<TaskQueue>,
     #[allow(dead_code)] // Reserved for future synchronous AI operations
     pub ai_service: Option<Arc<AiService>>,
@@ -32,11 +33,13 @@ pub struct AppState {
 }
 
 impl AppState {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         pool: PgPool,
         task_queue: TaskQueue,
         ai_service: Option<AiService>,
         llm_gateway: Option<LlmGateway>,
+        object_service: Option<ObjectService>,
         metrics_handle: PrometheusHandle,
         metrics_token: Option<String>,
         feedback_cipher: Arc<dyn SensitiveStringCipher>,
@@ -58,6 +61,7 @@ impl AppState {
             user_service: Arc::new(UserService::new(pool.clone())),
             tenant_service: Arc::new(TenantService::new(pool.clone())),
             audit_service: Arc::new(AuditService::new(pool.clone())),
+            object_service: object_service.map(Arc::new),
             task_queue: Arc::new(task_queue),
             ai_service: ai_service.map(Arc::new),
             rag_service: Arc::new(RagService::new(pool.clone(), gateway.clone())),

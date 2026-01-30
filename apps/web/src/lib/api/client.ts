@@ -40,6 +40,17 @@ const API_TIMEOUT_MS = parseTimeoutMs(process.env.NEXT_PUBLIC_API_TIMEOUT_MS);
 
 export type ResponseValidator<T> = (value: unknown) => asserts value is T;
 
+export function getApiBaseUrl(): string {
+	return normalizeLoopbackBaseUrl(API_BASE_URL);
+}
+
+export function resolveApiUrl(value: string): string {
+	if (value.startsWith("http://") || value.startsWith("https://")) return value;
+	const base = getApiBaseUrl();
+	if (value.startsWith("/")) return `${base}${value}`;
+	return `${base}/${value}`;
+}
+
 export class ApiClientError extends Error {
 	readonly status: number;
 	readonly endpoint: string;
@@ -121,8 +132,10 @@ export class ApiClient {
 		}
 
 		const hasBody = options.body !== undefined && options.body !== null;
+		const isFormData =
+			typeof FormData !== "undefined" && options.body instanceof FormData;
 		// Avoid unnecessary CORS preflight for GET by not setting a non-simple Content-Type.
-		if (hasBody && !headers.has("Content-Type")) {
+		if (hasBody && !isFormData && !headers.has("Content-Type")) {
 			headers.set("Content-Type", "application/json");
 		}
 
@@ -263,6 +276,14 @@ export class ApiClient {
 			},
 			validate,
 		);
+	}
+
+	async postForm<T>(
+		endpoint: string,
+		form: FormData,
+		validate?: ResponseValidator<T>,
+	): Promise<T> {
+		return this.request<T>(endpoint, { method: "POST", body: form }, validate);
 	}
 
 	async patch<T>(

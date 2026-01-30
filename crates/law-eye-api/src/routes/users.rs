@@ -1,9 +1,10 @@
 use axum::{
-    extract::{ConnectInfo, Path, Query, State},
+    extract::{ConnectInfo, Multipart, Path, Query, State},
     http::{header::USER_AGENT, HeaderMap},
-    routing::{get, patch},
+    routing::{get, patch, post},
     Json, Router,
 };
+use law_eye_core::UploadUserAvatarInput;
 use law_eye_db::{CreateAuditLog, UpdateUser};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -19,6 +20,7 @@ pub fn router() -> Router<AppState> {
         .route("/", get(list_users))
         .route("/{id}", get(get_user))
         .route("/{id}", patch(update_user))
+        .route("/{id}/avatar", post(upload_user_avatar))
         .route("/{id}/roles", patch(update_user_roles))
 }
 
@@ -289,6 +291,106 @@ pub(crate) async fn update_user(
     let user = state
         .user_service
         .update(id, update)
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(Json(UserProfileResponse::from(user)))
+}
+
+/// 上传用户头像（对象存储：S3/MinIO）
+#[utoipa::path(
+    post,
+    path = "/api/v1/users/{id}/avatar",
+    params(("id" = Uuid, Path, description = "User ID")),
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "Updated user profile", body = UserProfileResponse),
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Forbidden", body = ApiError),
+        (status = 404, description = "User not found", body = ApiError),
+        (status = 503, description = "Object storage not configured", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
+    )
+)]
+pub(crate) async fn upload_user_avatar(
+    State(state): State<AppState>,
+    auth_session: AuthSession,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    mut multipart: Multipart,
+) -> ApiResult<Json<UserProfileResponse>> {
+    let current_user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+
+    let is_admin = check_admin_permission(&state, current_user.id).await?;
+    if current_user.id != id && !is_admin {
+        return Err(AppError::forbidden("Access denied"));
+    }
+
+    let target_user = state
+        .user_service
+        .get_by_id(id)
+        .await
+        .map_err(AppError::from)?;
+    if target_user.tenant_id != current_user.tenant_id {
+        return Err(AppError::not_found("User not found"));
+    }
+
+    let object_service = state
+        .object_service
+        .as_ref()
+        .ok_or_else(|| AppError::service_unavailable("Object storage is not configured"))?;
+
+    let mut uploaded: Option<(Vec<u8>, String)> = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::bad_request(format!("Invalid multipart data: {e}")))?
+    {
+        let name = field.name().unwrap_or_default();
+        if name != "file" && name != "avatar" {
+            continue;
+        }
+
+        let content_type = field.content_type().unwrap_or_default().to_string();
+        let data = field
+            .bytes()
+            .await
+            .map_err(|e| AppError::bad_request(format!("Read upload failed: {e}")))?;
+
+        uploaded = Some((data.to_vec(), content_type));
+        break;
+    }
+
+    let (bytes, content_type) =
+        uploaded.ok_or_else(|| AppError::validation("Missing file field"))?;
+    if content_type.trim().is_empty() {
+        return Err(AppError::validation(
+            "Missing content-type for uploaded file",
+        ));
+    }
+
+    let previous_avatar_url = target_user.avatar_url.clone();
+    let (ip_address, user_agent) = crate::routes::extract_audit_meta(&headers, addr);
+
+    let upload_input = UploadUserAvatarInput {
+        tenant_id: current_user.tenant_id,
+        actor_user_id: current_user.id,
+        target_user_id: id,
+        previous_avatar_url,
+        content_type,
+        bytes,
+        ip_address,
+        user_agent,
+    };
+
+    let (user, _object) = object_service
+        .upload_user_avatar(upload_input, state.audit_service.as_ref())
         .await
         .map_err(AppError::from)?;
 
