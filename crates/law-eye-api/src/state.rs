@@ -1,4 +1,5 @@
 use law_eye_ai::{AiService, LlmGateway};
+use law_eye_common::vault::SensitiveStringCipher;
 use law_eye_core::{
     ApiKeyService, ArticleService, AuditService, CategoryService, FeedbackService,
     KnowledgeService, RagService, SourceService, TenantService, UserService,
@@ -38,6 +39,7 @@ impl AppState {
         llm_gateway: Option<LlmGateway>,
         metrics_handle: PrometheusHandle,
         metrics_token: Option<String>,
+        feedback_cipher: Arc<dyn SensitiveStringCipher>,
     ) -> Self {
         let gateway = Arc::new(llm_gateway.unwrap_or_else(|| {
             LlmGateway::new(
@@ -52,7 +54,7 @@ impl AppState {
             article_service: Arc::new(ArticleService::new(pool.clone())),
             source_service: Arc::new(SourceService::new(pool.clone())),
             category_service: Arc::new(CategoryService::new(pool.clone())),
-            feedback_service: Arc::new(FeedbackService::new(pool.clone())),
+            feedback_service: Arc::new(FeedbackService::new(pool.clone(), feedback_cipher)),
             user_service: Arc::new(UserService::new(pool.clone())),
             tenant_service: Arc::new(TenantService::new(pool.clone())),
             audit_service: Arc::new(AuditService::new(pool.clone())),

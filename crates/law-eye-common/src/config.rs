@@ -45,6 +45,42 @@ impl Default for VaultSecretsConfig {
     }
 }
 
+fn default_vault_transit_mount() -> String {
+    "transit".to_string()
+}
+
+fn default_feedback_vault_transit_key() -> String {
+    "law-eye-feedback".to_string()
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct EncryptionConfig {
+    #[serde(default)]
+    pub feedbacks: FeedbackEncryptionConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FeedbackEncryptionConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    /// Vault Transit mount path (usually `transit`).
+    #[serde(default = "default_vault_transit_mount")]
+    pub vault_transit_mount: String,
+    /// Vault Transit key name used for encrypting feedback sensitive fields.
+    #[serde(default = "default_feedback_vault_transit_key")]
+    pub vault_transit_key: String,
+}
+
+impl Default for FeedbackEncryptionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            vault_transit_mount: default_vault_transit_mount(),
+            vault_transit_key: default_feedback_vault_transit_key(),
+        }
+    }
+}
+
 fn default_vault_addr() -> String {
     "https://vault:8200".to_string()
 }
@@ -64,6 +100,8 @@ pub struct AppConfig {
     pub metrics: MetricsConfig,
     #[serde(default)]
     pub secrets: SecretsConfig,
+    #[serde(default)]
+    pub encryption: EncryptionConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -211,6 +249,7 @@ impl Default for AppConfig {
             ai: AiConfig::default(),
             metrics: MetricsConfig::default(),
             secrets: SecretsConfig::default(),
+            encryption: EncryptionConfig::default(),
         }
     }
 }

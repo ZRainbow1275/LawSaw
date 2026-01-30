@@ -198,6 +198,7 @@ pub struct Feedback {
     pub title: String,
     pub content: String,
     pub contact_email: Option<String>,
+    pub encryption_version: i16,
     pub source_url: Option<String>,
     pub source_name: Option<String>,
     pub status: String,

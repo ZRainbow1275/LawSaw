@@ -247,6 +247,24 @@ configure_vault() {
     -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
     "$VAULT_CONTAINER" vault auth enable cert >/dev/null 2>&1 || true
 
+  # Enable transit for encryption-as-a-service.
+  docker_exec \
+    -e "VAULT_ADDR=${VAULT_ADDR}" \
+    -e "VAULT_TOKEN=${root_token}" \
+    -e "VAULT_CACERT=/vault/tls/ca.crt" \
+    -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
+    -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
+    "$VAULT_CONTAINER" vault secrets enable transit >/dev/null 2>&1 || true
+
+  # Ensure transit key exists for feedback field encryption (ENC-301).
+  docker_exec \
+    -e "VAULT_ADDR=${VAULT_ADDR}" \
+    -e "VAULT_TOKEN=${root_token}" \
+    -e "VAULT_CACERT=/vault/tls/ca.crt" \
+    -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
+    -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
+    "$VAULT_CONTAINER" vault write -f transit/keys/law-eye-feedback type=aes256-gcm96 >/dev/null 2>&1 || true
+
   # Policies: keep least-privilege by separating API/worker paths.
   docker_exec -i \
     -e "VAULT_ADDR=${VAULT_ADDR}" \
@@ -261,6 +279,14 @@ path "secret/data/law-eye/api" {
 
 path "secret/metadata/law-eye/api" {
   capabilities = ["list"]
+}
+
+path "transit/encrypt/law-eye-feedback" {
+  capabilities = ["update"]
+}
+
+path "transit/decrypt/law-eye-feedback" {
+  capabilities = ["update"]
 }
 EOF
 
@@ -277,6 +303,14 @@ path "secret/data/law-eye/worker" {
 
 path "secret/metadata/law-eye/worker" {
   capabilities = ["list"]
+}
+
+path "transit/encrypt/law-eye-feedback" {
+  capabilities = ["update"]
+}
+
+path "transit/decrypt/law-eye-feedback" {
+  capabilities = ["update"]
 }
 EOF
 

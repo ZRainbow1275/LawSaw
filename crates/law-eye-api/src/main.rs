@@ -14,10 +14,11 @@ use axum::response::IntoResponse;
 use axum_login::AuthManagerLayerBuilder;
 use law_eye_ai::{AiService, LlmGateway};
 use law_eye_common::AppConfig;
+use law_eye_common::vault::{PlaintextCipher, SensitiveStringCipher, VaultTransitCipher};
 use law_eye_db::{create_pool, create_pool_with_session_role};
 use law_eye_queue::TaskQueue;
 use metrics_exporter_prometheus::PrometheusBuilder;
-use std::{collections::HashSet, net::SocketAddr, time::Duration};
+use std::{collections::HashSet, net::SocketAddr, sync::Arc, time::Duration};
 use tower::{timeout::TimeoutLayer, BoxError, ServiceBuilder};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
@@ -233,6 +234,28 @@ async fn main() -> anyhow::Result<()> {
         info!("Metrics enabled at /metrics (development mode)");
     }
 
+    let feedback_cipher: Arc<dyn SensitiveStringCipher> = if config.encryption.feedbacks.enabled {
+        if !config.secrets.vault.enabled {
+            anyhow::bail!("Feedback encryption requires Vault secrets to be enabled");
+        }
+
+        info!(
+            "Feedback encryption enabled (Vault Transit key: {})",
+            config.encryption.feedbacks.vault_transit_key
+        );
+        Arc::new(
+            VaultTransitCipher::new(
+                &config.secrets.vault,
+                config.encryption.feedbacks.vault_transit_mount.clone(),
+                config.encryption.feedbacks.vault_transit_key.clone(),
+            )
+            .await?,
+        )
+    } else {
+        info!("Feedback encryption disabled");
+        Arc::new(PlaintextCipher)
+    };
+
     let state = AppState::new(
         pool,
         task_queue,
@@ -240,6 +263,7 @@ async fn main() -> anyhow::Result<()> {
         llm_gateway,
         metrics_handle,
         config.metrics.token.clone(),
+        feedback_cipher,
     );
 
     // CORS configuration - use predicate for dynamic origin validation

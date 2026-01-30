@@ -31,3 +31,9 @@ url = "redis://localhost:6380"
 api_key = ""
 model = "gpt-4o-mini"
 embedding_model = "text-embedding-3-small"
+
+[encryption.feedbacks]
+# Enable Vault Transit encryption for sensitive feedback fields (content/contact_email).
+enabled = false
+vault_transit_mount = "transit"
+vault_transit_key = "law-eye-feedback"

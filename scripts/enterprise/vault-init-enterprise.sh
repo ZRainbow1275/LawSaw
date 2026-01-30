@@ -27,6 +27,32 @@ WORKER_CLIENT_CERT="${PKI_DIR}/vault-worker-client.crt"
 
 POSTGRES_PASSWORD_FILE="${SECRETS_DIR}/postgres_password"
 
+PYTHON_BIN=""
+
+resolve_python() {
+  if [[ -n "$PYTHON_BIN" ]]; then
+    return 0
+  fi
+
+  if command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+    return 0
+  fi
+
+  if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="python3"
+    return 0
+  fi
+
+  if command -v python.exe >/dev/null 2>&1; then
+    PYTHON_BIN="python.exe"
+    return 0
+  fi
+
+  echo "[vault] missing required binary: python/python3/python.exe" >&2
+  exit 1
+}
+
 require_bin() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "[vault] missing required binary: $1" >&2
@@ -43,7 +69,8 @@ docker_exec() {
 json_get() {
   local key="$1"
   local file="$2"
-  python - "$key" "$file" <<'PY'
+  resolve_python
+  "$PYTHON_BIN" - "$key" "$file" <<'PY'
 import json
 import sys
 
@@ -85,7 +112,8 @@ ensure_tls() {
 }
 
 gen_password() {
-  python - <<'PY'
+  resolve_python
+  "$PYTHON_BIN" - <<'PY'
 import secrets
 alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
 print("".join(secrets.choice(alphabet) for _ in range(48)))
@@ -251,6 +279,24 @@ configure_vault() {
     -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
     "$VAULT_CONTAINER" vault auth enable cert >/dev/null 2>&1 || true
 
+  # Enable transit for encryption-as-a-service.
+  docker_exec \
+    -e "VAULT_ADDR=${VAULT_ADDR}" \
+    -e "VAULT_TOKEN=${root_token}" \
+    -e "VAULT_CACERT=/vault/tls/ca.crt" \
+    -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
+    -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
+    "$VAULT_CONTAINER" vault secrets enable transit >/dev/null 2>&1 || true
+
+  # Ensure transit key exists for feedback field encryption (ENC-301).
+  docker_exec \
+    -e "VAULT_ADDR=${VAULT_ADDR}" \
+    -e "VAULT_TOKEN=${root_token}" \
+    -e "VAULT_CACERT=/vault/tls/ca.crt" \
+    -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
+    -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
+    "$VAULT_CONTAINER" vault write -f transit/keys/law-eye-feedback type=aes256-gcm96 >/dev/null 2>&1 || true
+
   # Policies: keep least-privilege by separating API/worker paths.
   docker_exec -i \
     -e "VAULT_ADDR=${VAULT_ADDR}" \
@@ -265,6 +311,14 @@ path "secret/data/law-eye/api" {
 
 path "secret/metadata/law-eye/api" {
   capabilities = ["list"]
+}
+
+path "transit/encrypt/law-eye-feedback" {
+  capabilities = ["update"]
+}
+
+path "transit/decrypt/law-eye-feedback" {
+  capabilities = ["update"]
 }
 EOF
 
@@ -281,6 +335,14 @@ path "secret/data/law-eye/worker" {
 
 path "secret/metadata/law-eye/worker" {
   capabilities = ["list"]
+}
+
+path "transit/encrypt/law-eye-feedback" {
+  capabilities = ["update"]
+}
+
+path "transit/decrypt/law-eye-feedback" {
+  capabilities = ["update"]
 }
 EOF
 
@@ -362,7 +424,7 @@ seed_secrets() {
 
 main() {
   require_bin docker
-  require_bin python
+  resolve_python
   require_bin openssl
 
   ensure_tls

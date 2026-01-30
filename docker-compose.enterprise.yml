@@ -26,6 +26,7 @@ services:
       LAW_EYE__SECRETS__VAULT__CLIENT_CERT_PATH: "/etc/vault/pki/vault-api-client.crt"
       LAW_EYE__SECRETS__VAULT__CLIENT_KEY_PATH: "/etc/vault/pki/vault-api-client.key"
       LAW_EYE__DATABASE__SESSION_ROLE: "law_eye_app"
+      LAW_EYE__ENCRYPTION__FEEDBACKS__ENABLED: "true"
       # Clear plaintext secrets inherited from the default compose.
       LAW_EYE__DATABASE__URL: ""
       LAW_EYE__REDIS__URL: ""
@@ -47,6 +48,7 @@ services:
       LAW_EYE__SECRETS__VAULT__CLIENT_CERT_PATH: "/etc/vault/pki/vault-worker-client.crt"
       LAW_EYE__SECRETS__VAULT__CLIENT_KEY_PATH: "/etc/vault/pki/vault-worker-client.key"
       LAW_EYE__DATABASE__SESSION_ROLE: "law_eye_app"
+      LAW_EYE__ENCRYPTION__FEEDBACKS__ENABLED: "true"
       LAW_EYE__DATABASE__URL: ""
       LAW_EYE__REDIS__URL: ""
       LAW_EYE__AI__API_KEY: ""

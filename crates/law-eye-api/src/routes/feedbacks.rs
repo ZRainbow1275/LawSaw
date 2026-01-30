@@ -135,7 +135,19 @@ pub(crate) async fn list_feedbacks(
         .list_all(user.tenant_id, limit, offset)
         .await
         .map_err(AppError::from)?;
-    Ok(Json(rows.into_iter().map(FeedbackResponse::from).collect()))
+
+    let data = rows
+        .into_iter()
+        .map(|row| {
+            let mut resp = FeedbackResponse::from(row);
+            // 脱敏策略：列表接口默认返回预览内容 + mask email，避免过度暴露敏感字段。
+            resp.content = preview_text(&resp.content, 160);
+            resp.contact_email = resp.contact_email.as_deref().map(mask_email);
+            resp
+        })
+        .collect();
+
+    Ok(Json(data))
 }
 
 /// Current user: list my feedbacks
@@ -325,4 +337,43 @@ pub(crate) async fn update_feedback(
         .map_err(AppError::from)?;
 
     Ok(Json(FeedbackResponse::from(row)))
+}
+
+fn preview_text(text: &str, max_chars: usize) -> String {
+    let trimmed = text.trim();
+    if max_chars == 0 {
+        return String::new();
+    }
+
+    let mut chars = trimmed.chars();
+    let mut out = String::new();
+    for _ in 0..max_chars {
+        let Some(c) = chars.next() else {
+            return out;
+        };
+        out.push(c);
+    }
+
+    if chars.next().is_some() {
+        out.push('…');
+    }
+
+    out
+}
+
+fn mask_email(email: &str) -> String {
+    let email = email.trim();
+    let Some((local, domain)) = email.split_once('@') else {
+        return "***".to_string();
+    };
+
+    let local_chars: Vec<char> = local.chars().collect();
+    let masked_local = match local_chars.len() {
+        0 => "***".to_string(),
+        1 => format!("{}***", local_chars[0]),
+        2 => format!("{}***{}", local_chars[0], local_chars[1]),
+        _ => format!("{}***{}", local_chars[0], local_chars[local_chars.len() - 1]),
+    };
+
+    format!("{masked_local}@{domain}")
 }
