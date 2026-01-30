@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node ./node_modules/next/dist/bin/next dev -p 8849",
+    "dev": "node ./scripts/next-dev.mjs",
     "build": "node ./node_modules/next/dist/bin/next build",
     "start": "node ./node_modules/next/dist/bin/next start",
     "lint": "node ./node_modules/@biomejs/biome/bin/biome lint src",
