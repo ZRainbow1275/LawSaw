@@ -88,23 +88,23 @@ export function Modal({
 						onClick={handleOverlayClick}
 					/>
 
-						{/* Modal Content */}
-						<motion.dialog
-							open
-							ref={modalRef}
-							variants={scaleVariants}
-							initial="hidden"
-							animate="visible"
-							exit="exit"
-							className={cn(
-								"relative z-10 w-full mx-4 p-0 my-0",
-								"bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl",
-								"border border-neutral-200/50",
-								sizeClasses[size],
-								className,
-							)}
-							aria-modal="true"
-						>
+					{/* Modal Content */}
+					<motion.dialog
+						open
+						ref={modalRef}
+						variants={scaleVariants}
+						initial="hidden"
+						animate="visible"
+						exit="exit"
+						className={cn(
+							"relative z-10 w-full mx-4 p-0 my-0",
+							"bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl",
+							"border border-neutral-200/50",
+							sizeClasses[size],
+							className,
+						)}
+						aria-modal="true"
+					>
 						{showCloseButton && (
 							<button
 								type="button"
@@ -120,14 +120,14 @@ export function Modal({
 							>
 								<X className="h-4 w-4" />
 							</button>
-							)}
-							{children}
-						</motion.dialog>
-					</div>
-				)}
-			</AnimatePresence>
-		);
-	}
+						)}
+						{children}
+					</motion.dialog>
+				</div>
+			)}
+		</AnimatePresence>
+	);
+}
 
 // Header 子组件
 interface ModalHeaderProps {

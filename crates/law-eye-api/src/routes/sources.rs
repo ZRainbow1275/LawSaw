@@ -1,5 +1,7 @@
 use axum::{
+    extract::ConnectInfo,
     extract::{Path, State},
+    http::HeaderMap,
     http::StatusCode,
     routing::{get, post},
     Json, Router,
@@ -12,9 +14,10 @@ use uuid::Uuid;
 use crate::auth::AuthSession;
 use crate::state::AppState;
 use crate::{ApiError, ApiResult, AppError};
-use law_eye_db::CreateSource;
+use law_eye_db::{CreateAuditLog, CreateSource};
 use law_eye_queue::IngestTask;
 use serde_json::Value;
+use std::net::SocketAddr;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -214,6 +217,8 @@ pub(crate) async fn get_source(
 pub(crate) async fn create_source(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Json(input): Json<CreateSourceRequest>,
 ) -> ApiResult<(StatusCode, Json<SourceResponse>)> {
     let user = auth_session
@@ -240,11 +245,55 @@ pub(crate) async fn create_source(
         _ => return Err(AppError::validation("Invalid source type")),
     }
 
-    let source = state
-        .source_service
-        .create(user.tenant_id, input.into())
-        .await
-        .map_err(AppError::from)?;
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    let tenant_id = user.tenant_id;
+    let user_id = user.id;
+
+    let input_for_db: CreateSource = input.into();
+
+    let source = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
+        let source_service = state.source_service.clone();
+        let audit_service = state.audit_service.clone();
+        let ip_address = ip_address.clone();
+        let user_agent = user_agent.clone();
+        let input_for_db = input_for_db.clone();
+
+        Box::pin(async move {
+            let source = source_service
+                .create_tx(tenant_id, tx, input_for_db)
+                .await?;
+
+            audit_service
+                .log_tx(
+                    tenant_id,
+                    tx,
+                    CreateAuditLog {
+                        user_id: Some(user_id),
+                        action: "sources.create".to_string(),
+                        resource: "sources".to_string(),
+                        resource_id: Some(source.id),
+                        old_value: None,
+                        new_value: Some(serde_json::json!({
+                            "id": source.id,
+                            "name": source.name,
+                            "url": source.url,
+                            "type": source.source_type,
+                            "priority": source.priority,
+                            "schedule": source.schedule,
+                            "is_active": source.is_active,
+                        })),
+                        ip_address,
+                        user_agent,
+                    },
+                )
+                .await?;
+
+            Ok(source)
+        })
+    })
+    .await
+    .map_err(AppError::from)?;
+
     Ok((StatusCode::CREATED, Json(SourceResponse::from(source))))
 }
 
@@ -267,6 +316,8 @@ pub(crate) async fn create_source(
 pub(crate) async fn trigger_fetch(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<(StatusCode, Json<EnqueueResponse>)> {
     let user = auth_session
@@ -299,6 +350,27 @@ pub(crate) async fn trigger_fetch(
     state
         .task_queue
         .enqueue_retryable("queue:ingest", task)
+        .await
+        .map_err(AppError::from)?;
+
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    state
+        .audit_service
+        .log(
+            user.tenant_id,
+            CreateAuditLog {
+                user_id: Some(user.id),
+                action: "sources.fetch.enqueue".to_string(),
+                resource: "sources".to_string(),
+                resource_id: Some(source.id),
+                old_value: None,
+                new_value: Some(serde_json::json!({
+                    "queue": "queue:ingest",
+                })),
+                ip_address,
+                user_agent,
+            },
+        )
         .await
         .map_err(AppError::from)?;
 

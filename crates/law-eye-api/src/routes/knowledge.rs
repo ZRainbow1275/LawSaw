@@ -298,9 +298,10 @@ pub(crate) async fn get_related_entities(
 
     let limit = clamp_limit(query.limit, 20, 50);
 
-    let (outgoing, incoming) = with_tenant_tx(&state.pool, user.tenant_id, |tx| Box::pin(async move {
-        let outgoing = sqlx::query_as::<_, RelatedEntityRow>(
-            r#"
+    let (outgoing, incoming) = with_tenant_tx(&state.pool, user.tenant_id, |tx| {
+        Box::pin(async move {
+            let outgoing = sqlx::query_as::<_, RelatedEntityRow>(
+                r#"
             SELECT
                 e.id,
                 e.name,
@@ -320,15 +321,15 @@ pub(crate) async fn get_related_entities(
             ORDER BY r.weight DESC
             LIMIT $2
             "#,
-        )
-        .bind(id)
-        .bind(limit)
-        .fetch_all(tx.as_mut())
-        .await
-        .map_err(|e| law_eye_common::Error::Database(e.to_string()))?;
+            )
+            .bind(id)
+            .bind(limit)
+            .fetch_all(tx.as_mut())
+            .await
+            .map_err(|e| law_eye_common::Error::Database(e.to_string()))?;
 
-        let incoming = sqlx::query_as::<_, RelatedEntityRow>(
-            r#"
+            let incoming = sqlx::query_as::<_, RelatedEntityRow>(
+                r#"
             SELECT
                 e.id,
                 e.name,
@@ -348,15 +349,16 @@ pub(crate) async fn get_related_entities(
             ORDER BY r.weight DESC
             LIMIT $2
             "#,
-        )
-        .bind(id)
-        .bind(limit)
-        .fetch_all(tx.as_mut())
-        .await
-        .map_err(|e| law_eye_common::Error::Database(e.to_string()))?;
+            )
+            .bind(id)
+            .bind(limit)
+            .fetch_all(tx.as_mut())
+            .await
+            .map_err(|e| law_eye_common::Error::Database(e.to_string()))?;
 
-        Ok((outgoing, incoming))
-    }))
+            Ok((outgoing, incoming))
+        })
+    })
     .await
     .map_err(AppError::from)?;
 

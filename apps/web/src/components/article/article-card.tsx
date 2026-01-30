@@ -2,7 +2,11 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getArticleRiskLevel, type Article, type ArticleRiskLevel } from "@/lib/api/types";
+import {
+	type Article,
+	type ArticleRiskLevel,
+	getArticleRiskLevel,
+} from "@/lib/api/types";
 import { buttonTapEffect, cardHoverEffect, fadeVariants } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -18,7 +22,7 @@ import {
 	ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
-import { forwardRef, type ReactNode } from "react";
+import { type ReactNode, forwardRef } from "react";
 
 // ============================================
 // 类型定义

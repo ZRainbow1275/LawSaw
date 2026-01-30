@@ -285,13 +285,11 @@ export default function FeedbackPage() {
 															{feedbackTypes.map((type, index) => (
 																<motion.label
 																	key={type.value}
-																	className={
-																		`group relative flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all duration-200 ${
-																			selectedType === type.value
-																				? "border-primary-500 bg-primary-50 shadow-md"
-																				: "border-neutral-200 bg-white hover:border-primary-200 hover:bg-neutral-50"
-																		}`
-																	}
+																	className={`group relative flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all duration-200 ${
+																		selectedType === type.value
+																			? "border-primary-500 bg-primary-50 shadow-md"
+																			: "border-neutral-200 bg-white hover:border-primary-200 hover:bg-neutral-50"
+																	}`}
 																	initial={{ opacity: 0, y: 20 }}
 																	animate={{ opacity: 1, y: 0 }}
 																	transition={{ delay: index * 0.05 }}

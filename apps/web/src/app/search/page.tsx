@@ -8,7 +8,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { useAiAvailability, useAskQuestion, useSearch } from "@/hooks/use-search";
+import {
+	useAiAvailability,
+	useAskQuestion,
+	useSearch,
+} from "@/hooks/use-search";
 import { useToast } from "@/stores/toast-store";
 import {
 	ArrowUpRight,
@@ -68,7 +72,9 @@ function SearchContent() {
 	const aiAvailabilityQuery = useAiAvailability();
 	const aiAvailable = aiAvailabilityQuery.data?.available ?? false;
 	const aiDisabled =
-		aiAvailabilityQuery.isLoading || aiAvailabilityQuery.isError || !aiAvailable;
+		aiAvailabilityQuery.isLoading ||
+		aiAvailabilityQuery.isError ||
+		!aiAvailable;
 	const aiAvailabilityError =
 		aiAvailabilityQuery.error instanceof Error
 			? aiAvailabilityQuery.error.message
@@ -225,11 +231,13 @@ function SearchContent() {
 				<p className="mb-6 text-xs text-neutral-500">AI 服务检测中...</p>
 			) : aiAvailabilityQuery.isError ? (
 				<p className="mb-6 text-xs text-neutral-500">
-					AI 服务检测失败：{aiAvailabilityError ?? "未知错误"}。请稍后重试或联系管理员。
+					AI 服务检测失败：{aiAvailabilityError ?? "未知错误"}
+					。请稍后重试或联系管理员。
 				</p>
 			) : !aiAvailable ? (
 				<p className="mb-6 text-xs text-neutral-500">
-					AI 服务未启用：当前环境未配置 AI 服务，AI 问答已禁用。如需启用，请联系管理员配置后端 AI API Key。
+					AI 服务未启用：当前环境未配置 AI 服务，AI
+					问答已禁用。如需启用，请联系管理员配置后端 AI API Key。
 				</p>
 			) : null}
 
@@ -321,17 +329,20 @@ function SearchContent() {
 							</p>
 						) : searching ? (
 							<div className="animate-pulse space-y-4">
-								{Array.from({ length: 5 }, (_, idx) => `search-skel-${idx}`).map(
-									(key) => (
-										<div key={key} className="h-20 rounded-lg bg-neutral-100" />
-									),
-								)}
+								{Array.from(
+									{ length: 5 },
+									(_, idx) => `search-skel-${idx}`,
+								).map((key) => (
+									<div key={key} className="h-20 rounded-lg bg-neutral-100" />
+								))}
 							</div>
 						) : searchIsError ? (
 							<div className="py-12 text-center text-neutral-500">
 								<p>
 									搜索失败：
-									{searchError instanceof Error ? searchError.message : "未知错误"}
+									{searchError instanceof Error
+										? searchError.message
+										: "未知错误"}
 								</p>
 								<Button
 									variant="outline"
@@ -343,7 +354,9 @@ function SearchContent() {
 								</Button>
 							</div>
 						) : !searchData || searchData.results.length === 0 ? (
-							<p className="py-12 text-center text-neutral-500">未找到相关结果</p>
+							<p className="py-12 text-center text-neutral-500">
+								未找到相关结果
+							</p>
 						) : (
 							<div className="space-y-4">
 								{searchData.results.map((result) => (

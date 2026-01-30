@@ -101,7 +101,11 @@ export function AnimatedList({
 
 	const content = Children.toArray(children).map((child) => (
 		<motion.div
-			key={isValidElement(child) ? child.key : `animated-list-item:${String(child)}`}
+			key={
+				isValidElement(child)
+					? child.key
+					: `animated-list-item:${String(child)}`
+			}
 			variants={itemVariants}
 			layout={animatePresence}
 		>

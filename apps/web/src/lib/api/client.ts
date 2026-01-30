@@ -82,7 +82,8 @@ async function readErrorInfo(
 							? data.message
 							: JSON.stringify(data);
 
-				const requestId = typeof data.request_id === "string" ? data.request_id : null;
+				const requestId =
+					typeof data.request_id === "string" ? data.request_id : null;
 				return { message, requestId };
 			}
 			return { message: JSON.stringify(data), requestId: null };
@@ -99,7 +100,10 @@ export class ApiClient {
 	private baseUrl: string;
 	private timeoutMs: number | null;
 
-	constructor(baseUrl: string = API_BASE_URL, timeoutMs: number | null = API_TIMEOUT_MS) {
+	constructor(
+		baseUrl: string = API_BASE_URL,
+		timeoutMs: number | null = API_TIMEOUT_MS,
+	) {
 		this.baseUrl = normalizeLoopbackBaseUrl(baseUrl);
 		this.timeoutMs = timeoutMs;
 	}
@@ -157,7 +161,9 @@ export class ApiClient {
 		} catch (cause) {
 			if (cause instanceof Error && cause.name === "AbortError") {
 				throw new ApiClientError(
-					didTimeout ? `Request timed out after ${this.timeoutMs}ms` : "Request aborted",
+					didTimeout
+						? `Request timed out after ${this.timeoutMs}ms`
+						: "Request aborted",
 					{
 						status: 0,
 						endpoint,
@@ -183,7 +189,8 @@ export class ApiClient {
 		const requestIdFromHeader = response.headers.get("x-request-id");
 
 		if (!response.ok) {
-			const { message, requestId: requestIdFromBody } = await readErrorInfo(response);
+			const { message, requestId: requestIdFromBody } =
+				await readErrorInfo(response);
 			const requestId = requestIdFromHeader ?? requestIdFromBody;
 			throw new ApiClientError(
 				requestId ? `${message} (request_id=${requestId})` : message,
@@ -248,10 +255,14 @@ export class ApiClient {
 		data?: unknown,
 		validate?: ResponseValidator<T>,
 	): Promise<T> {
-		return this.request<T>(endpoint, {
-			method: "POST",
-			body: data ? JSON.stringify(data) : undefined,
-		}, validate);
+		return this.request<T>(
+			endpoint,
+			{
+				method: "POST",
+				body: data ? JSON.stringify(data) : undefined,
+			},
+			validate,
+		);
 	}
 
 	async patch<T>(
@@ -259,13 +270,20 @@ export class ApiClient {
 		data: unknown,
 		validate?: ResponseValidator<T>,
 	): Promise<T> {
-		return this.request<T>(endpoint, {
-			method: "PATCH",
-			body: JSON.stringify(data),
-		}, validate);
+		return this.request<T>(
+			endpoint,
+			{
+				method: "PATCH",
+				body: JSON.stringify(data),
+			},
+			validate,
+		);
 	}
 
-	async delete<T>(endpoint: string, validate?: ResponseValidator<T>): Promise<T> {
+	async delete<T>(
+		endpoint: string,
+		validate?: ResponseValidator<T>,
+	): Promise<T> {
 		return this.request<T>(endpoint, { method: "DELETE" }, validate);
 	}
 }

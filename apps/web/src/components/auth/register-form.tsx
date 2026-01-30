@@ -111,8 +111,9 @@ export function RegisterForm() {
 					autoComplete="organization"
 				/>
 				<p className="text-xs text-neutral-500">
-					不填则默认使用 <span className="font-mono">default</span>。规则：小写字母开头，
-					长度 3-32，仅允许 <span className="font-mono">a-z0-9-</span>
+					不填则默认使用 <span className="font-mono">default</span>
+					。规则：小写字母开头， 长度 3-32，仅允许{" "}
+					<span className="font-mono">a-z0-9-</span>
 				</p>
 			</div>
 

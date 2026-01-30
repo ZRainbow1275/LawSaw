@@ -1,9 +1,9 @@
 "use client";
 
-import type { KnowledgeEntity } from "@/lib/api/types";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import type { KnowledgeEntity } from "@/lib/api/types";
+import { cn } from "@/lib/utils";
 import { Database, Search, Sparkles, TriangleAlert } from "lucide-react";
 
 function getTypeBadge(entityType: string) {
@@ -49,14 +49,21 @@ export function EntityPalette({
 	const empty = !isLoading && !isError && items.length === 0;
 
 	return (
-		<div className={cn("flex h-full min-h-0 flex-col rounded-2xl border border-neutral-200 bg-white", className)}>
+		<div
+			className={cn(
+				"flex h-full min-h-0 flex-col rounded-2xl border border-neutral-200 bg-white",
+				className,
+			)}
+		>
 			<div className="border-b border-neutral-100 p-4">
 				<div className="flex items-center gap-2">
 					<div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-100 text-neutral-700">
 						<Sparkles className="h-4 w-4" />
 					</div>
 					<div className="min-w-0">
-						<div className="text-sm font-semibold text-neutral-900">实体列表</div>
+						<div className="text-sm font-semibold text-neutral-900">
+							实体列表
+						</div>
 						<div className="text-xs text-neutral-500">
 							{mode === "search" ? "搜索结果" : "按热度排序"}
 						</div>
@@ -77,8 +84,14 @@ export function EntityPalette({
 			<div className="min-h-0 flex-1 overflow-auto p-2">
 				{isLoading ? (
 					<div className="space-y-2 p-2">
-						{Array.from({ length: 8 }, (_, idx) => `knowledge-skeleton-${idx}`).map((key) => (
-							<div key={key} className="h-12 rounded-xl bg-neutral-100 animate-pulse" />
+						{Array.from(
+							{ length: 8 },
+							(_, idx) => `knowledge-skeleton-${idx}`,
+						).map((key) => (
+							<div
+								key={key}
+								className="h-12 rounded-xl bg-neutral-100 animate-pulse"
+							/>
 						))}
 					</div>
 				) : isError ? (
@@ -168,4 +181,3 @@ export function EntityPalette({
 		</div>
 	);
 }
-

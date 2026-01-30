@@ -48,9 +48,11 @@ export function RecentArticles() {
 				</CardHeader>
 				<CardContent>
 					<div className="space-y-4">
-						{Array.from({ length: 5 }, (_, idx) => `recent-skel-${idx}`).map((key) => (
-							<ArticleCardSkeleton key={key} variant="compact" />
-						))}
+						{Array.from({ length: 5 }, (_, idx) => `recent-skel-${idx}`).map(
+							(key) => (
+								<ArticleCardSkeleton key={key} variant="compact" />
+							),
+						)}
 					</div>
 				</CardContent>
 			</Card>
@@ -59,7 +61,9 @@ export function RecentArticles() {
 
 	if (articlesQuery.isError) {
 		const message =
-			articlesQuery.error instanceof Error ? articlesQuery.error.message : "未知错误";
+			articlesQuery.error instanceof Error
+				? articlesQuery.error.message
+				: "未知错误";
 
 		return (
 			<Card className="lg:col-span-2">

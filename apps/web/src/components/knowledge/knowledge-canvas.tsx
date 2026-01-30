@@ -1,10 +1,20 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+import {
+	useKnowledgeEntity,
+	useKnowledgeRelatedEntities,
+} from "@/hooks/use-knowledge";
 import type { KnowledgeEntity, KnowledgeRelatedEntity } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
-import { useKnowledgeEntity, useKnowledgeRelatedEntities } from "@/hooks/use-knowledge";
-import { Button } from "@/components/ui/button";
-import { Loader2, Minus, MousePointer2, Move, Plus, RotateCcw } from "lucide-react";
+import {
+	Loader2,
+	Minus,
+	MousePointer2,
+	Move,
+	Plus,
+	RotateCcw,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Point = { x: number; y: number };
@@ -30,7 +40,10 @@ function getDistance(a: Point, b: Point) {
 	return Math.hypot(dx, dy);
 }
 
-function buildNodes(seed: KnowledgeEntity | undefined, related: KnowledgeRelatedEntity[]) {
+function buildNodes(
+	seed: KnowledgeEntity | undefined,
+	related: KnowledgeRelatedEntity[],
+) {
 	const byId = new Map<string, KnowledgeEntity>();
 	if (seed) byId.set(seed.id, seed);
 	for (const item of related) byId.set(item.entity.id, item.entity);
@@ -44,7 +57,10 @@ type Edge = {
 	weight: number;
 };
 
-function buildEdges(seedId: string | undefined, related: KnowledgeRelatedEntity[]) {
+function buildEdges(
+	seedId: string | undefined,
+	related: KnowledgeRelatedEntity[],
+) {
 	if (!seedId) return [];
 	return related
 		.filter((item) => item.entity.id !== seedId)
@@ -81,7 +97,11 @@ function getNodeBorder(entityType: string) {
 	}
 }
 
-function getRelativePoint(container: HTMLDivElement, clientX: number, clientY: number): Point {
+function getRelativePoint(
+	container: HTMLDivElement,
+	clientX: number,
+	clientY: number,
+): Point {
 	const rect = container.getBoundingClientRect();
 	return { x: clientX - rect.left, y: clientY - rect.top };
 }
@@ -112,11 +132,16 @@ export function KnowledgeCanvas({
 	className?: string;
 }) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
-	const [containerSize, setContainerSize] = useState<{ width: number; height: number } | null>(
-		null,
-	);
+	const [containerSize, setContainerSize] = useState<{
+		width: number;
+		height: number;
+	} | null>(null);
 
-	const [viewport, setViewport] = useState<Viewport>({ panX: 0, panY: 0, scale: 1 });
+	const [viewport, setViewport] = useState<Viewport>({
+		panX: 0,
+		panY: 0,
+		scale: 1,
+	});
 	const viewportRef = useRef(viewport);
 	const [positions, setPositions] = useState<Record<string, Point>>({});
 	const [isFocused, setIsFocused] = useState(false);
@@ -133,21 +158,27 @@ export function KnowledgeCanvas({
 	const related = relatedQuery.data ?? [];
 
 	const nodes = useMemo(() => buildNodes(seed, related), [seed, related]);
-	const edges = useMemo(() => buildEdges(seed?.id, related), [seed?.id, related]);
+	const edges = useMemo(
+		() => buildEdges(seed?.id, related),
+		[seed?.id, related],
+	);
 
-	const setViewportAndRef = useCallback((next: Viewport | ((prev: Viewport) => Viewport)) => {
-		if (typeof next === "function") {
-			setViewport((prev) => {
-				const resolved = next(prev);
-				viewportRef.current = resolved;
-				return resolved;
-			});
-			return;
-		}
+	const setViewportAndRef = useCallback(
+		(next: Viewport | ((prev: Viewport) => Viewport)) => {
+			if (typeof next === "function") {
+				setViewport((prev) => {
+					const resolved = next(prev);
+					viewportRef.current = resolved;
+					return resolved;
+				});
+				return;
+			}
 
-		viewportRef.current = next;
-		setViewport(next);
-	}, []);
+			viewportRef.current = next;
+			setViewport(next);
+		},
+		[],
+	);
 
 	useEffect(() => {
 		const container = containerRef.current;
@@ -168,7 +199,9 @@ export function KnowledgeCanvas({
 			const next: Record<string, Point> = { ...prev };
 
 			next[seed.id] = next[seed.id] ?? { x: 0, y: 0 };
-			const neighborIds = nodes.filter((n) => n.id !== seed.id).map((n) => n.id);
+			const neighborIds = nodes
+				.filter((n) => n.id !== seed.id)
+				.map((n) => n.id);
 			const count = neighborIds.length;
 			const radius = 260;
 
@@ -194,7 +227,11 @@ export function KnowledgeCanvas({
 		if (!containerSize) return;
 		if (initializedViewportRef.current === seedEntityId) return;
 		initializedViewportRef.current = seedEntityId;
-		setViewportAndRef({ panX: containerSize.width / 2, panY: containerSize.height / 2, scale: 1 });
+		setViewportAndRef({
+			panX: containerSize.width / 2,
+			panY: containerSize.height / 2,
+			scale: 1,
+		});
 	}, [seedEntityId, containerSize, setViewportAndRef]);
 
 	useEffect(() => {
@@ -204,7 +241,11 @@ export function KnowledgeCanvas({
 			if (event.repeat) return;
 
 			const target = event.target;
-			if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+			if (
+				target instanceof HTMLInputElement ||
+				target instanceof HTMLTextAreaElement
+			)
+				return;
 
 			event.preventDefault();
 			setIsSpacePressed(true);
@@ -313,7 +354,11 @@ export function KnowledgeCanvas({
 
 			const dx = moveEvent.clientX - pan.start.x;
 			const dy = moveEvent.clientY - pan.start.y;
-			setViewportAndRef((prev) => ({ ...prev, panX: pan.startPan.x + dx, panY: pan.startPan.y + dy }));
+			setViewportAndRef((prev) => ({
+				...prev,
+				panX: pan.startPan.x + dx,
+				panY: pan.startPan.y + dy,
+			}));
 		};
 
 		const handleEnd = (endEvent: PointerEvent) => {
@@ -364,10 +409,11 @@ export function KnowledgeCanvas({
 		} catch {
 			// ignore
 		}
-
 	};
 
-	const handleCanvasPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+	const handleCanvasPointerDown = (
+		event: React.PointerEvent<HTMLDivElement>,
+	) => {
 		if (!containerRef.current) return;
 		setIsFocused(true);
 
@@ -375,7 +421,10 @@ export function KnowledgeCanvas({
 
 		if (event.pointerType === "touch") {
 			event.preventDefault();
-			touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+			touchPointersRef.current.set(event.pointerId, {
+				x: event.clientX,
+				y: event.clientY,
+			});
 
 			try {
 				event.currentTarget.setPointerCapture(event.pointerId);
@@ -384,7 +433,10 @@ export function KnowledgeCanvas({
 			}
 
 			if (touchPointersRef.current.size >= 2) {
-				const pointers = Array.from(touchPointersRef.current.entries()).slice(0, 2);
+				const pointers = Array.from(touchPointersRef.current.entries()).slice(
+					0,
+					2,
+				);
 				const [id1, p1] = pointers[0];
 				const [id2, p2] = pointers[1];
 
@@ -396,7 +448,10 @@ export function KnowledgeCanvas({
 				if (panRef.current) stopPan(panRef.current.pointerId);
 
 				const currentViewport = viewportRef.current;
-				const startMid: Point = { x: (p1Rel.x + p2Rel.x) / 2, y: (p1Rel.y + p2Rel.y) / 2 };
+				const startMid: Point = {
+					x: (p1Rel.x + p2Rel.x) / 2,
+					y: (p1Rel.y + p2Rel.y) / 2,
+				};
 				pinchRef.current = {
 					pointerIds: [id1, id2],
 					startDistance,
@@ -428,10 +483,18 @@ export function KnowledgeCanvas({
 
 					const mid: Point = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 					const scaleFactor = distance / pinch.startDistance;
-					const nextScale = clamp(pinch.startScale * scaleFactor, MIN_SCALE, MAX_SCALE);
+					const nextScale = clamp(
+						pinch.startScale * scaleFactor,
+						MIN_SCALE,
+						MAX_SCALE,
+					);
 					const nextPanX = mid.x - pinch.anchorWorld.x * nextScale;
 					const nextPanY = mid.y - pinch.anchorWorld.y * nextScale;
-					setViewportAndRef({ panX: nextPanX, panY: nextPanY, scale: nextScale });
+					setViewportAndRef({
+						panX: nextPanX,
+						panY: nextPanY,
+						scale: nextScale,
+					});
 				};
 
 				const handleEnd = (endEvent: PointerEvent) => {
@@ -455,22 +518,22 @@ export function KnowledgeCanvas({
 
 						stopPinch();
 
-							if (remaining) {
-								const [pointerId, startClient] = remaining;
-								const currentViewport = viewportRef.current;
-								try {
-									event.currentTarget.setPointerCapture(pointerId);
-								} catch {
-									// ignore
-								}
+						if (remaining) {
+							const [pointerId, startClient] = remaining;
+							const currentViewport = viewportRef.current;
+							try {
+								event.currentTarget.setPointerCapture(pointerId);
+							} catch {
+								// ignore
+							}
 
-								startPanFromPointer({
-									pointerId,
-									pointerType: "touch",
-									startClient,
-									startPan: { x: currentViewport.panX, y: currentViewport.panY },
-									target: event.currentTarget,
-								});
+							startPanFromPointer({
+								pointerId,
+								pointerType: "touch",
+								startClient,
+								startPan: { x: currentViewport.panX, y: currentViewport.panY },
+								target: event.currentTarget,
+							});
 						} else {
 							touchPointersRef.current.clear();
 						}
@@ -601,7 +664,11 @@ export function KnowledgeCanvas({
 			setViewportAndRef((prev) => {
 				if (event.ctrlKey) {
 					const zoomFactor = Math.exp(-event.deltaY * 0.001);
-					const nextScale = clamp(prev.scale * zoomFactor, MIN_SCALE, MAX_SCALE);
+					const nextScale = clamp(
+						prev.scale * zoomFactor,
+						MIN_SCALE,
+						MAX_SCALE,
+					);
 					const world = screenToWorld(mouse, prev);
 					const nextPanX = mouse.x - world.x * nextScale;
 					const nextPanY = mouse.y - world.y * nextScale;
@@ -633,7 +700,10 @@ export function KnowledgeCanvas({
 	const zoomBy = (delta: number) => {
 		const container = containerRef.current;
 		if (!container || !containerSize) return;
-		const center: Point = { x: containerSize.width / 2, y: containerSize.height / 2 };
+		const center: Point = {
+			x: containerSize.width / 2,
+			y: containerSize.height / 2,
+		};
 		setViewportAndRef((prev) => {
 			const nextScale = clamp(prev.scale + delta, MIN_SCALE, MAX_SCALE);
 			const world = screenToWorld(center, prev);
@@ -647,7 +717,11 @@ export function KnowledgeCanvas({
 
 	const resetView = () => {
 		if (!containerSize) return;
-		setViewportAndRef({ panX: containerSize.width / 2, panY: containerSize.height / 2, scale: 1 });
+		setViewportAndRef({
+			panX: containerSize.width / 2,
+			panY: containerSize.height / 2,
+			scale: 1,
+		});
 	};
 
 	const showEmptySeed = !seedEntityId;
@@ -722,7 +796,10 @@ export function KnowledgeCanvas({
 				}}
 				onPointerDown={handleCanvasPointerDown}
 			>
-				<svg className="absolute inset-0 pointer-events-none" aria-hidden="true">
+				<svg
+					className="absolute inset-0 pointer-events-none"
+					aria-hidden="true"
+				>
 					<title>Knowledge graph edges</title>
 					{edges.map((edge) => {
 						const fromWorld = positions[edge.sourceId];
@@ -730,7 +807,10 @@ export function KnowledgeCanvas({
 						if (!fromWorld || !toWorld) return null;
 
 						const fromScreen = worldToScreen(
-							{ x: fromWorld.x + NODE_WIDTH / 2, y: fromWorld.y + NODE_HEIGHT / 2 },
+							{
+								x: fromWorld.x + NODE_WIDTH / 2,
+								y: fromWorld.y + NODE_HEIGHT / 2,
+							},
 							viewport,
 						);
 						const toScreen = worldToScreen(
@@ -845,7 +925,8 @@ export function KnowledgeCanvas({
 								暂无可用的实体关系数据
 							</h3>
 							<p className="mt-2 text-sm text-neutral-600">
-								如果数据库中还没有实体/关系，请先运行 AI/采集流程或使用“初始化知识图谱”。
+								如果数据库中还没有实体/关系，请先运行
+								AI/采集流程或使用“初始化知识图谱”。
 							</p>
 						</div>
 					</div>

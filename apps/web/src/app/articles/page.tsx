@@ -391,14 +391,15 @@ export default function ArticlesPage() {
 												: "space-y-4",
 										)}
 									>
-										{Array.from({ length: 6 }, (_, idx) => `article-skel-${idx}`).map(
-											(key) => (
-												<ArticleCardSkeleton
-													key={key}
-													variant={viewMode === "grid" ? "compact" : "default"}
-												/>
-											),
-										)}
+										{Array.from(
+											{ length: 6 },
+											(_, idx) => `article-skel-${idx}`,
+										).map((key) => (
+											<ArticleCardSkeleton
+												key={key}
+												variant={viewMode === "grid" ? "compact" : "default"}
+											/>
+										))}
 									</div>
 								) : articles.length === 0 ? (
 									// 空状态

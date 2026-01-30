@@ -54,8 +54,14 @@ impl KnowledgeService {
 
         // Process relations
         for relation in &extraction.relations {
-            let source = extraction.entities.iter().find(|e| e.name == relation.source);
-            let target = extraction.entities.iter().find(|e| e.name == relation.target);
+            let source = extraction
+                .entities
+                .iter()
+                .find(|e| e.name == relation.source);
+            let target = extraction
+                .entities
+                .iter()
+                .find(|e| e.name == relation.target);
             let (Some(source), Some(target)) = (source, target) else {
                 continue;
             };
@@ -66,7 +72,8 @@ impl KnowledgeService {
                 continue;
             };
 
-            self.upsert_relation(tenant_id, source_id, target_id, relation).await?;
+            self.upsert_relation(tenant_id, source_id, target_id, relation)
+                .await?;
         }
 
         info!(
@@ -83,9 +90,10 @@ impl KnowledgeService {
         extracted: &ExtractedEntity,
         embedding: &[f32],
     ) -> Result<Uuid> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            let entity = sqlx::query_as::<_, Entity>(
-                r#"
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let entity = sqlx::query_as::<_, Entity>(
+                    r#"
                 INSERT INTO entities (name, entity_type, aliases, embedding, mention_count)
                 VALUES ($1, $2, $3, $4::vector, 1)
                 ON CONFLICT (tenant_id, name, entity_type) DO UPDATE SET
@@ -98,17 +106,18 @@ impl KnowledgeService {
                     updated_at = NOW()
                 RETURNING *
                 "#,
-            )
-            .bind(&extracted.name)
-            .bind(&extracted.entity_type)
-            .bind(&extracted.aliases)
-            .bind(embedding)
-            .fetch_one(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+                )
+                .bind(&extracted.name)
+                .bind(&extracted.entity_type)
+                .bind(&extracted.aliases)
+                .bind(embedding)
+                .fetch_one(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-            Ok(entity.id)
-        }))
+                Ok(entity.id)
+            })
+        })
         .await
     }
 
@@ -172,36 +181,45 @@ impl KnowledgeService {
 
     /// Get entity by ID
     pub async fn get_entity(&self, tenant_id: Uuid, id: Uuid) -> Result<Entity> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            sqlx::query_as::<_, Entity>("SELECT * FROM entities WHERE id = $1")
-                .bind(id)
-                .fetch_optional(tx.as_mut())
-                .await
-                .map_err(|e| Error::Database(e.to_string()))?
-                .ok_or_else(|| Error::NotFound(format!("Entity {} not found", id)))
-        }))
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query_as::<_, Entity>("SELECT * FROM entities WHERE id = $1")
+                    .bind(id)
+                    .fetch_optional(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?
+                    .ok_or_else(|| Error::NotFound(format!("Entity {} not found", id)))
+            })
+        })
         .await
     }
 
     /// Search entities by name
-    pub async fn search_entities(&self, tenant_id: Uuid, query: &str, limit: i64) -> Result<Vec<Entity>> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            let entities = sqlx::query_as::<_, Entity>(
-                r#"
+    pub async fn search_entities(
+        &self,
+        tenant_id: Uuid,
+        query: &str,
+        limit: i64,
+    ) -> Result<Vec<Entity>> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let entities = sqlx::query_as::<_, Entity>(
+                    r#"
                 SELECT * FROM entities
                 WHERE to_tsvector('simple', name) @@ plainto_tsquery('simple', $1)
                 ORDER BY mention_count DESC
                 LIMIT $2
                 "#,
-            )
-            .bind(query)
-            .bind(limit)
-            .fetch_all(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+                )
+                .bind(query)
+                .bind(limit)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-            Ok(entities)
-        }))
+                Ok(entities)
+            })
+        })
         .await
     }
 
@@ -234,9 +252,10 @@ impl KnowledgeService {
         entity_id: Uuid,
         limit: i64,
     ) -> Result<Vec<(Uuid, String, String, f64)>> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            let results = sqlx::query_as::<_, (Uuid, String, String, f64)>(
-                r#"
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let results = sqlx::query_as::<_, (Uuid, String, String, f64)>(
+                    r#"
                 SELECT e.id, e.name, r.relation_type, r.weight
                 FROM entity_relations r
                 JOIN entities e ON e.id = r.target_entity_id
@@ -244,15 +263,16 @@ impl KnowledgeService {
                 ORDER BY r.weight DESC
                 LIMIT $2
                 "#,
-            )
-            .bind(entity_id)
-            .bind(limit)
-            .fetch_all(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+                )
+                .bind(entity_id)
+                .bind(limit)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-            Ok(results)
-        }))
+                Ok(results)
+            })
+        })
         .await
     }
 
@@ -263,39 +283,43 @@ impl KnowledgeService {
         entity_id: Uuid,
         limit: i64,
     ) -> Result<Vec<Uuid>> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            let results = sqlx::query_as::<_, (Uuid,)>(
-                r#"
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let results = sqlx::query_as::<_, (Uuid,)>(
+                    r#"
                 SELECT article_id FROM article_entities
                 WHERE entity_id = $1
                 ORDER BY relevance_score DESC NULLS LAST
                 LIMIT $2
                 "#,
-            )
-            .bind(entity_id)
-            .bind(limit)
-            .fetch_all(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+                )
+                .bind(entity_id)
+                .bind(limit)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-            Ok(results.into_iter().map(|(id,)| id).collect())
-        }))
+                Ok(results.into_iter().map(|(id,)| id).collect())
+            })
+        })
         .await
     }
 
     /// Get top entities overall
     pub async fn get_top_entities(&self, tenant_id: Uuid, limit: i64) -> Result<Vec<Entity>> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            let entities = sqlx::query_as::<_, Entity>(
-                "SELECT * FROM entities ORDER BY mention_count DESC LIMIT $1",
-            )
-            .bind(limit)
-            .fetch_all(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let entities = sqlx::query_as::<_, Entity>(
+                    "SELECT * FROM entities ORDER BY mention_count DESC LIMIT $1",
+                )
+                .bind(limit)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-            Ok(entities)
-        }))
+                Ok(entities)
+            })
+        })
         .await
     }
 }

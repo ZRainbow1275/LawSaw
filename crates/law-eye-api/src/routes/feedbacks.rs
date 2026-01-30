@@ -1,5 +1,7 @@
 use axum::{
+    extract::ConnectInfo,
     extract::{Path, Query, State},
+    http::HeaderMap,
     http::StatusCode,
     routing::get,
     Json, Router,
@@ -12,7 +14,8 @@ use uuid::Uuid;
 use crate::auth::AuthSession;
 use crate::state::AppState;
 use crate::{ApiError, ApiResult, AppError};
-use law_eye_db::{CreateFeedback, UpdateFeedback};
+use law_eye_db::{CreateAuditLog, CreateFeedback, UpdateFeedback};
+use std::net::SocketAddr;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -206,6 +209,8 @@ pub(crate) async fn list_my_feedbacks(
 pub(crate) async fn create_feedback(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Json(req): Json<CreateFeedbackRequest>,
 ) -> ApiResult<(StatusCode, Json<FeedbackResponse>)> {
     let user = auth_session
@@ -230,11 +235,48 @@ pub(crate) async fn create_feedback(
         source_name: req.source_name,
     };
 
-    let row = state
-        .feedback_service
-        .create(user.tenant_id, input)
-        .await
-        .map_err(AppError::from)?;
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    let tenant_id = user.tenant_id;
+    let user_id = user.id;
+
+    let row = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
+        let feedback_service = state.feedback_service.clone();
+        let audit_service = state.audit_service.clone();
+        let ip_address = ip_address.clone();
+        let user_agent = user_agent.clone();
+        let input = input.clone();
+
+        Box::pin(async move {
+            let row = feedback_service.create_tx(tenant_id, tx, input).await?;
+
+            audit_service
+                .log_tx(
+                    tenant_id,
+                    tx,
+                    CreateAuditLog {
+                        user_id: Some(user_id),
+                        action: "feedbacks.create".to_string(),
+                        resource: "feedbacks".to_string(),
+                        resource_id: Some(row.id),
+                        old_value: None,
+                        new_value: Some(serde_json::json!({
+                            "id": row.id,
+                            "type": row.feedback_type,
+                            "title": row.title,
+                            "source_url": row.source_url,
+                            "source_name": row.source_name,
+                        })),
+                        ip_address,
+                        user_agent,
+                    },
+                )
+                .await?;
+
+            Ok(row)
+        })
+    })
+    .await
+    .map_err(AppError::from)?;
     Ok((StatusCode::CREATED, Json(FeedbackResponse::from(row))))
 }
 
@@ -303,6 +345,8 @@ pub(crate) async fn get_feedback(
 pub(crate) async fn update_feedback(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateFeedbackRequest>,
 ) -> ApiResult<Json<FeedbackResponse>> {
@@ -330,11 +374,49 @@ pub(crate) async fn update_feedback(
         admin_response: req.admin_response,
     };
 
-    let row = state
-        .feedback_service
-        .update(user.tenant_id, id, input)
-        .await
-        .map_err(AppError::from)?;
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    let tenant_id = user.tenant_id;
+    let user_id = user.id;
+
+    let row = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
+        let feedback_service = state.feedback_service.clone();
+        let audit_service = state.audit_service.clone();
+        let ip_address = ip_address.clone();
+        let user_agent = user_agent.clone();
+        let input = input.clone();
+
+        Box::pin(async move {
+            let before = feedback_service.get_by_id_tx(tenant_id, tx, id).await?;
+            let after = feedback_service.update_tx(tenant_id, tx, id, input).await?;
+
+            audit_service
+                .log_tx(
+                    tenant_id,
+                    tx,
+                    CreateAuditLog {
+                        user_id: Some(user_id),
+                        action: "feedbacks.update".to_string(),
+                        resource: "feedbacks".to_string(),
+                        resource_id: Some(id),
+                        old_value: Some(serde_json::json!({
+                            "status": before.status,
+                            "admin_response_len": before.admin_response.as_deref().map(|v| v.len()),
+                        })),
+                        new_value: Some(serde_json::json!({
+                            "status": after.status,
+                            "admin_response_len": after.admin_response.as_deref().map(|v| v.len()),
+                        })),
+                        ip_address,
+                        user_agent,
+                    },
+                )
+                .await?;
+
+            Ok(after)
+        })
+    })
+    .await
+    .map_err(AppError::from)?;
 
     Ok(Json(FeedbackResponse::from(row)))
 }
@@ -372,7 +454,11 @@ fn mask_email(email: &str) -> String {
         0 => "***".to_string(),
         1 => format!("{}***", local_chars[0]),
         2 => format!("{}***{}", local_chars[0], local_chars[1]),
-        _ => format!("{}***{}", local_chars[0], local_chars[local_chars.len() - 1]),
+        _ => format!(
+            "{}***{}",
+            local_chars[0],
+            local_chars[local_chars.len() - 1]
+        ),
     };
 
     format!("{masked_local}@{domain}")

@@ -36,7 +36,11 @@ export function useCreateSource() {
 
 	return useMutation({
 		mutationFn: (data: CreateSourceInput) =>
-			apiClient.post("/api/v1/sources", { ...data, config: data.config ?? {} }, assertSource),
+			apiClient.post(
+				"/api/v1/sources",
+				{ ...data, config: data.config ?? {} },
+				assertSource,
+			),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["sources"] });
 		},

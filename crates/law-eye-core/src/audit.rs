@@ -19,6 +19,9 @@ where
         RETURNING
             id,
             tenant_id,
+            seq,
+            encode(prev_hash, 'hex') AS prev_hash,
+            encode(hash, 'hex') AS hash,
             user_id,
             action,
             resource,
@@ -86,7 +89,7 @@ impl AuditService {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
                 let mut query = String::from(
-                    "SELECT id, tenant_id, user_id, action, resource, resource_id, old_value, new_value, ip_address::text AS ip_address, user_agent, created_at FROM audit_logs WHERE 1=1"
+                    "SELECT id, tenant_id, seq, encode(prev_hash, 'hex') AS prev_hash, encode(hash, 'hex') AS hash, user_id, action, resource, resource_id, old_value, new_value, ip_address::text AS ip_address, user_agent, created_at FROM audit_logs WHERE 1=1"
                 );
                 let mut param_count = 0;
 
@@ -108,7 +111,7 @@ impl AuditService {
                 }
 
                 query.push_str(&format!(
-                    " ORDER BY created_at DESC LIMIT ${} OFFSET ${}",
+                    " ORDER BY seq DESC LIMIT ${} OFFSET ${}",
                     param_count + 1,
                     param_count + 2
                 ));
@@ -145,7 +148,7 @@ impl AuditService {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
                 sqlx::query_as::<_, AuditLog>(
-                    "SELECT id, tenant_id, user_id, action, resource, resource_id, old_value, new_value, ip_address::text AS ip_address, user_agent, created_at FROM audit_logs WHERE id = $1",
+                    "SELECT id, tenant_id, seq, encode(prev_hash, 'hex') AS prev_hash, encode(hash, 'hex') AS hash, user_id, action, resource, resource_id, old_value, new_value, ip_address::text AS ip_address, user_agent, created_at FROM audit_logs WHERE id = $1",
                 )
                 .bind(id)
                 .fetch_optional(tx.as_mut())
@@ -215,16 +218,19 @@ impl AuditService {
         resource: &str,
         resource_id: Option<Uuid>,
     ) -> Result<()> {
-        self.log(tenant_id, CreateAuditLog {
-            user_id,
-            action: action.to_string(),
-            resource: resource.to_string(),
-            resource_id,
-            old_value: None,
-            new_value: None,
-            ip_address: None,
-            user_agent: None,
-        })
+        self.log(
+            tenant_id,
+            CreateAuditLog {
+                user_id,
+                action: action.to_string(),
+                resource: resource.to_string(),
+                resource_id,
+                old_value: None,
+                new_value: None,
+                ip_address: None,
+                user_agent: None,
+            },
+        )
         .await?;
         Ok(())
     }

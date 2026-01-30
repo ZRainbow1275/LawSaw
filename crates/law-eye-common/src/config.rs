@@ -340,8 +340,9 @@ async fn load_vault_kv_secrets(cfg: &VaultSecretsConfig) -> crate::Result<VaultK
 
     let ca_cert = reqwest::Certificate::from_pem(&ca_pem)
         .map_err(|err| crate::Error::Config(format!("Parse Vault CA cert failed: {err}")))?;
-    let identity = reqwest::Identity::from_pem(&identity_pem)
-        .map_err(|err| crate::Error::Config(format!("Parse Vault client identity failed: {err}")))?;
+    let identity = reqwest::Identity::from_pem(&identity_pem).map_err(|err| {
+        crate::Error::Config(format!("Parse Vault client identity failed: {err}"))
+    })?;
 
     let client = reqwest::Client::builder()
         .use_rustls_tls()

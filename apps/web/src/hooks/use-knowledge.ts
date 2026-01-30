@@ -37,12 +37,16 @@ export function useKnowledgeSearchEntities(query: string, limit = 20) {
 export function useKnowledgeEntity(id: string | null | undefined) {
 	return useQuery({
 		queryKey: ["knowledge", "entities", "detail", id],
-		queryFn: () => apiClient.get(`/api/v1/knowledge/entities/${id}`, assertKnowledgeEntity),
+		queryFn: () =>
+			apiClient.get(`/api/v1/knowledge/entities/${id}`, assertKnowledgeEntity),
 		enabled: !!id,
 	});
 }
 
-export function useKnowledgeRelatedEntities(id: string | null | undefined, limit = 20) {
+export function useKnowledgeRelatedEntities(
+	id: string | null | undefined,
+	limit = 20,
+) {
 	return useQuery({
 		queryKey: ["knowledge", "entities", "related", id, limit],
 		queryFn: () =>
@@ -54,7 +58,10 @@ export function useKnowledgeRelatedEntities(id: string | null | undefined, limit
 	});
 }
 
-export function useKnowledgeEntityArticles(id: string | null | undefined, limit = 10) {
+export function useKnowledgeEntityArticles(
+	id: string | null | undefined,
+	limit = 10,
+) {
 	return useQuery({
 		queryKey: ["knowledge", "entities", "articles", id, limit],
 		queryFn: () =>
@@ -71,7 +78,11 @@ export function useKnowledgeBackfill() {
 
 	return useMutation({
 		mutationFn: (input: { limit: number }) =>
-			apiClient.post("/api/v1/knowledge/backfill", input, assertKnowledgeBackfillResponse),
+			apiClient.post(
+				"/api/v1/knowledge/backfill",
+				input,
+				assertKnowledgeBackfillResponse,
+			),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["knowledge"] });
 		},

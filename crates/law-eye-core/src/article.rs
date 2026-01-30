@@ -1,12 +1,20 @@
-use chrono::NaiveDate;
 use crate::tenant::with_tenant_tx;
+use chrono::NaiveDate;
 use law_eye_common::{Error, Result};
 use law_eye_db::{Article, CreateArticle};
-use sqlx::{PgPool, Postgres, QueryBuilder};
+use sqlx::{PgPool, Postgres, QueryBuilder, Transaction};
 use uuid::Uuid;
 
 pub struct ArticleService {
     pool: PgPool,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct UpdateArticlePatch<'a> {
+    pub title: Option<&'a str>,
+    pub content: Option<&'a str>,
+    pub summary: Option<&'a str>,
+    pub category_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -101,31 +109,35 @@ impl ArticleService {
 
     /// Get total count of articles (for pagination)
     pub async fn count(&self, tenant_id: Uuid) -> Result<i64> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            let result: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM articles")
-                .fetch_one(tx.as_mut())
-                .await
-                .map_err(|e| Error::Database(e.to_string()))?;
-            Ok(result.0)
-        }))
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let result: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM articles")
+                    .fetch_one(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?;
+                Ok(result.0)
+            })
+        })
         .await
     }
 
     pub async fn list(&self, tenant_id: Uuid, limit: i64, offset: i64) -> Result<Vec<Article>> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            sqlx::query_as::<_, Article>(
-                r#"
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query_as::<_, Article>(
+                    r#"
                 SELECT * FROM articles
                 ORDER BY created_at DESC
                 LIMIT $1 OFFSET $2
                 "#,
-            )
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))
-        }))
+                )
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))
+            })
+        })
         .await
     }
 
@@ -135,19 +147,21 @@ impl ArticleService {
         category_id: Option<Uuid>,
         status: Option<&'a str>,
     ) -> Result<i64> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            let mut qb: QueryBuilder<'a, Postgres> =
-                QueryBuilder::new("SELECT COUNT(*) FROM articles");
-            push_article_filters(&mut qb, category_id, status);
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let mut qb: QueryBuilder<'a, Postgres> =
+                    QueryBuilder::new("SELECT COUNT(*) FROM articles");
+                push_article_filters(&mut qb, category_id, status);
 
-            let result: (i64,) = qb
-                .build_query_as()
-                .fetch_one(tx.as_mut())
-                .await
-                .map_err(|e| Error::Database(e.to_string()))?;
+                let result: (i64,) = qb
+                    .build_query_as()
+                    .fetch_one(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?;
 
-            Ok(result.0)
-        }))
+                Ok(result.0)
+            })
+        })
         .await
     }
 
@@ -159,53 +173,73 @@ impl ArticleService {
         category_id: Option<Uuid>,
         status: Option<&'a str>,
     ) -> Result<Vec<Article>> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            let mut qb: QueryBuilder<'a, Postgres> = QueryBuilder::new("SELECT * FROM articles");
-            push_article_filters(&mut qb, category_id, status);
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let mut qb: QueryBuilder<'a, Postgres> =
+                    QueryBuilder::new("SELECT * FROM articles");
+                push_article_filters(&mut qb, category_id, status);
 
-            qb.push(" ORDER BY created_at DESC");
-            qb.push(" LIMIT ").push_bind(limit);
-            qb.push(" OFFSET ").push_bind(offset);
+                qb.push(" ORDER BY created_at DESC");
+                qb.push(" LIMIT ").push_bind(limit);
+                qb.push(" OFFSET ").push_bind(offset);
 
-            qb.build_query_as::<Article>()
-                .fetch_all(tx.as_mut())
-                .await
-                .map_err(|e| Error::Database(e.to_string()))
-        }))
+                qb.build_query_as::<Article>()
+                    .fetch_all(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))
+            })
+        })
         .await
     }
 
     pub async fn get_by_id(&self, tenant_id: Uuid, id: Uuid) -> Result<Article> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            sqlx::query_as::<_, Article>("SELECT * FROM articles WHERE id = $1")
-                .bind(id)
-                .fetch_optional(tx.as_mut())
-                .await
-                .map_err(|e| Error::Database(e.to_string()))?
-                .ok_or_else(|| Error::NotFound(format!("Article {} not found", id)))
-        }))
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move { self.get_by_id_tx(tenant_id, tx, id).await })
+        })
         .await
     }
 
+    pub async fn get_by_id_tx(
+        &self,
+        tenant_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+        id: Uuid,
+    ) -> Result<Article> {
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(tenant_id.to_string())
+            .execute(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
+        sqlx::query_as::<_, Article>("SELECT * FROM articles WHERE id = $1")
+            .bind(id)
+            .fetch_optional(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?
+            .ok_or_else(|| Error::NotFound(format!("Article {} not found", id)))
+    }
+
     pub async fn create(&self, tenant_id: Uuid, input: CreateArticle) -> Result<Article> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            sqlx::query_as::<_, Article>(
-                r#"
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query_as::<_, Article>(
+                    r#"
                 INSERT INTO articles (source_id, title, link, content, author, published_at)
                 VALUES ($1, $2, $3, $4, $5, $6)
                 RETURNING *
                 "#,
-            )
-            .bind(input.source_id)
-            .bind(&input.title)
-            .bind(&input.link)
-            .bind(&input.content)
-            .bind(&input.author)
-            .bind(input.published_at)
-            .fetch_one(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))
-        }))
+                )
+                .bind(input.source_id)
+                .bind(&input.title)
+                .bind(&input.link)
+                .bind(&input.content)
+                .bind(&input.author)
+                .bind(input.published_at)
+                .fetch_one(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))
+            })
+        })
         .await
     }
 
@@ -219,98 +253,184 @@ impl ArticleService {
         summary: Option<&str>,
         category_id: Option<Uuid>,
     ) -> Result<Article> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            sqlx::query_as::<_, Article>(
-                r#"
-                UPDATE articles SET
-                    title = COALESCE($2, title),
-                    content = COALESCE($3, content),
-                    summary = COALESCE($4, summary),
-                    category_id = COALESCE($5, category_id),
-                    updated_at = NOW()
-                WHERE id = $1
-                RETURNING *
-                "#,
-            )
-            .bind(id)
-            .bind(title)
-            .bind(content)
-            .bind(summary)
-            .bind(category_id)
-            .fetch_optional(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?
-            .ok_or_else(|| Error::NotFound(format!("Article {} not found", id)))
-        }))
-        .await
-    }
-
-    /// Delete article
-    pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> Result<()> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            let result = sqlx::query("DELETE FROM articles WHERE id = $1")
-                .bind(id)
-                .execute(tx.as_mut())
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                self.update_tx(
+                    tenant_id,
+                    tx,
+                    id,
+                    UpdateArticlePatch {
+                        title,
+                        content,
+                        summary,
+                        category_id,
+                    },
+                )
                 .await
-                .map_err(|e| Error::Database(e.to_string()))?;
-
-            if result.rows_affected() == 0 {
-                return Err(Error::NotFound(format!("Article {} not found", id)));
-            }
-            Ok(())
-        }))
+            })
+        })
         .await
     }
 
-    pub async fn exists_by_link(&self, tenant_id: Uuid, link: &str) -> Result<bool> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            let result: (bool,) =
-                sqlx::query_as("SELECT EXISTS(SELECT 1 FROM articles WHERE link = $1)")
-                    .bind(link)
-                    .fetch_one(tx.as_mut())
-                    .await
-                    .map_err(|e| Error::Database(e.to_string()))?;
-            Ok(result.0)
-        }))
-        .await
-    }
-
-    pub async fn update_status(&self, tenant_id: Uuid, id: Uuid, status: &str) -> Result<Article> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            sqlx::query_as::<_, Article>(
-                r#"
-                UPDATE articles SET status = $2, updated_at = NOW() WHERE id = $1
-                RETURNING *
-                "#,
-            )
-            .bind(id)
-            .bind(status)
-            .fetch_optional(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?
-            .ok_or_else(|| Error::NotFound(format!("Article {} not found", id)))
-        }))
-        .await
-    }
-
-    /// Batch update status
-    pub async fn batch_update_status(&self, tenant_id: Uuid, ids: &[Uuid], status: &str) -> Result<i64> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            let result = sqlx::query(
-                r#"
-                UPDATE articles SET status = $2, updated_at = NOW()
-                WHERE id = ANY($1)
-                "#,
-            )
-            .bind(ids)
-            .bind(status)
+    pub async fn update_tx<'a>(
+        &self,
+        tenant_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+        id: Uuid,
+        patch: UpdateArticlePatch<'a>,
+    ) -> Result<Article> {
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(tenant_id.to_string())
             .execute(tx.as_mut())
             .await
             .map_err(|e| Error::Database(e.to_string()))?;
 
-            Ok(result.rows_affected() as i64)
-        }))
+        sqlx::query_as::<_, Article>(
+            r#"
+            UPDATE articles SET
+                title = COALESCE($2, title),
+                content = COALESCE($3, content),
+                summary = COALESCE($4, summary),
+                category_id = COALESCE($5, category_id),
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING *
+            "#,
+        )
+        .bind(id)
+        .bind(patch.title)
+        .bind(patch.content)
+        .bind(patch.summary)
+        .bind(patch.category_id)
+        .fetch_optional(tx.as_mut())
         .await
+        .map_err(|e| Error::Database(e.to_string()))?
+        .ok_or_else(|| Error::NotFound(format!("Article {} not found", id)))
+    }
+
+    /// Delete article
+    pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> Result<()> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move { self.delete_tx(tenant_id, tx, id).await })
+        })
+        .await
+    }
+
+    pub async fn delete_tx(
+        &self,
+        tenant_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+        id: Uuid,
+    ) -> Result<()> {
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(tenant_id.to_string())
+            .execute(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
+        let result = sqlx::query("DELETE FROM articles WHERE id = $1")
+            .bind(id)
+            .execute(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
+        if result.rows_affected() == 0 {
+            return Err(Error::NotFound(format!("Article {} not found", id)));
+        }
+        Ok(())
+    }
+
+    pub async fn exists_by_link(&self, tenant_id: Uuid, link: &str) -> Result<bool> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let result: (bool,) =
+                    sqlx::query_as("SELECT EXISTS(SELECT 1 FROM articles WHERE link = $1)")
+                        .bind(link)
+                        .fetch_one(tx.as_mut())
+                        .await
+                        .map_err(|e| Error::Database(e.to_string()))?;
+                Ok(result.0)
+            })
+        })
+        .await
+    }
+
+    pub async fn update_status(&self, tenant_id: Uuid, id: Uuid, status: &str) -> Result<Article> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move { self.update_status_tx(tenant_id, tx, id, status).await })
+        })
+        .await
+    }
+
+    pub async fn update_status_tx(
+        &self,
+        tenant_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+        id: Uuid,
+        status: &str,
+    ) -> Result<Article> {
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(tenant_id.to_string())
+            .execute(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
+        sqlx::query_as::<_, Article>(
+            r#"
+            UPDATE articles SET status = $2, updated_at = NOW() WHERE id = $1
+            RETURNING *
+            "#,
+        )
+        .bind(id)
+        .bind(status)
+        .fetch_optional(tx.as_mut())
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?
+        .ok_or_else(|| Error::NotFound(format!("Article {} not found", id)))
+    }
+
+    /// Batch update status
+    pub async fn batch_update_status(
+        &self,
+        tenant_id: Uuid,
+        ids: &[Uuid],
+        status: &str,
+    ) -> Result<i64> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                self.batch_update_status_tx(tenant_id, tx, ids, status)
+                    .await
+            })
+        })
+        .await
+    }
+
+    pub async fn batch_update_status_tx(
+        &self,
+        tenant_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+        ids: &[Uuid],
+        status: &str,
+    ) -> Result<i64> {
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(tenant_id.to_string())
+            .execute(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
+        let result = sqlx::query(
+            r#"
+            UPDATE articles SET status = $2, updated_at = NOW()
+            WHERE id = ANY($1)
+            "#,
+        )
+        .bind(ids)
+        .bind(status)
+        .execute(tx.as_mut())
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        Ok(result.rows_affected() as i64)
     }
 
     pub async fn list_by_category(
@@ -319,21 +439,23 @@ impl ArticleService {
         category_id: Uuid,
         limit: i64,
     ) -> Result<Vec<Article>> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            sqlx::query_as::<_, Article>(
-                r#"
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query_as::<_, Article>(
+                    r#"
                 SELECT * FROM articles
                 WHERE category_id = $1
                 ORDER BY created_at DESC
                 LIMIT $2
                 "#,
-            )
-            .bind(category_id)
-            .bind(limit)
-            .fetch_all(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))
-        }))
+                )
+                .bind(category_id)
+                .bind(limit)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))
+            })
+        })
         .await
     }
 
@@ -450,64 +572,69 @@ impl ArticleService {
 
     /// Get statistics for dashboard
     pub async fn get_stats(&self, tenant_id: Uuid) -> Result<ArticleStats> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM articles")
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM articles")
+                    .fetch_one(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?;
+
+                let published: (i64,) =
+                    sqlx::query_as("SELECT COUNT(*) FROM articles WHERE status = 'published'")
+                        .fetch_one(tx.as_mut())
+                        .await
+                        .map_err(|e| Error::Database(e.to_string()))?;
+
+                let pending: (i64,) =
+                    sqlx::query_as("SELECT COUNT(*) FROM articles WHERE status = 'pending'")
+                        .fetch_one(tx.as_mut())
+                        .await
+                        .map_err(|e| Error::Database(e.to_string()))?;
+
+                // Count high risk articles (risk_score > 70). `NULL` risk_score will be excluded naturally.
+                let high_risk: (i64,) =
+                    sqlx::query_as("SELECT COUNT(*) FROM articles WHERE risk_score > 70")
+                        .fetch_one(tx.as_mut())
+                        .await
+                        .map_err(|e| Error::Database(e.to_string()))?;
+
+                let today: (i64,) = sqlx::query_as(
+                    "SELECT COUNT(*) FROM articles WHERE created_at >= CURRENT_DATE",
+                )
                 .fetch_one(tx.as_mut())
                 .await
                 .map_err(|e| Error::Database(e.to_string()))?;
 
-            let published: (i64,) =
-                sqlx::query_as("SELECT COUNT(*) FROM articles WHERE status = 'published'")
-                    .fetch_one(tx.as_mut())
-                    .await
-                    .map_err(|e| Error::Database(e.to_string()))?;
-
-            let pending: (i64,) =
-                sqlx::query_as("SELECT COUNT(*) FROM articles WHERE status = 'pending'")
-                    .fetch_one(tx.as_mut())
-                    .await
-                    .map_err(|e| Error::Database(e.to_string()))?;
-
-            // Count high risk articles (risk_score > 70). `NULL` risk_score will be excluded naturally.
-            let high_risk: (i64,) =
-                sqlx::query_as("SELECT COUNT(*) FROM articles WHERE risk_score > 70")
-                    .fetch_one(tx.as_mut())
-                    .await
-                    .map_err(|e| Error::Database(e.to_string()))?;
-
-            let today: (i64,) =
-                sqlx::query_as("SELECT COUNT(*) FROM articles WHERE created_at >= CURRENT_DATE")
-                    .fetch_one(tx.as_mut())
-                    .await
-                    .map_err(|e| Error::Database(e.to_string()))?;
-
-            Ok(ArticleStats {
-                total: total.0,
-                published: published.0,
-                pending: pending.0,
-                high_risk: high_risk.0,
-                today: today.0,
+                Ok(ArticleStats {
+                    total: total.0,
+                    published: published.0,
+                    pending: pending.0,
+                    high_risk: high_risk.0,
+                    today: today.0,
+                })
             })
-        }))
+        })
         .await
     }
 
     /// Get recent articles for dashboard
     pub async fn list_recent(&self, tenant_id: Uuid, limit: i64) -> Result<Vec<Article>> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            sqlx::query_as::<_, Article>(
-                r#"
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query_as::<_, Article>(
+                    r#"
                 SELECT * FROM articles
                 WHERE status = 'published'
                 ORDER BY published_at DESC NULLS LAST, created_at DESC
                 LIMIT $1
                 "#,
-            )
-            .bind(limit)
-            .fetch_all(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))
-        }))
+                )
+                .bind(limit)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))
+            })
+        })
         .await
     }
 
@@ -518,9 +645,10 @@ impl ArticleService {
     ) -> Result<Vec<ArticleDailyTrendPoint>> {
         let days = days.clamp(1, 90);
 
-        let rows = with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            sqlx::query_as::<_, (NaiveDate, i64)>(
-                r#"
+        let rows = with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query_as::<_, (NaiveDate, i64)>(
+                    r#"
                 WITH days AS (
                     SELECT generate_series(
                         CURRENT_DATE - (($1::int - 1) * INTERVAL '1 day'),
@@ -538,12 +666,13 @@ impl ArticleService {
                 GROUP BY days.day
                 ORDER BY days.day ASC
                 "#,
-            )
-            .bind(days)
-            .fetch_all(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))
-        }))
+                )
+                .bind(days)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))
+            })
+        })
         .await?;
 
         Ok(rows
@@ -553,18 +682,20 @@ impl ArticleService {
     }
 
     pub async fn get_category_counts(&self, tenant_id: Uuid) -> Result<Vec<ArticleCategoryCount>> {
-        let rows = with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            sqlx::query_as::<_, (Option<Uuid>, i64)>(
-                r#"
+        let rows = with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query_as::<_, (Option<Uuid>, i64)>(
+                    r#"
                 SELECT category_id, COUNT(*)::bigint AS count
                 FROM articles
                 GROUP BY category_id
                 "#,
-            )
-            .fetch_all(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))
-        }))
+                )
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))
+            })
+        })
         .await?;
 
         Ok(rows
@@ -573,13 +704,11 @@ impl ArticleService {
             .collect())
     }
 
-    pub async fn get_analytics_summary(
-        &self,
-        tenant_id: Uuid,
-    ) -> Result<ArticleAnalyticsSummary> {
-        let row: ArticleAnalyticsSummaryRow = with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            sqlx::query_as(
-                r#"
+    pub async fn get_analytics_summary(&self, tenant_id: Uuid) -> Result<ArticleAnalyticsSummary> {
+        let row: ArticleAnalyticsSummaryRow = with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query_as(
+                    r#"
                 SELECT
                     COUNT(*)::bigint AS total,
 
@@ -602,11 +731,12 @@ impl ArticleService {
                     COUNT(*) FILTER (WHERE sentiment = 'mixed')::bigint AS sentiment_mixed
                 FROM articles
                 "#,
-            )
-            .fetch_one(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))
-        }))
+                )
+                .fetch_one(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))
+            })
+        })
         .await?;
 
         Ok(ArticleAnalyticsSummary {

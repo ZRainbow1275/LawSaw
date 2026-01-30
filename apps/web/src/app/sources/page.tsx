@@ -137,25 +137,29 @@ export default function SourcesPage() {
 			};
 		}
 
-		createSource.mutate({ name, url, source_type: newSource.source_type, config }, {
-			onSuccess: () => {
-				setShowAddForm(false);
-				setNewSource({ name: "", url: "", source_type: "rss" });
-				setSpiderConfig({
-					list_selector: "",
-					title_selector: "",
-					link_selector: "",
-					content_selector: "",
-					date_selector: "",
-					delay_ms: "",
-				});
-				toastSuccess("添加成功", "信息源已创建");
+		createSource.mutate(
+			{ name, url, source_type: newSource.source_type, config },
+			{
+				onSuccess: () => {
+					setShowAddForm(false);
+					setNewSource({ name: "", url: "", source_type: "rss" });
+					setSpiderConfig({
+						list_selector: "",
+						title_selector: "",
+						link_selector: "",
+						content_selector: "",
+						date_selector: "",
+						delay_ms: "",
+					});
+					toastSuccess("添加成功", "信息源已创建");
+				},
+				onError: (cause) => {
+					const message =
+						cause instanceof Error ? cause.message : "添加信息源失败";
+					toastError("添加信息源失败", message);
+				},
 			},
-			onError: (cause) => {
-				const message = cause instanceof Error ? cause.message : "添加信息源失败";
-				toastError("添加信息源失败", message);
-			},
-		});
+		);
 	};
 
 	const activeCount = sources?.filter((s) => s.is_active).length ?? 0;
@@ -251,199 +255,203 @@ export default function SourcesPage() {
 									</CardTitle>
 								</CardHeader>
 								<CardContent>
-										<form onSubmit={handleAddSource} className="space-y-4">
-											<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-												<div>
-													<label
-														htmlFor="new-source-name"
-														className="mb-1 block text-sm font-medium"
-													>
-														名称
-													</label>
-													<Input
-														id="new-source-name"
-														placeholder="例如：财新网"
-														value={newSource.name}
-														onChange={(e) =>
-															setNewSource({ ...newSource, name: e.target.value })
-														}
-													/>
-												</div>
-												<div>
-													<label
-														htmlFor="new-source-type"
-														className="mb-1 block text-sm font-medium"
-													>
-														类型
-													</label>
-													<select
-														id="new-source-type"
-														className="h-10 w-full rounded-md border border-neutral-200 px-3"
-														value={newSource.source_type}
-														onChange={(e) =>
-															setNewSource({
-																...newSource,
-																source_type: e.target.value as "rss" | "spider",
-															})
-														}
-												>
-													<option value="rss">RSS 订阅</option>
-													<option value="spider">网页爬虫</option>
-													</select>
-												</div>
-											</div>
+									<form onSubmit={handleAddSource} className="space-y-4">
+										<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 											<div>
 												<label
-													htmlFor="new-source-url"
+													htmlFor="new-source-name"
 													className="mb-1 block text-sm font-medium"
 												>
-													URL
+													名称
 												</label>
 												<Input
-													id="new-source-url"
-													placeholder="https://www.theguardian.com/law/rss"
-													value={newSource.url}
+													id="new-source-name"
+													placeholder="例如：财新网"
+													value={newSource.name}
 													onChange={(e) =>
-														setNewSource({ ...newSource, url: e.target.value })
+														setNewSource({ ...newSource, name: e.target.value })
 													}
 												/>
 											</div>
+											<div>
+												<label
+													htmlFor="new-source-type"
+													className="mb-1 block text-sm font-medium"
+												>
+													类型
+												</label>
+												<select
+													id="new-source-type"
+													className="h-10 w-full rounded-md border border-neutral-200 px-3"
+													value={newSource.source_type}
+													onChange={(e) =>
+														setNewSource({
+															...newSource,
+															source_type: e.target.value as "rss" | "spider",
+														})
+													}
+												>
+													<option value="rss">RSS 订阅</option>
+													<option value="spider">网页爬虫</option>
+												</select>
+											</div>
+										</div>
+										<div>
+											<label
+												htmlFor="new-source-url"
+												className="mb-1 block text-sm font-medium"
+											>
+												URL
+											</label>
+											<Input
+												id="new-source-url"
+												placeholder="https://www.theguardian.com/law/rss"
+												value={newSource.url}
+												onChange={(e) =>
+													setNewSource({ ...newSource, url: e.target.value })
+												}
+											/>
+										</div>
 
-											{newSource.source_type === "spider" && (
-												<div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 space-y-4">
+										{newSource.source_type === "spider" && (
+											<div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 space-y-4">
+												<div>
+													<p className="text-sm font-medium text-neutral-700">
+														爬虫配置
+													</p>
+													<p className="mt-1 text-xs text-neutral-500">
+														必填：list/title/link selector。可选：content/date
+														selector 与延迟（ms）。
+													</p>
+												</div>
+												<div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
 													<div>
-														<p className="text-sm font-medium text-neutral-700">
-															爬虫配置
-														</p>
-														<p className="mt-1 text-xs text-neutral-500">
-															必填：list/title/link selector。可选：content/date selector 与延迟（ms）。
-														</p>
+														<label
+															htmlFor="spider-list-selector"
+															className="mb-1 block text-sm font-medium"
+														>
+															list_selector{" "}
+															<span className="text-red-500">*</span>
+														</label>
+														<Input
+															id="spider-list-selector"
+															placeholder="例如：.article-list a"
+															value={spiderConfig.list_selector}
+															onChange={(e) =>
+																setSpiderConfig({
+																	...spiderConfig,
+																	list_selector: e.target.value,
+																})
+															}
+															required
+														/>
 													</div>
-													<div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-														<div>
-															<label
-																htmlFor="spider-list-selector"
-																className="mb-1 block text-sm font-medium"
-															>
-																list_selector <span className="text-red-500">*</span>
-															</label>
-															<Input
-																id="spider-list-selector"
-																placeholder="例如：.article-list a"
-																value={spiderConfig.list_selector}
-																onChange={(e) =>
-																	setSpiderConfig({
-																		...spiderConfig,
-																		list_selector: e.target.value,
-																	})
-																}
-																required
-															/>
-														</div>
-														<div>
-															<label
-																htmlFor="spider-title-selector"
-																className="mb-1 block text-sm font-medium"
-															>
-																title_selector <span className="text-red-500">*</span>
-															</label>
-															<Input
-																id="spider-title-selector"
-																placeholder="例如：.title"
-																value={spiderConfig.title_selector}
-																onChange={(e) =>
-																	setSpiderConfig({
-																		...spiderConfig,
-																		title_selector: e.target.value,
-																	})
-																}
-																required
-															/>
-														</div>
-														<div>
-															<label
-																htmlFor="spider-link-selector"
-																className="mb-1 block text-sm font-medium"
-															>
-																link_selector <span className="text-red-500">*</span>
-															</label>
-															<Input
-																id="spider-link-selector"
-																placeholder="例如：a"
-																value={spiderConfig.link_selector}
-																onChange={(e) =>
-																	setSpiderConfig({
-																		...spiderConfig,
-																		link_selector: e.target.value,
-																	})
-																}
-																required
-															/>
-														</div>
+													<div>
+														<label
+															htmlFor="spider-title-selector"
+															className="mb-1 block text-sm font-medium"
+														>
+															title_selector{" "}
+															<span className="text-red-500">*</span>
+														</label>
+														<Input
+															id="spider-title-selector"
+															placeholder="例如：.title"
+															value={spiderConfig.title_selector}
+															onChange={(e) =>
+																setSpiderConfig({
+																	...spiderConfig,
+																	title_selector: e.target.value,
+																})
+															}
+															required
+														/>
 													</div>
-													<div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-														<div>
-															<label
-																htmlFor="spider-content-selector"
-																className="mb-1 block text-sm font-medium"
-															>
-																content_selector（选填）
-															</label>
-															<Input
-																id="spider-content-selector"
-																placeholder="例如：article"
-																value={spiderConfig.content_selector}
-																onChange={(e) =>
-																	setSpiderConfig({
-																		...spiderConfig,
-																		content_selector: e.target.value,
-																	})
-																}
-															/>
-														</div>
-														<div>
-															<label
-																htmlFor="spider-date-selector"
-																className="mb-1 block text-sm font-medium"
-															>
-																date_selector（选填）
-															</label>
-															<Input
-																id="spider-date-selector"
-																placeholder="例如：time"
-																value={spiderConfig.date_selector}
-																onChange={(e) =>
-																	setSpiderConfig({
-																		...spiderConfig,
-																		date_selector: e.target.value,
-																	})
-																}
-															/>
-														</div>
-														<div>
-															<label
-																htmlFor="spider-delay-ms"
-																className="mb-1 block text-sm font-medium"
-															>
-																delay_ms（选填）
-															</label>
-															<Input
-																id="spider-delay-ms"
-																type="number"
-																min={0}
-																placeholder="例如：500"
-																value={spiderConfig.delay_ms}
-																onChange={(e) =>
-																	setSpiderConfig({
-																		...spiderConfig,
-																		delay_ms: e.target.value,
-																	})
-																}
-															/>
-														</div>
+													<div>
+														<label
+															htmlFor="spider-link-selector"
+															className="mb-1 block text-sm font-medium"
+														>
+															link_selector{" "}
+															<span className="text-red-500">*</span>
+														</label>
+														<Input
+															id="spider-link-selector"
+															placeholder="例如：a"
+															value={spiderConfig.link_selector}
+															onChange={(e) =>
+																setSpiderConfig({
+																	...spiderConfig,
+																	link_selector: e.target.value,
+																})
+															}
+															required
+														/>
 													</div>
 												</div>
-											)}
+												<div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+													<div>
+														<label
+															htmlFor="spider-content-selector"
+															className="mb-1 block text-sm font-medium"
+														>
+															content_selector（选填）
+														</label>
+														<Input
+															id="spider-content-selector"
+															placeholder="例如：article"
+															value={spiderConfig.content_selector}
+															onChange={(e) =>
+																setSpiderConfig({
+																	...spiderConfig,
+																	content_selector: e.target.value,
+																})
+															}
+														/>
+													</div>
+													<div>
+														<label
+															htmlFor="spider-date-selector"
+															className="mb-1 block text-sm font-medium"
+														>
+															date_selector（选填）
+														</label>
+														<Input
+															id="spider-date-selector"
+															placeholder="例如：time"
+															value={spiderConfig.date_selector}
+															onChange={(e) =>
+																setSpiderConfig({
+																	...spiderConfig,
+																	date_selector: e.target.value,
+																})
+															}
+														/>
+													</div>
+													<div>
+														<label
+															htmlFor="spider-delay-ms"
+															className="mb-1 block text-sm font-medium"
+														>
+															delay_ms（选填）
+														</label>
+														<Input
+															id="spider-delay-ms"
+															type="number"
+															min={0}
+															placeholder="例如：500"
+															value={spiderConfig.delay_ms}
+															onChange={(e) =>
+																setSpiderConfig({
+																	...spiderConfig,
+																	delay_ms: e.target.value,
+																})
+															}
+														/>
+													</div>
+												</div>
+											</div>
+										)}
 
 										<div className="flex justify-end gap-2">
 											<Button
@@ -473,11 +481,15 @@ export default function SourcesPage() {
 							<CardContent>
 								{isLoading ? (
 									<div className="animate-pulse space-y-4">
-										{Array.from({ length: 5 }, (_, idx) => `source-skel-${idx}`).map(
-											(key) => (
-												<div key={key} className="h-20 rounded-lg bg-neutral-100" />
-											),
-										)}
+										{Array.from(
+											{ length: 5 },
+											(_, idx) => `source-skel-${idx}`,
+										).map((key) => (
+											<div
+												key={key}
+												className="h-20 rounded-lg bg-neutral-100"
+											/>
+										))}
 									</div>
 								) : !sources || sources.length === 0 ? (
 									<p className="py-12 text-center text-neutral-500">

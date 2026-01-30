@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { apiClient } from "@/lib/api";
 import {
+	type ApiKey,
 	assertApiKeyListResponse,
 	assertArticleStats,
 	assertCreateApiKeyResponse,
@@ -24,12 +25,10 @@ import {
 	assertHealthResponse,
 	assertUserDetailResponse,
 	assertUserProfile,
-	type ApiKey,
 } from "@/lib/api/types";
 import { useAuthStore } from "@/stores/auth-store";
 import { useToast } from "@/stores/toast-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSearchParams } from "next/navigation";
 import {
 	Bell,
 	Copy,
@@ -44,6 +43,7 @@ import {
 	Trash2,
 	User,
 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
 type Theme = "light" | "dark" | "system";
@@ -81,7 +81,9 @@ function pickBoolean(value: unknown, fallback: boolean): boolean {
 }
 
 function pickTheme(value: unknown, fallback: Theme): Theme {
-	return value === "light" || value === "dark" || value === "system" ? value : fallback;
+	return value === "light" || value === "dark" || value === "system"
+		? value
+		: fallback;
 }
 
 function parseCsv(value: string): string[] {
@@ -173,13 +175,22 @@ function SettingsContent() {
 			const notif = preferences.notifications;
 			if (isRecord(notif)) {
 				setNotifications({
-					emailAlerts: pickBoolean(notif.emailAlerts, DEFAULT_NOTIFICATIONS.emailAlerts),
-					riskAlerts: pickBoolean(notif.riskAlerts, DEFAULT_NOTIFICATIONS.riskAlerts),
+					emailAlerts: pickBoolean(
+						notif.emailAlerts,
+						DEFAULT_NOTIFICATIONS.emailAlerts,
+					),
+					riskAlerts: pickBoolean(
+						notif.riskAlerts,
+						DEFAULT_NOTIFICATIONS.riskAlerts,
+					),
 					weeklyDigest: pickBoolean(
 						notif.weeklyDigest,
 						DEFAULT_NOTIFICATIONS.weeklyDigest,
 					),
-					newArticles: pickBoolean(notif.newArticles, DEFAULT_NOTIFICATIONS.newArticles),
+					newArticles: pickBoolean(
+						notif.newArticles,
+						DEFAULT_NOTIFICATIONS.newArticles,
+					),
 				});
 			}
 
@@ -187,7 +198,10 @@ function SettingsContent() {
 			if (isRecord(app)) {
 				setAppearance({
 					theme: pickTheme(app.theme, DEFAULT_APPEARANCE.theme),
-					compactMode: pickBoolean(app.compactMode, DEFAULT_APPEARANCE.compactMode),
+					compactMode: pickBoolean(
+						app.compactMode,
+						DEFAULT_APPEARANCE.compactMode,
+					),
 				});
 			}
 		}
@@ -209,7 +223,11 @@ function SettingsContent() {
 				},
 			};
 
-			return apiClient.patch(`/api/v1/users/${userId}`, payload, assertUserProfile);
+			return apiClient.patch(
+				`/api/v1/users/${userId}`,
+				payload,
+				assertUserProfile,
+			);
 		},
 		onSuccess: (updated) => {
 			toastSuccess("保存成功");
@@ -263,7 +281,11 @@ function SettingsContent() {
 			if (permissions.length > 0) payload.permissions = permissions;
 			if (rateLimit !== undefined) payload.rate_limit = rateLimit;
 
-			return apiClient.post("/api/v1/apikeys", payload, assertCreateApiKeyResponse);
+			return apiClient.post(
+				"/api/v1/apikeys",
+				payload,
+				assertCreateApiKeyResponse,
+			);
 		},
 		onSuccess: (res) => {
 			toastSuccess("API 密钥已创建", `前缀：${res.key.key_prefix}`);
@@ -281,7 +303,11 @@ function SettingsContent() {
 
 	const revokeApiKeyMutation = useMutation({
 		mutationFn: async (id: string) =>
-			apiClient.post(`/api/v1/apikeys/${id}/revoke`, undefined, assertDeleteResponse),
+			apiClient.post(
+				`/api/v1/apikeys/${id}/revoke`,
+				undefined,
+				assertDeleteResponse,
+			),
 		onSuccess: () => {
 			toastSuccess("已撤销 API 密钥");
 			queryClient.invalidateQueries({ queryKey: ["apikeys"] });
@@ -510,24 +536,24 @@ function SettingsContent() {
 										<CardHeader>
 											<CardTitle>外观设置</CardTitle>
 											<CardDescription>自定义界面外观</CardDescription>
-											</CardHeader>
-											<CardContent className="space-y-4">
-												<div>
-													<p
-														id="appearance-theme-label"
-														className="mb-2 block text-sm font-medium"
-													>
-														主题
-													</p>
-													<div
-														className="flex gap-3"
-														role="radiogroup"
-														aria-labelledby="appearance-theme-label"
-													>
-														{[
-															{ value: "light", label: "浅色", icon: Sun },
-															{ value: "dark", label: "深色", icon: Moon },
-															{ value: "system", label: "跟随系统", icon: Globe },
+										</CardHeader>
+										<CardContent className="space-y-4">
+											<div>
+												<p
+													id="appearance-theme-label"
+													className="mb-2 block text-sm font-medium"
+												>
+													主题
+												</p>
+												<div
+													className="flex gap-3"
+													role="radiogroup"
+													aria-labelledby="appearance-theme-label"
+												>
+													{[
+														{ value: "light", label: "浅色", icon: Sun },
+														{ value: "dark", label: "深色", icon: Moon },
+														{ value: "system", label: "跟随系统", icon: Globe },
 													].map(({ value, label, icon: Icon }) => (
 														<button
 															key={value}
@@ -586,16 +612,15 @@ function SettingsContent() {
 										<CardContent className="space-y-4">
 											<div className="rounded-lg bg-neutral-50 p-4">
 												<p className="text-sm text-neutral-600">
-													安全相关能力（修改密码 / 两步验证 / 登录记录）需要补齐后端闭环（旧密码校验、审计留痕、通知等）后开放，避免出现“看起来能点但实际无效”的假实现。
+													安全相关能力（修改密码 / 两步验证 /
+													登录记录）需要补齐后端闭环（旧密码校验、审计留痕、通知等）后开放，避免出现“看起来能点但实际无效”的假实现。
 												</p>
 											</div>
 											<div className="rounded-lg border border-neutral-100 p-4 opacity-70">
 												<div className="flex items-center justify-between">
 													<div>
 														<p className="font-medium">修改密码</p>
-														<p className="text-sm text-neutral-500">
-															尚未开放
-														</p>
+														<p className="text-sm text-neutral-500">尚未开放</p>
 													</div>
 													<Button variant="outline" disabled>
 														修改
@@ -606,9 +631,7 @@ function SettingsContent() {
 												<div className="flex items-center justify-between">
 													<div>
 														<p className="font-medium">两步验证</p>
-														<p className="text-sm text-neutral-500">
-															尚未开放
-														</p>
+														<p className="text-sm text-neutral-500">尚未开放</p>
 													</div>
 													<Badge variant="outline">未启用</Badge>
 												</div>
@@ -617,9 +640,7 @@ function SettingsContent() {
 												<div className="flex items-center justify-between">
 													<div>
 														<p className="font-medium">登录记录</p>
-														<p className="text-sm text-neutral-500">
-															尚未开放
-														</p>
+														<p className="text-sm text-neutral-500">尚未开放</p>
 													</div>
 													<Button variant="outline" disabled>
 														查看
@@ -640,7 +661,8 @@ function SettingsContent() {
 										<CardContent className="space-y-4">
 											<div className="rounded-lg bg-neutral-50 p-4">
 												<p className="text-sm text-neutral-600">
-													API 密钥用于程序化访问法眼系统。请妥善保管密钥，不要分享给他人。
+													API
+													密钥用于程序化访问法眼系统。请妥善保管密钥，不要分享给他人。
 												</p>
 											</div>
 
@@ -655,7 +677,9 @@ function SettingsContent() {
 															variant="outline"
 															onClick={async () => {
 																try {
-																	await navigator.clipboard.writeText(createdRawKey);
+																	await navigator.clipboard.writeText(
+																		createdRawKey,
+																	);
 																	toastSuccess("已复制到剪贴板");
 																} catch (err) {
 																	const message =
@@ -722,7 +746,9 @@ function SettingsContent() {
 														<Input
 															id="apikey-rate-limit"
 															value={apiKeyRateLimit}
-															onChange={(e) => setApiKeyRateLimit(e.target.value)}
+															onChange={(e) =>
+																setApiKeyRateLimit(e.target.value)
+															}
 															placeholder="例如：100"
 															inputMode="numeric"
 														/>
@@ -775,11 +801,12 @@ function SettingsContent() {
 													</p>
 												)}
 
-												{apiKeysQuery.data && apiKeysQuery.data.keys.length === 0 && (
-													<p className="py-6 text-center text-sm text-neutral-500">
-														暂无 API 密钥
-													</p>
-												)}
+												{apiKeysQuery.data &&
+													apiKeysQuery.data.keys.length === 0 && (
+														<p className="py-6 text-center text-sm text-neutral-500">
+															暂无 API 密钥
+														</p>
+													)}
 
 												{apiKeysQuery.data?.keys.map((k: ApiKey) => (
 													<div
@@ -789,7 +816,9 @@ function SettingsContent() {
 														<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 															<div className="min-w-0">
 																<div className="flex items-center gap-2">
-																	<p className="truncate font-medium">{k.name}</p>
+																	<p className="truncate font-medium">
+																		{k.name}
+																	</p>
 																	<Badge variant="outline">
 																		{k.is_active ? "启用" : "已撤销"}
 																	</Badge>
@@ -863,23 +892,29 @@ function SettingsContent() {
 										<CardContent>
 											<div className="space-y-3">
 												<div className="flex items-center justify-between border-b border-neutral-50 py-2">
-													<span className="text-sm text-neutral-500">API 状态</span>
+													<span className="text-sm text-neutral-500">
+														API 状态
+													</span>
 													<span className="text-sm font-medium">
 														{healthQuery.isLoading
 															? "检测中"
 															: healthQuery.isError
 																? "异常"
-																: healthQuery.data?.status ?? "未知"}
+																: (healthQuery.data?.status ?? "未知")}
 													</span>
 												</div>
 												<div className="flex items-center justify-between border-b border-neutral-50 py-2">
-													<span className="text-sm text-neutral-500">后端版本</span>
+													<span className="text-sm text-neutral-500">
+														后端版本
+													</span>
 													<span className="text-sm font-medium">
 														{healthQuery.data?.version ?? "-"}
 													</span>
 												</div>
 												<div className="flex items-center justify-between border-b border-neutral-50 py-2">
-													<span className="text-sm text-neutral-500">数据库</span>
+													<span className="text-sm text-neutral-500">
+														数据库
+													</span>
 													<span className="text-sm font-medium">
 														{statsQuery.isLoading
 															? "检测中"
@@ -889,13 +924,17 @@ function SettingsContent() {
 													</span>
 												</div>
 												<div className="flex items-center justify-between border-b border-neutral-50 py-2">
-													<span className="text-sm text-neutral-500">文章总数</span>
+													<span className="text-sm text-neutral-500">
+														文章总数
+													</span>
 													<span className="text-sm font-medium">
 														{statsQuery.data?.total_articles ?? "-"}
 													</span>
 												</div>
 												<div className="flex items-center justify-between py-2">
-													<span className="text-sm text-neutral-500">今日新增</span>
+													<span className="text-sm text-neutral-500">
+														今日新增
+													</span>
 													<span className="text-sm font-medium">
 														{statsQuery.data?.today_count ?? "-"}
 													</span>

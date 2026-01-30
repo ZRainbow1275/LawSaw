@@ -151,7 +151,9 @@ export function AiInsightsCard({
 	const recommendations = Array.from(
 		new Set(insights.recommendations.map((r) => r.trim()).filter(Boolean)),
 	);
-	const tags = Array.from(new Set(insights.tags.map((t) => t.trim()).filter(Boolean)));
+	const tags = Array.from(
+		new Set(insights.tags.map((t) => t.trim()).filter(Boolean)),
+	);
 
 	return (
 		<motion.div

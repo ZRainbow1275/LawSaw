@@ -8,7 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Modal, ModalBody, ModalFooter, ModalHeader } from "@/components/ui/modal";
+import {
+	Modal,
+	ModalBody,
+	ModalFooter,
+	ModalHeader,
+} from "@/components/ui/modal";
 import { useArticles } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
 import { apiClient } from "@/lib/api";
@@ -113,7 +118,9 @@ export default function DataPage() {
 	const batchDeleteMutation = useMutation({
 		mutationFn: async (ids: string[]) => {
 			const results = await Promise.allSettled(
-				ids.map((id) => apiClient.delete(`/api/v1/articles/${id}`, assertDeleteResponse)),
+				ids.map((id) =>
+					apiClient.delete(`/api/v1/articles/${id}`, assertDeleteResponse),
+				),
 			);
 
 			const deleted = results.filter((r) => r.status === "fulfilled").length;
@@ -126,7 +133,10 @@ export default function DataPage() {
 				toastSuccess("删除完成", `已删除 ${deleted} 条资讯`);
 			}
 			if (failed > 0) {
-				toastError("部分删除失败", `失败 ${failed} 条（可能是权限不足或不存在）`);
+				toastError(
+					"部分删除失败",
+					`失败 ${failed} 条（可能是权限不足或不存在）`,
+				);
 			}
 
 			setSelectedIds(new Set());
@@ -246,7 +256,9 @@ export default function DataPage() {
 													batchStatusMutation.isPending ||
 													batchDeleteMutation.isPending
 												}
-												title={!canPublishArticles ? "需要文章发布权限" : undefined}
+												title={
+													!canPublishArticles ? "需要文章发布权限" : undefined
+												}
 											>
 												<Archive className="mr-1 h-3 w-3" />
 												归档
@@ -269,7 +281,9 @@ export default function DataPage() {
 													batchStatusMutation.isPending ||
 													batchDeleteMutation.isPending
 												}
-												title={!canPublishArticles ? "需要文章发布权限" : undefined}
+												title={
+													!canPublishArticles ? "需要文章发布权限" : undefined
+												}
 											>
 												<CheckCircle className="mr-1 h-3 w-3" />
 												发布
@@ -313,11 +327,12 @@ export default function DataPage() {
 							<CardContent>
 								{isLoading ? (
 									<div className="animate-pulse space-y-2">
-										{Array.from({ length: 10 }, (_, idx) => `data-skel-${idx}`).map(
-											(key) => (
-												<div key={key} className="h-12 rounded bg-neutral-100" />
-											),
-										)}
+										{Array.from(
+											{ length: 10 },
+											(_, idx) => `data-skel-${idx}`,
+										).map((key) => (
+											<div key={key} className="h-12 rounded bg-neutral-100" />
+										))}
 									</div>
 								) : (
 									<div className="overflow-x-auto">
@@ -378,8 +393,12 @@ export default function DataPage() {
 															| "warning"
 															| "destructive" = "outline";
 														if (riskLevel === "low") riskVariant = "success";
-														else if (riskLevel === "medium") riskVariant = "warning";
-														else if (riskLevel === "high" || riskLevel === "critical")
+														else if (riskLevel === "medium")
+															riskVariant = "warning";
+														else if (
+															riskLevel === "high" ||
+															riskLevel === "critical"
+														)
 															riskVariant = "destructive";
 
 														return (
@@ -419,7 +438,9 @@ export default function DataPage() {
 																		variant="ghost"
 																		size="icon"
 																		aria-label="查看详情"
-																		onClick={() => router.push(`/articles/${article.id}`)}
+																		onClick={() =>
+																			router.push(`/articles/${article.id}`)
+																		}
 																	>
 																		<MoreHorizontal className="h-4 w-4" />
 																	</Button>
@@ -484,7 +505,8 @@ export default function DataPage() {
 				</ModalHeader>
 				<ModalBody>
 					<p className="text-sm text-neutral-600">
-						将删除已选择的 <span className="font-semibold">{selectedIds.size}</span>{" "}
+						将删除已选择的{" "}
+						<span className="font-semibold">{selectedIds.size}</span>{" "}
 						条资讯。该操作不可撤销。
 					</p>
 				</ModalBody>
@@ -510,7 +532,9 @@ export default function DataPage() {
 								// 错误已由 mutation 统一 toast
 							}
 						}}
-						disabled={batchDeleteMutation.isPending || selectedIdList.length === 0}
+						disabled={
+							batchDeleteMutation.isPending || selectedIdList.length === 0
+						}
 					>
 						确认删除
 					</Button>

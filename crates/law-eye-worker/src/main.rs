@@ -499,8 +499,15 @@ impl Worker {
                 )
                 .map_err(|e| anyhow::anyhow!("AI full processing failed: {}", e))?;
 
-                self.update_article_full(tenant_id, task.article_id, &classify, &summary, &risk, &tags)
-                    .await?;
+                self.update_article_full(
+                    tenant_id,
+                    task.article_id,
+                    &classify,
+                    &summary,
+                    &risk,
+                    &tags,
+                )
+                .await?;
 
                 // Embedding 可能较慢且对外部依赖敏感：拆成单独的任务，失败可独立重试/DLQ。
                 let embed_task = AiTask {
@@ -550,7 +557,8 @@ impl Worker {
                     .assess_risk(&article.title, content)
                     .await
                     .map_err(|e| anyhow::anyhow!("AI risk assessment failed: {}", e))?;
-                self.update_article_risk(tenant_id, task.article_id, &risk).await?;
+                self.update_article_risk(tenant_id, task.article_id, &risk)
+                    .await?;
                 info!(
                     "AI risk assessment completed for article: {}",
                     task.article_id
@@ -562,7 +570,8 @@ impl Worker {
                     .extract_tags(&article.title, content)
                     .await
                     .map_err(|e| anyhow::anyhow!("AI tag extraction failed: {}", e))?;
-                self.update_article_tags(tenant_id, task.article_id, &tags).await?;
+                self.update_article_tags(tenant_id, task.article_id, &tags)
+                    .await?;
                 info!(
                     "AI tag extraction completed for article: {}",
                     task.article_id
@@ -575,7 +584,8 @@ impl Worker {
                     .embed_chunks(&text)
                     .await
                     .map_err(|e| anyhow::anyhow!("AI embed_chunks failed: {}", e))?;
-                self.replace_article_chunks(tenant_id, task.article_id, chunks).await?;
+                self.replace_article_chunks(tenant_id, task.article_id, chunks)
+                    .await?;
                 self.mark_ai_embed_done(tenant_id, task.article_id).await?;
                 info!("AI embedding completed for article: {}", task.article_id);
                 Ok(())
@@ -821,7 +831,11 @@ impl Worker {
         Ok(())
     }
 
-    async fn mark_ai_embed_done(&self, tenant_id: uuid::Uuid, article_id: uuid::Uuid) -> anyhow::Result<()> {
+    async fn mark_ai_embed_done(
+        &self,
+        tenant_id: uuid::Uuid,
+        article_id: uuid::Uuid,
+    ) -> anyhow::Result<()> {
         let mut tx = self.begin_tenant_tx(tenant_id).await?;
         sqlx::query(
             r#"

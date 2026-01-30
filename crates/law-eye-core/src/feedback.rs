@@ -20,47 +20,75 @@ impl FeedbackService {
 
     pub async fn create(&self, tenant_id: Uuid, input: CreateFeedback) -> Result<Feedback> {
         let cipher = self.cipher.clone();
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            let plaintext_content = input.content.clone();
-            let plaintext_contact_email = input.contact_email.clone();
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move { Self::create_tx_inner(tenant_id, tx, &cipher, input).await })
+        })
+        .await
+    }
 
-            let (content_to_store, contact_email_to_store, encryption_version) = if cipher.is_enabled()
-            {
-                let content = cipher.encrypt(&input.content).await?;
-                let email = match input.contact_email.as_deref() {
-                    Some(v) => Some(cipher.encrypt(v).await?),
-                    None => None,
-                };
-                (content, email, FEEDBACK_ENCRYPTION_VERSION_VAULT_TRANSIT)
-            } else {
-                (input.content, input.contact_email, 0)
-            };
-
-            let mut row = sqlx::query_as::<_, Feedback>(
-                r#"
-                INSERT INTO feedbacks (user_id, type, title, content, contact_email, source_url, source_name, encryption_version)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                RETURNING *
-                "#,
-            )
-            .bind(input.user_id)
-            .bind(&input.feedback_type)
-            .bind(&input.title)
-            .bind(&content_to_store)
-            .bind(&contact_email_to_store)
-            .bind(&input.source_url)
-            .bind(&input.source_name)
-            .bind(encryption_version)
-            .fetch_one(tx.as_mut())
+    pub async fn create_tx(
+        &self,
+        tenant_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+        input: CreateFeedback,
+    ) -> Result<Feedback> {
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(tenant_id.to_string())
+            .execute(tx.as_mut())
             .await
             .map_err(|e| Error::Database(e.to_string()))?;
 
-            // Return plaintext to callers (API/UI) even if stored as ciphertext.
-            row.content = plaintext_content;
-            row.contact_email = plaintext_contact_email;
-            Ok(row)
-        }))
+        let cipher = self.cipher.clone();
+        Self::create_tx_inner(tenant_id, tx, &cipher, input).await
+    }
+
+    async fn create_tx_inner(
+        tenant_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+        cipher: &Arc<dyn SensitiveStringCipher>,
+        input: CreateFeedback,
+    ) -> Result<Feedback> {
+        // tenant_id kept in signature for future-proofing / explicitness (even if RLS already set).
+        let _ = tenant_id;
+
+        let plaintext_content = input.content.clone();
+        let plaintext_contact_email = input.contact_email.clone();
+
+        let (content_to_store, contact_email_to_store, encryption_version) = if cipher.is_enabled()
+        {
+            let content = cipher.encrypt(&input.content).await?;
+            let email = match input.contact_email.as_deref() {
+                Some(v) => Some(cipher.encrypt(v).await?),
+                None => None,
+            };
+            (content, email, FEEDBACK_ENCRYPTION_VERSION_VAULT_TRANSIT)
+        } else {
+            (input.content, input.contact_email, 0)
+        };
+
+        let mut row = sqlx::query_as::<_, Feedback>(
+            r#"
+            INSERT INTO feedbacks (user_id, type, title, content, contact_email, source_url, source_name, encryption_version)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING *
+            "#,
+        )
+        .bind(input.user_id)
+        .bind(&input.feedback_type)
+        .bind(&input.title)
+        .bind(&content_to_store)
+        .bind(&contact_email_to_store)
+        .bind(&input.source_url)
+        .bind(&input.source_name)
+        .bind(encryption_version)
+        .fetch_one(tx.as_mut())
         .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        // Return plaintext to callers (API/UI) even if stored as ciphertext.
+        row.content = plaintext_content;
+        row.contact_email = plaintext_contact_email;
+        Ok(row)
     }
 
     pub async fn list_by_user(
@@ -71,94 +99,162 @@ impl FeedbackService {
         offset: i64,
     ) -> Result<Vec<Feedback>> {
         let cipher = self.cipher.clone();
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            let rows = sqlx::query_as::<_, Feedback>(
-                r#"
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let rows = sqlx::query_as::<_, Feedback>(
+                    r#"
                 SELECT * FROM feedbacks
                 WHERE user_id = $1
                 ORDER BY created_at DESC
                 LIMIT $2 OFFSET $3
                 "#,
-            )
-            .bind(user_id)
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+                )
+                .bind(user_id)
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-            let mut out = Vec::with_capacity(rows.len());
-            for row in rows {
-                out.push(decrypt_or_backfill_feedback(tx, &cipher, row).await?);
-            }
-            Ok(out)
-        }))
+                let mut out = Vec::with_capacity(rows.len());
+                for row in rows {
+                    out.push(decrypt_or_backfill_feedback(tx, &cipher, row).await?);
+                }
+                Ok(out)
+            })
+        })
         .await
     }
 
-    pub async fn list_all(&self, tenant_id: Uuid, limit: i64, offset: i64) -> Result<Vec<Feedback>> {
+    pub async fn list_all(
+        &self,
+        tenant_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Feedback>> {
         let cipher = self.cipher.clone();
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            let rows = sqlx::query_as::<_, Feedback>(
-                r#"
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let rows = sqlx::query_as::<_, Feedback>(
+                    r#"
                 SELECT * FROM feedbacks
                 ORDER BY created_at DESC
                 LIMIT $1 OFFSET $2
                 "#,
-            )
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+                )
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-            let mut out = Vec::with_capacity(rows.len());
-            for row in rows {
-                out.push(decrypt_or_backfill_feedback(tx, &cipher, row).await?);
-            }
-            Ok(out)
-        }))
+                let mut out = Vec::with_capacity(rows.len());
+                for row in rows {
+                    out.push(decrypt_or_backfill_feedback(tx, &cipher, row).await?);
+                }
+                Ok(out)
+            })
+        })
         .await
     }
 
     pub async fn get_by_id(&self, tenant_id: Uuid, id: Uuid) -> Result<Feedback> {
         let cipher = self.cipher.clone();
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            let row = sqlx::query_as::<_, Feedback>("SELECT * FROM feedbacks WHERE id = $1")
-                .bind(id)
-                .fetch_optional(tx.as_mut())
-                .await
-                .map_err(|e| Error::Database(e.to_string()))?
-                .ok_or_else(|| Error::NotFound(format!("Feedback {} not found", id)))?;
-            decrypt_or_backfill_feedback(tx, &cipher, row).await
-        }))
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let row = sqlx::query_as::<_, Feedback>("SELECT * FROM feedbacks WHERE id = $1")
+                    .bind(id)
+                    .fetch_optional(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?
+                    .ok_or_else(|| Error::NotFound(format!("Feedback {} not found", id)))?;
+                decrypt_or_backfill_feedback(tx, &cipher, row).await
+            })
+        })
         .await
     }
 
-    pub async fn update(&self, tenant_id: Uuid, id: Uuid, input: UpdateFeedback) -> Result<Feedback> {
+    pub async fn get_by_id_tx(
+        &self,
+        tenant_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+        id: Uuid,
+    ) -> Result<Feedback> {
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(tenant_id.to_string())
+            .execute(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
         let cipher = self.cipher.clone();
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            let row = sqlx::query_as::<_, Feedback>(
-                r#"
-                UPDATE feedbacks SET
-                    status = COALESCE($2, status),
-                    admin_response = COALESCE($3, admin_response),
-                    updated_at = NOW()
-                WHERE id = $1
-                RETURNING *
-                "#,
-            )
+        let row = sqlx::query_as::<_, Feedback>("SELECT * FROM feedbacks WHERE id = $1")
             .bind(id)
-            .bind(&input.status)
-            .bind(&input.admin_response)
             .fetch_optional(tx.as_mut())
             .await
             .map_err(|e| Error::Database(e.to_string()))?
             .ok_or_else(|| Error::NotFound(format!("Feedback {} not found", id)))?;
 
-            decrypt_or_backfill_feedback(tx, &cipher, row).await
-        }))
+        decrypt_or_backfill_feedback(tx, &cipher, row).await
+    }
+
+    pub async fn update(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        input: UpdateFeedback,
+    ) -> Result<Feedback> {
+        let cipher = self.cipher.clone();
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move { Self::update_tx_inner(tenant_id, tx, &cipher, id, input).await })
+        })
         .await
+    }
+
+    pub async fn update_tx(
+        &self,
+        tenant_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+        id: Uuid,
+        input: UpdateFeedback,
+    ) -> Result<Feedback> {
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(tenant_id.to_string())
+            .execute(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
+        let cipher = self.cipher.clone();
+        Self::update_tx_inner(tenant_id, tx, &cipher, id, input).await
+    }
+
+    async fn update_tx_inner(
+        tenant_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+        cipher: &Arc<dyn SensitiveStringCipher>,
+        id: Uuid,
+        input: UpdateFeedback,
+    ) -> Result<Feedback> {
+        let _ = tenant_id;
+
+        let row = sqlx::query_as::<_, Feedback>(
+            r#"
+            UPDATE feedbacks SET
+                status = COALESCE($2, status),
+                admin_response = COALESCE($3, admin_response),
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING *
+            "#,
+        )
+        .bind(id)
+        .bind(&input.status)
+        .bind(&input.admin_response)
+        .fetch_optional(tx.as_mut())
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?
+        .ok_or_else(|| Error::NotFound(format!("Feedback {} not found", id)))?;
+
+        decrypt_or_backfill_feedback(tx, cipher, row).await
     }
 }
 

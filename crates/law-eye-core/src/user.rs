@@ -348,7 +348,12 @@ impl UserService {
         Ok(result.0)
     }
 
-    pub async fn list_by_tenant(&self, tenant_id: Uuid, limit: i64, offset: i64) -> Result<Vec<User>> {
+    pub async fn list_by_tenant(
+        &self,
+        tenant_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<User>> {
         let users = sqlx::query_as::<_, User>(
             "SELECT * FROM users WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
         )

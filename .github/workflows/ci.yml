@@ -7,6 +7,9 @@ on:
       - main
       - master
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -31,10 +34,15 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Lint (clippy)
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
       - name: Test
-        run: cargo test --workspace --all-features
+        run: cargo test --workspace --all-features --locked
+
+      - name: Security audit (RustSec)
+        uses: actions-rust-lang/audit@v1
+        with:
+          createIssues: false
 
   web:
     name: Web
@@ -59,9 +67,35 @@ jobs:
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
-      - name: Test (typecheck + lint)
-        run: pnpm test
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint + format check (Biome)
+        run: pnpm exec biome check src
+
+      - name: Security audit (pnpm audit)
+        run: pnpm audit --audit-level high
 
       - name: Build
         run: pnpm build
 
+  sbom:
+    name: SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate SBOM (Syft)
+        uses: anchore/sbom-action@v0
+        with:
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom.spdx.json
+          path: sbom.spdx.json

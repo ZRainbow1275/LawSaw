@@ -47,7 +47,9 @@ export default function GlobalError({
 								) : null}
 							</div>
 						) : error.digest ? (
-							<p className="text-xs text-neutral-500">错误标识：{error.digest}</p>
+							<p className="text-xs text-neutral-500">
+								错误标识：{error.digest}
+							</p>
 						) : null}
 
 						<div className="flex flex-col gap-2 sm:flex-row">
@@ -72,4 +74,3 @@ export default function GlobalError({
 		</div>
 	);
 }
-

@@ -21,6 +21,7 @@ use axum::{
     Router,
 };
 use metrics::{counter, histogram};
+use std::net::{IpAddr, SocketAddr};
 use std::time::Instant;
 
 use crate::middleware::rate_limit::RateLimitLayer;
@@ -89,6 +90,28 @@ async fn track_metrics(req: Request<Body>, next: Next) -> Response {
     );
 
     response
+}
+
+pub(super) fn extract_audit_meta(
+    headers: &HeaderMap,
+    addr: SocketAddr,
+) -> (Option<String>, Option<String>) {
+    let ip_from_xff = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .map(|s| s.trim())
+        .and_then(|s| s.parse::<IpAddr>().ok())
+        .map(|ip| ip.to_string());
+
+    let ip_address = ip_from_xff.or_else(|| Some(addr.ip().to_string()));
+
+    let user_agent = headers
+        .get(header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    (ip_address, user_agent)
 }
 
 pub fn create_router(state: AppState) -> Router {

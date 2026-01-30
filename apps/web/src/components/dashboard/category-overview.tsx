@@ -73,11 +73,12 @@ export function CategoryOverview() {
 				</CardHeader>
 				<CardContent>
 					<div className="animate-pulse space-y-3">
-						{Array.from({ length: 5 }, (_, idx) => `cat-overview-skel-${idx}`).map(
-							(key) => (
-								<div key={key} className="h-10 rounded bg-neutral-100" />
-							),
-						)}
+						{Array.from(
+							{ length: 5 },
+							(_, idx) => `cat-overview-skel-${idx}`,
+						).map((key) => (
+							<div key={key} className="h-10 rounded bg-neutral-100" />
+						))}
 					</div>
 				</CardContent>
 			</Card>
@@ -135,7 +136,11 @@ export function CategoryOverview() {
 				{countsError ? (
 					<div className="mb-3 flex items-center justify-between rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
 						<p className="text-xs text-amber-800">资讯分布统计加载失败</p>
-						<Button variant="outline" size="sm" onClick={() => countsQuery.refetch()}>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => countsQuery.refetch()}
+						>
 							重试
 						</Button>
 					</div>

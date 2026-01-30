@@ -53,7 +53,10 @@ export function useAuth() {
 	const refreshSession = useCallback(async () => {
 		setLoading(true);
 		try {
-			const response = await apiClient.get("/api/v1/auth/me", assertAuthResponse);
+			const response = await apiClient.get(
+				"/api/v1/auth/me",
+				assertAuthResponse,
+			);
 			setUser(response.user);
 			await refreshAuthz(response.user);
 		} catch {

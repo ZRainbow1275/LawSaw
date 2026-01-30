@@ -57,9 +57,10 @@ impl RagService {
         let query_vector = embedding_result.vector;
 
         // Search for similar chunks using pgvector
-        let results = with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            sqlx::query_as::<_, (Uuid, Uuid, String, f64)>(
-                r#"
+        let results = with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query_as::<_, (Uuid, Uuid, String, f64)>(
+                    r#"
                 SELECT
                     c.id,
                     c.article_id,
@@ -70,13 +71,14 @@ impl RagService {
                 ORDER BY c.embedding <=> $1::vector
                 LIMIT $2
                 "#,
-            )
-            .bind(&query_vector)
-            .bind(limit)
-            .fetch_all(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))
-        }))
+                )
+                .bind(&query_vector)
+                .bind(limit)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))
+            })
+        })
         .await?;
 
         let search_results: Vec<RagSearchResult> = results
@@ -118,13 +120,15 @@ impl RagService {
 
         // Get article titles for sources
         let article_ids: Vec<Uuid> = chunks.iter().map(|c| c.article_id).collect();
-        let titles: Vec<(Uuid, String)> = with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            sqlx::query_as("SELECT id, title FROM articles WHERE id = ANY($1)")
-                .bind(&article_ids)
-                .fetch_all(tx.as_mut())
-                .await
-                .map_err(|e| Error::Database(e.to_string()))
-        }))
+        let titles: Vec<(Uuid, String)> = with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query_as("SELECT id, title FROM articles WHERE id = ANY($1)")
+                    .bind(&article_ids)
+                    .fetch_all(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))
+            })
+        })
         .await?;
 
         let title_map: std::collections::HashMap<Uuid, String> = titles.into_iter().collect();
@@ -256,9 +260,10 @@ impl RagService {
         let query_vector = embedding_result.vector;
 
         // Boost results from articles that contain specified entities
-        let results = with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            sqlx::query_as::<_, (Uuid, Uuid, String, f64)>(
-                r#"
+        let results = with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query_as::<_, (Uuid, Uuid, String, f64)>(
+                    r#"
                 WITH entity_articles AS (
                     SELECT DISTINCT article_id
                     FROM article_entities
@@ -279,14 +284,15 @@ impl RagService {
                 ORDER BY boosted_similarity DESC
                 LIMIT $2
                 "#,
-            )
-            .bind(&query_vector)
-            .bind(limit)
-            .bind(entity_ids)
-            .fetch_all(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))
-        }))
+                )
+                .bind(&query_vector)
+                .bind(limit)
+                .bind(entity_ids)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))
+            })
+        })
         .await?;
 
         Ok(results

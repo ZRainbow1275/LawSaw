@@ -26,9 +26,12 @@ export default function KnowledgePage() {
 
 	const { success: toastSuccess, error: toastError } = useToast();
 
-	const mode: "top" | "search" = searchTerm.trim().length > 0 ? "search" : "top";
-	const items = mode === "search" ? searchQuery.data ?? [] : topQuery.data ?? [];
-	const isLoading = mode === "search" ? searchQuery.isLoading : topQuery.isLoading;
+	const mode: "top" | "search" =
+		searchTerm.trim().length > 0 ? "search" : "top";
+	const items =
+		mode === "search" ? (searchQuery.data ?? []) : (topQuery.data ?? []);
+	const isLoading =
+		mode === "search" ? searchQuery.isLoading : topQuery.isLoading;
 	const isError = mode === "search" ? searchQuery.isError : topQuery.isError;
 
 	const onSelect = (id: string) => {
@@ -37,18 +40,21 @@ export default function KnowledgePage() {
 	};
 
 	const handleBackfill = useCallback(() => {
-		backfillMutation.mutate({ limit: 500 }, {
-			onSuccess: (data) => {
-				toastSuccess(
-					"初始化完成",
-					`已处理 ${data.articles_considered} 篇资讯，写入 ${data.article_entities_inserted} 条关联`,
-				);
+		backfillMutation.mutate(
+			{ limit: 500 },
+			{
+				onSuccess: (data) => {
+					toastSuccess(
+						"初始化完成",
+						`已处理 ${data.articles_considered} 篇资讯，写入 ${data.article_entities_inserted} 条关联`,
+					);
+				},
+				onError: (cause) => {
+					const message = cause instanceof Error ? cause.message : "初始化失败";
+					toastError("初始化知识图谱失败", message);
+				},
 			},
-			onError: (cause) => {
-				const message = cause instanceof Error ? cause.message : "初始化失败";
-				toastError("初始化知识图谱失败", message);
-			},
-		});
+		);
 	}, [backfillMutation, toastError, toastSuccess]);
 
 	const onBackfill = mode === "top" ? handleBackfill : null;

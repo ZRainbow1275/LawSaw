@@ -1,9 +1,18 @@
 "use client";
 
 import { buttonVariants } from "@/components/ui/button";
-import { useKnowledgeEntity, useKnowledgeEntityArticles } from "@/hooks/use-knowledge";
+import {
+	useKnowledgeEntity,
+	useKnowledgeEntityArticles,
+} from "@/hooks/use-knowledge";
 import { cn } from "@/lib/utils";
-import { ExternalLink, FileText, Loader2, PanelRight, Sparkles } from "lucide-react";
+import {
+	ExternalLink,
+	FileText,
+	Loader2,
+	PanelRight,
+	Sparkles,
+} from "lucide-react";
 import Link from "next/link";
 
 export function EntityInspector({
@@ -20,15 +29,24 @@ export function EntityInspector({
 	const articles = articlesQuery.data ?? [];
 
 	return (
-		<div className={cn("flex h-full min-h-0 flex-col rounded-2xl border border-neutral-200 bg-white", className)}>
+		<div
+			className={cn(
+				"flex h-full min-h-0 flex-col rounded-2xl border border-neutral-200 bg-white",
+				className,
+			)}
+		>
 			<div className="border-b border-neutral-100 p-4">
 				<div className="flex items-center gap-2">
 					<div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-100 text-neutral-700">
 						<PanelRight className="h-4 w-4" />
 					</div>
 					<div className="min-w-0">
-						<div className="text-sm font-semibold text-neutral-900">属性面板</div>
-						<div className="text-xs text-neutral-500">查看实体详情与关联文章</div>
+						<div className="text-sm font-semibold text-neutral-900">
+							属性面板
+						</div>
+						<div className="text-xs text-neutral-500">
+							查看实体详情与关联文章
+						</div>
 					</div>
 				</div>
 			</div>
@@ -68,7 +86,9 @@ export function EntityInspector({
 								实体
 							</div>
 							<div className="mt-2 rounded-2xl border border-neutral-200 bg-white p-4">
-								<div className="text-base font-semibold text-neutral-900">{entity.name}</div>
+								<div className="text-base font-semibold text-neutral-900">
+									{entity.name}
+								</div>
 								<div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-neutral-600">
 									<span className="rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5">
 										{entity.entity_type}
@@ -127,7 +147,9 @@ export function EntityInspector({
 												</div>
 												<div className="mt-1 text-xs text-neutral-500">
 													{article.published_at
-														? new Date(article.published_at).toLocaleDateString("zh-CN")
+														? new Date(article.published_at).toLocaleDateString(
+																"zh-CN",
+															)
 														: "日期未知"}{" "}
 													· {article.status}
 												</div>

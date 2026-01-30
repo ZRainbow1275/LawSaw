@@ -67,7 +67,8 @@ async function readKeyFromDb(db: IDBDatabase): Promise<CryptoKey | null> {
 		const store = tx.objectStore(KEY_STORE_NAME);
 		const request = store.get(KEY_ID);
 
-		request.onsuccess = () => resolve((request.result as CryptoKey | null) ?? null);
+		request.onsuccess = () =>
+			resolve((request.result as CryptoKey | null) ?? null);
 		request.onerror = () =>
 			reject(request.error ?? new Error("Failed to read key from IndexedDB"));
 	});

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useArticles } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
-import { getArticleRiskLevel, type ArticleRiskLevel } from "@/lib/api/types";
+import { type ArticleRiskLevel, getArticleRiskLevel } from "@/lib/api/types";
 import {
 	ArrowLeft,
 	ArrowUpRight,
@@ -150,23 +150,27 @@ export default function CategoryPage() {
 							<CardContent>
 								{isLoading ? (
 									<div className="animate-pulse space-y-4">
-										{Array.from({ length: 5 }, (_, idx) => `cat-skel-${idx}`).map(
-											(key) => (
-												<div key={key} className="h-24 rounded-lg bg-neutral-100" />
-											),
-										)}
+										{Array.from(
+											{ length: 5 },
+											(_, idx) => `cat-skel-${idx}`,
+										).map((key) => (
+											<div
+												key={key}
+												className="h-24 rounded-lg bg-neutral-100"
+											/>
+										))}
 									</div>
 								) : articles.length === 0 ? (
 									<p className="py-12 text-center text-neutral-500">
 										该分类暂无资讯
 									</p>
-					) : (
-						<div className="space-y-4">
-							{articles.map((article) => {
-								const riskLevel = getArticleRiskLevel(article.risk_score);
+								) : (
+									<div className="space-y-4">
+										{articles.map((article) => {
+											const riskLevel = getArticleRiskLevel(article.risk_score);
 
-								return (
-									<div
+											return (
+												<div
 													key={article.id}
 													className="group flex items-start justify-between rounded-lg border border-neutral-100 p-4 transition-all hover:border-primary-200 hover:bg-primary-50/50"
 												>

@@ -1,6 +1,6 @@
+use futures::future::BoxFuture;
 use law_eye_common::{Error, Result};
 use law_eye_db::Tenant;
-use futures::future::BoxFuture;
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 

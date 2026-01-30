@@ -18,8 +18,7 @@ use crate::{ApiError, ApiResult, AppError};
 
 static EMAIL_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap());
-static TENANT_SLUG_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^[a-z][a-z0-9-]{2,31}$").unwrap());
+static TENANT_SLUG_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[a-z][a-z0-9-]{2,31}$").unwrap());
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -158,7 +157,11 @@ pub(crate) async fn register(
         Err(err) => return Err(AppError::from(err)),
     };
 
-    let default_role = if existing_users == 0 { "admin" } else { "viewer" };
+    let default_role = if existing_users == 0 {
+        "admin"
+    } else {
+        "viewer"
+    };
     state
         .user_service
         .assign_role(user.id, default_role, None)

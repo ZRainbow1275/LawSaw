@@ -17,7 +17,14 @@ import {
 } from "@/lib/api/types";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Activity, AlertTriangle, CheckCircle2, Database, Server, Zap } from "lucide-react";
+import {
+	Activity,
+	AlertTriangle,
+	CheckCircle2,
+	Database,
+	Server,
+	Zap,
+} from "lucide-react";
 
 const containerVariants = {
 	hidden: { opacity: 0 },
@@ -53,13 +60,17 @@ export default function Dashboard() {
 
 	const aiAvailabilityQuery = useQuery({
 		queryKey: ["aiAvailability"],
-		queryFn: () => apiClient.get("/api/v1/ai/available", assertAiAvailabilityResponse),
+		queryFn: () =>
+			apiClient.get("/api/v1/ai/available", assertAiAvailabilityResponse),
 		refetchInterval: 30_000,
 	});
 
 	type ServiceStatus = "ok" | "warn" | "error" | "loading";
 
-	function statusFromQuery(query: { isPending: boolean; isError: boolean }): ServiceStatus {
+	function statusFromQuery(query: {
+		isPending: boolean;
+		isError: boolean;
+	}): ServiceStatus {
 		if (query.isPending) return "loading";
 		if (query.isError) return "error";
 		return "ok";
@@ -69,17 +80,19 @@ export default function Dashboard() {
 	const dbStatus = statusFromQuery(statsQuery);
 	const sourcesStatus = statusFromQuery(sourcesQuery);
 
-	const aiStatus: ServiceStatus =
-		aiAvailabilityQuery.isPending
-			? "loading"
-			: aiAvailabilityQuery.isError
-				? "error"
-				: aiAvailabilityQuery.data?.available
-					? "ok"
-					: "warn";
+	const aiStatus: ServiceStatus = aiAvailabilityQuery.isPending
+		? "loading"
+		: aiAvailabilityQuery.isError
+			? "error"
+			: aiAvailabilityQuery.data?.available
+				? "ok"
+				: "warn";
 
 	const overallStatus: ServiceStatus =
-		apiStatus === "error" || dbStatus === "error" || sourcesStatus === "error" || aiStatus === "error"
+		apiStatus === "error" ||
+		dbStatus === "error" ||
+		sourcesStatus === "error" ||
+		aiStatus === "error"
 			? "error"
 			: apiStatus === "loading" ||
 					dbStatus === "loading" ||
@@ -163,9 +176,12 @@ export default function Dashboard() {
 					: "from-red-50/80 to-rose-50/50 border-red-100/50";
 
 	const serviceCardClass = (status: ServiceStatus) => {
-		if (status === "ok") return "from-green-50 to-emerald-50/50 border-green-100/50";
-		if (status === "warn") return "from-amber-50 to-orange-50/50 border-amber-100/50";
-		if (status === "error") return "from-red-50 to-rose-50/50 border-red-100/50";
+		if (status === "ok")
+			return "from-green-50 to-emerald-50/50 border-green-100/50";
+		if (status === "warn")
+			return "from-amber-50 to-orange-50/50 border-amber-100/50";
+		if (status === "error")
+			return "from-red-50 to-rose-50/50 border-red-100/50";
 		return "from-neutral-50 to-neutral-50/50 border-neutral-100/50";
 	};
 

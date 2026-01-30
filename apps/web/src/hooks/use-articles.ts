@@ -4,8 +4,8 @@ import { apiClient } from "@/lib/api";
 import {
 	assertArticle,
 	assertArticleAnalyticsSummary,
-	assertArticleListResponse,
 	assertArticleCategoryCounts,
+	assertArticleListResponse,
 	assertArticleStats,
 	assertArticleTrends,
 	assertDeleteResponse,
@@ -73,7 +73,10 @@ export function useArticleCategoryCounts() {
 	return useQuery({
 		queryKey: ["articleCategoryCounts"],
 		queryFn: () =>
-			apiClient.get("/api/v1/articles/category-counts", assertArticleCategoryCounts),
+			apiClient.get(
+				"/api/v1/articles/category-counts",
+				assertArticleCategoryCounts,
+			),
 		staleTime: 30000,
 	});
 }
@@ -95,7 +98,11 @@ export function usePublishArticle() {
 
 	return useMutation({
 		mutationFn: (id: string) =>
-			apiClient.post(`/api/v1/articles/${id}/publish`, undefined, assertArticle),
+			apiClient.post(
+				`/api/v1/articles/${id}/publish`,
+				undefined,
+				assertArticle,
+			),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["articles"] });
 			queryClient.invalidateQueries({ queryKey: ["articleStats"] });
@@ -108,7 +115,11 @@ export function useArchiveArticle() {
 
 	return useMutation({
 		mutationFn: (id: string) =>
-			apiClient.post(`/api/v1/articles/${id}/archive`, undefined, assertArticle),
+			apiClient.post(
+				`/api/v1/articles/${id}/archive`,
+				undefined,
+				assertArticle,
+			),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["articles"] });
 			queryClient.invalidateQueries({ queryKey: ["articleStats"] });

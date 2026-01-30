@@ -162,6 +162,9 @@ pub struct UserRole {
 pub struct AuditLog {
     pub id: Uuid,
     pub tenant_id: Uuid,
+    pub seq: i64,
+    pub prev_hash: Option<String>,
+    pub hash: String,
     pub user_id: Option<Uuid>,
     pub action: String,
     pub resource: String,

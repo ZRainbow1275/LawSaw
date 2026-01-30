@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
-	useArticleCategoryCounts,
 	useArticleAnalyticsSummary,
+	useArticleCategoryCounts,
 	useArticleTrends,
 } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
@@ -90,13 +90,21 @@ export default function AnalyticsPage() {
 	const hasInfraError = infraErrors.length > 0;
 
 	const categoriesCount =
-		categories && !categoriesLoading && !categoriesError ? categories.length : null;
+		categories && !categoriesLoading && !categoriesError
+			? categories.length
+			: null;
 
 	const analyticsReady =
 		!!analyticsSummary && !analyticsSummaryLoading && !analyticsSummaryError;
-	const totalArticles = analyticsReady ? (analyticsSummary?.total ?? null) : null;
+	const totalArticles = analyticsReady
+		? (analyticsSummary?.total ?? null)
+		: null;
 	const riskTotalForChart = analyticsReady ? (analyticsSummary?.total ?? 0) : 0;
-	const riskRows: Array<{ key: ArticleRiskLevel; label: string; color: string }> = [
+	const riskRows: Array<{
+		key: ArticleRiskLevel;
+		label: string;
+		color: string;
+	}> = [
 		{ key: "unknown", label: "未评估", color: "bg-neutral-400" },
 		{ key: "low", label: "低风险", color: "bg-success" },
 		{ key: "medium", label: "中风险", color: "bg-warning" },
@@ -104,7 +112,9 @@ export default function AnalyticsPage() {
 		{ key: "critical", label: "严重", color: "bg-destructive" },
 	];
 
-	const sentimentTotalForChart = analyticsReady ? (analyticsSummary?.total ?? 0) : 0;
+	const sentimentTotalForChart = analyticsReady
+		? (analyticsSummary?.total ?? 0)
+		: 0;
 	const sentimentRows: Array<{
 		key: ArticleSentimentLabel;
 		label: string;
@@ -253,7 +263,8 @@ export default function AnalyticsPage() {
 						{hasInfraError ? (
 							<div className="mb-6 flex items-center justify-between rounded-lg border border-red-100 bg-red-50 px-3 py-2">
 								<p className="text-xs text-red-700">
-									基础数据加载失败：{infraErrors.join(" / ")}（已隐藏不可靠数值）
+									基础数据加载失败：{infraErrors.join(" / ")}
+									（已隐藏不可靠数值）
 								</p>
 								<Button
 									variant="outline"
@@ -387,17 +398,18 @@ export default function AnalyticsPage() {
 								<CardContent>
 									{trendsLoading ? (
 										<div className="flex h-40 items-end justify-between gap-2">
-											{Array.from({ length: 7 }, (_, idx) => `trend-skel-${idx}`).map(
-												(key) => (
-													<div
-														key={key}
-														className="flex flex-1 flex-col items-center gap-2"
-													>
-														<div className="h-full w-full animate-pulse rounded-t bg-neutral-100" />
-														<div className="h-3 w-10 animate-pulse rounded bg-neutral-100" />
-													</div>
-												),
-											)}
+											{Array.from(
+												{ length: 7 },
+												(_, idx) => `trend-skel-${idx}`,
+											).map((key) => (
+												<div
+													key={key}
+													className="flex flex-1 flex-col items-center gap-2"
+												>
+													<div className="h-full w-full animate-pulse rounded-t bg-neutral-100" />
+													<div className="h-3 w-10 animate-pulse rounded bg-neutral-100" />
+												</div>
+											))}
 										</div>
 									) : trendsError ? (
 										<EmptyState
@@ -499,9 +511,7 @@ export default function AnalyticsPage() {
 										{uncategorizedCount > 0 && (
 											<div className="flex flex-col items-center rounded-lg border border-neutral-100 p-4 text-center">
 												<FileText className="h-6 w-6 text-neutral-500" />
-												<span className="mt-2 text-sm font-medium">
-													未分类
-												</span>
+												<span className="mt-2 text-sm font-medium">未分类</span>
 												<span className="mt-1 text-2xl font-bold text-primary-600">
 													{categoryCountsError ? "—" : uncategorizedCount}
 												</span>

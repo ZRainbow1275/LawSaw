@@ -1,10 +1,12 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{ConnectInfo, Path, Query, State},
+    http::HeaderMap,
     routing::{get, post},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
 use law_eye_common::Error;
+use law_eye_db::CreateAuditLog;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -12,6 +14,7 @@ use uuid::Uuid;
 use crate::auth::AuthSession;
 use crate::state::AppState;
 use crate::{ApiError, ApiResult, AppError};
+use std::net::SocketAddr;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ArticleResponse {
@@ -570,6 +573,8 @@ pub(crate) async fn get_article(
 pub(crate) async fn update_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateArticleRequest>,
 ) -> ApiResult<Json<ArticleResponse>> {
@@ -619,11 +624,82 @@ pub(crate) async fn update_article(
             })?;
     }
 
-    let article = state
-        .article_service
-        .update(user.tenant_id, id, title, content, summary, req.category_id)
-        .await
-        .map_err(AppError::from)?;
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+
+    let tenant_id = user.tenant_id;
+    let user_id = user.id;
+
+    let title_for_db = title.map(str::to_string);
+    let content_for_db = content.map(str::to_string);
+    let summary_for_db = summary.map(str::to_string);
+
+    let article = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
+        let article_service = state.article_service.clone();
+        let audit_service = state.audit_service.clone();
+        let ip_address = ip_address.clone();
+        let user_agent = user_agent.clone();
+        let title_for_db = title_for_db.clone();
+        let content_for_db = content_for_db.clone();
+        let summary_for_db = summary_for_db.clone();
+        let category_id = req.category_id;
+
+        Box::pin(async move {
+            let before = article_service.get_by_id_tx(tenant_id, tx, id).await?;
+
+            let after = article_service
+                .update_tx(
+                    tenant_id,
+                    tx,
+                    id,
+                    law_eye_core::article::UpdateArticlePatch {
+                        title: title_for_db.as_deref(),
+                        content: content_for_db.as_deref(),
+                        summary: summary_for_db.as_deref(),
+                        category_id,
+                    },
+                )
+                .await?;
+
+            audit_service
+                .log_tx(
+                    tenant_id,
+                    tx,
+                    CreateAuditLog {
+                        user_id: Some(user_id),
+                        action: "articles.update".to_string(),
+                        resource: "articles".to_string(),
+                        resource_id: Some(id),
+                        old_value: Some(serde_json::json!({
+                            "title": before.title,
+                            "summary": before.summary,
+                            "category_id": before.category_id,
+                            "status": before.status,
+                            "content_len": before.content.as_deref().map(|v| v.len()),
+                        })),
+                        new_value: Some(serde_json::json!({
+                            "title": after.title,
+                            "summary": after.summary,
+                            "category_id": after.category_id,
+                            "status": after.status,
+                            "content_len": after.content.as_deref().map(|v| v.len()),
+                            "requested": {
+                                "title": title_for_db,
+                                "summary": summary_for_db,
+                                "category_id": category_id,
+                                "content_len": content_for_db.as_deref().map(|v| v.len()),
+                            }
+                        })),
+                        ip_address,
+                        user_agent,
+                    },
+                )
+                .await?;
+
+            Ok(after)
+        })
+    })
+    .await
+    .map_err(AppError::from)?;
 
     Ok(Json(article.into()))
 }
@@ -646,6 +722,8 @@ pub(crate) async fn update_article(
 pub(crate) async fn delete_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<DeleteResponse>> {
     let user = auth_session
@@ -661,14 +739,54 @@ pub(crate) async fn delete_article(
         return Err(AppError::forbidden("Permission denied"));
     }
 
-    state
-        .article_service
-        .delete(user.tenant_id, id)
-        .await
-        .map_err(|e| match e {
-            Error::NotFound(_) => AppError::from(e),
-            _ => AppError::internal_with_code("DELETE_ERROR", e.to_string()),
-        })?;
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    let tenant_id = user.tenant_id;
+    let user_id = user.id;
+
+    law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
+        let article_service = state.article_service.clone();
+        let audit_service = state.audit_service.clone();
+        let ip_address = ip_address.clone();
+        let user_agent = user_agent.clone();
+
+        Box::pin(async move {
+            let before = article_service.get_by_id_tx(tenant_id, tx, id).await?;
+
+            article_service.delete_tx(tenant_id, tx, id).await?;
+
+            audit_service
+                .log_tx(
+                    tenant_id,
+                    tx,
+                    CreateAuditLog {
+                        user_id: Some(user_id),
+                        action: "articles.delete".to_string(),
+                        resource: "articles".to_string(),
+                        resource_id: Some(id),
+                        old_value: Some(serde_json::json!({
+                            "title": before.title,
+                            "summary": before.summary,
+                            "category_id": before.category_id,
+                            "status": before.status,
+                            "content_len": before.content.as_deref().map(|v| v.len()),
+                        })),
+                        new_value: Some(serde_json::json!({
+                            "deleted": true,
+                        })),
+                        ip_address,
+                        user_agent,
+                    },
+                )
+                .await?;
+
+            Ok::<(), law_eye_common::Error>(())
+        })
+    })
+    .await
+    .map_err(|e| match e {
+        Error::NotFound(_) => AppError::from(e),
+        _ => AppError::internal_with_code("DELETE_ERROR", e.to_string()),
+    })?;
 
     Ok(Json(DeleteResponse {
         success: true,
@@ -694,6 +812,8 @@ pub(crate) async fn delete_article(
 pub(crate) async fn publish_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<ArticleResponse>> {
     let user = auth_session
@@ -709,14 +829,51 @@ pub(crate) async fn publish_article(
         return Err(AppError::forbidden("Permission denied"));
     }
 
-    let article = state
-        .article_service
-        .update_status(user.tenant_id, id, "published")
-        .await
-        .map_err(|e| match e {
-            Error::NotFound(_) => AppError::from(e),
-            _ => AppError::internal_with_code("PUBLISH_ERROR", e.to_string()),
-        })?;
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    let tenant_id = user.tenant_id;
+    let user_id = user.id;
+
+    let article = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
+        let article_service = state.article_service.clone();
+        let audit_service = state.audit_service.clone();
+        let ip_address = ip_address.clone();
+        let user_agent = user_agent.clone();
+
+        Box::pin(async move {
+            let before = article_service.get_by_id_tx(tenant_id, tx, id).await?;
+            let after = article_service
+                .update_status_tx(tenant_id, tx, id, "published")
+                .await?;
+
+            audit_service
+                .log_tx(
+                    tenant_id,
+                    tx,
+                    CreateAuditLog {
+                        user_id: Some(user_id),
+                        action: "articles.publish".to_string(),
+                        resource: "articles".to_string(),
+                        resource_id: Some(id),
+                        old_value: Some(serde_json::json!({
+                            "status": before.status,
+                        })),
+                        new_value: Some(serde_json::json!({
+                            "status": after.status,
+                        })),
+                        ip_address,
+                        user_agent,
+                    },
+                )
+                .await?;
+
+            Ok(after)
+        })
+    })
+    .await
+    .map_err(|e| match e {
+        Error::NotFound(_) => AppError::from(e),
+        _ => AppError::internal_with_code("PUBLISH_ERROR", e.to_string()),
+    })?;
     Ok(Json(article.into()))
 }
 
@@ -738,6 +895,8 @@ pub(crate) async fn publish_article(
 pub(crate) async fn archive_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<ArticleResponse>> {
     let user = auth_session
@@ -753,14 +912,51 @@ pub(crate) async fn archive_article(
         return Err(AppError::forbidden("Permission denied"));
     }
 
-    let article = state
-        .article_service
-        .update_status(user.tenant_id, id, "archived")
-        .await
-        .map_err(|e| match e {
-            Error::NotFound(_) => AppError::from(e),
-            _ => AppError::internal_with_code("ARCHIVE_ERROR", e.to_string()),
-        })?;
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    let tenant_id = user.tenant_id;
+    let user_id = user.id;
+
+    let article = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
+        let article_service = state.article_service.clone();
+        let audit_service = state.audit_service.clone();
+        let ip_address = ip_address.clone();
+        let user_agent = user_agent.clone();
+
+        Box::pin(async move {
+            let before = article_service.get_by_id_tx(tenant_id, tx, id).await?;
+            let after = article_service
+                .update_status_tx(tenant_id, tx, id, "archived")
+                .await?;
+
+            audit_service
+                .log_tx(
+                    tenant_id,
+                    tx,
+                    CreateAuditLog {
+                        user_id: Some(user_id),
+                        action: "articles.archive".to_string(),
+                        resource: "articles".to_string(),
+                        resource_id: Some(id),
+                        old_value: Some(serde_json::json!({
+                            "status": before.status,
+                        })),
+                        new_value: Some(serde_json::json!({
+                            "status": after.status,
+                        })),
+                        ip_address,
+                        user_agent,
+                    },
+                )
+                .await?;
+
+            Ok(after)
+        })
+    })
+    .await
+    .map_err(|e| match e {
+        Error::NotFound(_) => AppError::from(e),
+        _ => AppError::internal_with_code("ARCHIVE_ERROR", e.to_string()),
+    })?;
     Ok(Json(article.into()))
 }
 
@@ -782,6 +978,8 @@ pub(crate) async fn archive_article(
 pub(crate) async fn batch_update_status(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Json(req): Json<BatchStatusRequest>,
 ) -> ApiResult<Json<BatchStatusResponse>> {
     let user = auth_session
@@ -805,10 +1003,53 @@ pub(crate) async fn batch_update_status(
         return Err(AppError::validation("Invalid status"));
     }
 
-    let updated = state
-        .article_service
-        .batch_update_status(user.tenant_id, &req.ids, &req.status)
-        .await
-        .map_err(|e| AppError::internal_with_code("BATCH_ERROR", e.to_string()))?;
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    let tenant_id = user.tenant_id;
+    let user_id = user.id;
+
+    let ids_sample: Vec<Uuid> = req.ids.iter().copied().take(50).collect();
+    let ids_count = req.ids.len();
+
+    let updated = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
+        let article_service = state.article_service.clone();
+        let audit_service = state.audit_service.clone();
+        let ip_address = ip_address.clone();
+        let user_agent = user_agent.clone();
+        let status = req.status.clone();
+        let ids = req.ids.clone();
+        let ids_sample = ids_sample.clone();
+
+        Box::pin(async move {
+            let updated = article_service
+                .batch_update_status_tx(tenant_id, tx, &ids, &status)
+                .await?;
+
+            audit_service
+                .log_tx(
+                    tenant_id,
+                    tx,
+                    CreateAuditLog {
+                        user_id: Some(user_id),
+                        action: "articles.status.batch_update".to_string(),
+                        resource: "articles".to_string(),
+                        resource_id: None,
+                        old_value: None,
+                        new_value: Some(serde_json::json!({
+                            "status": status,
+                            "ids_count": ids_count,
+                            "ids_sample": ids_sample,
+                            "updated": updated,
+                        })),
+                        ip_address,
+                        user_agent,
+                    },
+                )
+                .await?;
+
+            Ok(updated)
+        })
+    })
+    .await
+    .map_err(|e| AppError::internal_with_code("BATCH_ERROR", e.to_string()))?;
     Ok(Json(BatchStatusResponse { updated }))
 }

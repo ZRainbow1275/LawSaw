@@ -1,7 +1,7 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 import { useCategories } from "@/hooks/use-categories";
+import { cn } from "@/lib/utils";
 import { useSidebarStore } from "@/stores/sidebar-store";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -9,11 +9,11 @@ import {
 	Database,
 	Eye,
 	FileText,
-	Share2,
 	LayoutDashboard,
 	MessageSquarePlus,
 	Rss,
 	Settings,
+	Share2,
 	Sparkles,
 	TrendingUp,
 	X,
@@ -22,11 +22,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 
-function parseHexColor(input: string): { r: number; g: number; b: number } | null {
+function parseHexColor(
+	input: string,
+): { r: number; g: number; b: number } | null {
 	const hex = input.trim();
 	if (!hex.startsWith("#")) return null;
 	const value = hex.slice(1);
-	if (!/^[0-9a-fA-F]{3}$/.test(value) && !/^[0-9a-fA-F]{6}$/.test(value)) return null;
+	if (!/^[0-9a-fA-F]{3}$/.test(value) && !/^[0-9a-fA-F]{6}$/.test(value))
+		return null;
 
 	const expanded =
 		value.length === 3
@@ -39,12 +42,15 @@ function parseHexColor(input: string): { r: number; g: number; b: number } | nul
 	const r = Number.parseInt(expanded.slice(0, 2), 16);
 	const g = Number.parseInt(expanded.slice(2, 4), 16);
 	const b = Number.parseInt(expanded.slice(4, 6), 16);
-	if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) return null;
+	if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b))
+		return null;
 
 	return { r, g, b };
 }
 
-function getCategoryBadgeStyle(color: string | null): React.CSSProperties | undefined {
+function getCategoryBadgeStyle(
+	color: string | null,
+): React.CSSProperties | undefined {
 	if (!color) return undefined;
 	const parsed = parseHexColor(color);
 	if (!parsed) return undefined;
@@ -304,7 +310,9 @@ function SidebarPanel({
 													<motion.div
 														className={cn(
 															"flex h-7 w-7 items-center justify-center rounded-lg text-xs font-semibold",
-															badgeStyle ? "" : "bg-neutral-100 text-neutral-600",
+															badgeStyle
+																? ""
+																: "bg-neutral-100 text-neutral-600",
 														)}
 														style={badgeStyle}
 														whileHover={{ scale: 1.15, rotate: 10 }}

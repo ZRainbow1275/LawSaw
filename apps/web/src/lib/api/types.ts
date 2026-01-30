@@ -19,7 +19,12 @@ export interface Article {
 	updated_at: string;
 }
 
-export type ArticleRiskLevel = "unknown" | "low" | "medium" | "high" | "critical";
+export type ArticleRiskLevel =
+	| "unknown"
+	| "low"
+	| "medium"
+	| "high"
+	| "critical";
 
 /**
  * 统一的风险分级口径（与后端 AI 风险评估提示词一致）：
@@ -30,7 +35,9 @@ export type ArticleRiskLevel = "unknown" | "low" | "medium" | "high" | "critical
  *
  * 注意：`null/undefined` 表示“未评估”，不得默认当作低风险。
  */
-export function getArticleRiskLevel(score: number | null | undefined): ArticleRiskLevel {
+export function getArticleRiskLevel(
+	score: number | null | undefined,
+): ArticleRiskLevel {
 	if (score == null) return "unknown";
 	if (score <= 25) return "low";
 	if (score <= 50) return "medium";
@@ -38,7 +45,9 @@ export function getArticleRiskLevel(score: number | null | undefined): ArticleRi
 	return "critical";
 }
 
-export type ArticleSentimentLabel = "unknown" | NonNullable<Article["sentiment"]>;
+export type ArticleSentimentLabel =
+	| "unknown"
+	| NonNullable<Article["sentiment"]>;
 
 export function normalizeArticleSentiment(
 	sentiment: Article["sentiment"],
@@ -351,7 +360,12 @@ const FEEDBACK_TYPES = [
 	"other",
 ] as const;
 
-const FEEDBACK_STATUSES = ["pending", "reviewing", "resolved", "rejected"] as const;
+const FEEDBACK_STATUSES = [
+	"pending",
+	"reviewing",
+	"resolved",
+	"rejected",
+] as const;
 
 function typeName(value: unknown): string {
 	if (value === null) return "null";
@@ -359,7 +373,10 @@ function typeName(value: unknown): string {
 	return typeof value;
 }
 
-function assertRecord(value: unknown, path: string): asserts value is JsonRecord {
+function assertRecord(
+	value: unknown,
+	path: string,
+): asserts value is JsonRecord {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) {
 		throw new Error(`${path} 期望 object，实际 ${typeName(value)}`);
 	}
@@ -437,7 +454,10 @@ function getOptional(obj: JsonRecord, key: string): unknown {
 	return obj[key];
 }
 
-export function assertUser(value: unknown, path = "user"): asserts value is User {
+export function assertUser(
+	value: unknown,
+	path = "user",
+): asserts value is User {
 	assertRecord(value, path);
 
 	const id = getRequired(value, "id", path);
@@ -472,10 +492,22 @@ export function assertUserProfile(
 
 	assertString(getRequired(value, "id", path), `${path}.id`);
 	assertString(getRequired(value, "email", path), `${path}.email`);
-	assertNullable(getRequired(value, "display_name", path), `${path}.display_name`, assertString);
-	assertNullable(getRequired(value, "avatar_url", path), `${path}.avatar_url`, assertString);
+	assertNullable(
+		getRequired(value, "display_name", path),
+		`${path}.display_name`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "avatar_url", path),
+		`${path}.avatar_url`,
+		assertString,
+	);
 	assertBoolean(getRequired(value, "is_active", path), `${path}.is_active`);
-	assertNullable(getRequired(value, "last_login", path), `${path}.last_login`, assertString);
+	assertNullable(
+		getRequired(value, "last_login", path),
+		`${path}.last_login`,
+		assertString,
+	);
 	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
 
 	const preferences = getRequired(value, "preferences", path);
@@ -498,7 +530,10 @@ export function assertUserDetailResponse(
 	assertArray(permissions, `${path}.permissions`, assertString);
 }
 
-export function assertApiKey(value: unknown, path = "apiKey"): asserts value is ApiKey {
+export function assertApiKey(
+	value: unknown,
+	path = "apiKey",
+): asserts value is ApiKey {
 	assertRecord(value, path);
 
 	assertString(getRequired(value, "id", path), `${path}.id`);
@@ -510,7 +545,11 @@ export function assertApiKey(value: unknown, path = "apiKey"): asserts value is 
 
 	assertNumber(getRequired(value, "rate_limit", path), `${path}.rate_limit`);
 	assertBoolean(getRequired(value, "is_active", path), `${path}.is_active`);
-	assertNullable(getRequired(value, "last_used", path), `${path}.last_used`, assertString);
+	assertNullable(
+		getRequired(value, "last_used", path),
+		`${path}.last_used`,
+		assertString,
+	);
 	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
 }
 
@@ -549,20 +588,51 @@ export function assertAuthResponse(
 	assertNullable(user, `${path}.user`, assertUser);
 }
 
-export function assertArticle(value: unknown, path = "article"): asserts value is Article {
+export function assertArticle(
+	value: unknown,
+	path = "article",
+): asserts value is Article {
 	assertRecord(value, path);
 
 	assertString(getRequired(value, "id", path), `${path}.id`);
 	assertString(getRequired(value, "source_id", path), `${path}.source_id`);
-	assertNullable(getRequired(value, "category_id", path), `${path}.category_id`, assertString);
+	assertNullable(
+		getRequired(value, "category_id", path),
+		`${path}.category_id`,
+		assertString,
+	);
 	assertString(getRequired(value, "title", path), `${path}.title`);
 	assertString(getRequired(value, "link", path), `${path}.link`);
-	assertNullable(getRequired(value, "content", path), `${path}.content`, assertString);
-	assertNullable(getRequired(value, "summary", path), `${path}.summary`, assertString);
-	assertNullable(getRequired(value, "author", path), `${path}.author`, assertString);
-	assertNullable(getRequired(value, "published_at", path), `${path}.published_at`, assertString);
-	assertNullable(getRequired(value, "risk_score", path), `${path}.risk_score`, assertNumber);
-	assertNullable(getRequired(value, "importance", path), `${path}.importance`, assertNumber);
+	assertNullable(
+		getRequired(value, "content", path),
+		`${path}.content`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "summary", path),
+		`${path}.summary`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "author", path),
+		`${path}.author`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "published_at", path),
+		`${path}.published_at`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "risk_score", path),
+		`${path}.risk_score`,
+		assertNumber,
+	);
+	assertNullable(
+		getRequired(value, "importance", path),
+		`${path}.importance`,
+		assertNumber,
+	);
 
 	const sentiment = getRequired(value, "sentiment", path);
 	if (sentiment !== null) {
@@ -574,7 +644,11 @@ export function assertArticle(value: unknown, path = "article"): asserts value i
 		assertRecord(aiMetadata, `${path}.ai_metadata`);
 	}
 
-	assertOneOf(getRequired(value, "status", path), `${path}.status`, ARTICLE_STATUSES);
+	assertOneOf(
+		getRequired(value, "status", path),
+		`${path}.status`,
+		ARTICLE_STATUSES,
+	);
 	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
 	assertString(getRequired(value, "updated_at", path), `${path}.updated_at`);
 }
@@ -598,10 +672,22 @@ export function assertArticleStats(
 	path = "articleStats",
 ): asserts value is ArticleStats {
 	assertRecord(value, path);
-	assertNumber(getRequired(value, "total_articles", path), `${path}.total_articles`);
-	assertNumber(getRequired(value, "pending_count", path), `${path}.pending_count`);
-	assertNumber(getRequired(value, "published_count", path), `${path}.published_count`);
-	assertNumber(getRequired(value, "high_risk_count", path), `${path}.high_risk_count`);
+	assertNumber(
+		getRequired(value, "total_articles", path),
+		`${path}.total_articles`,
+	);
+	assertNumber(
+		getRequired(value, "pending_count", path),
+		`${path}.pending_count`,
+	);
+	assertNumber(
+		getRequired(value, "published_count", path),
+		`${path}.published_count`,
+	);
+	assertNumber(
+		getRequired(value, "high_risk_count", path),
+		`${path}.high_risk_count`,
+	);
 	assertNumber(getRequired(value, "today_count", path), `${path}.today_count`);
 }
 
@@ -647,9 +733,15 @@ export function assertArticleAnalyticsSummary(
 ): asserts value is ArticleAnalyticsSummary {
 	assertRecord(value, path);
 	assertNumber(getRequired(value, "total", path), `${path}.total`);
-	assertArticleStatusCounts(getRequired(value, "status", path), `${path}.status`);
+	assertArticleStatusCounts(
+		getRequired(value, "status", path),
+		`${path}.status`,
+	);
 	assertArticleRiskCounts(getRequired(value, "risk", path), `${path}.risk`);
-	assertArticleSentimentCounts(getRequired(value, "sentiment", path), `${path}.sentiment`);
+	assertArticleSentimentCounts(
+		getRequired(value, "sentiment", path),
+		`${path}.sentiment`,
+	);
 }
 
 export function assertArticleTrendPoint(
@@ -673,7 +765,11 @@ export function assertArticleCategoryCount(
 	path = "articleCategoryCount",
 ): asserts value is ArticleCategoryCount {
 	assertRecord(value, path);
-	assertNullable(getRequired(value, "category_id", path), `${path}.category_id`, assertString);
+	assertNullable(
+		getRequired(value, "category_id", path),
+		`${path}.category_id`,
+		assertString,
+	);
 	assertNumber(getRequired(value, "count", path), `${path}.count`);
 }
 
@@ -718,11 +814,27 @@ export function assertCategory(
 	assertString(getRequired(value, "id", path), `${path}.id`);
 	assertString(getRequired(value, "slug", path), `${path}.slug`);
 	assertString(getRequired(value, "name", path), `${path}.name`);
-	assertNullable(getRequired(value, "description", path), `${path}.description`, assertString);
-	assertNullable(getRequired(value, "parent_id", path), `${path}.parent_id`, assertString);
+	assertNullable(
+		getRequired(value, "description", path),
+		`${path}.description`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "parent_id", path),
+		`${path}.parent_id`,
+		assertString,
+	);
 	assertNumber(getRequired(value, "sort_order", path), `${path}.sort_order`);
-	assertNullable(getRequired(value, "icon", path), `${path}.icon`, assertString);
-	assertNullable(getRequired(value, "color", path), `${path}.color`, assertString);
+	assertNullable(
+		getRequired(value, "icon", path),
+		`${path}.icon`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "color", path),
+		`${path}.color`,
+		assertString,
+	);
 	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
 }
 
@@ -733,7 +845,10 @@ export function assertCategoryList(
 	assertArray(value, path, assertCategory);
 }
 
-export function assertSource(value: unknown, path = "source"): asserts value is Source {
+export function assertSource(
+	value: unknown,
+	path = "source",
+): asserts value is Source {
 	assertRecord(value, path);
 
 	assertString(getRequired(value, "id", path), `${path}.id`);
@@ -748,11 +863,23 @@ export function assertSource(value: unknown, path = "source"): asserts value is 
 	const config = getRequired(value, "config", path);
 	assertRecord(config, `${path}.config`);
 
-	assertNullable(getRequired(value, "schedule", path), `${path}.schedule`, assertString);
+	assertNullable(
+		getRequired(value, "schedule", path),
+		`${path}.schedule`,
+		assertString,
+	);
 	assertNumber(getRequired(value, "priority", path), `${path}.priority`);
 	assertBoolean(getRequired(value, "is_active", path), `${path}.is_active`);
-	assertNullable(getRequired(value, "last_fetch", path), `${path}.last_fetch`, assertString);
-	assertNullable(getRequired(value, "last_error", path), `${path}.last_error`, assertString);
+	assertNullable(
+		getRequired(value, "last_fetch", path),
+		`${path}.last_fetch`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "last_error", path),
+		`${path}.last_error`,
+		assertString,
+	);
 	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
 	assertString(getRequired(value, "updated_at", path), `${path}.updated_at`);
 }
@@ -842,7 +969,11 @@ export function assertFeedback(
 	assertRecord(value, path);
 
 	assertString(getRequired(value, "id", path), `${path}.id`);
-	assertNullable(getRequired(value, "user_id", path), `${path}.user_id`, assertString);
+	assertNullable(
+		getRequired(value, "user_id", path),
+		`${path}.user_id`,
+		assertString,
+	);
 	assertOneOf(getRequired(value, "type", path), `${path}.type`, FEEDBACK_TYPES);
 	assertString(getRequired(value, "title", path), `${path}.title`);
 	assertString(getRequired(value, "content", path), `${path}.content`);
@@ -884,7 +1015,10 @@ export function assertKnowledgeEntity(
 	assertArray(aliases, `${path}.aliases`, assertString);
 	const properties = getRequired(value, "properties", path);
 	assertRecord(properties, `${path}.properties`);
-	assertNumber(getRequired(value, "mention_count", path), `${path}.mention_count`);
+	assertNumber(
+		getRequired(value, "mention_count", path),
+		`${path}.mention_count`,
+	);
 	assertString(getRequired(value, "first_seen", path), `${path}.first_seen`);
 	assertString(getRequired(value, "last_seen", path), `${path}.last_seen`);
 	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
@@ -908,7 +1042,10 @@ export function assertKnowledgeRelatedEntity(
 
 	const entity = getRequired(value, "entity", path);
 	assertKnowledgeEntity(entity, `${path}.entity`);
-	assertString(getRequired(value, "relation_type", path), `${path}.relation_type`);
+	assertString(
+		getRequired(value, "relation_type", path),
+		`${path}.relation_type`,
+	);
 	assertNumber(getRequired(value, "weight", path), `${path}.weight`);
 	assertOneOf(
 		getRequired(value, "direction", path),
@@ -960,7 +1097,10 @@ export function assertKnowledgeBackfillResponse(
 		getRequired(value, "articles_considered", path),
 		`${path}.articles_considered`,
 	);
-	assertNumber(getRequired(value, "entities_upserted", path), `${path}.entities_upserted`);
+	assertNumber(
+		getRequired(value, "entities_upserted", path),
+		`${path}.entities_upserted`,
+	);
 	assertNumber(
 		getRequired(value, "article_entities_inserted", path),
 		`${path}.article_entities_inserted`,

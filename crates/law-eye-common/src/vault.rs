@@ -44,7 +44,9 @@ impl VaultTransitCipher {
         let vault = VaultClient::new(cfg).await?;
         let mount = mount.trim().trim_matches('/').to_string();
         if mount.is_empty() {
-            return Err(Error::Config("Vault transit mount must not be empty".into()));
+            return Err(Error::Config(
+                "Vault transit mount must not be empty".into(),
+            ));
         }
         if !is_valid_vault_path_segment(&mount) {
             return Err(Error::Config(format!(
@@ -57,7 +59,10 @@ impl VaultTransitCipher {
             return Err(Error::Config("Vault transit key must not be empty".into()));
         }
         if !is_valid_vault_path_segment(&key) {
-            return Err(Error::Config(format!("Invalid Vault transit key name: {}", key)));
+            return Err(Error::Config(format!(
+                "Invalid Vault transit key name: {}",
+                key
+            )));
         }
         Ok(Self { vault, mount, key })
     }
@@ -142,7 +147,8 @@ impl SensitiveStringCipher for VaultTransitCipher {
         let decoded = BASE64
             .decode(parsed.data.plaintext.as_bytes())
             .map_err(|err| Error::Parse(format!("Base64 decode failed: {err}")))?;
-        String::from_utf8(decoded).map_err(|err| Error::Parse(format!("UTF-8 decode failed: {err}")))
+        String::from_utf8(decoded)
+            .map_err(|err| Error::Parse(format!("UTF-8 decode failed: {err}")))
     }
 }
 
@@ -228,7 +234,9 @@ impl VaultClient {
 
         let addr = cfg.addr.trim().trim_end_matches('/').to_string();
         if addr.is_empty() {
-            return Err(Error::Config("LAW_EYE__SECRETS__VAULT__ADDR must not be empty".into()));
+            return Err(Error::Config(
+                "LAW_EYE__SECRETS__VAULT__ADDR must not be empty".into(),
+            ));
         }
 
         let inner = Arc::new(VaultClientInner {

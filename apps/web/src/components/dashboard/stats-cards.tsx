@@ -89,15 +89,15 @@ function StatCard({ stat, index }: { stat: StatConfig; index: number }) {
 							<p className="text-sm font-medium text-neutral-500">
 								{stat.title}
 							</p>
-						<div className="mt-2">
-							{stat.isLoading ? (
-								<div className="h-9 w-16 rounded bg-neutral-100 animate-pulse" />
-							) : stat.isError || stat.value === null ? (
-								<span className="text-3xl font-bold text-neutral-400">—</span>
-							) : (
-								<AnimatedNumber
-									value={stat.value}
-									duration={1200}
+							<div className="mt-2">
+								{stat.isLoading ? (
+									<div className="h-9 w-16 rounded bg-neutral-100 animate-pulse" />
+								) : stat.isError || stat.value === null ? (
+									<span className="text-3xl font-bold text-neutral-400">—</span>
+								) : (
+									<AnimatedNumber
+										value={stat.value}
+										duration={1200}
 										animateOnView
 										numberClassName="text-3xl font-bold text-neutral-900"
 									/>
@@ -149,7 +149,9 @@ export function StatsCards() {
 		{
 			title: "今日资讯",
 			value:
-				statsQuery.isError || !statsQuery.data ? null : statsQuery.data.today_count,
+				statsQuery.isError || !statsQuery.data
+					? null
+					: statsQuery.data.today_count,
 			icon: FileText,
 			color: "primary",
 			isLoading: statsQuery.isLoading,
