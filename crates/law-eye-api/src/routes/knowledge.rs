@@ -4,6 +4,7 @@ use axum::{
     Json, Router,
 };
 use chrono::{DateTime, Utc};
+use law_eye_core::with_tenant_tx;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use utoipa::ToSchema;
@@ -106,7 +107,7 @@ pub(crate) async fn list_top_entities(
     let limit = clamp_limit(query.limit, 50, 200);
     let entities = state
         .knowledge_service
-        .get_top_entities(limit)
+        .get_top_entities(user.tenant_id, limit)
         .await
         .map_err(AppError::from)?;
 
@@ -162,7 +163,7 @@ pub(crate) async fn search_entities(
     let limit = clamp_limit(query.limit, 20, 100);
     let entities = state
         .knowledge_service
-        .search_entities(term, limit)
+        .search_entities(user.tenant_id, term, limit)
         .await
         .map_err(AppError::from)?;
 
@@ -205,7 +206,7 @@ pub(crate) async fn get_entity(
 
     let entity = state
         .knowledge_service
-        .get_entity(id)
+        .get_entity(user.tenant_id, id)
         .await
         .map_err(AppError::from)?;
 
@@ -297,61 +298,67 @@ pub(crate) async fn get_related_entities(
 
     let limit = clamp_limit(query.limit, 20, 50);
 
-    let outgoing = sqlx::query_as::<_, RelatedEntityRow>(
-        r#"
-        SELECT
-            e.id,
-            e.name,
-            e.entity_type,
-            e.aliases,
-            e.properties,
-            e.mention_count,
-            e.first_seen,
-            e.last_seen,
-            e.created_at,
-            e.updated_at,
-            r.relation_type,
-            r.weight
-        FROM entity_relations r
-        JOIN entities e ON e.id = r.target_entity_id
-        WHERE r.source_entity_id = $1
-        ORDER BY r.weight DESC
-        LIMIT $2
-        "#,
-    )
-    .bind(id)
-    .bind(limit)
-    .fetch_all(&state.pool)
-    .await
-    .map_err(|e| AppError::internal(format!("Database error: {}", e)))?;
+    let (outgoing, incoming) = with_tenant_tx(&state.pool, user.tenant_id, |tx| Box::pin(async move {
+        let outgoing = sqlx::query_as::<_, RelatedEntityRow>(
+            r#"
+            SELECT
+                e.id,
+                e.name,
+                e.entity_type,
+                e.aliases,
+                e.properties,
+                e.mention_count,
+                e.first_seen,
+                e.last_seen,
+                e.created_at,
+                e.updated_at,
+                r.relation_type,
+                r.weight
+            FROM entity_relations r
+            JOIN entities e ON e.id = r.target_entity_id
+            WHERE r.source_entity_id = $1
+            ORDER BY r.weight DESC
+            LIMIT $2
+            "#,
+        )
+        .bind(id)
+        .bind(limit)
+        .fetch_all(tx.as_mut())
+        .await
+        .map_err(|e| law_eye_common::Error::Database(e.to_string()))?;
 
-    let incoming = sqlx::query_as::<_, RelatedEntityRow>(
-        r#"
-        SELECT
-            e.id,
-            e.name,
-            e.entity_type,
-            e.aliases,
-            e.properties,
-            e.mention_count,
-            e.first_seen,
-            e.last_seen,
-            e.created_at,
-            e.updated_at,
-            r.relation_type,
-            r.weight
-        FROM entity_relations r
-        JOIN entities e ON e.id = r.source_entity_id
-        WHERE r.target_entity_id = $1
-        ORDER BY r.weight DESC
-        LIMIT $2
-        "#,
-    )
-    .bind(id)
-    .bind(limit)
-    .fetch_all(&state.pool)
+        let incoming = sqlx::query_as::<_, RelatedEntityRow>(
+            r#"
+            SELECT
+                e.id,
+                e.name,
+                e.entity_type,
+                e.aliases,
+                e.properties,
+                e.mention_count,
+                e.first_seen,
+                e.last_seen,
+                e.created_at,
+                e.updated_at,
+                r.relation_type,
+                r.weight
+            FROM entity_relations r
+            JOIN entities e ON e.id = r.source_entity_id
+            WHERE r.target_entity_id = $1
+            ORDER BY r.weight DESC
+            LIMIT $2
+            "#,
+        )
+        .bind(id)
+        .bind(limit)
+        .fetch_all(tx.as_mut())
+        .await
+        .map_err(|e| law_eye_common::Error::Database(e.to_string()))?;
+
+        Ok((outgoing, incoming))
+    }))
     .await
-    .map_err(|e| AppError::internal(format!("Database error: {}", e)))?;
+    .map_err(AppError::from)?;
 
     let mut result = Vec::with_capacity(outgoing.len() + incoming.len());
 
@@ -427,26 +434,30 @@ pub(crate) async fn get_entity_articles(
 
     let limit = clamp_limit(query.limit, 10, 50);
 
-    let items = sqlx::query_as::<_, EntityArticleResponse>(
-        r#"
-        SELECT
-            a.id AS article_id,
-            a.title,
-            a.published_at,
-            a.status,
-            ae.relevance_score
-        FROM article_entities ae
-        JOIN articles a ON a.id = ae.article_id
-        WHERE ae.entity_id = $1
-        ORDER BY ae.relevance_score DESC NULLS LAST, ae.mention_count DESC, a.published_at DESC NULLS LAST
-        LIMIT $2
-        "#,
-    )
-    .bind(id)
-    .bind(limit)
-    .fetch_all(&state.pool)
+    let items = with_tenant_tx(&state.pool, user.tenant_id, |tx| Box::pin(async move {
+        sqlx::query_as::<_, EntityArticleResponse>(
+            r#"
+            SELECT
+                a.id AS article_id,
+                a.title,
+                a.published_at,
+                a.status,
+                ae.relevance_score
+            FROM article_entities ae
+            JOIN articles a ON a.id = ae.article_id
+            WHERE ae.entity_id = $1
+            ORDER BY ae.relevance_score DESC NULLS LAST, ae.mention_count DESC, a.published_at DESC NULLS LAST
+            LIMIT $2
+            "#,
+        )
+        .bind(id)
+        .bind(limit)
+        .fetch_all(tx.as_mut())
+        .await
+        .map_err(|e| law_eye_common::Error::Database(e.to_string()))
+    }))
     .await
-    .map_err(|e| AppError::internal(format!("Database error: {}", e)))?;
+    .map_err(AppError::from)?;
 
     Ok(Json(items))
 }
@@ -492,14 +503,20 @@ pub(crate) async fn backfill(
     require_articles_read(&state, user.id).await?;
 
     let limit = clamp_limit(req.limit, 500, 5_000);
-    let stats = run_backfill(&state.pool, limit).await?;
+    let stats = run_backfill(&state.pool, user.tenant_id, limit).await?;
 
     Ok(Json(stats))
 }
 
-async fn run_backfill(pool: &PgPool, limit: i64) -> ApiResult<BackfillResponse> {
+async fn run_backfill(pool: &PgPool, tenant_id: Uuid, limit: i64) -> ApiResult<BackfillResponse> {
     let mut tx = pool
         .begin()
+        .await
+        .map_err(|e| AppError::internal(format!("Database error: {}", e)))?;
+
+    sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+        .bind(tenant_id.to_string())
+        .execute(&mut *tx)
         .await
         .map_err(|e| AppError::internal(format!("Database error: {}", e)))?;
 
@@ -510,7 +527,7 @@ async fn run_backfill(pool: &PgPool, limit: i64) -> ApiResult<BackfillResponse> 
         SELECT DISTINCT TRIM(s.name) AS name, 'organization' AS entity_type, '{}'::text[] AS aliases, 0 AS mention_count
         FROM sources s
         WHERE TRIM(s.name) <> ''
-        ON CONFLICT (name, entity_type) DO UPDATE SET
+        ON CONFLICT (tenant_id, name, entity_type) DO UPDATE SET
             last_seen = NOW(),
             updated_at = NOW()
         "#,
@@ -526,7 +543,7 @@ async fn run_backfill(pool: &PgPool, limit: i64) -> ApiResult<BackfillResponse> 
         SELECT DISTINCT TRIM(c.name) AS name, 'concept' AS entity_type, '{}'::text[] AS aliases, 0 AS mention_count
         FROM categories c
         WHERE TRIM(c.name) <> ''
-        ON CONFLICT (name, entity_type) DO UPDATE SET
+        ON CONFLICT (tenant_id, name, entity_type) DO UPDATE SET
             last_seen = NOW(),
             updated_at = NOW()
         "#,
@@ -554,7 +571,7 @@ async fn run_backfill(pool: &PgPool, limit: i64) -> ApiResult<BackfillResponse> 
         SELECT a.id, se.entity_id, 1, 'source'
         FROM recent_articles a
         JOIN source_entities se ON se.source_id = a.source_id
-        ON CONFLICT (article_id, entity_id) DO NOTHING
+        ON CONFLICT (tenant_id, article_id, entity_id) DO NOTHING
         "#,
     )
     .bind(limit)
@@ -581,7 +598,7 @@ async fn run_backfill(pool: &PgPool, limit: i64) -> ApiResult<BackfillResponse> 
         SELECT a.id, ce.entity_id, 1, 'category'
         FROM recent_articles a
         JOIN category_entities ce ON ce.category_id = a.category_id
-        ON CONFLICT (article_id, entity_id) DO NOTHING
+        ON CONFLICT (tenant_id, article_id, entity_id) DO NOTHING
         "#,
     )
     .bind(limit)
@@ -615,7 +632,7 @@ async fn run_backfill(pool: &PgPool, limit: i64) -> ApiResult<BackfillResponse> 
         JOIN source_entities se ON se.source_id = a.source_id
         JOIN category_entities ce ON ce.category_id = a.category_id
         GROUP BY se.entity_id, ce.entity_id
-        ON CONFLICT (source_entity_id, target_entity_id, relation_type) DO UPDATE SET
+        ON CONFLICT (tenant_id, source_entity_id, target_entity_id, relation_type) DO UPDATE SET
             weight = EXCLUDED.weight
         "#,
     )

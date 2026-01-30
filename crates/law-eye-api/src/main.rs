@@ -14,7 +14,7 @@ use axum::response::IntoResponse;
 use axum_login::AuthManagerLayerBuilder;
 use law_eye_ai::{AiService, LlmGateway};
 use law_eye_common::AppConfig;
-use law_eye_db::create_pool;
+use law_eye_db::{create_pool, create_pool_with_session_role};
 use law_eye_queue::TaskQueue;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use std::{collections::HashSet, net::SocketAddr, time::Duration};
@@ -167,10 +167,16 @@ async fn main() -> anyhow::Result<()> {
     info!("Redis URL: {}", redact_sensitive_url(&config.redis.url));
     info!("Server Port: {}", config.server.port);
 
-    let pool = create_pool(&config.database.url, config.database.max_connections).await?;
-
     info!("Running database migrations...");
-    law_eye_db::run_migrations(&pool).await?;
+    let admin_pool = create_pool(&config.database.url, config.database.max_connections).await?;
+    law_eye_db::run_migrations(&admin_pool).await?;
+
+    let pool = create_pool_with_session_role(
+        &config.database.url,
+        config.database.max_connections,
+        config.database.session_role.as_deref(),
+    )
+    .await?;
 
     let task_queue = TaskQueue::new(&config.redis.url)?;
 

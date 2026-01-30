@@ -140,7 +140,11 @@ pub(crate) async fn list_sources(
         return Err(AppError::forbidden("Permission denied"));
     }
 
-    let sources = state.source_service.list().await.map_err(AppError::from)?;
+    let sources = state
+        .source_service
+        .list(user.tenant_id)
+        .await
+        .map_err(AppError::from)?;
     Ok(Json(
         sources
             .into_iter()
@@ -185,7 +189,7 @@ pub(crate) async fn get_source(
 
     let source = state
         .source_service
-        .get_by_id(id)
+        .get_by_id(user.tenant_id, id)
         .await
         .map_err(AppError::from)?;
     Ok(Json(SourceResponse::from(source)))
@@ -238,7 +242,7 @@ pub(crate) async fn create_source(
 
     let source = state
         .source_service
-        .create(input.into())
+        .create(user.tenant_id, input.into())
         .await
         .map_err(AppError::from)?;
     Ok((StatusCode::CREATED, Json(SourceResponse::from(source))))
@@ -280,11 +284,12 @@ pub(crate) async fn trigger_fetch(
 
     let source = state
         .source_service
-        .get_by_id(id)
+        .get_by_id(user.tenant_id, id)
         .await
         .map_err(AppError::from)?;
 
     let task = IngestTask {
+        tenant_id: user.tenant_id,
         source_id: source.id,
         source_type: source.source_type,
         url: source.url,

@@ -231,13 +231,19 @@ pub(crate) async fn list_articles(
 
     let articles = state
         .article_service
-        .list_filtered(limit, offset, params.category_id, params.status.as_deref())
+        .list_filtered(
+            user.tenant_id,
+            limit,
+            offset,
+            params.category_id,
+            params.status.as_deref(),
+        )
         .await
         .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?;
 
     let total = state
         .article_service
-        .count_filtered(params.category_id, params.status.as_deref())
+        .count_filtered(user.tenant_id, params.category_id, params.status.as_deref())
         .await
         .map_err(|e| AppError::internal_with_code("COUNT_ERROR", e.to_string()))?;
     let data: Vec<ArticleResponse> = articles.into_iter().map(|a| a.into()).collect();
@@ -282,7 +288,7 @@ pub(crate) async fn get_stats(
 
     let stats = state
         .article_service
-        .get_stats()
+        .get_stats(user.tenant_id)
         .await
         .map_err(|e| AppError::internal_with_code("STATS_ERROR", e.to_string()))?;
     Ok(Json(ArticleStatsResponse {
@@ -326,7 +332,7 @@ pub(crate) async fn get_analytics_summary(
 
     let summary = state
         .article_service
-        .get_analytics_summary()
+        .get_analytics_summary(user.tenant_id)
         .await
         .map_err(|e| AppError::internal_with_code("STATS_ERROR", e.to_string()))?;
 
@@ -388,7 +394,7 @@ pub(crate) async fn get_category_counts(
 
     let rows = state
         .article_service
-        .get_category_counts()
+        .get_category_counts(user.tenant_id)
         .await
         .map_err(|e| AppError::internal_with_code("STATS_ERROR", e.to_string()))?;
 
@@ -444,7 +450,7 @@ pub(crate) async fn get_trends(
 
     let points = state
         .article_service
-        .get_daily_trend(days)
+        .get_daily_trend(user.tenant_id, days)
         .await
         .map_err(|e| AppError::internal_with_code("STATS_ERROR", e.to_string()))?;
 
@@ -496,7 +502,7 @@ pub(crate) async fn list_recent(
     let limit = params.limit.unwrap_or(10).min(50);
     let articles = state
         .article_service
-        .list_recent(limit)
+        .list_recent(user.tenant_id, limit)
         .await
         .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?;
     let data: Vec<ArticleResponse> = articles.into_iter().map(|a| a.into()).collect();
@@ -538,7 +544,7 @@ pub(crate) async fn get_article(
 
     let article = state
         .article_service
-        .get_by_id(id)
+        .get_by_id(user.tenant_id, id)
         .await
         .map_err(AppError::from)?;
     Ok(Json(article.into()))
@@ -615,7 +621,7 @@ pub(crate) async fn update_article(
 
     let article = state
         .article_service
-        .update(id, title, content, summary, req.category_id)
+        .update(user.tenant_id, id, title, content, summary, req.category_id)
         .await
         .map_err(AppError::from)?;
 
@@ -657,7 +663,7 @@ pub(crate) async fn delete_article(
 
     state
         .article_service
-        .delete(id)
+        .delete(user.tenant_id, id)
         .await
         .map_err(|e| match e {
             Error::NotFound(_) => AppError::from(e),
@@ -705,7 +711,7 @@ pub(crate) async fn publish_article(
 
     let article = state
         .article_service
-        .update_status(id, "published")
+        .update_status(user.tenant_id, id, "published")
         .await
         .map_err(|e| match e {
             Error::NotFound(_) => AppError::from(e),
@@ -749,7 +755,7 @@ pub(crate) async fn archive_article(
 
     let article = state
         .article_service
-        .update_status(id, "archived")
+        .update_status(user.tenant_id, id, "archived")
         .await
         .map_err(|e| match e {
             Error::NotFound(_) => AppError::from(e),
@@ -801,7 +807,7 @@ pub(crate) async fn batch_update_status(
 
     let updated = state
         .article_service
-        .batch_update_status(&req.ids, &req.status)
+        .batch_update_status(user.tenant_id, &req.ids, &req.status)
         .await
         .map_err(|e| AppError::internal_with_code("BATCH_ERROR", e.to_string()))?;
     Ok(Json(BatchStatusResponse { updated }))

@@ -45,6 +45,7 @@ services:
       LAW_EYE__SERVER__PORT: "3001"
       LAW_EYE__DATABASE__URL: postgres://law_eye:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/law_eye
       LAW_EYE__DATABASE__MAX_CONNECTIONS: "10"
+      LAW_EYE__DATABASE__SESSION_ROLE: "law_eye_app"
       LAW_EYE__REDIS__URL: redis://redis:6379
       LAW_EYE__AI__API_KEY: ${OPENAI_API_KEY:-}
       LAW_EYE__AI__BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
@@ -78,6 +79,7 @@ services:
       LAW_EYE__SERVER__PORT: "3002"
       LAW_EYE__DATABASE__URL: postgres://law_eye:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/law_eye
       LAW_EYE__DATABASE__MAX_CONNECTIONS: "10"
+      LAW_EYE__DATABASE__SESSION_ROLE: "law_eye_app"
       LAW_EYE__REDIS__URL: redis://redis:6379
       LAW_EYE__AI__API_KEY: ${OPENAI_API_KEY:-}
       LAW_EYE__AI__BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}

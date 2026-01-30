@@ -122,11 +122,12 @@ impl UserService {
 
         let user = sqlx::query_as::<_, User>(
             r#"
-            INSERT INTO users (email, password_hash, display_name)
-            VALUES ($1, $2, $3)
+            INSERT INTO users (tenant_id, email, password_hash, display_name)
+            VALUES ($1, $2, $3, $4)
             RETURNING *
             "#,
         )
+        .bind(input.tenant_id)
         .bind(&input.email)
         .bind(&password_hash)
         .bind(&input.display_name)
@@ -335,6 +336,30 @@ impl UserService {
             .map_err(|e| Error::Database(e.to_string()))?;
 
         Ok(result.0)
+    }
+
+    pub async fn count_by_tenant(&self, tenant_id: Uuid) -> Result<i64> {
+        let result: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users WHERE tenant_id = $1")
+            .bind(tenant_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
+        Ok(result.0)
+    }
+
+    pub async fn list_by_tenant(&self, tenant_id: Uuid, limit: i64, offset: i64) -> Result<Vec<User>> {
+        let users = sqlx::query_as::<_, User>(
+            "SELECT * FROM users WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+        )
+        .bind(tenant_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        Ok(users)
     }
 }
 

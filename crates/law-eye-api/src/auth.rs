@@ -11,6 +11,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthenticatedUser {
     pub id: Uuid,
+    pub tenant_id: Uuid,
     pub email: String,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
@@ -22,6 +23,7 @@ impl AuthenticatedUser {
     pub fn from_db_user(user: &law_eye_db::User) -> Self {
         Self {
             id: user.id,
+            tenant_id: user.tenant_id,
             email: user.email.clone(),
             display_name: user.display_name.clone(),
             avatar_url: user.avatar_url.clone(),

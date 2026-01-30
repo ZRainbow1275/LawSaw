@@ -1,7 +1,7 @@
 use law_eye_ai::{AiService, LlmGateway};
 use law_eye_core::{
     ApiKeyService, ArticleService, AuditService, CategoryService, FeedbackService,
-    KnowledgeService, RagService, SourceService, UserService,
+    KnowledgeService, RagService, SourceService, TenantService, UserService,
 };
 use law_eye_queue::TaskQueue;
 use metrics_exporter_prometheus::PrometheusHandle;
@@ -17,6 +17,7 @@ pub struct AppState {
     pub category_service: Arc<CategoryService>,
     pub feedback_service: Arc<FeedbackService>,
     pub user_service: Arc<UserService>,
+    pub tenant_service: Arc<TenantService>,
     pub audit_service: Arc<AuditService>,
     pub task_queue: Arc<TaskQueue>,
     #[allow(dead_code)] // Reserved for future synchronous AI operations
@@ -53,6 +54,7 @@ impl AppState {
             category_service: Arc::new(CategoryService::new(pool.clone())),
             feedback_service: Arc::new(FeedbackService::new(pool.clone())),
             user_service: Arc::new(UserService::new(pool.clone())),
+            tenant_service: Arc::new(TenantService::new(pool.clone())),
             audit_service: Arc::new(AuditService::new(pool.clone())),
             task_queue: Arc::new(task_queue),
             ai_service: ai_service.map(Arc::new),

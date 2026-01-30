@@ -15,6 +15,8 @@ interface RegisterData {
 	email: string;
 	password: string;
 	display_name?: string;
+	tenant_slug?: string;
+	tenant_name?: string;
 }
 
 export function useAuth() {

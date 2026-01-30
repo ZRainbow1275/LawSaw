@@ -162,10 +162,14 @@ pub(crate) async fn list_users(
 
     let users = state
         .user_service
-        .list(limit, offset)
+        .list_by_tenant(user.tenant_id, limit, offset)
         .await
         .map_err(AppError::from)?;
-    let total = state.user_service.count().await.map_err(AppError::from)?;
+    let total = state
+        .user_service
+        .count_by_tenant(user.tenant_id)
+        .await
+        .map_err(AppError::from)?;
 
     Ok(Json(UsersListResponse {
         users: users.into_iter().map(Into::into).collect(),
@@ -206,11 +210,16 @@ pub(crate) async fn get_user(
         return Err(AppError::forbidden("Access denied"));
     }
 
-    let user = state
+    let target_user = state
         .user_service
         .get_by_id(id)
         .await
         .map_err(AppError::from)?;
+
+    if target_user.tenant_id != current_user.tenant_id {
+        return Err(AppError::not_found("User not found"));
+    }
+
     let roles = state
         .user_service
         .get_user_roles(id)
@@ -223,7 +232,7 @@ pub(crate) async fn get_user(
         .map_err(AppError::from)?;
 
     Ok(Json(UserDetailResponse {
-        user: user.into(),
+        user: target_user.into(),
         roles: roles.into_iter().map(|r| r.name).collect(),
         permissions,
     }))
@@ -260,6 +269,15 @@ pub(crate) async fn update_user(
     let is_admin = check_admin_permission(&state, current_user.id).await?;
     if current_user.id != id && !is_admin {
         return Err(AppError::forbidden("Access denied"));
+    }
+
+    let target_user = state
+        .user_service
+        .get_by_id(id)
+        .await
+        .map_err(AppError::from)?;
+    if target_user.tenant_id != current_user.tenant_id {
+        return Err(AppError::not_found("User not found"));
     }
 
     let update = UpdateUser {
@@ -326,12 +344,15 @@ pub(crate) async fn update_user_roles(
         return Err(AppError::forbidden("Admin permission required"));
     }
 
-    // Verify user exists
-    state
+    // Verify user exists and belongs to current tenant
+    let target_user = state
         .user_service
         .get_by_id(id)
         .await
         .map_err(AppError::from)?;
+    if target_user.tenant_id != current_user.tenant_id {
+        return Err(AppError::not_found("User not found"));
+    }
 
     let add_roles = normalize_role_names(req.add_roles).map_err(AppError::validation)?;
     let remove_roles = normalize_role_names(req.remove_roles).map_err(AppError::validation)?;
@@ -427,7 +448,7 @@ pub(crate) async fn update_user_roles(
 
     state
         .audit_service
-        .log_tx(&mut tx, audit_input)
+        .log_tx(current_user.tenant_id, &mut tx, audit_input)
         .await
         .map_err(AppError::from)?;
 

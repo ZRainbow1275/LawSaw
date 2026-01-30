@@ -1,3 +1,4 @@
+use crate::tenant::with_tenant_tx;
 use law_eye_common::{Error, Result};
 use law_eye_db::{AuditLog, CreateAuditLog};
 use sqlx::{Executor, PgPool, Postgres, Transaction};
@@ -17,6 +18,7 @@ where
         VALUES ($1, $2, $3, $4, $5, $6, $7::inet, $8)
         RETURNING
             id,
+            tenant_id,
             user_id,
             action,
             resource,
@@ -58,136 +60,162 @@ impl AuditService {
         Self { pool }
     }
 
-    pub async fn log(&self, input: CreateAuditLog) -> Result<AuditLog> {
-        log_audit_inner(&self.pool, input).await
+    pub async fn log(&self, tenant_id: Uuid, input: CreateAuditLog) -> Result<AuditLog> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move { log_audit_inner(tx.as_mut(), input).await })
+        })
+        .await
     }
 
     pub async fn log_tx(
         &self,
+        tenant_id: Uuid,
         tx: &mut Transaction<'_, Postgres>,
         input: CreateAuditLog,
     ) -> Result<AuditLog> {
-        log_audit_inner(&mut **tx, input).await
-    }
-
-    pub async fn list(&self, filters: AuditFilters) -> Result<Vec<AuditLog>> {
-        let mut query = String::from(
-            "SELECT id, user_id, action, resource, resource_id, old_value, new_value, ip_address::text AS ip_address, user_agent, created_at FROM audit_logs WHERE 1=1"
-        );
-        let mut param_count = 0;
-
-        if filters.user_id.is_some() {
-            param_count += 1;
-            query.push_str(&format!(" AND user_id = ${}", param_count));
-        }
-        if filters.resource.is_some() {
-            param_count += 1;
-            query.push_str(&format!(" AND resource = ${}", param_count));
-        }
-        if filters.resource_id.is_some() {
-            param_count += 1;
-            query.push_str(&format!(" AND resource_id = ${}", param_count));
-        }
-        if filters.action.is_some() {
-            param_count += 1;
-            query.push_str(&format!(" AND action = ${}", param_count));
-        }
-
-        query.push_str(&format!(
-            " ORDER BY created_at DESC LIMIT ${} OFFSET ${}",
-            param_count + 1,
-            param_count + 2
-        ));
-
-        let mut query_builder = sqlx::query_as::<_, AuditLog>(&query);
-
-        if let Some(user_id) = filters.user_id {
-            query_builder = query_builder.bind(user_id);
-        }
-        if let Some(resource) = &filters.resource {
-            query_builder = query_builder.bind(resource);
-        }
-        if let Some(resource_id) = filters.resource_id {
-            query_builder = query_builder.bind(resource_id);
-        }
-        if let Some(action) = &filters.action {
-            query_builder = query_builder.bind(action);
-        }
-
-        query_builder = query_builder.bind(filters.limit).bind(filters.offset);
-
-        let audits = query_builder
-            .fetch_all(&self.pool)
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(tenant_id.to_string())
+            .execute(tx.as_mut())
             .await
             .map_err(|e| Error::Database(e.to_string()))?;
 
-        Ok(audits)
+        log_audit_inner(tx.as_mut(), input).await
     }
 
-    pub async fn get_by_id(&self, id: Uuid) -> Result<AuditLog> {
-        sqlx::query_as::<_, AuditLog>(
-            "SELECT id, user_id, action, resource, resource_id, old_value, new_value, ip_address::text AS ip_address, user_agent, created_at FROM audit_logs WHERE id = $1",
-        )
-            .bind(id)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?
-            .ok_or_else(|| Error::NotFound(format!("Audit log {} not found", id)))
+    pub async fn list(&self, tenant_id: Uuid, filters: AuditFilters) -> Result<Vec<AuditLog>> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let mut query = String::from(
+                    "SELECT id, tenant_id, user_id, action, resource, resource_id, old_value, new_value, ip_address::text AS ip_address, user_agent, created_at FROM audit_logs WHERE 1=1"
+                );
+                let mut param_count = 0;
+
+                if filters.user_id.is_some() {
+                    param_count += 1;
+                    query.push_str(&format!(" AND user_id = ${}", param_count));
+                }
+                if filters.resource.is_some() {
+                    param_count += 1;
+                    query.push_str(&format!(" AND resource = ${}", param_count));
+                }
+                if filters.resource_id.is_some() {
+                    param_count += 1;
+                    query.push_str(&format!(" AND resource_id = ${}", param_count));
+                }
+                if filters.action.is_some() {
+                    param_count += 1;
+                    query.push_str(&format!(" AND action = ${}", param_count));
+                }
+
+                query.push_str(&format!(
+                    " ORDER BY created_at DESC LIMIT ${} OFFSET ${}",
+                    param_count + 1,
+                    param_count + 2
+                ));
+
+                let mut query_builder = sqlx::query_as::<_, AuditLog>(&query);
+
+                if let Some(user_id) = filters.user_id {
+                    query_builder = query_builder.bind(user_id);
+                }
+                if let Some(resource) = &filters.resource {
+                    query_builder = query_builder.bind(resource);
+                }
+                if let Some(resource_id) = filters.resource_id {
+                    query_builder = query_builder.bind(resource_id);
+                }
+                if let Some(action) = &filters.action {
+                    query_builder = query_builder.bind(action);
+                }
+
+                query_builder = query_builder.bind(filters.limit).bind(filters.offset);
+
+                let audits = query_builder
+                    .fetch_all(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?;
+
+                Ok(audits)
+            })
+        })
+        .await
     }
 
-    pub async fn count(&self, filters: AuditFilters) -> Result<i64> {
-        let mut query = String::from("SELECT COUNT(*) FROM audit_logs WHERE 1=1");
-        let mut param_count = 0;
+    pub async fn get_by_id(&self, tenant_id: Uuid, id: Uuid) -> Result<AuditLog> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query_as::<_, AuditLog>(
+                    "SELECT id, tenant_id, user_id, action, resource, resource_id, old_value, new_value, ip_address::text AS ip_address, user_agent, created_at FROM audit_logs WHERE id = $1",
+                )
+                .bind(id)
+                .fetch_optional(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?
+                .ok_or_else(|| Error::NotFound(format!("Audit log {} not found", id)))
+            })
+        })
+        .await
+    }
 
-        if filters.user_id.is_some() {
-            param_count += 1;
-            query.push_str(&format!(" AND user_id = ${}", param_count));
-        }
-        if filters.resource.is_some() {
-            param_count += 1;
-            query.push_str(&format!(" AND resource = ${}", param_count));
-        }
-        if filters.resource_id.is_some() {
-            param_count += 1;
-            query.push_str(&format!(" AND resource_id = ${}", param_count));
-        }
-        if filters.action.is_some() {
-            param_count += 1;
-            query.push_str(&format!(" AND action = ${}", param_count));
-        }
+    pub async fn count(&self, tenant_id: Uuid, filters: AuditFilters) -> Result<i64> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let mut query = String::from("SELECT COUNT(*) FROM audit_logs WHERE 1=1");
+                let mut param_count = 0;
 
-        let mut query_builder = sqlx::query_as::<_, (i64,)>(&query);
+                if filters.user_id.is_some() {
+                    param_count += 1;
+                    query.push_str(&format!(" AND user_id = ${}", param_count));
+                }
+                if filters.resource.is_some() {
+                    param_count += 1;
+                    query.push_str(&format!(" AND resource = ${}", param_count));
+                }
+                if filters.resource_id.is_some() {
+                    param_count += 1;
+                    query.push_str(&format!(" AND resource_id = ${}", param_count));
+                }
+                if filters.action.is_some() {
+                    param_count += 1;
+                    query.push_str(&format!(" AND action = ${}", param_count));
+                }
 
-        if let Some(user_id) = filters.user_id {
-            query_builder = query_builder.bind(user_id);
-        }
-        if let Some(resource) = &filters.resource {
-            query_builder = query_builder.bind(resource);
-        }
-        if let Some(resource_id) = filters.resource_id {
-            query_builder = query_builder.bind(resource_id);
-        }
-        if let Some(action) = &filters.action {
-            query_builder = query_builder.bind(action);
-        }
+                let mut query_builder = sqlx::query_as::<_, (i64,)>(&query);
 
-        let result = query_builder
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+                if let Some(user_id) = filters.user_id {
+                    query_builder = query_builder.bind(user_id);
+                }
+                if let Some(resource) = &filters.resource {
+                    query_builder = query_builder.bind(resource);
+                }
+                if let Some(resource_id) = filters.resource_id {
+                    query_builder = query_builder.bind(resource_id);
+                }
+                if let Some(action) = &filters.action {
+                    query_builder = query_builder.bind(action);
+                }
 
-        Ok(result.0)
+                let result = query_builder
+                    .fetch_one(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?;
+
+                Ok(result.0)
+            })
+        })
+        .await
     }
 
     /// Helper to log a simple action
     pub async fn log_action(
         &self,
+        tenant_id: Uuid,
         user_id: Option<Uuid>,
         action: &str,
         resource: &str,
         resource_id: Option<Uuid>,
     ) -> Result<()> {
-        self.log(CreateAuditLog {
+        self.log(tenant_id, CreateAuditLog {
             user_id,
             action: action.to_string(),
             resource: resource.to_string(),

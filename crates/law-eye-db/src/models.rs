@@ -4,8 +4,18 @@ use sqlx::FromRow;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Tenant {
+    pub id: Uuid,
+    pub slug: String,
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Source {
     pub id: Uuid,
+    pub tenant_id: Uuid,
     pub name: String,
     pub url: String,
     #[sqlx(rename = "type")]
@@ -36,6 +46,7 @@ pub struct Category {
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Article {
     pub id: Uuid,
+    pub tenant_id: Uuid,
     pub source_id: Uuid,
     pub category_id: Option<Uuid>,
     pub title: String,
@@ -79,6 +90,7 @@ pub struct CreateSource {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, FromRow)]
 pub struct ArticleChunk {
     pub id: Uuid,
+    pub tenant_id: Uuid,
     pub article_id: Uuid,
     pub chunk_index: i32,
     pub content: String,
@@ -102,6 +114,7 @@ pub struct CreateArticleChunk {
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct User {
     pub id: Uuid,
+    pub tenant_id: Uuid,
     pub email: String,
     pub password_hash: String,
     pub display_name: Option<String>,
@@ -115,6 +128,7 @@ pub struct User {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateUser {
+    pub tenant_id: Uuid,
     pub email: String,
     pub password: String,
     pub display_name: Option<String>,
@@ -147,6 +161,7 @@ pub struct UserRole {
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct AuditLog {
     pub id: Uuid,
+    pub tenant_id: Uuid,
     pub user_id: Option<Uuid>,
     pub action: String,
     pub resource: String,
@@ -175,6 +190,7 @@ pub struct CreateAuditLog {
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Feedback {
     pub id: Uuid,
+    pub tenant_id: Uuid,
     pub user_id: Option<Uuid>,
     #[sqlx(rename = "type")]
     #[serde(rename = "type")]
@@ -213,6 +229,7 @@ pub struct UpdateFeedback {
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Entity {
     pub id: Uuid,
+    pub tenant_id: Uuid,
     pub name: String,
     pub entity_type: String,
     pub aliases: Vec<String>,
@@ -238,6 +255,7 @@ pub struct CreateEntity {
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct EntityRelation {
     pub id: Uuid,
+    pub tenant_id: Uuid,
     pub source_entity_id: Uuid,
     pub target_entity_id: Uuid,
     pub relation_type: String,
@@ -258,6 +276,7 @@ pub struct CreateEntityRelation {
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ArticleEntity {
     pub id: Uuid,
+    pub tenant_id: Uuid,
     pub article_id: Uuid,
     pub entity_id: Uuid,
     pub mention_count: i32,

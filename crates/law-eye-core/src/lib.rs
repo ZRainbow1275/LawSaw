@@ -7,6 +7,7 @@ pub mod feedback;
 pub mod knowledge;
 pub mod rag;
 pub mod source;
+pub mod tenant;
 pub mod user;
 
 pub use apikey::ApiKeyService;
@@ -18,4 +19,5 @@ pub use feedback::FeedbackService;
 pub use knowledge::KnowledgeService;
 pub use rag::{RagAnswer, RagSearchResult, RagService, RagSource};
 pub use source::SourceService;
+pub use tenant::{with_tenant_tx, TenantService};
 pub use user::UserService;

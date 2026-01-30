@@ -18,6 +18,8 @@ use crate::{ApiError, ApiResult, AppError};
 
 static EMAIL_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap());
+static TENANT_SLUG_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^[a-z][a-z0-9-]{2,31}$").unwrap());
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -35,6 +37,10 @@ pub struct RegisterRequest {
     pub email: String,
     pub password: String,
     pub display_name: Option<String>,
+    /// 租户标识（用于多租户隔离）。未提供时默认使用 `default`。
+    pub tenant_slug: Option<String>,
+    /// 租户名称（创建新租户时使用）。未提供时默认使用 slug。
+    pub tenant_name: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -47,6 +53,7 @@ pub struct AuthResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct UserResponse {
     pub id: uuid::Uuid,
+    pub tenant_id: uuid::Uuid,
     pub email: String,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
@@ -57,6 +64,7 @@ impl From<AuthenticatedUser> for UserResponse {
     fn from(user: AuthenticatedUser) -> Self {
         Self {
             id: user.id,
+            tenant_id: user.tenant_id,
             email: user.email,
             display_name: user.display_name,
             avatar_url: user.avatar_url,
@@ -69,6 +77,7 @@ impl From<law_eye_db::User> for UserResponse {
     fn from(user: law_eye_db::User) -> Self {
         Self {
             id: user.id,
+            tenant_id: user.tenant_id,
             email: user.email,
             display_name: user.display_name,
             avatar_url: user.avatar_url,
@@ -105,7 +114,37 @@ pub(crate) async fn register(
         ));
     }
 
+    let tenant_slug = req.tenant_slug.unwrap_or_else(|| "default".to_string());
+    let tenant_slug = tenant_slug.trim().to_ascii_lowercase();
+    if !TENANT_SLUG_RE.is_match(&tenant_slug) {
+        return Err(AppError::validation(
+            "Invalid tenant_slug (expected: ^[a-z][a-z0-9-]{2,31}$)",
+        ));
+    }
+
+    let tenant_name = req
+        .tenant_name
+        .unwrap_or_else(|| tenant_slug.clone())
+        .trim()
+        .to_string();
+    if tenant_name.is_empty() || tenant_name.len() > 100 {
+        return Err(AppError::validation("Invalid tenant_name"));
+    }
+
+    let tenant = state
+        .tenant_service
+        .upsert_by_slug(&tenant_slug, &tenant_name)
+        .await
+        .map_err(AppError::from)?;
+
+    let existing_users = state
+        .user_service
+        .count_by_tenant(tenant.id)
+        .await
+        .map_err(AppError::from)?;
+
     let create_user = CreateUser {
+        tenant_id: tenant.id,
         email: req.email,
         password: req.password,
         display_name: req.display_name,
@@ -119,9 +158,10 @@ pub(crate) async fn register(
         Err(err) => return Err(AppError::from(err)),
     };
 
+    let default_role = if existing_users == 0 { "admin" } else { "viewer" };
     state
         .user_service
-        .assign_role(user.id, "viewer", None)
+        .assign_role(user.id, default_role, None)
         .await
         .map_err(AppError::from)?;
 

@@ -471,6 +471,8 @@ fn retry_backoff_ms(retry_count: u32) -> u64 {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct IngestTask {
+    #[serde(default)]
+    pub tenant_id: uuid::Uuid,
     pub source_id: uuid::Uuid,
     pub source_type: String,
     pub url: String,
@@ -479,6 +481,8 @@ pub struct IngestTask {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PushTask {
+    #[serde(default)]
+    pub tenant_id: uuid::Uuid,
     pub article_ids: Vec<uuid::Uuid>,
     pub channel: String,
     pub webhook_url: String,
@@ -486,6 +490,8 @@ pub struct PushTask {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AiTask {
+    #[serde(default)]
+    pub tenant_id: uuid::Uuid,
     pub article_id: uuid::Uuid,
     pub task_type: AiTaskType,
 }
@@ -520,6 +526,7 @@ mod tests {
     fn parse_retryable_or_wrap_wraps_legacy_payload() {
         let source_id = uuid::Uuid::new_v4();
         let payload = IngestTask {
+            tenant_id: uuid::Uuid::nil(),
             source_id,
             source_type: "rss".to_string(),
             url: "https://example.com/feed".to_string(),
@@ -541,6 +548,7 @@ mod tests {
     fn parse_retryable_or_wrap_tolerates_bom_and_trailing_newline() {
         let source_id = uuid::Uuid::new_v4();
         let payload = IngestTask {
+            tenant_id: uuid::Uuid::nil(),
             source_id,
             source_type: "rss".to_string(),
             url: "https://example.com/feed".to_string(),
@@ -559,6 +567,7 @@ mod tests {
     #[test]
     fn retryable_task_missing_id_deserializes_with_default() {
         let payload = IngestTask {
+            tenant_id: uuid::Uuid::nil(),
             source_id: uuid::Uuid::new_v4(),
             source_type: "rss".to_string(),
             url: "https://example.com/feed".to_string(),

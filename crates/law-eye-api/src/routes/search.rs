@@ -143,7 +143,7 @@ pub(crate) async fn search(
 
     let (hits, total) = state
         .article_service
-        .search_ranked(q, limit, offset)
+        .search_ranked(user.tenant_id, q, limit, offset)
         .await
         .map_err(AppError::from)?;
 
@@ -208,7 +208,7 @@ pub(crate) async fn semantic_search(
 
     let results = state
         .rag_service
-        .search(query, limit)
+        .search(user.tenant_id, query, limit)
         .await
         .map_err(AppError::from)?;
 
@@ -273,7 +273,7 @@ pub(crate) async fn ask_question(
 
     let answer = state
         .rag_service
-        .answer(question, top_k)
+        .answer(user.tenant_id, question, top_k)
         .await
         .map_err(AppError::from)?;
 

@@ -132,7 +132,7 @@ pub(crate) async fn list_feedbacks(
 
     let rows = state
         .feedback_service
-        .list_all(limit, offset)
+        .list_all(user.tenant_id, limit, offset)
         .await
         .map_err(AppError::from)?;
     Ok(Json(rows.into_iter().map(FeedbackResponse::from).collect()))
@@ -169,7 +169,7 @@ pub(crate) async fn list_my_feedbacks(
 
     let rows = state
         .feedback_service
-        .list_by_user(user.id, limit, offset)
+        .list_by_user(user.tenant_id, user.id, limit, offset)
         .await
         .map_err(AppError::from)?;
 
@@ -220,7 +220,7 @@ pub(crate) async fn create_feedback(
 
     let row = state
         .feedback_service
-        .create(input)
+        .create(user.tenant_id, input)
         .await
         .map_err(AppError::from)?;
     Ok((StatusCode::CREATED, Json(FeedbackResponse::from(row))))
@@ -259,7 +259,7 @@ pub(crate) async fn get_feedback(
 
     let row = state
         .feedback_service
-        .get_by_id(id)
+        .get_by_id(user.tenant_id, id)
         .await
         .map_err(AppError::from)?;
 
@@ -320,7 +320,7 @@ pub(crate) async fn update_feedback(
 
     let row = state
         .feedback_service
-        .update(id, input)
+        .update(user.tenant_id, id, input)
         .await
         .map_err(AppError::from)?;
 

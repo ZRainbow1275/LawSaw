@@ -3,7 +3,7 @@ use law_eye_ai::{AiService, ClassifyResult, RiskAssessment, SummaryResult, TagsR
 use law_eye_common::AppConfig;
 use law_eye_core::{ArticleService, SourceService};
 use law_eye_crawler::{RawArticle, RssFetcher, SpiderConfig, WebSpider};
-use law_eye_db::{create_pool, CreateArticle};
+use law_eye_db::{create_pool_with_session_role, CreateArticle};
 use law_eye_queue::{AiTask, AiTaskType, IngestTask, PushTask, ReservedTask, TaskQueue};
 use serde_json::json;
 use sqlx::PgPool;
@@ -123,6 +123,26 @@ impl Worker {
         }
 
         Ok(())
+    }
+
+    async fn begin_tenant_tx(
+        &self,
+        tenant_id: uuid::Uuid,
+    ) -> anyhow::Result<sqlx::Transaction<'_, sqlx::Postgres>> {
+        let mut tx = self.pool.begin().await?;
+        let tenant_id = if tenant_id.is_nil() {
+            sqlx::query_scalar::<_, uuid::Uuid>("SELECT id FROM tenants WHERE slug = 'default'")
+                .fetch_optional(&mut *tx)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("Default tenant not found"))?
+        } else {
+            tenant_id
+        };
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(tenant_id.to_string())
+            .execute(&mut *tx)
+            .await?;
+        Ok(tx)
     }
 
     async fn handle_ingest_reserved(&self, reserved: ReservedTask<IngestTask>) {
@@ -320,6 +340,11 @@ impl Worker {
     async fn process_ingest_task(&self, task: IngestTask) -> anyhow::Result<()> {
         info!("Processing ingest task for source: {}", task.source_id);
 
+        let tenant_id = task.tenant_id;
+        if tenant_id.is_nil() {
+            warn!("Ingest task missing tenant_id; falling back to default tenant");
+        }
+
         let source_service = SourceService::new(self.pool.clone());
 
         let articles = match task.source_type.as_str() {
@@ -331,7 +356,7 @@ impl Worker {
                         let msg = format!("Failed to parse spider config: {}", e);
                         error!("{}", msg);
                         let _ = source_service
-                            .update_last_fetch(task.source_id, Some(msg.as_str()))
+                            .update_last_fetch(tenant_id, task.source_id, Some(msg.as_str()))
                             .await;
                         return Err(anyhow::anyhow!(msg));
                     }
@@ -342,7 +367,7 @@ impl Worker {
                 let msg = format!("Unknown source type: {}", task.source_type);
                 error!("{}", msg);
                 let _ = source_service
-                    .update_last_fetch(task.source_id, Some(msg.as_str()))
+                    .update_last_fetch(tenant_id, task.source_id, Some(msg.as_str()))
                     .await;
                 return Err(anyhow::anyhow!(msg));
             }
@@ -355,13 +380,14 @@ impl Worker {
 
                 for article in articles {
                     match self
-                        .save_article(&article_service, task.source_id, article)
+                        .save_article(&article_service, tenant_id, task.source_id, article)
                         .await
                     {
                         Ok(Some(article_id)) => {
                             saved += 1;
                             if self.ai_service.is_some() {
                                 let ai_task = AiTask {
+                                    tenant_id,
                                     article_id,
                                     task_type: AiTaskType::Full,
                                 };
@@ -380,7 +406,9 @@ impl Worker {
                 }
 
                 info!("Saved {} articles from source {}", saved, task.source_id);
-                let _ = source_service.update_last_fetch(task.source_id, None).await;
+                let _ = source_service
+                    .update_last_fetch(tenant_id, task.source_id, None)
+                    .await;
                 Ok(())
             }
             Err(e) => {
@@ -388,7 +416,7 @@ impl Worker {
                 let msg = msg.chars().take(500).collect::<String>();
                 error!("Failed to fetch articles: {}", msg);
                 let _ = source_service
-                    .update_last_fetch(task.source_id, Some(msg.as_str()))
+                    .update_last_fetch(tenant_id, task.source_id, Some(msg.as_str()))
                     .await;
                 Err(anyhow::anyhow!(msg))
             }
@@ -398,10 +426,11 @@ impl Worker {
     async fn save_article(
         &self,
         service: &ArticleService,
+        tenant_id: uuid::Uuid,
         source_id: uuid::Uuid,
         article: RawArticle,
     ) -> anyhow::Result<Option<uuid::Uuid>> {
-        if service.exists_by_link(&article.link).await? {
+        if service.exists_by_link(tenant_id, &article.link).await? {
             return Ok(None);
         }
 
@@ -414,7 +443,7 @@ impl Worker {
             published_at: article.published_at,
         };
 
-        let created = service.create(create).await?;
+        let created = service.create(tenant_id, create).await?;
         Ok(Some(created.id))
     }
 
@@ -423,6 +452,11 @@ impl Worker {
             "Processing AI task for article: {} (type={:?})",
             task.article_id, task.task_type
         );
+
+        let tenant_id = task.tenant_id;
+        if tenant_id.is_nil() {
+            warn!("AI task missing tenant_id; falling back to default tenant");
+        }
 
         let ai_service = match &self.ai_service {
             Some(s) => s,
@@ -434,7 +468,7 @@ impl Worker {
 
         let article_service = ArticleService::new(self.pool.clone());
 
-        let article = match article_service.get_by_id(task.article_id).await {
+        let article = match article_service.get_by_id(tenant_id, task.article_id).await {
             Ok(a) => a,
             Err(e) => {
                 error!("Failed to get article {}: {}", task.article_id, e);
@@ -465,11 +499,12 @@ impl Worker {
                 )
                 .map_err(|e| anyhow::anyhow!("AI full processing failed: {}", e))?;
 
-                self.update_article_full(task.article_id, &classify, &summary, &risk, &tags)
+                self.update_article_full(tenant_id, task.article_id, &classify, &summary, &risk, &tags)
                     .await?;
 
                 // Embedding 可能较慢且对外部依赖敏感：拆成单独的任务，失败可独立重试/DLQ。
                 let embed_task = AiTask {
+                    tenant_id,
                     article_id: task.article_id,
                     task_type: AiTaskType::Embed,
                 };
@@ -495,7 +530,7 @@ impl Worker {
                     .classify(&article.title, content)
                     .await
                     .map_err(|e| anyhow::anyhow!("AI classify failed: {}", e))?;
-                self.update_article_classify(task.article_id, &classify)
+                self.update_article_classify(tenant_id, task.article_id, &classify)
                     .await?;
                 info!("AI classify completed for article: {}", task.article_id);
                 Ok(())
@@ -505,7 +540,7 @@ impl Worker {
                     .summarize(&article.title, content)
                     .await
                     .map_err(|e| anyhow::anyhow!("AI summarize failed: {}", e))?;
-                self.update_article_summary(task.article_id, &summary)
+                self.update_article_summary(tenant_id, task.article_id, &summary)
                     .await?;
                 info!("AI summarize completed for article: {}", task.article_id);
                 Ok(())
@@ -515,7 +550,7 @@ impl Worker {
                     .assess_risk(&article.title, content)
                     .await
                     .map_err(|e| anyhow::anyhow!("AI risk assessment failed: {}", e))?;
-                self.update_article_risk(task.article_id, &risk).await?;
+                self.update_article_risk(tenant_id, task.article_id, &risk).await?;
                 info!(
                     "AI risk assessment completed for article: {}",
                     task.article_id
@@ -527,7 +562,7 @@ impl Worker {
                     .extract_tags(&article.title, content)
                     .await
                     .map_err(|e| anyhow::anyhow!("AI tag extraction failed: {}", e))?;
-                self.update_article_tags(task.article_id, &tags).await?;
+                self.update_article_tags(tenant_id, task.article_id, &tags).await?;
                 info!(
                     "AI tag extraction completed for article: {}",
                     task.article_id
@@ -540,8 +575,8 @@ impl Worker {
                     .embed_chunks(&text)
                     .await
                     .map_err(|e| anyhow::anyhow!("AI embed_chunks failed: {}", e))?;
-                self.replace_article_chunks(task.article_id, chunks).await?;
-                self.mark_ai_embed_done(task.article_id).await?;
+                self.replace_article_chunks(tenant_id, task.article_id, chunks).await?;
+                self.mark_ai_embed_done(tenant_id, task.article_id).await?;
                 info!("AI embedding completed for article: {}", task.article_id);
                 Ok(())
             }
@@ -550,6 +585,7 @@ impl Worker {
 
     async fn update_article_full(
         &self,
+        tenant_id: uuid::Uuid,
         article_id: uuid::Uuid,
         classify: &ClassifyResult,
         summary: &SummaryResult,
@@ -577,6 +613,7 @@ impl Worker {
             "tasks": tasks,
         });
 
+        let mut tx = self.begin_tenant_tx(tenant_id).await?;
         sqlx::query(
             r#"
             UPDATE articles SET
@@ -598,14 +635,16 @@ impl Worker {
         .bind(&tags.tags)
         .bind(&tags.keywords)
         .bind(&metadata_patch)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
 
         Ok(())
     }
 
     async fn update_article_classify(
         &self,
+        tenant_id: uuid::Uuid,
         article_id: uuid::Uuid,
         classify: &ClassifyResult,
     ) -> anyhow::Result<()> {
@@ -615,6 +654,7 @@ impl Worker {
             "reasoning": &classify.reasoning,
         });
 
+        let mut tx = self.begin_tenant_tx(tenant_id).await?;
         sqlx::query(
             r#"
             UPDATE articles SET
@@ -627,14 +667,16 @@ impl Worker {
         .bind(article_id)
         .bind(&classify.category_slug)
         .bind(&metadata_patch)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
 
         Ok(())
     }
 
     async fn update_article_summary(
         &self,
+        tenant_id: uuid::Uuid,
         article_id: uuid::Uuid,
         summary: &SummaryResult,
     ) -> anyhow::Result<()> {
@@ -644,6 +686,7 @@ impl Worker {
             "abstract": &summary.abstract_text,
         });
 
+        let mut tx = self.begin_tenant_tx(tenant_id).await?;
         sqlx::query(
             r#"
             UPDATE articles SET
@@ -656,14 +699,16 @@ impl Worker {
         .bind(article_id)
         .bind(&summary.brief)
         .bind(&metadata_patch)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
 
         Ok(())
     }
 
     async fn update_article_risk(
         &self,
+        tenant_id: uuid::Uuid,
         article_id: uuid::Uuid,
         risk: &RiskAssessment,
     ) -> anyhow::Result<()> {
@@ -673,6 +718,7 @@ impl Worker {
             "risk_level": format!("{:?}", risk.level).to_lowercase(),
         });
 
+        let mut tx = self.begin_tenant_tx(tenant_id).await?;
         sqlx::query(
             r#"
             UPDATE articles SET
@@ -685,14 +731,16 @@ impl Worker {
         .bind(article_id)
         .bind(risk.score as i32)
         .bind(&metadata_patch)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
 
         Ok(())
     }
 
     async fn update_article_tags(
         &self,
+        tenant_id: uuid::Uuid,
         article_id: uuid::Uuid,
         tags: &TagsResult,
     ) -> anyhow::Result<()> {
@@ -701,6 +749,7 @@ impl Worker {
             "keywords": &tags.keywords,
         });
 
+        let mut tx = self.begin_tenant_tx(tenant_id).await?;
         sqlx::query(
             r#"
             UPDATE articles SET
@@ -715,20 +764,22 @@ impl Worker {
         .bind(&tags.tags)
         .bind(&tags.keywords)
         .bind(&metadata_patch)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
 
         Ok(())
     }
 
     async fn replace_article_chunks(
         &self,
+        tenant_id: uuid::Uuid,
         article_id: uuid::Uuid,
         chunks: Vec<(String, law_eye_ai::EmbeddingResult)>,
     ) -> anyhow::Result<()> {
         const EXPECTED_VECTOR_DIM: usize = 1536;
 
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.begin_tenant_tx(tenant_id).await?;
 
         sqlx::query("DELETE FROM article_chunks WHERE article_id = $1")
             .bind(article_id)
@@ -750,7 +801,7 @@ impl Worker {
                 r#"
                 INSERT INTO article_chunks (article_id, chunk_index, content, embedding, token_count)
                 VALUES ($1, $2, $3, $4::vector, $5)
-                ON CONFLICT (article_id, chunk_index)
+                ON CONFLICT (tenant_id, article_id, chunk_index)
                 DO UPDATE SET
                     content = EXCLUDED.content,
                     embedding = EXCLUDED.embedding,
@@ -770,7 +821,8 @@ impl Worker {
         Ok(())
     }
 
-    async fn mark_ai_embed_done(&self, article_id: uuid::Uuid) -> anyhow::Result<()> {
+    async fn mark_ai_embed_done(&self, tenant_id: uuid::Uuid, article_id: uuid::Uuid) -> anyhow::Result<()> {
+        let mut tx = self.begin_tenant_tx(tenant_id).await?;
         sqlx::query(
             r#"
             UPDATE articles
@@ -781,8 +833,9 @@ impl Worker {
             "#,
         )
         .bind(article_id)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
 
         Ok(())
     }
@@ -793,12 +846,17 @@ impl Worker {
             task.article_ids.len()
         );
 
+        let tenant_id = task.tenant_id;
+        if tenant_id.is_nil() {
+            warn!("Push task missing tenant_id; falling back to default tenant");
+        }
+
         let client = reqwest::Client::new();
         let article_service = ArticleService::new(self.pool.clone());
 
         let mut articles = Vec::new();
         for id in &task.article_ids {
-            if let Ok(article) = article_service.get_by_id(*id).await {
+            if let Ok(article) = article_service.get_by_id(tenant_id, *id).await {
                 articles.push(article);
             }
         }
@@ -910,7 +968,12 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Starting Law Eye Worker...");
 
-    let pool = create_pool(&config.database.url, config.database.max_connections).await?;
+    let pool = create_pool_with_session_role(
+        &config.database.url,
+        config.database.max_connections,
+        config.database.session_role.as_deref(),
+    )
+    .await?;
 
     let task_queue = TaskQueue::new(&config.redis.url)?;
 

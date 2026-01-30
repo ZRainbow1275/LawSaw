@@ -15,3 +15,4 @@ serde_json.workspace = true
 tracing.workspace = true
 argon2.workspace = true
 rand.workspace = true
+futures.workspace = true

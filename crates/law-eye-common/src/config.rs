@@ -92,6 +92,8 @@ fn default_allowed_origins() -> Vec<String> {
     vec![
         "https://localhost".to_string(),
         "https://127.0.0.1".to_string(),
+        "http://localhost".to_string(),
+        "http://127.0.0.1".to_string(),
         "http://localhost:3000".to_string(),
         "http://localhost:8849".to_string(),
         "http://localhost:3002".to_string(),
@@ -115,6 +117,12 @@ fn default_max_body_bytes() -> usize {
 pub struct DatabaseConfig {
     pub url: String,
     pub max_connections: u32,
+    /// Optional session role to `SET ROLE` after connecting.
+    ///
+    /// This is mainly used to ensure Postgres RLS is enforced even if the connection user is a
+    /// superuser in local/dev environments (superusers bypass RLS).
+    #[serde(default)]
+    pub session_role: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -195,6 +203,7 @@ impl Default for AppConfig {
             database: DatabaseConfig {
                 url: "postgres://law_eye:law_eye@localhost:5435/law_eye".to_string(),
                 max_connections: 10,
+                session_role: None,
             },
             redis: RedisConfig {
                 url: "redis://localhost:6380".to_string(),

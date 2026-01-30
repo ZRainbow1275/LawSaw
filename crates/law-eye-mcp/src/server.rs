@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use sqlx::PgPool;
 use std::sync::Arc;
 use tracing::{error, info};
+use uuid::Uuid;
 
 pub struct McpServer {
     pool: PgPool,
@@ -21,6 +22,15 @@ impl McpServer {
             category_service: Arc::new(CategoryService::new(pool.clone())),
             rag_service: Arc::new(RagService::new(pool, gateway)),
         }
+    }
+
+    async fn default_tenant_id(&self) -> Result<Uuid, String> {
+        let row: (Uuid,) = sqlx::query_as("SELECT id FROM tenants WHERE slug = $1")
+            .bind("default")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| format!("Failed to load default tenant: {}", e))?;
+        Ok(row.0)
     }
 
     pub async fn handle_request(&self, request: JsonRpcRequest) -> JsonRpcResponse {
@@ -184,9 +194,10 @@ impl McpServer {
             .ok_or("Missing query parameter")?;
         let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(10);
 
+        let tenant_id = self.default_tenant_id().await?;
         let articles = self
             .article_service
-            .search(query, limit)
+            .search(tenant_id, query, limit)
             .await
             .map_err(|e| e.to_string())?;
 
@@ -220,9 +231,10 @@ impl McpServer {
             .ok_or("Missing query parameter")?;
         let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(5);
 
+        let tenant_id = self.default_tenant_id().await?;
         let results = self
             .rag_service
-            .search(query, limit)
+            .search(tenant_id, query, limit)
             .await
             .map_err(|e| e.to_string())?;
 
@@ -252,9 +264,10 @@ impl McpServer {
             .ok_or("Missing question parameter")?;
         let top_k = args.get("top_k").and_then(|v| v.as_i64()).unwrap_or(5);
 
+        let tenant_id = self.default_tenant_id().await?;
         let answer = self
             .rag_service
-            .answer(question, top_k)
+            .answer(tenant_id, question, top_k)
             .await
             .map_err(|e| e.to_string())?;
 
@@ -286,9 +299,10 @@ impl McpServer {
             .and_then(|v| v.as_i64())
             .unwrap_or(10);
 
+        let tenant_id = self.default_tenant_id().await?;
         let articles = self
             .article_service
-            .list(limit, 0)
+            .list(tenant_id, limit, 0)
             .await
             .map_err(|e| e.to_string())?;
 
@@ -385,7 +399,15 @@ impl McpServer {
                 .to_string()
             }
             "laweye://stats" => {
-                let article_stats = match self.article_service.get_stats().await {
+                let tenant_id = match self.default_tenant_id().await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!("Failed to load default tenant: {}", e);
+                        return JsonRpcResponse::error(id, -32603, "Failed to compute stats");
+                    }
+                };
+
+                let article_stats = match self.article_service.get_stats(tenant_id).await {
                     Ok(v) => v,
                     Err(e) => {
                         error!("Failed to load article stats: {}", e);
@@ -405,9 +427,19 @@ impl McpServer {
                         }
                     };
 
-                let sources_total: (i64,) = match sqlx::query_as("SELECT COUNT(*) FROM sources")
-                    .fetch_one(&self.pool)
-                    .await
+                let sources_total: (i64,) = match law_eye_core::with_tenant_tx(
+                    &self.pool,
+                    tenant_id,
+                    |tx| {
+                        Box::pin(async move {
+                            sqlx::query_as("SELECT COUNT(*) FROM sources")
+                                .fetch_one(tx.as_mut())
+                                .await
+                                .map_err(|e| law_eye_common::Error::Database(e.to_string()))
+                        })
+                    },
+                )
+                .await
                 {
                     Ok(v) => v,
                     Err(e) => {
@@ -416,7 +448,8 @@ impl McpServer {
                     }
                 };
 
-                let users_total: (i64,) = match sqlx::query_as("SELECT COUNT(*) FROM users")
+                let users_total: (i64,) = match sqlx::query_as("SELECT COUNT(*) FROM users WHERE tenant_id = $1")
+                    .bind(tenant_id)
                     .fetch_one(&self.pool)
                     .await
                 {

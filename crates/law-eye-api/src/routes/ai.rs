@@ -118,7 +118,7 @@ pub(crate) async fn process_article(
     // Verify article exists
     state
         .article_service
-        .get_by_id(article_id)
+        .get_by_id(user.tenant_id, article_id)
         .await
         .map_err(AppError::from)?;
 
@@ -128,6 +128,7 @@ pub(crate) async fn process_article(
 
     // Enqueue AI task
     let task = AiTask {
+        tenant_id: user.tenant_id,
         article_id,
         task_type: AiTaskType::Full,
     };
@@ -185,7 +186,7 @@ pub(crate) async fn classify_article(
 
     state
         .article_service
-        .get_by_id(article_id)
+        .get_by_id(user.tenant_id, article_id)
         .await
         .map_err(AppError::from)?;
 
@@ -194,6 +195,7 @@ pub(crate) async fn classify_article(
     }
 
     let task = AiTask {
+        tenant_id: user.tenant_id,
         article_id,
         task_type: AiTaskType::Classify,
     };
@@ -251,7 +253,7 @@ pub(crate) async fn summarize_article(
 
     state
         .article_service
-        .get_by_id(article_id)
+        .get_by_id(user.tenant_id, article_id)
         .await
         .map_err(AppError::from)?;
 
@@ -260,6 +262,7 @@ pub(crate) async fn summarize_article(
     }
 
     let task = AiTask {
+        tenant_id: user.tenant_id,
         article_id,
         task_type: AiTaskType::Summarize,
     };
@@ -317,7 +320,7 @@ pub(crate) async fn assess_risk(
 
     state
         .article_service
-        .get_by_id(article_id)
+        .get_by_id(user.tenant_id, article_id)
         .await
         .map_err(AppError::from)?;
 
@@ -326,6 +329,7 @@ pub(crate) async fn assess_risk(
     }
 
     let task = AiTask {
+        tenant_id: user.tenant_id,
         article_id,
         task_type: AiTaskType::RiskAssess,
     };
@@ -382,7 +386,7 @@ pub(crate) async fn get_ai_status(
 
     let article = state
         .article_service
-        .get_by_id(article_id)
+        .get_by_id(user.tenant_id, article_id)
         .await
         .map_err(AppError::from)?;
 

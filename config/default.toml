@@ -4,6 +4,8 @@ port = 3001
 allowed_origins = [
   "https://localhost",
   "https://127.0.0.1",
+  "http://localhost",
+  "http://127.0.0.1",
   "http://localhost:3000",
   "http://localhost:8849",
   "http://localhost:3002",
