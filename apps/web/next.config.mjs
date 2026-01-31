@@ -25,6 +25,9 @@ const nextConfig = {
   // Next dev: allow accessing the dev server via 127.0.0.1 without cross-origin warnings.
   // https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
   allowedDevOrigins: ["127.0.0.1", "localhost"],
+  experimental: {
+    isolatedDevBuild: false,
+  },
   async rewrites() {
     if (!apiProxyTarget) return [];
     return [
