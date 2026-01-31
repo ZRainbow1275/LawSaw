@@ -26,6 +26,12 @@ function buildTenantSlug(seed: string): string {
 }
 
 test.describe.serial("LawSaw 关键用户流 E2E", () => {
+	test("未登录访问受保护页面应重定向到登录页", async ({ page }) => {
+		await page.goto("/articles");
+		await expect(page).toHaveURL(/\/login(?:\?|$)/, { timeout: 90_000 });
+		await expect(page.getByLabel("邮箱")).toBeVisible();
+	});
+
 	test("注册/登录 → 信息源抓取 → 文章详情 → 搜索", async ({ page }) => {
 		const rssUrl =
 			process.env.E2E_RSS_URL?.trim() || loadRuntimeE2EEnv()?.rssUrl || "";
