@@ -84,6 +84,11 @@ set -a
 source "$ENV_FILE"
 set +a
 
+if [[ -n "${POSTGRES_PASSWORD:-}" ]]; then
+  POSTGRES_PASSWORD="$(printf '%s' "$POSTGRES_PASSWORD" | tr -d '\r')"
+  export POSTGRES_PASSWORD
+fi
+
 if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
   echo "ERROR: POSTGRES_PASSWORD is empty in $ENV_FILE" >&2
   exit 1
@@ -114,6 +119,19 @@ fi
 ensure_cmd cargo "Install Rust toolchain (rustup) and ensure cargo is on PATH."
 
 NODE_PLATFORM="$(node -p "process.platform" 2>/dev/null | tr -d '\r' || true)"
+WEB_RUNS_ON_WINDOWS=0
+if [[ "${LAW_EYE_WEB_ON_WINDOWS:-}" == "1" ]]; then
+  WEB_RUNS_ON_WINDOWS=1
+elif [[ "${LAW_EYE_WEB_ON_WINDOWS:-}" == "0" ]]; then
+  WEB_RUNS_ON_WINDOWS=0
+else
+  # Default: align Next dev runtime with the Node runtime used by this script.
+  # - If pnpm/node resolves to Windows (win32) via WSL interop, start web on Windows.
+  # - Otherwise (native WSL/Linux Node), start web on WSL to keep localhost connectivity.
+  if [[ "$NODE_PLATFORM" == "win32" ]]; then
+    WEB_RUNS_ON_WINDOWS=1
+  fi
+fi
 
 get_primary_ipv4() {
   ip -4 addr show eth0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1 | head -n 1
@@ -512,7 +530,7 @@ set NEXT_PUBLIC_API_URL={web_origin}
 set LAW_EYE_API_PROXY_TARGET={proxy_target}
 set NEXT_TEST_WASM=1
 set NEXT_TELEMETRY_DISABLED=1
-pnpm dev 1> "{out_log}" 2> "{err_log}"
+call pnpm dev 1> "{out_log}" 2> "{err_log}"
 """
 
 content = content.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\r\n")
@@ -560,7 +578,7 @@ fi
 
 start_bg worker "$ROOT" "$WORKER_BIN"
 
-if [[ "$NODE_PLATFORM" == "win32" ]]; then
+if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
   if ! powershell.exe -NoProfile -Command "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://localhost:${API_PORT}/health).StatusCode } catch { exit 1 }" >/dev/null 2>&1; then
     if [[ -z "$WSL_HOST_IP" ]]; then
       WSL_HOST_IP="$(get_primary_ipv4)"
@@ -576,14 +594,14 @@ fi
 
 export NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL"
 export LAW_EYE_API_PROXY_TARGET="$LAW_EYE_API_PROXY_TARGET"
-if [[ "$NODE_PLATFORM" == "win32" ]]; then
+if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
   start_web_windows
 else
   start_bg web "$ROOT/apps/web" pnpm dev
 fi
 
 echo "Waiting for Web /login..."
-if [[ "$NODE_PLATFORM" == "win32" ]]; then
+if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
   for _ in $(seq 1 90); do
     if powershell.exe -NoProfile -Command "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://localhost:${WEB_PORT}/login).StatusCode } catch { exit 1 }" >/dev/null 2>&1; then
       break

@@ -16,6 +16,19 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 STACK_NAME="${LAW_EYE_STACK_NAME:-law-eye-local}"
 PURGE=0
 
+safe_unlink() {
+  python3 - "$1" <<'PY'
+import os
+import sys
+
+path = sys.argv[1]
+try:
+  os.remove(path)
+except FileNotFoundError:
+  pass
+PY
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --name)
@@ -138,7 +151,7 @@ stop_pid() {
   resolved="$(resolve_pid "$pid_raw")" || resolve_rc=$?
 
   if [[ "$resolve_rc" -eq 1 ]]; then
-    rm -f "$pid_file"
+    safe_unlink "$pid_file"
     return 0
   fi
   if [[ "$resolve_rc" -eq 2 ]]; then
@@ -171,7 +184,7 @@ stop_pid() {
     kill_pid_tree_windows "$pid"
   fi
 
-  rm -f "$pid_file"
+  safe_unlink "$pid_file"
 }
 
 stop_pid web
