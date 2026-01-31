@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { test, expect, type BrowserContext } from "@playwright/test";
+import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 
 function loadRuntimeE2EEnv(): { rssUrl: string } | null {
 	const candidate = path.resolve(process.cwd(), "..", "..", "tmp", "e2e-env.json");
@@ -45,6 +45,35 @@ function createE2ECredentials(): E2ECredentials {
 		email: `e2e+${unique}@example.com`,
 		password: "TestPass123!",
 	};
+}
+
+const CONSOLE_ERROR_ALLOWLIST: RegExp[] = [
+	/^Failed to load resource: the server responded with a status of 401 \(Unauthorized\)$/,
+];
+
+function createPageErrorGate() {
+	const errors: string[] = [];
+
+	function attach(page: Page) {
+		page.on("pageerror", (error) => {
+			const detail = error instanceof Error ? error.stack || error.message : String(error);
+			errors.push(`pageerror: ${detail}`);
+		});
+
+		page.on("console", (message) => {
+			if (message.type() !== "error") return;
+			const text = message.text();
+			if (CONSOLE_ERROR_ALLOWLIST.some((pattern) => pattern.test(text))) return;
+			errors.push(`console.error: ${text}`);
+		});
+	}
+
+	function assertNoErrors() {
+		if (errors.length === 0) return;
+		throw new Error(`Detected console/page errors:\n${errors.join("\n")}`);
+	}
+
+	return { attach, assertNoErrors };
 }
 
 async function registerAndLogin(
@@ -119,10 +148,13 @@ async function registerAndLogin(
 	}
 
 	const page = await context.newPage();
+	const gate = createPageErrorGate();
+	gate.attach(page);
 	await page.goto(dashboardUrl);
 	await expect(
 		page.getByRole("heading", { name: "数据看板", level: 1 }),
 	).toBeVisible({ timeout: 90_000 });
+	gate.assertNoErrors();
 	await page.close();
 }
 
@@ -156,9 +188,12 @@ test.describe.serial("LawSaw 关键用户流 E2E", () => {
 	});
 
 	test("未登录访问受保护页面应重定向到登录页", async ({ page }) => {
+		const gate = createPageErrorGate();
+		gate.attach(page);
 		await page.goto("/articles");
 		await expect(page).toHaveURL(/\/login(?:\?|$)/, { timeout: 90_000 });
 		await expect(page.getByLabel("邮箱")).toBeVisible();
+		gate.assertNoErrors();
 	});
 
 	test("移动端抽屉导航：打开/关闭/跳转/锁滚动", async ({ browser }, testInfo) => {
@@ -166,11 +201,13 @@ test.describe.serial("LawSaw 关键用户流 E2E", () => {
 		const baseURL = testInfo.project.use.baseURL as string | undefined;
 		if (!baseURL) throw new Error("Playwright baseURL 未配置，无法运行移动端用例。");
 
-		const context = await browser.newContext({
-			baseURL,
-			storageState: auth.statePath,
-		});
-		const page = await context.newPage();
+			const context = await browser.newContext({
+				baseURL,
+				storageState: auth.statePath,
+			});
+			const page = await context.newPage();
+			const gate = createPageErrorGate();
+			gate.attach(page);
 
 		await page.setViewportSize({ width: 390, height: 844 });
 		await page.goto("/");
@@ -221,12 +258,13 @@ test.describe.serial("LawSaw 关键用户流 E2E", () => {
 			page.getByRole("heading", { name: "资讯列表", level: 1 }),
 		).toBeVisible();
 		await expect(drawer).toHaveCount(0);
-		await expect
-			.poll(async () => page.evaluate(() => document.body.style.overflow))
-			.toBe(initialOverflow);
+			await expect
+				.poll(async () => page.evaluate(() => document.body.style.overflow))
+				.toBe(initialOverflow);
 
-		await context.close();
-	});
+			gate.assertNoErrors();
+			await context.close();
+		});
 
 	test("登录态 → 信息源抓取 → 文章详情 → 搜索", async ({ browser }, testInfo) => {
 		if (!auth) throw new Error("E2E 登录态初始化失败（auth state missing）。");
@@ -241,11 +279,13 @@ test.describe.serial("LawSaw 关键用户流 E2E", () => {
 				);
 		}
 
-		const context = await browser.newContext({
-			baseURL,
-			storageState: auth.statePath,
-		});
-		const page = await context.newPage();
+			const context = await browser.newContext({
+				baseURL,
+				storageState: auth.statePath,
+			});
+			const page = await context.newPage();
+			const gate = createPageErrorGate();
+			gate.attach(page);
 
 		await page.goto("/");
 		await expect(
@@ -369,10 +409,11 @@ test.describe.serial("LawSaw 关键用户流 E2E", () => {
 			.filter({ has: page.getByPlaceholder("输入关键词搜索...") });
 		await searchForm.getByRole("button", { name: "搜索", exact: true }).click();
 
-		await expect(
-			page.getByRole("link", { name: new RegExp(expectedArticleTitle) }).first(),
-		).toBeVisible({ timeout: 90_000 });
+			await expect(
+				page.getByRole("link", { name: new RegExp(expectedArticleTitle) }).first(),
+			).toBeVisible({ timeout: 90_000 });
 
-		await context.close();
-	});
+			gate.assertNoErrors();
+			await context.close();
+		});
 });
