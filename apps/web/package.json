@@ -10,7 +10,9 @@
     "lint": "node ./node_modules/@biomejs/biome/bin/biome lint src",
     "format": "node ./node_modules/@biomejs/biome/bin/biome format --write src",
     "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit --incremental false",
-    "test": "pnpm typecheck && pnpm lint"
+    "test": "pnpm typecheck && pnpm lint",
+    "e2e": "pnpm exec playwright test",
+    "e2e:install": "pnpm exec playwright install chromium"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.11",
@@ -30,6 +32,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "@playwright/test": "^1.50.1",
     "@tailwindcss/postcss": "^4.0.0",
     "@tailwindcss/typography": "^0.5.19",
     "@types/dompurify": "^3.2.0",

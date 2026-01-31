@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>LawSaw E2E Feed</title>
+    <link>https://example.com/lawsaw/e2e</link>
+    <description>用于端到端测试的 RSS fixture（含脏数据样式：HTML、空白字符、重复字段等）</description>
+    <language>zh-CN</language>
+    <pubDate>Fri, 30 Jan 2026 00:00:00 GMT</pubDate>
+
+    <item>
+      <title>E2EKEY 合规要点速览（测试）</title>
+      <link>https://example.com/lawsaw/e2e/articles/1</link>
+      <guid isPermaLink="false">lawsaw-e2e-article-1</guid>
+      <pubDate>Fri, 30 Jan 2026 00:00:00 GMT</pubDate>
+      <description><![CDATA[
+        <p>本条目用于 E2E 端到端测试：<strong>E2EKEY-12345</strong></p>
+        <p>包含 HTML、换行与多余空白，用于验证清洗逻辑与展示兜底。</p>
+      ]]></description>
+    </item>
+
+    <item>
+      <title>E2EKEY 条款更新快报（测试 2）</title>
+      <link>https://example.com/lawsaw/e2e/articles/2</link>
+      <guid isPermaLink="false">lawsaw-e2e-article-2</guid>
+      <pubDate>Fri, 30 Jan 2026 00:00:00 GMT</pubDate>
+      <description><![CDATA[
+        <p>第二条用于确保抓取后文章列表不止 1 条。</p>
+      ]]></description>
+    </item>
+  </channel>
+</rss>
+

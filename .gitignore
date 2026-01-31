@@ -41,6 +41,8 @@ tmpclaude-*
 # Agent / Tooling (do not commit)
 .claude/
 .playwright-mcp/
+playwright-report/
+test-results/
 
 # Build artifacts
 *.tsbuildinfo

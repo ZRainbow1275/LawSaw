@@ -1,0 +1,52 @@
+import fs from "node:fs";
+import path from "node:path";
+import { defineConfig, devices } from "@playwright/test";
+
+function loadBaseUrlFromRuntimeFile(): string | null {
+	const candidate = path.resolve(process.cwd(), "..", "..", "tmp", "e2e-env.json");
+	try {
+		const raw = fs.readFileSync(candidate, "utf-8");
+		const parsed: unknown = JSON.parse(raw);
+		if (
+			parsed &&
+			typeof parsed === "object" &&
+			"base_url" in parsed &&
+			typeof (parsed as { base_url?: unknown }).base_url === "string"
+		) {
+			const value = (parsed as { base_url: string }).base_url.trim();
+			return value.length > 0 ? value : null;
+		}
+	} catch {
+		// ignore
+	}
+	return null;
+}
+
+const baseURL =
+	process.env.E2E_BASE_URL?.trim() || loadBaseUrlFromRuntimeFile() || "http://localhost:8849";
+
+export default defineConfig({
+	testDir: "./e2e",
+	fullyParallel: false,
+	timeout: 90_000,
+	expect: {
+		timeout: 15_000,
+	},
+	retries: process.env.CI ? 2 : 0,
+	reporter: process.env.CI
+		? [["github"], ["html", { open: "never" }]]
+		: [["list"], ["html", { open: "never" }]],
+	use: {
+		baseURL,
+		trace: "on-first-retry",
+		screenshot: "only-on-failure",
+		video: "retain-on-failure",
+	},
+	outputDir: "test-results",
+	projects: [
+		{
+			name: "chromium",
+			use: { ...devices["Desktop Chrome"] },
+		},
+	],
+});

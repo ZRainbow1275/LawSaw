@@ -3,10 +3,11 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: scripts/no-dockerhub/start-stack.sh [--name <stack-name>] [--rebuild] [--fresh]
+Usage: scripts/no-dockerhub/start-stack.sh [--name <stack-name>] [--env-file <path>] [--rebuild] [--fresh]
 
 Options:
   --name <stack-name>  Stack identifier used for container names/state dir (default: law-eye-local)
+  --env-file <path>    Env file containing POSTGRES_PASSWORD (default: <repo>/.env)
   --rebuild            Rebuild local helper images (redis/postgres+pgvector)
   --fresh              Remove the postgres data volume before start (DANGEROUS: wipes data)
 EOF
@@ -15,6 +16,7 @@ EOF
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 STACK_NAME="${LAW_EYE_STACK_NAME:-law-eye-local}"
+ENV_FILE=""
 REBUILD_IMAGES=0
 FRESH=0
 RUNNING=0
@@ -23,6 +25,10 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --name)
       STACK_NAME="${2:-}"
+      shift 2
+      ;;
+    --env-file)
+      ENV_FILE="${2:-}"
       shift 2
       ;;
     --rebuild)
@@ -50,6 +56,10 @@ if [[ -z "$STACK_NAME" ]]; then
   exit 1
 fi
 
+if [[ -z "$ENV_FILE" ]]; then
+  ENV_FILE="$ROOT/.env"
+fi
+
 cleanup_on_exit() {
   local exit_code=$?
   if [[ "$RUNNING" -eq 1 && "$exit_code" -ne 0 ]]; then
@@ -64,18 +74,18 @@ LOG_DIR="$STATE_DIR/logs"
 PID_DIR="$STATE_DIR/pids"
 mkdir -p "$LOG_DIR" "$PID_DIR"
 
-if [[ ! -f "$ROOT/.env" ]]; then
-  echo "ERROR: missing $ROOT/.env (POSTGRES_PASSWORD is required)" >&2
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "ERROR: missing env file: $ENV_FILE (POSTGRES_PASSWORD is required)" >&2
   exit 1
 fi
 
 set -a
 # shellcheck disable=SC1090
-source "$ROOT/.env"
+source "$ENV_FILE"
 set +a
 
 if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
-  echo "ERROR: POSTGRES_PASSWORD is empty in $ROOT/.env" >&2
+  echo "ERROR: POSTGRES_PASSWORD is empty in $ENV_FILE" >&2
   exit 1
 fi
 
@@ -337,7 +347,7 @@ RUNNING=1
 docker run -d --name "$REDIS_CONTAINER" -p "${REDIS_PORT}:6379" lawsaw-redis:local >/dev/null
 docker run -d --name "$POSTGRES_CONTAINER" \
   -p "${POSTGRES_PORT}:5432" \
-  --env-file "$ROOT/.env" \
+  --env-file "$ENV_FILE" \
   -e POSTGRES_USER=law_eye \
   -e POSTGRES_DB=law_eye \
   -v "$POSTGRES_VOLUME":/var/lib/postgresql/data \
@@ -385,9 +395,11 @@ DB_PASS_ENC="$(urlencode "$POSTGRES_PASSWORD")"
 DB_URL="postgres://law_eye:${DB_PASS_ENC}@localhost:${POSTGRES_PORT}/law_eye"
 REDIS_URL="redis://localhost:${REDIS_PORT}"
 
-# Prefer localhost for cookie-based auth (SameSite=Lax). We'll fallback to WSL IP for Windows if localhost forwarding is unavailable.
+# Web should call same-origin (/api/v1/*) to keep cookie auth stable under SameSite=Lax.
+# Next dev server proxies to the Rust API via rewrites configured by LAW_EYE_API_PROXY_TARGET.
 WSL_HOST_IP="${LAW_EYE_WSL_HOST_IP:-}"
-NEXT_PUBLIC_API_URL="http://localhost:${API_PORT}"
+NEXT_PUBLIC_API_URL="http://localhost:${WEB_PORT}"
+LAW_EYE_API_PROXY_TARGET="http://localhost:${API_PORT}"
 
 export LAW_EYE__DATABASE__URL="$DB_URL"
 export LAW_EYE__REDIS__URL="$REDIS_URL"
@@ -485,17 +497,19 @@ start_web_windows() {
   local cmd_file_win
   cmd_file_win="$(to_windows_path "$cmd_file")"
 
-  python3 - "$cmd_file" "$web_workdir_win" "$WEB_PORT" "$NEXT_PUBLIC_API_URL" "$log_file_win" "$err_file_win" <<'PY'
+  python3 - "$cmd_file" "$web_workdir_win" "$WEB_PORT" "$NEXT_PUBLIC_API_URL" "$LAW_EYE_API_PROXY_TARGET" "$log_file_win" "$err_file_win" <<'PY'
 import pathlib
 import sys
 
-path, workdir, web_port, api_url, out_log, err_log = sys.argv[1:]
+path, workdir, web_port, web_origin, proxy_target, out_log, err_log = sys.argv[1:]
 
 content = f"""@echo off
 setlocal
 cd /d {workdir}
 set WEB_PORT={web_port}
-set NEXT_PUBLIC_API_URL={api_url}
+set PORT={web_port}
+set NEXT_PUBLIC_API_URL={web_origin}
+set LAW_EYE_API_PROXY_TARGET={proxy_target}
 set NEXT_TEST_WASM=1
 set NEXT_TELEMETRY_DISABLED=1
 pnpm dev 1> "{out_log}" 2> "{err_log}"
@@ -555,12 +569,13 @@ if [[ "$NODE_PLATFORM" == "win32" ]]; then
       echo "ERROR: Windows cannot reach API via localhost and failed to detect WSL IPv4. Set LAW_EYE_WSL_HOST_IP manually." >&2
       exit 1
     fi
-    NEXT_PUBLIC_API_URL="http://${WSL_HOST_IP}:${API_PORT}"
-    echo "WARN: Windows cannot reach WSL API via localhost. Using $NEXT_PUBLIC_API_URL; cookie-based auth may not work under SameSite=Lax." >&2
+    LAW_EYE_API_PROXY_TARGET="http://${WSL_HOST_IP}:${API_PORT}"
+    echo "INFO: Windows cannot reach WSL API via localhost. Using LAW_EYE_API_PROXY_TARGET=$LAW_EYE_API_PROXY_TARGET for Next rewrites." >&2
   fi
 fi
 
 export NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL"
+export LAW_EYE_API_PROXY_TARGET="$LAW_EYE_API_PROXY_TARGET"
 if [[ "$NODE_PLATFORM" == "win32" ]]; then
   start_web_windows
 else
@@ -599,6 +614,7 @@ REDIS_PORT=$REDIS_PORT
 API_PORT=$API_PORT
 WEB_PORT=$WEB_PORT
 NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+LAW_EYE_API_PROXY_TARGET=$LAW_EYE_API_PROXY_TARGET
 WSL_HOST_IP=${WSL_HOST_IP:-}
 EOF
 
