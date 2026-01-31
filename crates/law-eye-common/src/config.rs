@@ -242,7 +242,13 @@ impl AppConfig {
 
         let config = config::Config::builder()
             .add_source(config::File::with_name("config/default").required(false))
-            .add_source(config::Environment::with_prefix("LAW_EYE").separator("__"))
+            .add_source(
+                config::Environment::with_prefix("LAW_EYE")
+                    .separator("__")
+                    .try_parsing(true)
+                    .list_separator(",")
+                    .with_list_parse_key("server.allowed_origins"),
+            )
             .build()?;
 
         let mut config: Self = config.try_deserialize()?;
