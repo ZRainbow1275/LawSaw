@@ -57,6 +57,7 @@ export function Header() {
 					<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
 					<Input
 						type="search"
+						aria-label="全局搜索关键词"
 						placeholder="搜索资讯、法规、关键词..."
 						className="pl-10 pr-10"
 						value={searchQuery}
@@ -67,7 +68,7 @@ export function Header() {
 						variant="ghost"
 						size="icon"
 						className="absolute right-1 top-1/2 -translate-y-1/2"
-						aria-label="搜索"
+						aria-label="执行全局搜索"
 						disabled={!searchQuery.trim()}
 					>
 						<Search className="h-4 w-4" />
