@@ -1,5 +1,5 @@
 # Build stage
-FROM rust:1.92-bookworm as builder
+FROM mcr.microsoft.com/devcontainers/rust:1 AS builder
 
 WORKDIR /app
 
@@ -11,11 +11,11 @@ COPY crates ./crates
 RUN cargo build --release --bin law-eye-api
 
 # Runtime stage
-FROM debian:bookworm-slim
+FROM mcr.microsoft.com/devcontainers/base:ubuntu
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y ca-certificates libssl3 curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/law-eye-api /app/law-eye-api
 COPY config ./config

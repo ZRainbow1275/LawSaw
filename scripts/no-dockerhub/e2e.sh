@@ -169,8 +169,8 @@ source "$STATE_DIR/stack.env"
 export STACK_NAME
 export WEB_PORT
 export LAW_EYE_API_PROXY_TARGET
-export E2E_BASE_URL="http://localhost:${WEB_PORT}"
-export E2E_RSS_URL="http://localhost:${RSS_PORT}/rss.xml"
+export E2E_BASE_URL="http://127.0.0.1:${WEB_PORT}"
+export E2E_RSS_URL="http://127.0.0.1:${RSS_PORT}/rss.xml"
 
 E2E_ENV_FILE="$ROOT/tmp/e2e-env.json"
 python3 - "$E2E_ENV_FILE" <<'PY'

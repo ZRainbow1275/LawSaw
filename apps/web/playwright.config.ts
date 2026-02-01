@@ -23,7 +23,9 @@ function loadBaseUrlFromRuntimeFile(): string | null {
 }
 
 const baseURL =
-	process.env.E2E_BASE_URL?.trim() || loadBaseUrlFromRuntimeFile() || "http://localhost:8849";
+	process.env.E2E_BASE_URL?.trim() ||
+	loadBaseUrlFromRuntimeFile() ||
+	"http://127.0.0.1:8849";
 
 export default defineConfig({
 	testDir: "./e2e",

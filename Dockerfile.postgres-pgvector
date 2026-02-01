@@ -1,0 +1,66 @@
+FROM mcr.microsoft.com/devcontainers/base:ubuntu
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+  && apt-get install -y ca-certificates curl gnupg \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install PostgreSQL 16 + pgvector from PGDG.
+RUN set -eux; \
+  echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt noble-pgdg main" > /etc/apt/sources.list.d/pgdg.list; \
+  curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql.gpg; \
+  apt-get update; \
+  apt-get install -y postgresql-16 postgresql-16-pgvector; \
+  rm -rf /var/lib/apt/lists/*
+
+ENV PGDATA=/var/lib/postgresql/data
+
+RUN mkdir -p /var/lib/postgresql/data \
+  && chown -R postgres:postgres /var/lib/postgresql \
+  && chmod 700 /var/lib/postgresql/data
+
+RUN cat > /usr/local/bin/docker-entrypoint.sh <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+
+PGDATA="${PGDATA:-/var/lib/postgresql/data}"
+POSTGRES_USER="${POSTGRES_USER:-postgres}"
+POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-postgres}"
+POSTGRES_DB="${POSTGRES_DB:-postgres}"
+
+BIN="/usr/lib/postgresql/16/bin"
+
+if [ ! -s "${PGDATA}/PG_VERSION" ]; then
+  install -d -o postgres -g postgres -m 0700 "${PGDATA}"
+  su - postgres -c "${BIN}/initdb -D '${PGDATA}' --encoding=UTF8 --locale=C"
+
+  echo "listen_addresses='*'" >> "${PGDATA}/postgresql.conf"
+  echo "password_encryption='scram-sha-256'" >> "${PGDATA}/postgresql.conf"
+  echo "host all all 0.0.0.0/0 scram-sha-256" >> "${PGDATA}/pg_hba.conf"
+  echo "host all all ::/0 scram-sha-256" >> "${PGDATA}/pg_hba.conf"
+
+  su - postgres -c "${BIN}/pg_ctl -D '${PGDATA}' -o \"-c listen_addresses='*'\" -w start"
+
+  if ! su - postgres -c "psql -tAc \"SELECT 1 FROM pg_roles WHERE rolname='${POSTGRES_USER}'\"" | grep -q 1; then
+    su - postgres -c "psql -v ON_ERROR_STOP=1 --username=postgres -c \"CREATE ROLE \\\"${POSTGRES_USER}\\\" WITH LOGIN SUPERUSER PASSWORD '${POSTGRES_PASSWORD}';\""
+  fi
+
+  if ! su - postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='${POSTGRES_DB}'\"" | grep -q 1; then
+    su - postgres -c "psql -v ON_ERROR_STOP=1 --username=postgres -c \"CREATE DATABASE \\\"${POSTGRES_DB}\\\" OWNER \\\"${POSTGRES_USER}\\\";\""
+  fi
+
+  su - postgres -c "${BIN}/pg_ctl -D '${PGDATA}' -m fast -w stop"
+fi
+
+exec su - postgres -c "${BIN}/postgres -D '${PGDATA}' -c listen_addresses='*'"
+EOS
+
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+VOLUME ["/var/lib/postgresql/data"]
+
+EXPOSE 5432
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+
