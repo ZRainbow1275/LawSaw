@@ -24,6 +24,9 @@ node_modules/
 **/.next/
 .turbo/
 dist/
+.pnpm-store/
+**/.pnpm-store/
+pnpm-debug.log*
 
 # Documentation
 *.md
@@ -54,3 +57,4 @@ logs/
 # Temp files
 tmp/
 temp/
+tmpclaude-*

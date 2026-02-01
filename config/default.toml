@@ -21,11 +21,11 @@ request_timeout_ms = 30000
 max_body_bytes = 1048576
 
 [database]
-url = "postgres://law_eye:law_eye@localhost:5435/law_eye"
+url = ""
 max_connections = 10
 
 [redis]
-url = "redis://localhost:6380"
+url = ""
 
 [ai]
 api_key = ""

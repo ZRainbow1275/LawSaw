@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: law_eye
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     ports:
-      - "${POSTGRES_HOST_PORT:-5435}:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5435}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -20,35 +20,63 @@ services:
     networks:
       - law-eye-network
 
+  redis-init:
+    image: alpine:3.20
+    user: "0:0"
+    command: ["sh", "-c", "chown -R 1000:1000 /data"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - law-eye-network
+    restart: "no"
+
   redis:
     build:
       context: .
       dockerfile: Dockerfile.redis
     image: lawsaw-redis:local
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     ports:
-      - "${REDIS_HOST_PORT:-6380}:6379"
+      - "127.0.0.1:${REDIS_HOST_PORT:-6380}:6379"
     volumes:
       - redis_data:/data
+    depends_on:
+      redis-init:
+        condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - law-eye-network
 
-  minio:
-    image: alpine/minio:RELEASE.2025-10-15T17-29-55Z
+  minio-init:
+    image: alpine:3.20
     user: "0:0"
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    ports:
-      - "${MINIO_API_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    command: ["sh", "-c", "chown -R 1000:1000 /data"]
     volumes:
       - minio_data:/data
+    networks:
+      - law-eye-network
+    restart: "no"
+
+  minio:
+    image: alpine/minio:RELEASE.2025-10-15T17-29-55Z
+    user: "1000:1000"
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+    ports:
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9000/minio/health/ready"]
       interval: 10s
@@ -68,7 +96,7 @@ services:
       LAW_EYE__DATABASE__URL: postgres://law_eye:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/law_eye
       LAW_EYE__DATABASE__MAX_CONNECTIONS: "10"
       LAW_EYE__DATABASE__SESSION_ROLE: "law_eye_app"
-      LAW_EYE__REDIS__URL: redis://redis:6379
+      LAW_EYE__REDIS__URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379
       LAW_EYE__AI__API_KEY: ${OPENAI_API_KEY:-}
       LAW_EYE__AI__BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       LAW_EYE__AI__MODEL: gpt-4o-mini
@@ -77,8 +105,8 @@ services:
       LAW_EYE__OBJECT_STORAGE__ENDPOINT: "http://minio:9000"
       LAW_EYE__OBJECT_STORAGE__REGION: "us-east-1"
       LAW_EYE__OBJECT_STORAGE__BUCKET: "law-eye"
-      LAW_EYE__OBJECT_STORAGE__ACCESS_KEY_ID: "minioadmin"
-      LAW_EYE__OBJECT_STORAGE__SECRET_ACCESS_KEY: "minioadmin"
+      LAW_EYE__OBJECT_STORAGE__ACCESS_KEY_ID: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      LAW_EYE__OBJECT_STORAGE__SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
       LAW_EYE__OBJECT_STORAGE__FORCE_PATH_STYLE: "true"
       RUST_LOG: info
     ports:
@@ -91,7 +119,7 @@ services:
       minio:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      test: ["CMD", "/app/law-eye-api", "--healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -110,7 +138,7 @@ services:
       LAW_EYE__DATABASE__URL: postgres://law_eye:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/law_eye
       LAW_EYE__DATABASE__MAX_CONNECTIONS: "10"
       LAW_EYE__DATABASE__SESSION_ROLE: "law_eye_app"
-      LAW_EYE__REDIS__URL: redis://redis:6379
+      LAW_EYE__REDIS__URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379
       LAW_EYE__AI__API_KEY: ${OPENAI_API_KEY:-}
       LAW_EYE__AI__BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       LAW_EYE__AI__MODEL: gpt-4o-mini
@@ -119,8 +147,8 @@ services:
       LAW_EYE__OBJECT_STORAGE__ENDPOINT: "http://minio:9000"
       LAW_EYE__OBJECT_STORAGE__REGION: "us-east-1"
       LAW_EYE__OBJECT_STORAGE__BUCKET: "law-eye"
-      LAW_EYE__OBJECT_STORAGE__ACCESS_KEY_ID: "minioadmin"
-      LAW_EYE__OBJECT_STORAGE__SECRET_ACCESS_KEY: "minioadmin"
+      LAW_EYE__OBJECT_STORAGE__ACCESS_KEY_ID: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      LAW_EYE__OBJECT_STORAGE__SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
       LAW_EYE__OBJECT_STORAGE__FORCE_PATH_STYLE: "true"
       RUST_LOG: info
     depends_on:

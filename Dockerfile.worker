@@ -10,18 +10,30 @@ COPY crates ./crates
 
 RUN cargo build --release --bin law-eye-worker
 
+RUN printf 'hosts: files dns\n' > /tmp/nsswitch.conf
+
 # Runtime stage
-FROM mcr.microsoft.com/devcontainers/base:ubuntu
+# NOTE: gcr.io is not always reachable in some environments; use Chainguard's glibc runtime instead.
+FROM cgr.dev/chainguard/glibc-dynamic@sha256:3f5dc064fa077619b186d21a426c07fb3868668ffe104db8ba3e46347a80a1d3
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+# OpenSSL runtime dependencies (required by openssl-sys / native-tls).
+COPY --from=builder /lib/x86_64-linux-gnu/libcrypto.so.3 /usr/lib/libcrypto.so.3
+COPY --from=builder /lib/x86_64-linux-gnu/libssl.so.3 /usr/lib/libssl.so.3
+COPY --from=builder /lib/x86_64-linux-gnu/libz.so.1 /usr/lib/libz.so.1
+COPY --from=builder /lib/x86_64-linux-gnu/libzstd.so.1 /usr/lib/libzstd.so.1
+COPY --from=builder /lib/x86_64-linux-gnu/libgcc_s.so.1 /usr/lib/libgcc_s.so.1
+# DNS resolution support for glibc-based distroless-like images.
+COPY --from=builder /lib/x86_64-linux-gnu/libnss_dns.so.2 /usr/lib/libnss_dns.so.2
+COPY --from=builder /lib/x86_64-linux-gnu/libnss_files.so.2 /usr/lib/libnss_files.so.2
+COPY --from=builder /lib/x86_64-linux-gnu/libresolv.so.2 /usr/lib/libresolv.so.2
+COPY --from=builder /tmp/nsswitch.conf /etc/nsswitch.conf
 
 COPY --from=builder /app/target/release/law-eye-worker /app/law-eye-worker
 COPY config ./config
 
-RUN useradd -r -s /bin/false appuser && chown -R appuser:appuser /app
-USER appuser
+USER 1000:1000
 
 ENV RUST_LOG=info
-CMD ["./law-eye-worker"]
+ENTRYPOINT ["/app/law-eye-worker"]

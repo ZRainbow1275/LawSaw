@@ -36,6 +36,44 @@ use crate::auth::AuthBackend;
 use crate::middleware::{CsrfLayer, RequestIdLayer};
 use crate::state::AppState;
 
+fn healthcheck_port() -> u16 {
+    std::env::var("LAW_EYE__SERVER__PORT")
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u16>().ok())
+        .unwrap_or(3001)
+}
+
+fn run_healthcheck() -> anyhow::Result<()> {
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+
+    let port = healthcheck_port();
+    let addr = format!("127.0.0.1:{port}");
+
+    let mut stream = TcpStream::connect(&addr)
+        .with_context(|| format!("connect to {addr}"))?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .context("set read timeout")?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(2)))
+        .context("set write timeout")?;
+
+    let request = b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+    stream.write_all(request).context("write request")?;
+
+    let mut buffer = [0u8; 1024];
+    let n = stream.read(&mut buffer).context("read response")?;
+    let response = std::str::from_utf8(&buffer[..n]).unwrap_or_default();
+
+    let status_line = response.lines().next().unwrap_or_default();
+    if status_line.starts_with("HTTP/1.1 200") || status_line.starts_with("HTTP/1.0 200") {
+        Ok(())
+    } else {
+        anyhow::bail!("unhealthy response: {}", status_line);
+    }
+}
+
 fn redact_sensitive_url(raw: &str) -> String {
     match Url::parse(raw) {
         Ok(mut url) => {
@@ -134,6 +172,11 @@ async fn shutdown_signal() {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    if std::env::args().any(|arg| arg == "--healthcheck") {
+        run_healthcheck().context("healthcheck")?;
+        return Ok(());
+    }
+
     let is_production = std::env::var_os("PRODUCTION").is_some();
 
     if is_production {

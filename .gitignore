@@ -1,6 +1,5 @@
 # Rust
 /target/
-Cargo.lock
 
 # Environment
 .env
@@ -22,6 +21,9 @@ node_modules/
 .next/
 .turbo/
 dist/
+.pnpm-store/
+**/.pnpm-store/
+pnpm-debug.log*
 
 # Logs
 *.log

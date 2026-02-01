@@ -347,7 +347,34 @@ seed_secrets() {
   db_url="postgres://law_eye:${postgres_password}@postgres:5432/law_eye"
 
   local redis_url
-  redis_url="redis://redis:6379"
+  local redis_password="${REDIS_PASSWORD:-}"
+  if [[ -z "$redis_password" ]]; then
+    redis_password="$(dotenv_get REDIS_PASSWORD || true)"
+  fi
+  if [[ -z "$redis_password" ]]; then
+    echo "[vault] ERROR: REDIS_PASSWORD is required (for redis://:***@redis:6379)" >&2
+    exit 1
+  fi
+  redis_url="redis://:${redis_password}@redis:6379"
+
+  local s3_access_key_id="${MINIO_ROOT_USER:-}"
+  if [[ -z "$s3_access_key_id" ]]; then
+    s3_access_key_id="$(dotenv_get MINIO_ROOT_USER || true)"
+  fi
+
+  local s3_secret_access_key="${MINIO_ROOT_PASSWORD:-}"
+  if [[ -z "$s3_secret_access_key" ]]; then
+    s3_secret_access_key="$(dotenv_get MINIO_ROOT_PASSWORD || true)"
+  fi
+
+  if [[ -z "$s3_access_key_id" || -z "$s3_secret_access_key" ]]; then
+    echo "[vault] ERROR: MINIO_ROOT_USER/MINIO_ROOT_PASSWORD are required (for object storage)" >&2
+    exit 1
+  fi
+
+  local s3_endpoint="http://minio:9000"
+  local s3_region="us-east-1"
+  local s3_bucket="law-eye"
 
   local openai_api_key="${OPENAI_API_KEY:-}"
   if [[ -z "$openai_api_key" ]]; then
@@ -375,7 +402,12 @@ seed_secrets() {
     database_url="$db_url" \
     redis_url="$redis_url" \
     openai_api_key="$openai_api_key" \
-    openai_base_url="$openai_base_url" >/dev/null
+    openai_base_url="$openai_base_url" \
+    s3_endpoint="$s3_endpoint" \
+    s3_region="$s3_region" \
+    s3_bucket="$s3_bucket" \
+    s3_access_key_id="$s3_access_key_id" \
+    s3_secret_access_key="$s3_secret_access_key" >/dev/null
 
   docker_exec \
     -e "VAULT_ADDR=${VAULT_ADDR}" \
@@ -387,7 +419,12 @@ seed_secrets() {
     database_url="$db_url" \
     redis_url="$redis_url" \
     openai_api_key="$openai_api_key" \
-    openai_base_url="$openai_base_url" >/dev/null
+    openai_base_url="$openai_base_url" \
+    s3_endpoint="$s3_endpoint" \
+    s3_region="$s3_region" \
+    s3_bucket="$s3_bucket" \
+    s3_access_key_id="$s3_access_key_id" \
+    s3_secret_access_key="$s3_secret_access_key" >/dev/null
 }
 
 main() {

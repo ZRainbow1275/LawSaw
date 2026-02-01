@@ -311,6 +311,31 @@ impl AppConfig {
             }
         }
 
+        if config.database.url.trim().is_empty() {
+            return Err(crate::Error::Config(
+                "LAW_EYE__DATABASE__URL must be set (or provided via Vault secrets)".into(),
+            ));
+        }
+
+        if config.redis.url.trim().is_empty() {
+            return Err(crate::Error::Config(
+                "LAW_EYE__REDIS__URL must be set (or provided via Vault secrets)".into(),
+            ));
+        }
+
+        if config.object_storage.enabled {
+            if config.object_storage.endpoint.trim().is_empty()
+                || config.object_storage.region.trim().is_empty()
+                || config.object_storage.bucket.trim().is_empty()
+                || config.object_storage.access_key_id.trim().is_empty()
+                || config.object_storage.secret_access_key.trim().is_empty()
+            {
+                return Err(crate::Error::Config(
+                    "Object storage is enabled, but required fields are missing. Ensure LAW_EYE__OBJECT_STORAGE__ENDPOINT/REGION/BUCKET/ACCESS_KEY_ID/SECRET_ACCESS_KEY are set (or provided via Vault secrets).".into(),
+                ));
+            }
+        }
+
         Ok(config)
     }
 }
@@ -326,12 +351,12 @@ impl Default for AppConfig {
                 max_body_bytes: default_max_body_bytes(),
             },
             database: DatabaseConfig {
-                url: "postgres://law_eye:law_eye@localhost:5435/law_eye".to_string(),
+                url: String::new(),
                 max_connections: 10,
                 session_role: None,
             },
             redis: RedisConfig {
-                url: "redis://localhost:6380".to_string(),
+                url: String::new(),
             },
             ai: AiConfig::default(),
             metrics: MetricsConfig::default(),
