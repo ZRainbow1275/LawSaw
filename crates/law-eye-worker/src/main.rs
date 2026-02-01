@@ -3,7 +3,7 @@ use law_eye_ai::{AiService, ClassifyResult, RiskAssessment, SummaryResult, TagsR
 use law_eye_common::AppConfig;
 use law_eye_core::{ArticleService, SourceService};
 use law_eye_crawler::{RawArticle, RssFetcher, SpiderConfig, WebSpider};
-use law_eye_db::{create_pool_with_session_role, CreateArticle};
+use law_eye_db::{create_pool_with_session_role_retry, CreateArticle};
 use law_eye_queue::{AiTask, AiTaskType, IngestTask, PushTask, ReservedTask, TaskQueue};
 use serde_json::json;
 use sqlx::PgPool;
@@ -20,6 +20,8 @@ const QUEUE_PUSH: &str = "queue:push";
 
 const MAINTENANCE_INTERVAL_SECS: u64 = 15;
 const MAINTENANCE_MAX_BATCH: usize = 200;
+
+const DB_CONNECT_MAX_ATTEMPTS: u32 = 30;
 
 const VISIBILITY_TIMEOUT_INGEST_MS: i64 = 10 * 60 * 1_000;
 const VISIBILITY_TIMEOUT_AI_MS: i64 = 20 * 60 * 1_000;
@@ -982,10 +984,11 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Starting Law Eye Worker...");
 
-    let pool = create_pool_with_session_role(
+    let pool = create_pool_with_session_role_retry(
         &config.database.url,
         config.database.max_connections,
         config.database.session_role.as_deref(),
+        DB_CONNECT_MAX_ATTEMPTS,
     )
     .await?;
 

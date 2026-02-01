@@ -11,7 +11,7 @@
 - Monkey Tests 全部通过（不得导致系统崩溃/死锁/持续 5xx）
 
 **最近一次验证（落盘口径）**
-- 2026-02-02：`docker compose up --build -d` ✅；`scripts/monkey/api_monkey.py` ✅；`scripts/monkey/web_monkey.py` ✅；`cargo test --workspace` ✅；`pnpm -C apps/web test` ✅
+- 2026-02-01：`docker compose up --build -d` ✅；`scripts/monkey/api_monkey.py` ✅；`scripts/monkey/web_monkey.py` ✅；`cargo test --workspace` ✅；`pnpm -C apps/web test` ✅
 
 **质量门槛（逐步收敛到强制）**
 - Rust：`cargo test` 通过（workspace）

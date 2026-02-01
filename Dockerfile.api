@@ -5,10 +5,16 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 
+ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
+
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 
-RUN cargo build --release --bin law-eye-api
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/app/target \
+    cargo build --release --bin law-eye-api --locked \
+    && cp /app/target/release/law-eye-api /app/law-eye-api
 
 RUN printf 'hosts: files dns\n' > /tmp/nsswitch.conf
 
@@ -30,7 +36,7 @@ COPY --from=builder /lib/x86_64-linux-gnu/libnss_files.so.2 /usr/lib/libnss_file
 COPY --from=builder /lib/x86_64-linux-gnu/libresolv.so.2 /usr/lib/libresolv.so.2
 COPY --from=builder /tmp/nsswitch.conf /etc/nsswitch.conf
 
-COPY --from=builder /app/target/release/law-eye-api /app/law-eye-api
+COPY --from=builder /app/law-eye-api /app/law-eye-api
 COPY config ./config
 
 USER 1000:1000

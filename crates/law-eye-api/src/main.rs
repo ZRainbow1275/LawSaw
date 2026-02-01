@@ -16,7 +16,7 @@ use law_eye_ai::{AiService, LlmGateway};
 use law_eye_common::vault::{PlaintextCipher, SensitiveStringCipher, VaultTransitCipher};
 use law_eye_common::AppConfig;
 use law_eye_core::ObjectService;
-use law_eye_db::{create_pool, create_pool_with_session_role};
+use law_eye_db::{create_pool_retry, create_pool_with_session_role_retry};
 use law_eye_queue::TaskQueue;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use std::{collections::HashSet, net::SocketAddr, sync::Arc, time::Duration};
@@ -35,6 +35,8 @@ use url::{Host, Url};
 use crate::auth::AuthBackend;
 use crate::middleware::{CsrfLayer, RequestIdLayer};
 use crate::state::AppState;
+
+const DB_CONNECT_MAX_ATTEMPTS: u32 = 30;
 
 fn healthcheck_port() -> u16 {
     std::env::var("LAW_EYE__SERVER__PORT")
@@ -213,13 +215,16 @@ async fn main() -> anyhow::Result<()> {
     info!("Server Port: {}", config.server.port);
 
     info!("Running database migrations...");
-    let admin_pool = create_pool(&config.database.url, config.database.max_connections).await?;
+    let admin_pool =
+        create_pool_retry(&config.database.url, config.database.max_connections, DB_CONNECT_MAX_ATTEMPTS)
+            .await?;
     law_eye_db::run_migrations(&admin_pool).await?;
 
-    let pool = create_pool_with_session_role(
+    let pool = create_pool_with_session_role_retry(
         &config.database.url,
         config.database.max_connections,
         config.database.session_role.as_deref(),
+        DB_CONNECT_MAX_ATTEMPTS,
     )
     .await?;
 
