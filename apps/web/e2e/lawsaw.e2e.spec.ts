@@ -102,18 +102,48 @@ async function registerAndLogin(
 			},
 		});
 
-	let response = await doRegister();
-	if (response.status() === 429) {
-		const retryAfterRaw = response.headers()["retry-after"];
-		const retryAfterSeconds = retryAfterRaw
-			? Number.parseInt(retryAfterRaw, 10)
-			: Number.NaN;
-		const delayMs =
-			Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-				? retryAfterSeconds * 1000
-				: 5_000;
-		await new Promise((resolve) => setTimeout(resolve, delayMs));
-		response = await doRegister();
+	const maxRegisterAttempts = 5;
+	let response: Awaited<ReturnType<typeof doRegister>> | null = null;
+	let lastError: unknown = null;
+	for (let attempt = 1; attempt <= maxRegisterAttempts; attempt++) {
+		try {
+			response = await doRegister();
+		} catch (error) {
+			lastError = error;
+			response = null;
+		}
+
+		if (!response) {
+			const delayMs = Math.min(15_000, 500 * 2 ** (attempt - 1));
+			await new Promise((resolve) => setTimeout(resolve, delayMs));
+			continue;
+		}
+
+		if (response.status() === 429) {
+			const retryAfterRaw = response.headers()["retry-after"];
+			const retryAfterSeconds = retryAfterRaw
+				? Number.parseInt(retryAfterRaw, 10)
+				: Number.NaN;
+			const delayMs =
+				Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+					? retryAfterSeconds * 1000
+					: 5_000;
+			await new Promise((resolve) => setTimeout(resolve, delayMs));
+			continue;
+		}
+
+		if (response.status() >= 500 && attempt < maxRegisterAttempts) {
+			const delayMs = Math.min(10_000, 500 * attempt);
+			await new Promise((resolve) => setTimeout(resolve, delayMs));
+			continue;
+		}
+
+		break;
+	}
+
+	if (!response) {
+		const detail = lastError instanceof Error ? lastError.message : String(lastError);
+		throw new Error(`Register request failed: ${detail}`);
 	}
 
 	const registerText = await response.text();
@@ -139,7 +169,19 @@ async function registerAndLogin(
 		throw new Error(`Register returned unexpected payload: ${registerText.slice(0, 200)}`);
 	}
 
-	const meResponse = await context.request.get(meUrl);
+	const maxMeAttempts = 5;
+	let meResponse: Awaited<ReturnType<typeof context.request.get>> | null = null;
+	for (let attempt = 1; attempt <= maxMeAttempts; attempt++) {
+		meResponse = await context.request.get(meUrl);
+		if (meResponse.ok()) break;
+		if (meResponse.status() >= 500 && attempt < maxMeAttempts) {
+			await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+			continue;
+		}
+		break;
+	}
+
+	if (!meResponse) throw new Error("Auth session check failed: missing response");
 	const meText = await meResponse.text();
 	if (!meResponse.ok()) {
 		throw new Error(
@@ -285,6 +327,7 @@ async function registerAndLogin(
 						"可选：",
 						"1) scripts/no-dockerhub/e2e.sh（自动启动 RSS fixture + 栈）",
 						"2) docker compose --profile e2e up -d && E2E_RSS_URL=http://rss-fixture:8000/rss.xml pnpm -C apps/web e2e",
+						"3) 写入 tmp/e2e-env.json（rss_url/base_url），用于 Windows/WSL interop 下环境变量透传不稳定场景",
 					].join("\n"),
 					);
 			}

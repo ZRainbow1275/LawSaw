@@ -1,7 +1,7 @@
 # MOD-QA 规格说明（Spec）— E2E / Monkey / Load
 
 Spec ID：SPEC-QA-001  
-状态：DRAFT（实施中）  
+状态：FINAL（已验证，2026-02-01）  
 目标：为 LawSaw 提供“可商业化交付”的系统级验证基线：E2E 用户旅程 + Monkey（混沌/模糊）测试 + 基础负载/延迟检查，并将测试报告落盘到 `prompts/logs/` 作为外部大脑的一部分。
 
 ---
@@ -66,6 +66,8 @@ Spec ID：SPEC-QA-001
   - `E2E_BASE_URL`（例如：`http://127.0.0.1:8849`）
 - 需要提供可被 worker 访问的 RSS fixture：
   - `E2E_RSS_URL`（推荐：`http://rss-fixture:8000/rss.xml`，配合 `docker compose --profile e2e up -d`）
+- 兼容运行时注入文件（用于 Windows/WSL interop 等 env 透传不稳定场景）：
+  - `tmp/e2e-env.json`：支持 `base_url` / `rss_url`
 
 ---
 
@@ -109,4 +111,4 @@ sequenceDiagram
 3. `python3 scripts/monkey/web_monkey.py ...` 通过（exit 0）
 4. Monkey 执行日志可落盘到 `prompts/logs/`（至少记录一次基线执行）
 5. Web `pnpm -C apps/web test` 通过（typecheck + lint）
-6. E2E 用户旅程可重复执行并通过：`E2E_RSS_URL=http://rss-fixture:8000/rss.xml pnpm -C apps/web e2e`
+6. E2E 用户旅程可重复执行并通过：`pnpm -C apps/web e2e`（通过 `E2E_BASE_URL/E2E_RSS_URL` 或 `tmp/e2e-env.json` 注入）
