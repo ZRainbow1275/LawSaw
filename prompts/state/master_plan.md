@@ -11,7 +11,7 @@
 - Monkey Tests 全部通过（不得导致系统崩溃/死锁/持续 5xx）
 
 **最近一次验证（落盘口径）**
-- 2026-02-01：`docker compose up --build -d` ✅；`scripts/monkey/api_monkey.py` ✅；`scripts/monkey/web_monkey.py` ✅；`cargo test --workspace` ✅；`pnpm -C apps/web test` ✅
+- 2026-02-01：`docker compose up --build -d` ✅；`scripts/monkey/api_monkey.py` ✅；`scripts/monkey/web_monkey.py` ✅；`cargo test --workspace` ✅；`pnpm -C apps/web test` ✅；`pnpm -C apps/web e2e` ✅
 
 **质量门槛（逐步收敛到强制）**
 - Rust：`cargo test` 通过（workspace）
@@ -30,7 +30,7 @@
 | MOD-DB | 数据访问/迁移 | `crates/law-eye-db` | Agent | TODO |
 | MOD-WEB | Web 前端 | `apps/web` | Agent | TODO |
 | MOD-INFRA | Compose/容器/网关 | `docker-compose*.yml` / `Dockerfile*` / `infra/` | Agent | DONE（Verified） |
-| MOD-QA | E2E/Monkey/Load | `scripts/` / `prompts/logs/` | Agent | IN_PROGRESS（Spec） |
+| MOD-QA | E2E/Monkey/Load | `scripts/` / `prompts/logs/` | Agent | DONE（Verified） |
 
 ## 2. 全局非功能性需求（NFR）
 

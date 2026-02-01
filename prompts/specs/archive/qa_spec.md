@@ -64,6 +64,8 @@ Spec ID：SPEC-QA-001
 - `apps/web` 通过 `pnpm -C apps/web e2e` 执行 Playwright
 - 必须允许通过环境变量配置基址：
   - `E2E_BASE_URL`（例如：`http://127.0.0.1:8849`）
+- 需要提供可被 worker 访问的 RSS fixture：
+  - `E2E_RSS_URL`（推荐：`http://rss-fixture:8000/rss.xml`，配合 `docker compose --profile e2e up -d`）
 
 ---
 
@@ -107,3 +109,4 @@ sequenceDiagram
 3. `python3 scripts/monkey/web_monkey.py ...` 通过（exit 0）
 4. Monkey 执行日志可落盘到 `prompts/logs/`（至少记录一次基线执行）
 5. Web `pnpm -C apps/web test` 通过（typecheck + lint）
+6. E2E 用户旅程可重复执行并通过：`E2E_RSS_URL=http://rss-fixture:8000/rss.xml pnpm -C apps/web e2e`

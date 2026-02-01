@@ -8,7 +8,7 @@
 - [x] INFRA-001 统一 Secrets 注入：compose 去明文、提供 `.env.example` ✅（已完成）
 - [x] QA-001 增加 Monkey Tests（API + Web 入口）✅（已完成：`scripts/monkey/*.py`）
 - [x] REL-001 启动稳定性：DB 连接重试 + 基础服务 restart policy ✅
-- [ ] QA-002 增加 E2E 用户旅程脚本（Login → 核心动作 → Logout）
+- [x] QA-002 增加 E2E 用户旅程脚本（Login → 核心动作 → Logout）✅（已完成：`apps/web/e2e/lawsaw.e2e.spec.ts`，配套 `docker-compose.yml` 的 `rss-fixture` profile）
 - [x] RUN-001 `docker compose up` 通过并记录日志 ✅（已完成）
 
 ## Next（下一批）

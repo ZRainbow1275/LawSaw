@@ -158,13 +158,14 @@ async function registerAndLogin(
 	await page.close();
 }
 
-test.describe.serial("LawSaw 关键用户流 E2E", () => {
-	let auth:
-		| {
-				statePath: string;
-				unique: string;
-		  }
-		| undefined;
+	test.describe.serial("LawSaw 关键用户流 E2E", () => {
+		let auth:
+			| {
+					statePath: string;
+					unique: string;
+					displayName: string;
+			  }
+			| undefined;
 
 	test.beforeAll(async ({ browser }, testInfo) => {
 		const baseURL = testInfo.project.use.baseURL as string | undefined;
@@ -184,8 +185,12 @@ test.describe.serial("LawSaw 关键用户流 E2E", () => {
 		await context.storageState({ path: statePath });
 		await context.close();
 
-		auth = { statePath, unique: credentials.unique };
-	});
+			auth = {
+				statePath,
+				unique: credentials.unique,
+				displayName: credentials.displayName,
+			};
+		});
 
 	test("未登录访问受保护页面应重定向到登录页", async ({ page }) => {
 		const gate = createPageErrorGate();
@@ -271,13 +276,18 @@ test.describe.serial("LawSaw 关键用户流 E2E", () => {
 		const baseURL = testInfo.project.use.baseURL as string | undefined;
 		if (!baseURL) throw new Error("Playwright baseURL 未配置，无法运行用户流用例。");
 
-		const rssUrl =
-			process.env.E2E_RSS_URL?.trim() || loadRuntimeE2EEnv()?.rssUrl || "";
-		if (!rssUrl) {
-			throw new Error(
-				"缺少 E2E_RSS_URL。请使用 scripts/no-dockerhub/e2e.sh 启动全栈并注入 RSS fixture。",
-				);
-		}
+			const rssUrl =
+				process.env.E2E_RSS_URL?.trim() || loadRuntimeE2EEnv()?.rssUrl || "";
+			if (!rssUrl) {
+				throw new Error(
+					[
+						"缺少 E2E_RSS_URL。",
+						"可选：",
+						"1) scripts/no-dockerhub/e2e.sh（自动启动 RSS fixture + 栈）",
+						"2) docker compose --profile e2e up -d && E2E_RSS_URL=http://rss-fixture:8000/rss.xml pnpm -C apps/web e2e",
+					].join("\n"),
+					);
+			}
 
 			const context = await browser.newContext({
 				baseURL,
@@ -409,11 +419,26 @@ test.describe.serial("LawSaw 关键用户流 E2E", () => {
 			.filter({ has: page.getByPlaceholder("输入关键词搜索...") });
 		await searchForm.getByRole("button", { name: "搜索", exact: true }).click();
 
-			await expect(
-				page.getByRole("link", { name: new RegExp(expectedArticleTitle) }).first(),
-			).toBeVisible({ timeout: 90_000 });
+				await expect(
+					page.getByRole("link", { name: new RegExp(expectedArticleTitle) }).first(),
+				).toBeVisible({ timeout: 90_000 });
 
-			gate.assertNoErrors();
-			await context.close();
-		});
-});
+				// 6) 登出并验证登录态已失效（关键用户旅程闭环）
+				await page.getByText(auth.displayName).click();
+				await page.getByRole("button", { name: "退出登录" }).click();
+				await expect(page).toHaveURL(/\/login(?:\?|$)/, { timeout: 90_000 });
+				await expect(page.getByLabel("邮箱")).toBeVisible();
+
+				const meStatus = await page.evaluate(async () => {
+					const resp = await fetch("/api/v1/auth/me", { credentials: "include" });
+					return resp.status;
+				});
+				expect(meStatus).toBe(401);
+
+				await page.goto("/articles");
+				await expect(page).toHaveURL(/\/login(?:\?|$)/, { timeout: 90_000 });
+
+				gate.assertNoErrors();
+				await context.close();
+			});
+	});

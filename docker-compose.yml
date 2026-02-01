@@ -88,6 +88,30 @@ services:
       - law-eye-network
     restart: unless-stopped
 
+  rss-fixture:
+    # Avoid pulling from DockerHub in restricted environments by reusing the local web runtime image.
+    image: lawsaw-web
+    profiles: ["e2e"]
+    command:
+      [
+        "node",
+        "-e",
+        "const http=require('http'); const fs=require('fs'); const path=require('path'); const file=path.join('/srv','rss.xml'); const server=http.createServer((req,res)=>{ if(req.url!=='/rss.xml'){res.statusCode=404; return res.end('not found');} try{ const data=fs.readFileSync(file); res.setHeader('Content-Type','application/rss+xml; charset=utf-8'); res.end(data);} catch(e){res.statusCode=500; res.end(String(e));}}); server.listen(8000,'0.0.0.0',()=>console.log('rss-fixture listening on :8000/rss.xml'));",
+      ]
+    volumes:
+      - ./apps/web/e2e/fixtures:/srv:ro
+    depends_on:
+      web:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8000/rss.xml"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - law-eye-network
+    restart: unless-stopped
+
   api:
     build:
       context: .
