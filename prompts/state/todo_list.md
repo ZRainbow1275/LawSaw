@@ -10,6 +10,9 @@
 - [x] REL-001 启动稳定性：DB 连接重试 + 基础服务 restart policy ✅
 - [x] QA-002 增加 E2E 用户旅程脚本（Login → 核心动作 → Logout）✅（已完成：`apps/web/e2e/lawsaw.e2e.spec.ts`，配套 `docker-compose.yml` 的 `rss-fixture` profile）
 - [x] RUN-001 `docker compose up` 通过并记录日志 ✅（已完成）
+- [x] QA-003 扩展 E2E 覆盖：Analytics/Data/Feedback/Knowledge/Settings（含头像上传、API Key 生命周期）✅（已覆盖 `/analytics /data /feedback /knowledge /settings /category/:slug`）
+- [x] QA-004 E2E 可靠性：网络/5xx 抖动重试、运行前健康自检、失败诊断信息落盘 ✅（已增强健康自检/错误 gate/strict locator 规避）
+- [x] PERF-002 Monkey SLA：增加延迟门槛与失败阈值（商业可用基线）✅（已支持 `--p95-threshold-ms/--max-5xx/--max-net-errors/--max-timeouts` + `report_json`）
 
 ## Next（下一批）
 - [ ] API-001 OpenAPI 契约补全与稳定化

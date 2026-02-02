@@ -47,6 +47,35 @@ class Counters:
         }
 
 
+def _default_report_path(filename: str) -> Optional[str]:
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    candidate_dir = os.path.join(repo_root, "prompts", "logs")
+    if not os.path.isdir(candidate_dir):
+        return None
+    return os.path.join(candidate_dir, filename)
+
+
+def _write_json_report(path: str, payload: dict) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    os.replace(tmp_path, path)
+
+
+def _percentiles(latencies_ms: list[int]) -> dict[str, int]:
+    latencies_ms_sorted = sorted(latencies_ms)
+
+    def pct(p: float) -> int:
+        if not latencies_ms_sorted:
+            return 0
+        idx = int(round((p / 100.0) * (len(latencies_ms_sorted) - 1)))
+        return latencies_ms_sorted[max(0, min(len(latencies_ms_sorted) - 1, idx))]
+
+    return {"p50": pct(50), "p90": pct(90), "p95": pct(95), "p99": pct(99)}
+
+
 def _random_ascii(rng: random.Random, n: int) -> str:
     alphabet = string.ascii_letters + string.digits
     return "".join(rng.choice(alphabet) for _ in range(n))
@@ -129,15 +158,34 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--requests", type=int, default=300)
     parser.add_argument("--concurrency", type=int, default=20)
     parser.add_argument("--timeout-ms", type=int, default=1500)
+    parser.add_argument("--p95-threshold-ms", type=int, default=500)
+    parser.add_argument("--max-5xx", type=int, default=0)
+    parser.add_argument("--max-net-errors", type=int, default=0)
+    parser.add_argument("--max-timeouts", type=int, default=0)
+    parser.add_argument("--report-json", default=None)
     parser.add_argument("--seed", type=int, default=None)
     args = parser.parse_args(argv)
 
     if args.requests <= 0 or args.concurrency <= 0 or args.timeout_ms <= 0:
         print("ERROR: invalid arguments", file=sys.stderr)
         return 2
+    if args.p95_threshold_ms < 0:
+        print("ERROR: --p95-threshold-ms must be >= 0", file=sys.stderr)
+        return 2
+    if args.max_5xx < 0:
+        print("ERROR: --max-5xx must be >= 0", file=sys.stderr)
+        return 2
+    if args.max_net_errors < 0:
+        print("ERROR: --max-net-errors must be >= 0", file=sys.stderr)
+        return 2
+    if args.max_timeouts < 0:
+        print("ERROR: --max-timeouts must be >= 0", file=sys.stderr)
+        return 2
 
     seed = args.seed if args.seed is not None else int(time.time() * 1000) ^ (os.getpid() << 16)
     rng = random.Random(seed)
+
+    report_json = args.report_json or _default_report_path("monkey_web_report.json")
 
     base_url = args.base_url.rstrip("/")
     parsed = urllib.parse.urlsplit(base_url)
@@ -147,11 +195,40 @@ def main(argv: list[str]) -> int:
 
     print("=== LawSaw Monkey Test (Web) ===")
     print(f"base_url={base_url}")
-    print(f"requests={args.requests} concurrency={args.concurrency} timeout_ms={args.timeout_ms} seed={seed}")
+    print(
+        " ".join(
+            [
+                f"requests={args.requests}",
+                f"concurrency={args.concurrency}",
+                f"timeout_ms={args.timeout_ms}",
+                f"p95_threshold_ms={args.p95_threshold_ms}",
+                f"max_5xx={args.max_5xx}",
+                f"max_net_errors={args.max_net_errors}",
+                f"max_timeouts={args.max_timeouts}",
+                f"seed={seed}",
+            ]
+        )
+    )
+    if report_json:
+        print(f"report_json={report_json}")
 
     if not _baseline(base_url):
         print("ERROR: Web baseline request failed", file=sys.stderr)
-        return 3
+        exit_code = 3
+        if report_json:
+            _write_json_report(
+                report_json,
+                {
+                    "kind": "web",
+                    "base_url": base_url,
+                    "seed": seed,
+                    "args": vars(args),
+                    "exit_code": exit_code,
+                    "pass": False,
+                    "failures": ["preflight_baseline_failed"],
+                },
+            )
+        return exit_code
 
     lock = threading.Lock()
     counters = Counters()
@@ -205,19 +282,13 @@ def main(argv: list[str]) -> int:
 
     duration_s = max(0.001, time.monotonic() - start)
     qps = counters.total / duration_s
-    latencies_ms_sorted = sorted(latencies_ms)
-
-    def pct(p: float) -> int:
-        if not latencies_ms_sorted:
-            return 0
-        idx = int(round((p / 100.0) * (len(latencies_ms_sorted) - 1)))
-        return latencies_ms_sorted[max(0, min(len(latencies_ms_sorted) - 1, idx))]
+    latency = _percentiles(latencies_ms)
 
     print("--- summary ---")
     print(json.dumps({**counters.as_dict(), "duration_s": round(duration_s, 3), "qps": round(qps, 2)}, ensure_ascii=False))
-    if latencies_ms_sorted:
+    if latencies_ms:
         print("--- latency_ms ---")
-        print(json.dumps({"p50": pct(50), "p90": pct(90), "p95": pct(95), "p99": pct(99)}, ensure_ascii=False))
+        print(json.dumps(latency, ensure_ascii=False))
     if sample_errors:
         print("--- sample_errors ---")
         for err in sample_errors:
@@ -225,15 +296,73 @@ def main(argv: list[str]) -> int:
 
     if not _baseline(base_url):
         print("ERROR: Web baseline request failed after monkey run", file=sys.stderr)
-        return 4
+        exit_code = 4
+        if report_json:
+            _write_json_report(
+                report_json,
+                {
+                    "kind": "web",
+                    "base_url": base_url,
+                    "seed": seed,
+                    "args": vars(args),
+                    "counters": counters.as_dict(),
+                    "duration_s": round(duration_s, 3),
+                    "qps": round(qps, 2),
+                    "latency_ms": latency,
+                    "sample_errors": sample_errors,
+                    "exit_code": exit_code,
+                    "pass": False,
+                    "failures": ["postflight_baseline_failed"],
+                },
+            )
+        return exit_code
 
-    if counters.net_errors > 0 or counters.timeouts > 0:
+    failures: list[str] = []
+    if args.p95_threshold_ms > 0 and latency["p95"] > args.p95_threshold_ms:
+        failures.append(f"p95_ms_exceeded: {latency['p95']} > {args.p95_threshold_ms}")
+    if counters.http_5xx > args.max_5xx:
+        failures.append(f"http_5xx_exceeded: {counters.http_5xx} > {args.max_5xx}")
+
+    if counters.net_errors > args.max_net_errors:
+        failures.append(f"net_errors_exceeded: {counters.net_errors} > {args.max_net_errors}")
+    if counters.timeouts > args.max_timeouts:
+        failures.append(f"timeouts_exceeded: {counters.timeouts} > {args.max_timeouts}")
+
+    exit_code = 0
+    if counters.net_errors > args.max_net_errors or counters.timeouts > args.max_timeouts:
         print("ERROR: observed connectivity errors during monkey run", file=sys.stderr)
-        return 5
+        exit_code = 5
+    elif failures:
+        print("ERROR: monkey SLA thresholds violated", file=sys.stderr)
+        exit_code = 6
 
-    return 0
+    if report_json:
+        _write_json_report(
+            report_json,
+            {
+                "kind": "web",
+                "base_url": base_url,
+                "seed": seed,
+                "args": vars(args),
+                "counters": counters.as_dict(),
+                "duration_s": round(duration_s, 3),
+                "qps": round(qps, 2),
+                "latency_ms": latency,
+                "sample_errors": sample_errors,
+                "thresholds": {
+                    "p95_threshold_ms": args.p95_threshold_ms,
+                    "max_5xx": args.max_5xx,
+                    "max_net_errors": args.max_net_errors,
+                    "max_timeouts": args.max_timeouts,
+                },
+                "exit_code": exit_code,
+                "pass": exit_code == 0,
+                "failures": failures,
+            },
+        )
+
+    return exit_code
 
 
 if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))
-
