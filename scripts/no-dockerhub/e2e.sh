@@ -3,18 +3,23 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: scripts/no-dockerhub/e2e.sh [--name <stack-name>] [--keep] [--rebuild]
+Usage: scripts/no-dockerhub/e2e.sh [--name <stack-name>] [--keep] [--rebuild] [--skip-monkey] [--web-mode <dev|prod>]
 
 This script:
   1) Starts a local RSS fixture server (WSL) for deterministic ingest tests
   2) Starts the full stack via scripts/no-dockerhub/start-stack.sh (no DockerHub)
   3) Runs Playwright E2E tests (apps/web)
-  4) Stops the stack and cleans up (unless --keep)
+  4) Runs Monkey tests (API/Web) with SLA thresholds (unless --skip-monkey)
+  5) Stops the stack and cleans up (unless --keep)
 
 Options:
   --name <stack-name>  Stack identifier (default: law-eye-e2e-<timestamp>)
   --keep               Keep stack + fixture server running for debugging
   --rebuild            Rebuild local helper images (redis/postgres+pgvector)
+  --skip-monkey        Skip monkey tests (faster local iteration)
+  --web-mode <mode>    Web runtime mode: dev (next dev) or prod (next start). If omitted:
+                       - defaults to prod when monkey is enabled (more stable)
+                       - defaults to dev when --skip-monkey is used (faster)
 EOF
 }
 
@@ -23,6 +28,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 STACK_NAME="law-eye-e2e-$(date +%Y%m%d%H%M%S)-$RANDOM"
 KEEP=0
 REBUILD=0
+RUN_MONKEY=1
+WEB_MODE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -37,6 +44,14 @@ while [[ $# -gt 0 ]]; do
     --rebuild)
       REBUILD=1
       shift
+      ;;
+    --skip-monkey)
+      RUN_MONKEY=0
+      shift
+      ;;
+    --web-mode)
+      WEB_MODE="${2:-}"
+      shift 2
       ;;
     -h|--help)
       usage
@@ -54,6 +69,21 @@ if [[ -z "$STACK_NAME" ]]; then
   echo "ERROR: --name must not be empty" >&2
   exit 1
 fi
+
+if [[ -z "$WEB_MODE" ]]; then
+  if [[ -n "${LAW_EYE_WEB_MODE:-}" ]]; then
+    WEB_MODE="${LAW_EYE_WEB_MODE}"
+  elif [[ "$RUN_MONKEY" -eq 1 ]]; then
+    WEB_MODE="prod"
+  else
+    WEB_MODE="dev"
+  fi
+fi
+if [[ "$WEB_MODE" != "dev" && "$WEB_MODE" != "prod" ]]; then
+  echo "ERROR: --web-mode must be 'dev' or 'prod' (got: $WEB_MODE)" >&2
+  exit 1
+fi
+export LAW_EYE_WEB_MODE="$WEB_MODE"
 
 STATE_DIR="$ROOT/tmp/no-dockerhub/$STACK_NAME"
 LOG_DIR="$STATE_DIR/logs"
@@ -78,8 +108,26 @@ ensure_cmd() {
 }
 
 ensure_cmd python3 "Install Python 3 (used for the RSS fixture server)."
-ensure_cmd pnpm "Install pnpm (apps/web Playwright runner)."
 ensure_cmd docker "Install Docker and ensure the daemon is running."
+
+pnpm_usable_wsl() {
+  pnpm -v >/dev/null 2>&1
+}
+
+pnpm_usable_windows() {
+  command -v cmd.exe >/dev/null 2>&1 && cmd.exe /c pnpm -v >/dev/null 2>&1
+}
+
+PNPM_RUNNER="wsl"
+if pnpm_usable_wsl; then
+  PNPM_RUNNER="wsl"
+elif pnpm_usable_windows; then
+  PNPM_RUNNER="win"
+else
+  echo "ERROR: pnpm is not usable in WSL or Windows interop." >&2
+  echo "Hint: Install Node.js + pnpm (either in WSL, or on Windows with WSL interop enabled)." >&2
+  exit 1
+fi
 
 RSS_PORT="$(python3 - <<'PY'
 import socket
@@ -192,7 +240,75 @@ path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding=
 PY
 
 echo "Running Playwright E2E..."
-(
-  cd "$ROOT"
-  pnpm -C apps/web e2e
-)
+if [[ "$PNPM_RUNNER" == "win" ]]; then
+  ensure_cmd cmd.exe "WSL must have Windows interop enabled (cmd.exe available)."
+  ensure_cmd wslpath "WSL must provide wslpath for path conversion."
+  WEB_DIR_WIN="$(wslpath -w "$ROOT/apps/web" | tr -d '\r')"
+  # NOTE: Avoid nested quoting here. In some WSL+cmd.exe interop setups, quoting the
+  # `cd` path inside `/c "..."` triggers `文件名、目录名或卷标语法不正确`.
+  cmd.exe /c "cd /d ${WEB_DIR_WIN} && pnpm e2e"
+else
+  (
+    cd "$ROOT"
+    pnpm -C apps/web e2e
+  )
+fi
+
+if [[ "$RUN_MONKEY" -eq 1 ]]; then
+  mkdir -p "$ROOT/prompts/logs"
+
+  API_BASE_URL="http://127.0.0.1:${API_PORT}"
+  WEB_BASE_URL="http://127.0.0.1:${WEB_PORT}"
+  if [[ "${WEB_RUNS_ON_WINDOWS:-0}" == "1" ]] && [[ -n "${WINDOWS_HOST_IP:-}" ]]; then
+    WEB_BASE_URL="http://${WINDOWS_HOST_IP}:${WEB_PORT}"
+  fi
+
+  API_REPORT="$LOG_DIR/monkey_api_report.json"
+  WEB_REPORT="$LOG_DIR/monkey_web_report.json"
+
+  echo "Running Monkey (API)..."
+  python3 "$ROOT/scripts/monkey/api_monkey.py" \
+    --base-url "$API_BASE_URL" \
+    --requests 300 \
+    --concurrency 24 \
+    --timeout-ms 3000 \
+    --p95-threshold-ms 500 \
+    --max-5xx 0 \
+    --max-net-errors 0 \
+    --max-timeouts 0 \
+    --report-json "$API_REPORT" \
+    | tee "$LOG_DIR/monkey_api.log" "$ROOT/prompts/logs/monkey_api.log"
+  cp -f "$API_REPORT" "$ROOT/prompts/logs/monkey_api_report.json"
+
+  echo "Running Monkey (Web)..."
+  if [[ "${WEB_RUNS_ON_WINDOWS:-0}" == "1" ]]; then
+    ensure_cmd cmd.exe "WSL must have Windows interop enabled (cmd.exe available)."
+    ensure_cmd wslpath "WSL must provide wslpath for path conversion."
+    WEB_MONKEY_WIN="$(wslpath -w "$ROOT/scripts/monkey/web_monkey.py" | tr -d '\r')"
+    WEB_REPORT_WIN="$(wslpath -w "$WEB_REPORT" | tr -d '\r')"
+    cmd.exe /c python "$WEB_MONKEY_WIN" \
+      --base-url "http://127.0.0.1:${WEB_PORT}" \
+      --requests 200 \
+      --concurrency 16 \
+      --timeout-ms 3000 \
+      --p95-threshold-ms 500 \
+      --max-5xx 0 \
+      --max-net-errors 0 \
+      --max-timeouts 0 \
+      --report-json "$WEB_REPORT_WIN" \
+      | tee "$LOG_DIR/monkey_web.log" "$ROOT/prompts/logs/monkey_web.log"
+  else
+    python3 "$ROOT/scripts/monkey/web_monkey.py" \
+      --base-url "$WEB_BASE_URL" \
+      --requests 200 \
+      --concurrency 16 \
+      --timeout-ms 3000 \
+      --p95-threshold-ms 500 \
+      --max-5xx 0 \
+      --max-net-errors 0 \
+      --max-timeouts 0 \
+      --report-json "$WEB_REPORT" \
+      | tee "$LOG_DIR/monkey_web.log" "$ROOT/prompts/logs/monkey_web.log"
+  fi
+  cp -f "$WEB_REPORT" "$ROOT/prompts/logs/monkey_web_report.json"
+fi

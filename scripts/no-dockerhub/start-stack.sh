@@ -94,6 +94,44 @@ if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
   exit 1
 fi
 
+if [[ -n "${REDIS_PASSWORD:-}" ]]; then
+  REDIS_PASSWORD="$(printf '%s' "$REDIS_PASSWORD" | tr -d '\r')"
+  export REDIS_PASSWORD
+fi
+
+if [[ -z "${REDIS_PASSWORD:-}" ]]; then
+  REDIS_PASSWORD="$(python3 - <<'PY'
+import secrets
+print(secrets.token_urlsafe(24))
+PY
+)"
+  export REDIS_PASSWORD
+fi
+
+if [[ -n "${MINIO_ROOT_USER:-}" ]]; then
+  MINIO_ROOT_USER="$(printf '%s' "$MINIO_ROOT_USER" | tr -d '\r')"
+  export MINIO_ROOT_USER
+fi
+
+if [[ -z "${MINIO_ROOT_USER:-}" ]]; then
+  MINIO_ROOT_USER="minioadmin"
+  export MINIO_ROOT_USER
+fi
+
+if [[ -n "${MINIO_ROOT_PASSWORD:-}" ]]; then
+  MINIO_ROOT_PASSWORD="$(printf '%s' "$MINIO_ROOT_PASSWORD" | tr -d '\r')"
+  export MINIO_ROOT_PASSWORD
+fi
+
+if [[ -z "${MINIO_ROOT_PASSWORD:-}" ]]; then
+  MINIO_ROOT_PASSWORD="$(python3 - <<'PY'
+import secrets
+print(secrets.token_urlsafe(24))
+PY
+)"
+  export MINIO_ROOT_PASSWORD
+fi
+
 ensure_cmd() {
   local cmd="$1"
   local hint="$2"
@@ -118,23 +156,53 @@ if ! command -v cargo >/dev/null 2>&1; then
 fi
 ensure_cmd cargo "Install Rust toolchain (rustup) and ensure cargo is on PATH."
 
-NODE_PLATFORM="$(node -p "process.platform" 2>/dev/null | tr -d '\r' || true)"
 WEB_RUNS_ON_WINDOWS=0
 if [[ "${LAW_EYE_WEB_ON_WINDOWS:-}" == "1" ]]; then
   WEB_RUNS_ON_WINDOWS=1
 elif [[ "${LAW_EYE_WEB_ON_WINDOWS:-}" == "0" ]]; then
   WEB_RUNS_ON_WINDOWS=0
 else
-  # Default: align Next dev runtime with the Node runtime used by this script.
-  # - If pnpm/node resolves to Windows (win32) via WSL interop, start web on Windows.
-  # - Otherwise (native WSL/Linux Node), start web on WSL to keep localhost connectivity.
-  if [[ "$NODE_PLATFORM" == "win32" ]]; then
+  # Default: prefer running Web where pnpm is actually usable.
+  #
+  # On some Windows+WSL setups, pnpm exists on PATH as a WSL script that expects a Linux `node`,
+  # but only Windows `node.exe` is installed. In that case, `pnpm` will fail inside WSL with
+  # "exec: node: not found", so we must start the Next server on Windows instead.
+  if pnpm -v >/dev/null 2>&1; then
+    WEB_RUNS_ON_WINDOWS=0
+  elif command -v cmd.exe >/dev/null 2>&1 && cmd.exe /c pnpm -v >/dev/null 2>&1; then
     WEB_RUNS_ON_WINDOWS=1
+  else
+    # Last resort: try detecting the active Node platform (Linux node vs Windows node.exe).
+    NODE_PLATFORM=""
+    if command -v node >/dev/null 2>&1; then
+      NODE_PLATFORM="$(node -p "process.platform" 2>/dev/null | tr -d '\r' | tr -d '\n' || true)"
+    elif command -v node.exe >/dev/null 2>&1; then
+      NODE_PLATFORM="$(node.exe -p "process.platform" 2>/dev/null | tr -d '\r' | tr -d '\n' || true)"
+    fi
+    if [[ "$NODE_PLATFORM" == "win32" ]]; then
+      WEB_RUNS_ON_WINDOWS=1
+    fi
   fi
+fi
+
+WEB_MODE="${LAW_EYE_WEB_MODE:-dev}"
+if [[ "$WEB_MODE" != "dev" && "$WEB_MODE" != "prod" ]]; then
+  echo "ERROR: LAW_EYE_WEB_MODE must be 'dev' or 'prod' (got: $WEB_MODE)" >&2
+  exit 1
 fi
 
 get_primary_ipv4() {
   ip -4 addr show eth0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1 | head -n 1
+}
+
+get_windows_host_ip() {
+  local gw=""
+  gw="$(ip route 2>/dev/null | awk '/^default / {print $3; exit}' | tr -d '\r' | tr -d '\n' || true)"
+  if [[ -n "$gw" ]]; then
+    echo "$gw"
+    return 0
+  fi
+  awk '/^nameserver / {print $2; exit}' /etc/resolv.conf 2>/dev/null | tr -d '\r' | tr -d '\n' || true
 }
 
 to_windows_path() {
@@ -174,11 +242,6 @@ PY
 port_free_windows() {
   local port="$1"
 
-  if command -v powershell.exe >/dev/null 2>&1; then
-    powershell.exe -NoProfile -Command "if (Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue) { exit 1 } else { exit 0 }" >/dev/null 2>&1
-    return $?
-  fi
-
   if command -v cmd.exe >/dev/null 2>&1; then
     cmd.exe /c "netstat -ano | findstr /R /C\":$port .*LISTENING\" >nul" >/dev/null 2>&1
     if [[ $? -eq 0 ]]; then
@@ -187,12 +250,77 @@ port_free_windows() {
     return 0
   fi
 
+  if command -v powershell.exe >/dev/null 2>&1; then
+    powershell.exe -NoProfile -Command "try { if (Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction Stop) { exit 1 } else { exit 0 } } catch { exit 0 }" >/dev/null 2>&1
+    return $?
+  fi
+
   return 0
 }
 
 port_free() {
   local port="$1"
   port_free_wsl "$port" && port_free_windows "$port"
+}
+
+choose_port_wsl() {
+  local name="$1"
+  shift
+  for candidate in "$@"; do
+    if port_free_wsl "$candidate"; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  echo "ERROR: no free WSL port candidates for $name ($*)" >&2
+  return 1
+}
+
+choose_port_range_wsl() {
+  local name="$1"
+  local start="$2"
+  local end="$3"
+
+  local candidate
+  for ((candidate = start; candidate <= end; candidate++)); do
+    if port_free_wsl "$candidate"; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  echo "ERROR: no free WSL port in range for $name ($start..$end)" >&2
+  return 1
+}
+
+choose_port_windows() {
+  local name="$1"
+  shift
+  for candidate in "$@"; do
+    if port_free_windows "$candidate"; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  echo "ERROR: no free Windows port candidates for $name ($*)" >&2
+  return 1
+}
+
+choose_port_range_windows() {
+  local name="$1"
+  local start="$2"
+  local end="$3"
+
+  local candidate
+  for ((candidate = start; candidate <= end; candidate++)); do
+    if port_free_windows "$candidate"; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  echo "ERROR: no free Windows port in range for $name ($start..$end)" >&2
+  return 1
 }
 
 choose_port() {
@@ -225,30 +353,80 @@ choose_port_range() {
   return 1
 }
 
-POSTGRES_PORT="${POSTGRES_PORT:-$(choose_port postgres 5435 5436 15435 2>/dev/null || choose_port_range postgres 15435 15550)}"
-REDIS_PORT="${REDIS_PORT:-$(choose_port redis 6380 6381 16380 16381 2>/dev/null || choose_port_range redis 16380 16450)}"
-API_PORT="${API_PORT:-$(choose_port api 3001 3003 3005 2>/dev/null || choose_port_range api 13000 13150)}"
-WEB_PORT="${WEB_PORT:-$(choose_port web 8849 8850 8851 2>/dev/null || choose_port_range web 18849 18950)}"
+if [[ -n "${POSTGRES_PORT:-}" ]] && ! port_free_wsl "${POSTGRES_PORT}"; then
+  echo "WARN: POSTGRES_PORT=${POSTGRES_PORT} is not available; auto-selecting a free port." >&2
+  unset POSTGRES_PORT
+fi
+if [[ -n "${REDIS_PORT:-}" ]] && ! port_free_wsl "${REDIS_PORT}"; then
+  echo "WARN: REDIS_PORT=${REDIS_PORT} is not available; auto-selecting a free port." >&2
+  unset REDIS_PORT
+fi
+if [[ -n "${API_PORT:-}" ]] && ! port_free_wsl "${API_PORT}"; then
+  echo "WARN: API_PORT=${API_PORT} is not available; auto-selecting a free port." >&2
+  unset API_PORT
+fi
+if [[ -n "${WEB_PORT:-}" ]]; then
+  if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]] && ! port_free_windows "${WEB_PORT}"; then
+    echo "WARN: WEB_PORT=${WEB_PORT} is not available on Windows; auto-selecting a free port." >&2
+    unset WEB_PORT
+  elif [[ "$WEB_RUNS_ON_WINDOWS" -eq 0 ]] && ! port_free_wsl "${WEB_PORT}"; then
+    echo "WARN: WEB_PORT=${WEB_PORT} is not available in WSL; auto-selecting a free port." >&2
+    unset WEB_PORT
+  fi
+fi
+if [[ -n "${MINIO_API_PORT:-}" ]] && ! port_free_wsl "${MINIO_API_PORT}"; then
+  echo "WARN: MINIO_API_PORT=${MINIO_API_PORT} is not available; auto-selecting a free port." >&2
+  unset MINIO_API_PORT
+fi
+if [[ -n "${MINIO_CONSOLE_PORT:-}" ]] && ! port_free_wsl "${MINIO_CONSOLE_PORT}"; then
+  echo "WARN: MINIO_CONSOLE_PORT=${MINIO_CONSOLE_PORT} is not available; auto-selecting a free port." >&2
+  unset MINIO_CONSOLE_PORT
+fi
 
-if ! port_free "$POSTGRES_PORT"; then
+POSTGRES_PORT="${POSTGRES_PORT:-$(choose_port_range_wsl postgres 15435 15550 2>/dev/null || choose_port_wsl postgres 5435 5436)}"
+REDIS_PORT="${REDIS_PORT:-$(choose_port_range_wsl redis 16380 16450 2>/dev/null || choose_port_wsl redis 6380 6381)}"
+API_PORT="${API_PORT:-$(choose_port_range_wsl api 13000 13150 2>/dev/null || choose_port_wsl api 3001 3003 3005)}"
+WEB_PORT="${WEB_PORT:-$(
+  if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
+    choose_port_range_windows web 18849 18950 2>/dev/null || choose_port_windows web 8849 8850 8851
+  else
+    choose_port_range_wsl web 18849 18950 2>/dev/null || choose_port_wsl web 8849 8850 8851
+  fi
+)}"
+MINIO_API_PORT="${MINIO_API_PORT:-$(choose_port_range_wsl minio-api 19000 19100 2>/dev/null || choose_port_wsl minio-api 9000)}"
+MINIO_CONSOLE_PORT="${MINIO_CONSOLE_PORT:-$(choose_port_range_wsl minio-console 19101 19200 2>/dev/null || choose_port_wsl minio-console 9001)}"
+
+if ! port_free_wsl "$POSTGRES_PORT"; then
   echo "ERROR: POSTGRES_PORT=$POSTGRES_PORT is not available" >&2
   exit 1
 fi
-if ! port_free "$REDIS_PORT"; then
+if ! port_free_wsl "$REDIS_PORT"; then
   echo "ERROR: REDIS_PORT=$REDIS_PORT is not available" >&2
   exit 1
 fi
-if ! port_free "$API_PORT"; then
+if ! port_free_wsl "$API_PORT"; then
   echo "ERROR: API_PORT=$API_PORT is not available" >&2
   exit 1
 fi
-if ! port_free "$WEB_PORT"; then
-  echo "ERROR: WEB_PORT=$WEB_PORT is not available" >&2
+if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]] && ! port_free_windows "$WEB_PORT"; then
+  echo "ERROR: WEB_PORT=$WEB_PORT is not available on Windows" >&2
+  exit 1
+fi
+if [[ "$WEB_RUNS_ON_WINDOWS" -eq 0 ]] && ! port_free_wsl "$WEB_PORT"; then
+  echo "ERROR: WEB_PORT=$WEB_PORT is not available in WSL" >&2
+  exit 1
+fi
+if ! port_free_wsl "$MINIO_API_PORT"; then
+  echo "ERROR: MINIO_API_PORT=$MINIO_API_PORT is not available" >&2
+  exit 1
+fi
+if ! port_free_wsl "$MINIO_CONSOLE_PORT"; then
+  echo "ERROR: MINIO_CONSOLE_PORT=$MINIO_CONSOLE_PORT is not available" >&2
   exit 1
 fi
 
 echo "Stack: $STACK_NAME"
-echo "Using ports: postgres=$POSTGRES_PORT redis=$REDIS_PORT api=$API_PORT web=$WEB_PORT"
+echo "Using ports: postgres=$POSTGRES_PORT redis=$REDIS_PORT minio=$MINIO_API_PORT api=$API_PORT web=$WEB_PORT"
 
 image_exists() {
   docker image inspect "$1" >/dev/null 2>&1
@@ -261,8 +439,10 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
   && apt-get install -y redis-server \
   && rm -rf /var/lib/apt/lists/*
+WORKDIR /data
+USER 1000:1000
 EXPOSE 6379
-CMD ["redis-server", "--appendonly", "yes", "--protected-mode", "no", "--bind", "0.0.0.0", "--port", "6379"]
+CMD ["sh", "-c", "test -n \"$REDIS_PASSWORD\" || { echo \"REDIS_PASSWORD is required\" >&2; exit 1; }; exec redis-server --appendonly yes --protected-mode yes --bind 0.0.0.0 --port 6379 --requirepass \"$REDIS_PASSWORD\""]
 EOF
 }
 
@@ -332,6 +512,34 @@ ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 EOF
 }
 
+build_minio_image() {
+  docker build -t lawsaw-minio:local - <<'EOF'
+FROM mcr.microsoft.com/devcontainers/base:ubuntu
+ARG DEBIAN_FRONTEND=noninteractive
+ARG MINIO_VERSION=RELEASE.2025-10-15T17-29-55Z
+
+RUN set -eux; \
+  apt-get update; \
+  apt-get install -y ca-certificates curl; \
+  rm -rf /var/lib/apt/lists/*; \
+  urls="https://dl.min.io/server/minio/release/linux-amd64/archive/minio.${MINIO_VERSION} https://dl.min.io/server/minio/release/linux-amd64/minio"; \
+  for url in $urls; do \
+    if curl -fsSL --connect-timeout 10 --max-time 180 --retry 3 --retry-delay 2 "$url" -o /usr/local/bin/minio; then \
+      break; \
+    fi; \
+  done; \
+  test -s /usr/local/bin/minio; \
+  chmod +x /usr/local/bin/minio
+
+WORKDIR /data
+USER 1000:1000
+EXPOSE 9000 9001
+
+ENTRYPOINT ["/usr/local/bin/minio"]
+CMD ["server", "/data", "--console-address", ":9001"]
+EOF
+}
+
 echo "Ensuring local images exist (Docker Hub is unavailable; using MCR base image)..."
 
 if [[ "$REBUILD_IMAGES" -eq 1 ]] || ! image_exists lawsaw-redis:local; then
@@ -348,21 +556,85 @@ else
   echo "Using existing image: lawsaw-postgres-pgvector:local"
 fi
 
+MINIO_IMAGE="lawsaw-minio:local"
+if [[ "$REBUILD_IMAGES" -eq 1 ]]; then
+  echo "Building image: $MINIO_IMAGE"
+  build_minio_image
+elif image_exists "$MINIO_IMAGE"; then
+  echo "Using existing image: $MINIO_IMAGE"
+else
+  if image_exists alpine/minio:RELEASE.2025-10-15T17-29-55Z; then
+    MINIO_IMAGE="alpine/minio:RELEASE.2025-10-15T17-29-55Z"
+    echo "Using existing image: $MINIO_IMAGE"
+  elif image_exists quay.io/minio/minio:latest; then
+    MINIO_IMAGE="quay.io/minio/minio:latest"
+    echo "Using existing image: $MINIO_IMAGE"
+  elif image_exists minio/minio:latest; then
+    MINIO_IMAGE="minio/minio:latest"
+    echo "Using existing image: $MINIO_IMAGE"
+  else
+    echo "Building image: $MINIO_IMAGE"
+    build_minio_image
+  fi
+fi
+
 POSTGRES_CONTAINER="${STACK_NAME}-postgres"
 REDIS_CONTAINER="${STACK_NAME}-redis"
+MINIO_CONTAINER="${STACK_NAME}-minio"
 POSTGRES_VOLUME="${STACK_NAME}-postgres-data"
+REDIS_VOLUME="${STACK_NAME}-redis-data"
+MINIO_VOLUME="${STACK_NAME}-minio-data"
+
+dump_container_debug() {
+  local container="$1"
+  local label="$2"
+  local ps_file="$LOG_DIR/${label}.ps.txt"
+  local inspect_file="$LOG_DIR/${label}.inspect.json"
+  local log_file="$LOG_DIR/${label}.docker.log"
+
+  docker ps -a --filter "name=^/${container}$" --format "table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}" >"$ps_file" 2>&1 || true
+  docker inspect "$container" >"$inspect_file" 2>&1 || true
+  docker logs "$container" >"$log_file" 2>&1 || true
+}
 
 echo "Starting containers..."
 docker rm -f "$POSTGRES_CONTAINER" >/dev/null 2>&1 || true
 docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+docker rm -f "$MINIO_CONTAINER" >/dev/null 2>&1 || true
 
 if [[ "$FRESH" -eq 1 ]]; then
   echo "Wiping postgres volume: $POSTGRES_VOLUME"
   docker volume rm -f "$POSTGRES_VOLUME" >/dev/null 2>&1 || true
+  echo "Wiping redis volume: $REDIS_VOLUME"
+  docker volume rm -f "$REDIS_VOLUME" >/dev/null 2>&1 || true
+  echo "Wiping minio volume: $MINIO_VOLUME"
+  docker volume rm -f "$MINIO_VOLUME" >/dev/null 2>&1 || true
 fi
 
 RUNNING=1
-docker run -d --name "$REDIS_CONTAINER" -p "${REDIS_PORT}:6379" lawsaw-redis:local >/dev/null
+echo "Preparing redis volume..."
+docker volume create "$REDIS_VOLUME" >/dev/null 2>&1 || true
+if ! docker run --rm --user 0:0 -v "$REDIS_VOLUME":/data lawsaw-redis:local sh -c 'set -eux; chown -R 1000:1000 /data; mkdir -p /data/appendonlydir; chown -R 1000:1000 /data/appendonlydir; ls -ld /data /data/appendonlydir' >"$LOG_DIR/redis.init.log" 2>&1; then
+  echo "ERROR: failed to prepare redis volume. See: $LOG_DIR/redis.init.log" >&2
+  exit 1
+fi
+
+echo "Preparing minio volume..."
+docker volume create "$MINIO_VOLUME" >/dev/null 2>&1 || true
+if ! docker run --rm --user 0:0 -v "$MINIO_VOLUME":/data lawsaw-redis:local sh -c 'set -eux; chown -R 1000:1000 /data; ls -ld /data' >"$LOG_DIR/minio.init.log" 2>&1; then
+  echo "ERROR: failed to prepare minio volume. See: $LOG_DIR/minio.init.log" >&2
+  exit 1
+fi
+
+docker run -d --name "$REDIS_CONTAINER" -p "${REDIS_PORT}:6379" -e REDIS_PASSWORD="$REDIS_PASSWORD" -v "$REDIS_VOLUME":/data lawsaw-redis:local >/dev/null
+docker run -d --name "$MINIO_CONTAINER" \
+  -p "${MINIO_API_PORT}:9000" \
+  -p "${MINIO_CONSOLE_PORT}:9001" \
+  --user 1000:1000 \
+  -e MINIO_ROOT_USER="$MINIO_ROOT_USER" \
+  -e MINIO_ROOT_PASSWORD="$MINIO_ROOT_PASSWORD" \
+  -v "$MINIO_VOLUME":/data \
+  "$MINIO_IMAGE" server /data --console-address ":9001" >/dev/null
 docker run -d --name "$POSTGRES_CONTAINER" \
   -p "${POSTGRES_PORT}:5432" \
   --env-file "$ENV_FILE" \
@@ -373,13 +645,14 @@ docker run -d --name "$POSTGRES_CONTAINER" \
 
 echo "Waiting for Redis..."
 for _ in $(seq 1 60); do
-  if docker exec "$REDIS_CONTAINER" redis-cli ping >/dev/null 2>&1; then
+  if docker exec "$REDIS_CONTAINER" redis-cli -a "$REDIS_PASSWORD" ping >/dev/null 2>&1; then
     break
   fi
   sleep 1
 done
-if ! docker exec "$REDIS_CONTAINER" redis-cli ping >/dev/null 2>&1; then
-  echo "ERROR: Redis did not become ready. See: docker logs $REDIS_CONTAINER" >&2
+if ! docker exec "$REDIS_CONTAINER" redis-cli -a "$REDIS_PASSWORD" ping >/dev/null 2>&1; then
+  dump_container_debug "$REDIS_CONTAINER" "redis"
+  echo "ERROR: Redis did not become ready. Debug logs: $LOG_DIR/redis.docker.log" >&2
   exit 1
 fi
 
@@ -397,7 +670,21 @@ for _ in $(seq 1 180); do
   sleep 1
 done
 if [[ "$postgres_ready_streak" -lt 3 ]]; then
-  echo "ERROR: Postgres did not become ready. See: docker logs $POSTGRES_CONTAINER" >&2
+  dump_container_debug "$POSTGRES_CONTAINER" "postgres"
+  echo "ERROR: Postgres did not become ready. Debug logs: $LOG_DIR/postgres.docker.log" >&2
+  exit 1
+fi
+
+echo "Waiting for MinIO..."
+for _ in $(seq 1 120); do
+  if curl -fsS "http://localhost:${MINIO_API_PORT}/minio/health/ready" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+if ! curl -fsS "http://localhost:${MINIO_API_PORT}/minio/health/ready" >/dev/null 2>&1; then
+  dump_container_debug "$MINIO_CONTAINER" "minio"
+  echo "ERROR: MinIO did not become ready. Debug logs: $LOG_DIR/minio.docker.log" >&2
   exit 1
 fi
 
@@ -410,17 +697,35 @@ PY
 }
 
 DB_PASS_ENC="$(urlencode "$POSTGRES_PASSWORD")"
+REDIS_PASS_ENC="$(urlencode "$REDIS_PASSWORD")"
 DB_URL="postgres://law_eye:${DB_PASS_ENC}@localhost:${POSTGRES_PORT}/law_eye"
-REDIS_URL="redis://localhost:${REDIS_PORT}"
+REDIS_URL="redis://:${REDIS_PASS_ENC}@localhost:${REDIS_PORT}"
 
 # Web should call same-origin (/api/v1/*) to keep cookie auth stable under SameSite=Lax.
 # Next dev server proxies to the Rust API via rewrites configured by LAW_EYE_API_PROXY_TARGET.
 WSL_HOST_IP="${LAW_EYE_WSL_HOST_IP:-}"
+WINDOWS_HOST_IP="${LAW_EYE_WINDOWS_HOST_IP:-}"
 NEXT_PUBLIC_API_URL="http://localhost:${WEB_PORT}"
 LAW_EYE_API_PROXY_TARGET="http://localhost:${API_PORT}"
 
+if [[ -z "$WINDOWS_HOST_IP" ]]; then
+  WINDOWS_HOST_IP="$(get_windows_host_ip)"
+fi
+
 export LAW_EYE__DATABASE__URL="$DB_URL"
 export LAW_EYE__REDIS__URL="$REDIS_URL"
+MINIO_ENDPOINT="http://localhost:${MINIO_API_PORT}"
+if [[ -z "${LAW_EYE__OBJECT_STORAGE__ENABLED:-}" ]]; then
+  export LAW_EYE__OBJECT_STORAGE__ENABLED="true"
+fi
+if [[ "${LAW_EYE__OBJECT_STORAGE__ENABLED}" == "true" || "${LAW_EYE__OBJECT_STORAGE__ENABLED}" == "1" ]]; then
+  export LAW_EYE__OBJECT_STORAGE__ENDPOINT="${LAW_EYE__OBJECT_STORAGE__ENDPOINT:-$MINIO_ENDPOINT}"
+  export LAW_EYE__OBJECT_STORAGE__REGION="${LAW_EYE__OBJECT_STORAGE__REGION:-us-east-1}"
+  export LAW_EYE__OBJECT_STORAGE__BUCKET="${LAW_EYE__OBJECT_STORAGE__BUCKET:-law-eye}"
+  export LAW_EYE__OBJECT_STORAGE__ACCESS_KEY_ID="${LAW_EYE__OBJECT_STORAGE__ACCESS_KEY_ID:-$MINIO_ROOT_USER}"
+  export LAW_EYE__OBJECT_STORAGE__SECRET_ACCESS_KEY="${LAW_EYE__OBJECT_STORAGE__SECRET_ACCESS_KEY:-$MINIO_ROOT_PASSWORD}"
+  export LAW_EYE__OBJECT_STORAGE__FORCE_PATH_STYLE="${LAW_EYE__OBJECT_STORAGE__FORCE_PATH_STYLE:-true}"
+fi
 export LAW_EYE__DATABASE__SESSION_ROLE="law_eye_app"
 export LAW_EYE__SERVER__HOST="${LAW_EYE__SERVER__HOST:-0.0.0.0}"
 export LAW_EYE__SERVER__PORT="$API_PORT"
@@ -511,26 +816,37 @@ start_web_windows() {
   local err_file_win
   err_file_win="$(to_windows_path "$err_file")"
   local cmd_file
-  cmd_file="$STATE_DIR/web-dev.cmd"
+  cmd_file="$STATE_DIR/web-${WEB_MODE}.cmd"
   local cmd_file_win
   cmd_file_win="$(to_windows_path "$cmd_file")"
 
-  python3 - "$cmd_file" "$web_workdir_win" "$WEB_PORT" "$NEXT_PUBLIC_API_URL" "$LAW_EYE_API_PROXY_TARGET" "$log_file_win" "$err_file_win" <<'PY'
+  python3 - "$cmd_file" "$web_workdir_win" "$WEB_PORT" "$NEXT_PUBLIC_API_URL" "$LAW_EYE_API_PROXY_TARGET" "$log_file_win" "$err_file_win" "$WEB_MODE" <<'PY'
 import pathlib
 import sys
 
-path, workdir, web_port, web_origin, proxy_target, out_log, err_log = sys.argv[1:]
+path, workdir, web_port, web_origin, proxy_target, out_log, err_log, web_mode = sys.argv[1:]
 
+web_cmd = "pnpm dev"
+extra_lines = []
+if web_mode == "prod":
+    web_cmd = r"node .\\node_modules\\next\\dist\\bin\\next start -p %WEB_PORT% -H %WEB_HOST%"
+    extra_lines.append("set NODE_ENV=production")
+    # Windows prod builds must NOT force WASM bindings; it breaks `next build` on win32.
+    extra_lines.append("set NEXT_TEST_WASM=")
+    extra_lines.append(f"call pnpm build 1>> \"{out_log}\" 2>> \"{err_log}\"")
+
+extra_block = "\n".join(extra_lines)
 content = f"""@echo off
 setlocal
 cd /d {workdir}
+set WEB_HOST=0.0.0.0
 set WEB_PORT={web_port}
 set PORT={web_port}
 set NEXT_PUBLIC_API_URL={web_origin}
 set LAW_EYE_API_PROXY_TARGET={proxy_target}
-set NEXT_TEST_WASM=1
 set NEXT_TELEMETRY_DISABLED=1
-call pnpm dev 1> "{out_log}" 2> "{err_log}"
+{extra_block}
+call {web_cmd} 1>> "{out_log}" 2>> "{err_log}"
 """
 
 content = content.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\r\n")
@@ -579,7 +895,7 @@ fi
 start_bg worker "$ROOT" "$WORKER_BIN"
 
 if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
-  if ! powershell.exe -NoProfile -Command "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://localhost:${API_PORT}/health).StatusCode } catch { exit 1 }" >/dev/null 2>&1; then
+  if ! powershell.exe -NoProfile -Command "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:${API_PORT}/health).StatusCode } catch { exit 1 }" >/dev/null 2>&1; then
     if [[ -z "$WSL_HOST_IP" ]]; then
       WSL_HOST_IP="$(get_primary_ipv4)"
     fi
@@ -597,23 +913,40 @@ export LAW_EYE_API_PROXY_TARGET="$LAW_EYE_API_PROXY_TARGET"
 if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
   start_web_windows
 else
-  start_bg web "$ROOT/apps/web" pnpm dev
+  if [[ "$WEB_MODE" == "prod" ]]; then
+    echo "Building Web (prod)..."
+    (cd "$ROOT/apps/web" && env NODE_ENV=production pnpm build >"$LOG_DIR/web.build.log" 2>&1)
+    start_bg web "$ROOT/apps/web" env NODE_ENV=production node ./node_modules/next/dist/bin/next start -p "$WEB_PORT" -H 0.0.0.0
+  else
+    start_bg web "$ROOT/apps/web" pnpm dev
+  fi
 fi
 
 echo "Waiting for Web /login..."
+WEB_READY_WAIT_SECONDS=90
+if [[ "$WEB_MODE" == "prod" ]]; then
+  WEB_READY_WAIT_SECONDS=240
+fi
 if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
-  for _ in $(seq 1 90); do
-    if powershell.exe -NoProfile -Command "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://localhost:${WEB_PORT}/login).StatusCode } catch { exit 1 }" >/dev/null 2>&1; then
+  for _ in $(seq 1 "$WEB_READY_WAIT_SECONDS"); do
+    if powershell.exe -NoProfile -Command "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:${WEB_PORT}/login).StatusCode } catch { exit 1 }" >/dev/null 2>&1; then
       break
     fi
     sleep 1
   done
-  if ! powershell.exe -NoProfile -Command "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://localhost:${WEB_PORT}/login).StatusCode } catch { exit 1 }" >/dev/null 2>&1; then
+  if ! powershell.exe -NoProfile -Command "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:${WEB_PORT}/login).StatusCode } catch { exit 1 }" >/dev/null 2>&1; then
     echo "ERROR: Web did not become ready. See: $LOG_DIR/web.log ($LOG_DIR/web.err.log)" >&2
     exit 1
   fi
+
+  if [[ ! -f "$PID_DIR/web.pid" ]]; then
+    win_pid="$(windows_listen_pid "$WEB_PORT")"
+    if [[ -n "$win_pid" ]]; then
+      echo "win:$win_pid" >"$PID_DIR/web.pid"
+    fi
+  fi
 else
-  for _ in $(seq 1 90); do
+  for _ in $(seq 1 "$WEB_READY_WAIT_SECONDS"); do
     if curl -fsS "http://localhost:${WEB_PORT}/login" >/dev/null 2>&1; then
       break
     fi
@@ -629,18 +962,27 @@ cat >"$STATE_DIR/stack.env" <<EOF
 STACK_NAME=$STACK_NAME
 POSTGRES_PORT=$POSTGRES_PORT
 REDIS_PORT=$REDIS_PORT
+MINIO_API_PORT=$MINIO_API_PORT
+MINIO_CONSOLE_PORT=$MINIO_CONSOLE_PORT
+MINIO_ENDPOINT=$MINIO_ENDPOINT
 API_PORT=$API_PORT
 WEB_PORT=$WEB_PORT
 NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 LAW_EYE_API_PROXY_TARGET=$LAW_EYE_API_PROXY_TARGET
+WEB_RUNS_ON_WINDOWS=$WEB_RUNS_ON_WINDOWS
 WSL_HOST_IP=${WSL_HOST_IP:-}
+WINDOWS_HOST_IP=${WINDOWS_HOST_IP:-}
 EOF
 
 echo "Stack ready:"
 echo "  Postgres: localhost:${POSTGRES_PORT}"
 echo "  Redis:    localhost:${REDIS_PORT}"
+echo "  MinIO:    http://localhost:${MINIO_API_PORT} (console :${MINIO_CONSOLE_PORT})"
 echo "  API:      http://localhost:${API_PORT}"
 echo "  Web:      http://localhost:${WEB_PORT}"
+if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
+  echo "  Web (WSL access): http://${WINDOWS_HOST_IP:-<unknown>}:${WEB_PORT}"
+fi
 echo "State: $STATE_DIR"
 
 RUNNING=0

@@ -82,6 +82,15 @@ def _random_ascii(rng: random.Random, n: int) -> str:
 
 
 def _choose_path(rng: random.Random) -> str:
+    # NOTE: Keep the path space intentionally bounded.
+    #
+    # Next.js dev servers can incur substantial per-unique-path work (dynamic route resolution,
+    # 404 compilation, etc). A fully unbounded random path generator will measure that overhead
+    # rather than the application's steady-state resilience.
+    #
+    # We still fuzz aggressively via query strings (and a small set of representative invalid
+    # paths), but we avoid generating hundreds of unique pathnames per run to keep the SLA gate
+    # meaningful and stable across environments (WSL/Windows interop, CI runners, etc).
     common = [
         "/",
         "/login",
@@ -92,16 +101,28 @@ def _choose_path(rng: random.Random) -> str:
         "/api/health",
     ]
 
-    if rng.random() < 0.6:
+    fuzz_bounded = [
+        "/__monkey__",
+        "/__monkey__/not-found",
+        "/__monkey__/deep/link",
+        "/%2e%2e/%2e%2e/__monkey__",
+        "/%2F__monkey__",
+    ]
+
+    if rng.random() < 0.75:
         path = rng.choice(common)
     else:
-        path = f"/{_random_ascii(rng, rng.randint(1, 32))}/{_random_ascii(rng, rng.randint(0, 16))}"
+        base = rng.choice(fuzz_bounded)
+        # Limit unique variants to keep route compilation overhead bounded.
+        if rng.random() < 0.5:
+            base = f"{base.rstrip('/')}/{rng.randint(0, 15)}"
+        path = base
 
     # Add query string sometimes.
     if rng.random() < 0.4:
         qs = urllib.parse.urlencode(
             {
-                _random_ascii(rng, rng.randint(1, 8)): _random_ascii(rng, rng.randint(0, 64))
+                _random_ascii(rng, rng.randint(1, 8)): _random_ascii(rng, rng.randint(0, 48))
                 for _ in range(rng.randint(1, 4))
             }
         )

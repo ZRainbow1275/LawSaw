@@ -7,7 +7,7 @@ Usage: scripts/no-dockerhub/stop-stack.sh [--name <stack-name>] [--purge]
 
 Options:
   --name <stack-name>  Stack identifier used for container names/state dir (default: law-eye-local)
-  --purge              Also remove the postgres data volume for this stack
+  --purge              Also remove the postgres+redis+minio data volumes for this stack
 EOF
 }
 
@@ -211,15 +211,23 @@ fi
 
 POSTGRES_CONTAINER="${STACK_NAME}-postgres"
 REDIS_CONTAINER="${STACK_NAME}-redis"
+MINIO_CONTAINER="${STACK_NAME}-minio"
 POSTGRES_VOLUME="${STACK_NAME}-postgres-data"
+REDIS_VOLUME="${STACK_NAME}-redis-data"
+MINIO_VOLUME="${STACK_NAME}-minio-data"
 
 echo "Stopping containers..."
 docker rm -f "$POSTGRES_CONTAINER" >/dev/null 2>&1 || true
 docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+docker rm -f "$MINIO_CONTAINER" >/dev/null 2>&1 || true
 
 if [[ "$PURGE" -eq 1 ]]; then
   echo "Removing volume: $POSTGRES_VOLUME"
   docker volume rm -f "$POSTGRES_VOLUME" >/dev/null 2>&1 || true
+  echo "Removing volume: $REDIS_VOLUME"
+  docker volume rm -f "$REDIS_VOLUME" >/dev/null 2>&1 || true
+  echo "Removing volume: $MINIO_VOLUME"
+  docker volume rm -f "$MINIO_VOLUME" >/dev/null 2>&1 || true
 fi
 
 echo "Done."

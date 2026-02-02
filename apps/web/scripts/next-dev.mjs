@@ -3,6 +3,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const port = process.env.WEB_PORT ?? process.env.PORT ?? "8849";
+const host = process.env.WEB_HOST ?? "";
 const extraArgs = process.argv.slice(2);
 const wantsTurbo = extraArgs.includes("--turbo") || extraArgs.includes("--turbopack");
 const wantsWebpack = extraArgs.includes("--webpack");
@@ -26,6 +27,7 @@ const child = spawn(
 		"./node_modules/next/dist/bin/next",
 		"dev",
 		...(wantsTurbo || wantsWebpack ? [] : ["--webpack"]),
+		...(host ? ["-H", host] : []),
 		"-p",
 		port,
 		...extraArgs,

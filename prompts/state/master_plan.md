@@ -15,7 +15,10 @@
   `docker compose ps` ✅（全服务 healthy）；
   `python3 scripts/monkey/api_monkey.py --p95-threshold-ms 500 --max-5xx 0 --max-net-errors 0 --max-timeouts 0` ✅（生成 `prompts/logs/monkey_api_report.json`）；
   `python3 scripts/monkey/web_monkey.py --p95-threshold-ms 500 --max-5xx 0 --max-net-errors 0 --max-timeouts 0` ✅（生成 `prompts/logs/monkey_web_report.json`）；
-  `cargo test --workspace` ✅；`pnpm -C apps/web test` ✅；`pnpm -C apps/web e2e` ✅
+  `bash scripts/no-dockerhub/e2e.sh --name law-eye-e2e-qa005-prod5` ✅（E2E + API/Web monkey 一致口径；产物落盘到 `prompts/logs/`）；
+  `cargo test --workspace` ✅；
+  `cmd.exe /c "cd /d D:\\Desktop\\LawSaw\\apps\\web && pnpm test"` ✅；
+  `cmd.exe /c "cd /d D:\\Desktop\\LawSaw\\apps\\web && pnpm e2e"` ✅
 
 **质量门槛（逐步收敛到强制）**
 - Rust：`cargo test` 通过（workspace）

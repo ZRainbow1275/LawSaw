@@ -13,6 +13,7 @@
 - [x] QA-003 扩展 E2E 覆盖：Analytics/Data/Feedback/Knowledge/Settings（含头像上传、API Key 生命周期）✅（已覆盖 `/analytics /data /feedback /knowledge /settings /category/:slug`）
 - [x] QA-004 E2E 可靠性：网络/5xx 抖动重试、运行前健康自检、失败诊断信息落盘 ✅（已增强健康自检/错误 gate/strict locator 规避）
 - [x] PERF-002 Monkey SLA：增加延迟门槛与失败阈值（商业可用基线）✅（已支持 `--p95-threshold-ms/--max-5xx/--max-net-errors/--max-timeouts` + `report_json`）
+- [x] QA-005 将 Monkey 门禁纳入 `scripts/no-dockerhub/e2e.sh`（CI 口径一致）：E2E 后自动运行 API/Web monkey + 产物落盘 ✅（`bash scripts/no-dockerhub/e2e.sh --name law-eye-e2e-qa005-prod5`：E2E 通过；API/Web monkey 0 timeouts/0 net_errors/0 5xx，p95<500ms；产物落盘到 `prompts/logs/` 与 `tmp/no-dockerhub/<stack>/logs/`）
 
 ## Next（下一批）
 - [ ] API-001 OpenAPI 契约补全与稳定化
