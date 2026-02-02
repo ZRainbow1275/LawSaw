@@ -11,7 +11,8 @@
 - Monkey Tests 全部通过（不得导致系统崩溃/死锁/持续 5xx）
 
 **最近一次验证（落盘口径）**
-- 2026-02-02：`docker compose ps` ✅（全服务 healthy）；
+- 2026-02-02：`docker compose up -d` ✅（No services to build）；
+  `docker compose ps` ✅（全服务 healthy）；
   `python3 scripts/monkey/api_monkey.py --p95-threshold-ms 500 --max-5xx 0 --max-net-errors 0 --max-timeouts 0` ✅（生成 `prompts/logs/monkey_api_report.json`）；
   `python3 scripts/monkey/web_monkey.py --p95-threshold-ms 500 --max-5xx 0 --max-net-errors 0 --max-timeouts 0` ✅（生成 `prompts/logs/monkey_web_report.json`）；
   `cargo test --workspace` ✅；`pnpm -C apps/web test` ✅；`pnpm -C apps/web e2e` ✅
