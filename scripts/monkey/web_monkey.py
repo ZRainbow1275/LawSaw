@@ -47,6 +47,9 @@ class Counters:
         }
 
 
+MIN_2XX_SAMPLES = 20
+
+
 def _default_report_path(filename: str) -> Optional[str]:
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     candidate_dir = os.path.join(repo_root, "prompts", "logs")
@@ -179,7 +182,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--requests", type=int, default=300)
     parser.add_argument("--concurrency", type=int, default=20)
     parser.add_argument("--timeout-ms", type=int, default=1500)
-    parser.add_argument("--p95-threshold-ms", type=int, default=500)
+    parser.add_argument("--p95-threshold-ms", type=int, default=200)
     parser.add_argument("--max-5xx", type=int, default=0)
     parser.add_argument("--max-net-errors", type=int, default=0)
     parser.add_argument("--max-timeouts", type=int, default=0)
@@ -254,6 +257,7 @@ def main(argv: list[str]) -> int:
     lock = threading.Lock()
     counters = Counters()
     latencies_ms: list[int] = []
+    latencies_ms_2xx: list[int] = []
     sample_errors: list[str] = []
 
     start = time.monotonic()
@@ -282,6 +286,7 @@ def main(argv: list[str]) -> int:
                     latencies_ms.append(latency_ms)
                     if 200 <= status < 300:
                         counters.ok_2xx += 1
+                        latencies_ms_2xx.append(latency_ms)
                     elif 300 <= status < 400:
                         counters.http_3xx += 1
                     elif 400 <= status < 500:
@@ -303,13 +308,17 @@ def main(argv: list[str]) -> int:
 
     duration_s = max(0.001, time.monotonic() - start)
     qps = counters.total / duration_s
-    latency = _percentiles(latencies_ms)
+    latency_all = _percentiles(latencies_ms)
+    latency_2xx = _percentiles(latencies_ms_2xx)
 
     print("--- summary ---")
     print(json.dumps({**counters.as_dict(), "duration_s": round(duration_s, 3), "qps": round(qps, 2)}, ensure_ascii=False))
     if latencies_ms:
-        print("--- latency_ms ---")
-        print(json.dumps(latency, ensure_ascii=False))
+        print("--- latency_ms_all ---")
+        print(json.dumps(latency_all, ensure_ascii=False))
+    if latencies_ms_2xx:
+        print("--- latency_ms_2xx ---")
+        print(json.dumps(latency_2xx, ensure_ascii=False))
     if sample_errors:
         print("--- sample_errors ---")
         for err in sample_errors:
@@ -329,7 +338,9 @@ def main(argv: list[str]) -> int:
                     "counters": counters.as_dict(),
                     "duration_s": round(duration_s, 3),
                     "qps": round(qps, 2),
-                    "latency_ms": latency,
+                    "latency_ms": latency_all,
+                    "latency_ms_all": latency_all,
+                    "latency_ms_2xx": latency_2xx,
                     "sample_errors": sample_errors,
                     "exit_code": exit_code,
                     "pass": False,
@@ -339,8 +350,15 @@ def main(argv: list[str]) -> int:
         return exit_code
 
     failures: list[str] = []
-    if args.p95_threshold_ms > 0 and latency["p95"] > args.p95_threshold_ms:
-        failures.append(f"p95_ms_exceeded: {latency['p95']} > {args.p95_threshold_ms}")
+    if args.p95_threshold_ms > 0:
+        if counters.ok_2xx < MIN_2XX_SAMPLES:
+            failures.append(
+                f"insufficient_2xx_samples: {counters.ok_2xx} < {MIN_2XX_SAMPLES}"
+            )
+        elif latency_2xx["p95"] > args.p95_threshold_ms:
+            failures.append(
+                f"p95_2xx_ms_exceeded: {latency_2xx['p95']} > {args.p95_threshold_ms}"
+            )
     if counters.http_5xx > args.max_5xx:
         failures.append(f"http_5xx_exceeded: {counters.http_5xx} > {args.max_5xx}")
 
@@ -368,7 +386,9 @@ def main(argv: list[str]) -> int:
                 "counters": counters.as_dict(),
                 "duration_s": round(duration_s, 3),
                 "qps": round(qps, 2),
-                "latency_ms": latency,
+                "latency_ms": latency_all,
+                "latency_ms_all": latency_all,
+                "latency_ms_2xx": latency_2xx,
                 "sample_errors": sample_errors,
                 "thresholds": {
                     "p95_threshold_ms": args.p95_threshold_ms,

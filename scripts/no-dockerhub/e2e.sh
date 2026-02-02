@@ -272,7 +272,7 @@ if [[ "$RUN_MONKEY" -eq 1 ]]; then
     --requests 300 \
     --concurrency 24 \
     --timeout-ms 3000 \
-    --p95-threshold-ms 500 \
+    --p95-threshold-ms 200 \
     --max-5xx 0 \
     --max-net-errors 0 \
     --max-timeouts 0 \
@@ -291,7 +291,7 @@ if [[ "$RUN_MONKEY" -eq 1 ]]; then
       --requests 200 \
       --concurrency 16 \
       --timeout-ms 3000 \
-      --p95-threshold-ms 500 \
+      --p95-threshold-ms 200 \
       --max-5xx 0 \
       --max-net-errors 0 \
       --max-timeouts 0 \
@@ -303,7 +303,7 @@ if [[ "$RUN_MONKEY" -eq 1 ]]; then
       --requests 200 \
       --concurrency 16 \
       --timeout-ms 3000 \
-      --p95-threshold-ms 500 \
+      --p95-threshold-ms 200 \
       --max-5xx 0 \
       --max-net-errors 0 \
       --max-timeouts 0 \
