@@ -18,7 +18,8 @@
   `bash scripts/no-dockerhub/e2e.sh --name law-eye-e2e-qa005-prod5` ✅（E2E + API/Web monkey 一致口径；产物落盘到 `prompts/logs/`）；
   `cargo test --workspace` ✅；
   `cmd.exe /c "cd /d D:\\Desktop\\LawSaw\\apps\\web && pnpm test"` ✅；
-  `cmd.exe /c "cd /d D:\\Desktop\\LawSaw\\apps\\web && pnpm e2e"` ✅
+  `cmd.exe /c "cd /d D:\\Desktop\\LawSaw\\apps\\web && pnpm e2e"` ✅；
+  `bash scripts/no-dockerhub/e2e.sh --name law-eye-e2e-core001--` ✅（CORE-001 回归：E2E + Monkey 门禁通过）
 
 **质量门槛（逐步收敛到强制）**
 - Rust：`cargo test` 通过（workspace）

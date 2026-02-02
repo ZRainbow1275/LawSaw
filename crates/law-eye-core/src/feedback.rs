@@ -4,6 +4,7 @@ use law_eye_common::{Error, Result};
 use law_eye_db::{CreateFeedback, Feedback, UpdateFeedback};
 use sqlx::{PgPool, Postgres, Transaction};
 use std::sync::Arc;
+use tracing::warn;
 use uuid::Uuid;
 
 const FEEDBACK_ENCRYPTION_VERSION_VAULT_TRANSIT: i16 = 1;
@@ -99,9 +100,9 @@ impl FeedbackService {
         offset: i64,
     ) -> Result<Vec<Feedback>> {
         let cipher = self.cipher.clone();
-        with_tenant_tx(&self.pool, tenant_id, |tx| {
+        let rows = with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
-                let rows = sqlx::query_as::<_, Feedback>(
+                sqlx::query_as::<_, Feedback>(
                     r#"
                 SELECT * FROM feedbacks
                 WHERE user_id = $1
@@ -114,16 +115,30 @@ impl FeedbackService {
                 .bind(offset)
                 .fetch_all(tx.as_mut())
                 .await
-                .map_err(|e| Error::Database(e.to_string()))?;
-
-                let mut out = Vec::with_capacity(rows.len());
-                for row in rows {
-                    out.push(decrypt_or_backfill_feedback(tx, &cipher, row).await?);
-                }
-                Ok(out)
+                .map_err(|e| Error::Database(e.to_string()))
             })
         })
-        .await
+        .await?;
+
+        let plaintext_count = if cipher.is_enabled() {
+            rows.iter()
+                .filter(|row| row.encryption_version == 0)
+                .count()
+        } else {
+            0
+        };
+        if plaintext_count > 0 {
+            warn!(
+                feedbacks_plaintext_count = plaintext_count,
+                "Feedback 列表包含未加密历史数据（encryption_version=0）。为保证可预测的读路径延迟，列表接口不再执行逐条回填加密；请通过离线迁移/后台任务完成数据加密回填。"
+            );
+        }
+
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            out.push(decrypt_feedback(&cipher, row).await?);
+        }
+        Ok(out)
     }
 
     pub async fn list_all(
@@ -133,9 +148,9 @@ impl FeedbackService {
         offset: i64,
     ) -> Result<Vec<Feedback>> {
         let cipher = self.cipher.clone();
-        with_tenant_tx(&self.pool, tenant_id, |tx| {
+        let rows = with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
-                let rows = sqlx::query_as::<_, Feedback>(
+                sqlx::query_as::<_, Feedback>(
                     r#"
                 SELECT * FROM feedbacks
                 ORDER BY created_at DESC
@@ -146,16 +161,30 @@ impl FeedbackService {
                 .bind(offset)
                 .fetch_all(tx.as_mut())
                 .await
-                .map_err(|e| Error::Database(e.to_string()))?;
-
-                let mut out = Vec::with_capacity(rows.len());
-                for row in rows {
-                    out.push(decrypt_or_backfill_feedback(tx, &cipher, row).await?);
-                }
-                Ok(out)
+                .map_err(|e| Error::Database(e.to_string()))
             })
         })
-        .await
+        .await?;
+
+        let plaintext_count = if cipher.is_enabled() {
+            rows.iter()
+                .filter(|row| row.encryption_version == 0)
+                .count()
+        } else {
+            0
+        };
+        if plaintext_count > 0 {
+            warn!(
+                feedbacks_plaintext_count = plaintext_count,
+                "Feedback 列表包含未加密历史数据（encryption_version=0）。为保证可预测的读路径延迟，列表接口不再执行逐条回填加密；请通过离线迁移/后台任务完成数据加密回填。"
+            );
+        }
+
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            out.push(decrypt_feedback(&cipher, row).await?);
+        }
+        Ok(out)
     }
 
     pub async fn get_by_id(&self, tenant_id: Uuid, id: Uuid) -> Result<Feedback> {
@@ -311,5 +340,136 @@ async fn decrypt_or_backfill_feedback(
         other => Err(Error::Validation(format!(
             "Unsupported feedback encryption_version: {other}"
         ))),
+    }
+}
+
+async fn decrypt_feedback(
+    cipher: &Arc<dyn SensitiveStringCipher>,
+    mut row: Feedback,
+) -> Result<Feedback> {
+    match row.encryption_version {
+        0 => Ok(row),
+        FEEDBACK_ENCRYPTION_VERSION_VAULT_TRANSIT => {
+            if !cipher.is_enabled() {
+                return Err(Error::Config(
+                    "Feedback encryption is enabled in DB but runtime cipher is disabled".into(),
+                ));
+            }
+
+            row.content = cipher.decrypt(&row.content).await?;
+            if let Some(email) = row.contact_email.take() {
+                row.contact_email = Some(cipher.decrypt(&email).await?);
+            }
+            Ok(row)
+        }
+        other => Err(Error::Validation(format!(
+            "Unsupported feedback encryption_version: {other}"
+        ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use law_eye_common::vault::PlaintextCipher;
+    use uuid::Uuid;
+
+    #[derive(Debug)]
+    struct PanicEnabledCipher;
+
+    #[async_trait::async_trait]
+    impl SensitiveStringCipher for PanicEnabledCipher {
+        fn is_enabled(&self) -> bool {
+            true
+        }
+
+        async fn encrypt(&self, _plaintext: &str) -> Result<String> {
+            panic!("encrypt should not be called in this test");
+        }
+
+        async fn decrypt(&self, _ciphertext: &str) -> Result<String> {
+            panic!("decrypt should not be called in this test");
+        }
+    }
+
+    #[derive(Debug)]
+    struct TestEnabledCipher;
+
+    #[async_trait::async_trait]
+    impl SensitiveStringCipher for TestEnabledCipher {
+        fn is_enabled(&self) -> bool {
+            true
+        }
+
+        async fn encrypt(&self, plaintext: &str) -> Result<String> {
+            Ok(format!("enc:{plaintext}"))
+        }
+
+        async fn decrypt(&self, ciphertext: &str) -> Result<String> {
+            Ok(ciphertext
+                .strip_prefix("enc:")
+                .unwrap_or(ciphertext)
+                .to_string())
+        }
+    }
+
+    fn sample_feedback(encryption_version: i16, content: &str, email: Option<&str>) -> Feedback {
+        Feedback {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            user_id: Some(Uuid::new_v4()),
+            feedback_type: "bug_report".to_string(),
+            title: "t".to_string(),
+            content: content.to_string(),
+            contact_email: email.map(|v| v.to_string()),
+            encryption_version,
+            source_url: None,
+            source_name: None,
+            status: "pending".to_string(),
+            admin_response: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    #[tokio::test]
+    async fn decrypt_feedback_plaintext_does_not_touch_cipher() {
+        let cipher: Arc<dyn SensitiveStringCipher> = Arc::new(PanicEnabledCipher);
+        let row = sample_feedback(0, "hello", Some("a@b.com"));
+
+        let out = decrypt_feedback(&cipher, row.clone()).await.unwrap();
+        assert_eq!(out.content, "hello");
+        assert_eq!(out.contact_email.as_deref(), Some("a@b.com"));
+        assert_eq!(out.encryption_version, 0);
+    }
+
+    #[tokio::test]
+    async fn decrypt_feedback_encrypted_requires_cipher() {
+        let cipher: Arc<dyn SensitiveStringCipher> = Arc::new(PlaintextCipher);
+        let row = sample_feedback(FEEDBACK_ENCRYPTION_VERSION_VAULT_TRANSIT, "enc:hello", None);
+
+        let err = decrypt_feedback(&cipher, row).await.unwrap_err();
+        match err {
+            Error::Config(msg) => {
+                assert!(msg.contains("runtime cipher is disabled"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn decrypt_feedback_encrypted_decrypts_content_and_email() {
+        let cipher: Arc<dyn SensitiveStringCipher> = Arc::new(TestEnabledCipher);
+        let row = sample_feedback(
+            FEEDBACK_ENCRYPTION_VERSION_VAULT_TRANSIT,
+            "enc:secret",
+            Some("enc:a@b.com"),
+        );
+
+        let out = decrypt_feedback(&cipher, row).await.unwrap();
+        assert_eq!(out.content, "secret");
+        assert_eq!(out.contact_email.as_deref(), Some("a@b.com"));
+        assert_eq!(out.encryption_version, FEEDBACK_ENCRYPTION_VERSION_VAULT_TRANSIT);
     }
 }
