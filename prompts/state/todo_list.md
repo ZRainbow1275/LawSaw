@@ -16,7 +16,7 @@
 - [x] QA-005 将 Monkey 门禁纳入 `scripts/no-dockerhub/e2e.sh`（CI 口径一致）：E2E 后自动运行 API/Web monkey + 产物落盘 ✅（`bash scripts/no-dockerhub/e2e.sh --name law-eye-e2e-qa005-prod5`：E2E 通过；API/Web monkey 0 timeouts/0 net_errors/0 5xx，p95<500ms；产物落盘到 `prompts/logs/` 与 `tmp/no-dockerhub/<stack>/logs/`）
 
 ## Next（下一批）
-- [ ] API-001 OpenAPI 契约补全与稳定化
+- [x] API-001 OpenAPI 契约补全与稳定化 ✅（Spec：`prompts/specs/archive/api_spec.md`；增强 `crates/law-eye-api/src/openapi.rs` 元信息与回归测试；`cargo test --workspace` 通过）
 - [ ] API-002 关键接口的输入校验与错误码规范化
 - [ ] CORE-001 识别并修复潜在 N+1 查询路径
 - [ ] WEB-001 前端关键路径与错误恢复体验（登录态、失败重试）

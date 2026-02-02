@@ -23,6 +23,11 @@ impl Modify for SecurityAddon {
 #[derive(OpenApi)]
 #[openapi(
     modifiers(&SecurityAddon),
+    info(
+        title = "LawSaw API",
+        version = "0.1.0",
+        description = "LawSaw / Law-Eye HTTP API (Axum). Base path: /api/v1. Auth: session cookie 'id'."
+    ),
     paths(
         crate::routes::health::health_check,
         crate::routes::auth::register,
@@ -93,3 +98,39 @@ impl Modify for SecurityAddon {
     )
 )]
 pub struct ApiDoc;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use utoipa::OpenApi;
+
+    fn ptr_escape(segment: &str) -> String {
+        segment.replace('~', "~0").replace('/', "~1")
+    }
+
+    #[test]
+    fn openapi_contract_is_stable_and_complete() {
+        let doc = ApiDoc::openapi();
+        let value = serde_json::to_value(&doc).expect("OpenAPI must be JSON-serializable");
+
+        let session_scheme = value.pointer("/components/securitySchemes/session");
+        assert!(
+            session_scheme.is_some(),
+            "OpenAPI must declare components.securitySchemes.session"
+        );
+
+        for required_path in ["/api/v1/auth/login", "/api/v1/articles", "/api/v1/search"] {
+            let pointer = format!("/paths/{}", ptr_escape(required_path));
+            assert!(
+                value.pointer(&pointer).is_some(),
+                "OpenAPI missing required path: {required_path}"
+            );
+        }
+
+        let articles_get_security = value.pointer("/paths/~1api~1v1~1articles/get/security");
+        assert!(
+            articles_get_security.is_some(),
+            "OpenAPI should declare security for at least GET /api/v1/articles"
+        );
+    }
+}
