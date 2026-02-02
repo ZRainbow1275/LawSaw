@@ -15,7 +15,10 @@ export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
 
 	useEffect(() => {
 		if (!isLoading && !isAuthenticated) {
-			router.push("/login");
+			const pathname = window.location.pathname || "/";
+			const search = window.location.search || "";
+			const returnTo = `${pathname}${search}`;
+			router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`);
 		}
 	}, [isLoading, isAuthenticated, router]);
 

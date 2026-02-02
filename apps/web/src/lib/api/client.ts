@@ -73,6 +73,8 @@ export class ApiClientError extends Error {
 	}
 }
 
+export type ApiClientErrorHandler = (error: ApiClientError) => void;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -110,6 +112,7 @@ async function readErrorInfo(
 export class ApiClient {
 	private baseUrl: string;
 	private timeoutMs: number | null;
+	private errorHandler: ApiClientErrorHandler | null = null;
 
 	constructor(
 		baseUrl: string = API_BASE_URL,
@@ -117,6 +120,18 @@ export class ApiClient {
 	) {
 		this.baseUrl = normalizeLoopbackBaseUrl(baseUrl);
 		this.timeoutMs = timeoutMs;
+	}
+
+	setErrorHandler(handler: ApiClientErrorHandler | null): void {
+		this.errorHandler = handler;
+	}
+
+	private emitError(error: ApiClientError): void {
+		try {
+			this.errorHandler?.(error);
+		} catch {
+			// Never let a global hook break request error semantics.
+		}
 	}
 
 	private async request<T>(
@@ -173,7 +188,7 @@ export class ApiClient {
 			response = await fetch(url, { ...config, signal: controller.signal });
 		} catch (cause) {
 			if (cause instanceof Error && cause.name === "AbortError") {
-				throw new ApiClientError(
+				const error = new ApiClientError(
 					didTimeout
 						? `Request timed out after ${this.timeoutMs}ms`
 						: "Request aborted",
@@ -184,14 +199,18 @@ export class ApiClient {
 						cause,
 					},
 				);
+				this.emitError(error);
+				throw error;
 			}
 
-			throw new ApiClientError("Network request failed", {
+			const error = new ApiClientError("Network request failed", {
 				status: 0,
 				endpoint,
 				requestId: null,
 				cause,
 			});
+			this.emitError(error);
+			throw error;
 		} finally {
 			if (timeoutId) clearTimeout(timeoutId);
 			if (externalSignal && abortListener) {
@@ -205,7 +224,7 @@ export class ApiClient {
 			const { message, requestId: requestIdFromBody } =
 				await readErrorInfo(response);
 			const requestId = requestIdFromHeader ?? requestIdFromBody;
-			throw new ApiClientError(
+			const error = new ApiClientError(
 				requestId ? `${message} (request_id=${requestId})` : message,
 				{
 					status: response.status,
@@ -213,6 +232,8 @@ export class ApiClient {
 					requestId,
 				},
 			);
+			this.emitError(error);
+			throw error;
 		}
 
 		const requestId = requestIdFromHeader;

@@ -10,9 +10,9 @@ ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/app/target \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/app/target,sharing=locked \
     cargo build --release --bin law-eye-worker --locked \
     && cp /app/target/release/law-eye-worker /app/law-eye-worker
 

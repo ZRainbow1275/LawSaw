@@ -3,15 +3,23 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
+import { safeReturnTo } from "@/lib/utils";
 import { useToastStore } from "@/stores/toast-store";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export function LoginForm() {
 	const router = useRouter();
 	const { login } = useAuth();
+	const [returnTo, setReturnTo] = useState<string | null>(null);
 	const [error, setError] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
+
+	useEffect(() => {
+		setReturnTo(
+			safeReturnTo(new URLSearchParams(window.location.search).get("returnTo")),
+		);
+	}, []);
 
 	const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
 		e.preventDefault();
@@ -31,12 +39,17 @@ export function LoginForm() {
 		try {
 			const result = await login({ email, password });
 			if (result.success) {
+				const nextReturnTo =
+					returnTo ||
+					safeReturnTo(
+						new URLSearchParams(window.location.search).get("returnTo"),
+					);
 				useToastStore.getState().addToast({
 					type: "success",
 					title: "登录成功",
 					description: "欢迎回来",
 				});
-				router.push("/");
+				router.replace(nextReturnTo || "/");
 			} else {
 				setError(result.error || "登录失败，请重试");
 			}
@@ -90,7 +103,14 @@ export function LoginForm() {
 
 			<p className="text-center text-sm text-neutral-500">
 				还没有账号？{" "}
-				<a href="/register" className="text-primary-600 hover:underline">
+				<a
+					href={
+						returnTo
+							? `/register?returnTo=${encodeURIComponent(returnTo)}`
+							: "/register"
+					}
+					className="text-primary-600 hover:underline"
+				>
 					立即注册
 				</a>
 			</p>

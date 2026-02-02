@@ -20,6 +20,22 @@ use tower::{Layer, Service};
 
 use crate::ApiError;
 
+fn env_u32(name: &str) -> Option<u32> {
+    std::env::var(name)
+        .ok()
+        .map(|raw| raw.trim().to_string())
+        .and_then(|raw| raw.parse::<u32>().ok())
+        .filter(|value| *value > 0)
+}
+
+fn env_u64(name: &str) -> Option<u64> {
+    std::env::var(name)
+        .ok()
+        .map(|raw| raw.trim().to_string())
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+}
+
 #[derive(Debug, Clone)]
 struct RateLimitEntry {
     count: u32,
@@ -107,18 +123,29 @@ impl RateLimitLayer {
     }
 
     pub fn login() -> Self {
-        // Stricter limits for login: 5 attempts per minute
-        Self::new(5, 60)
+        // Stricter limits for login attempts per client IP.
+        let max_requests = env_u32("LAW_EYE__RATE_LIMIT__LOGIN_MAX_REQUESTS").unwrap_or(5);
+        let window_seconds = env_u64("LAW_EYE__RATE_LIMIT__LOGIN_WINDOW_SECONDS").unwrap_or(60);
+        Self::new(max_requests, window_seconds)
     }
 
     pub fn register() -> Self {
-        // 3 registrations per hour
-        Self::new(3, 3600)
+        // Registrations per client IP (default: 3 per hour).
+        let max_requests = env_u32("LAW_EYE__RATE_LIMIT__REGISTER_MAX_REQUESTS").unwrap_or(3);
+        let window_seconds =
+            env_u64("LAW_EYE__RATE_LIMIT__REGISTER_WINDOW_SECONDS").unwrap_or(3600);
+        Self::new(max_requests, window_seconds)
     }
 
     pub fn api() -> Self {
-        // General API: 100 requests per minute
-        Self::new(100, 60)
+        // General API per client IP.
+        //
+        // NOTE: The earlier default (100/minute) is too low for a modern SPA with background
+        // refetching and can cause legitimate user journeys (and E2E) to trip 429s.
+        // Keep it configurable for production tuning.
+        let max_requests = env_u32("LAW_EYE__RATE_LIMIT__API_MAX_REQUESTS").unwrap_or(1200);
+        let window_seconds = env_u64("LAW_EYE__RATE_LIMIT__API_WINDOW_SECONDS").unwrap_or(60);
+        Self::new(max_requests, window_seconds)
     }
 }
 

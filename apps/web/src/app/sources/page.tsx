@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ErrorState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import {
 	useCreateSource,
@@ -57,7 +58,7 @@ function formatTime(dateStr: string | null): string {
 }
 
 export default function SourcesPage() {
-	const { data: sources, isLoading } = useSources();
+	const { data: sources, isLoading, isError, refetch } = useSources();
 	const triggerFetch = useTriggerFetch();
 	const createSource = useCreateSource();
 	const { permissions } = useAuthStore();
@@ -491,6 +492,8 @@ export default function SourcesPage() {
 											/>
 										))}
 									</div>
+								) : isError ? (
+									<ErrorState action={{ label: "重试", onClick: () => void refetch() }} />
 								) : !sources || sources.length === 0 ? (
 									<p className="py-12 text-center text-neutral-500">
 										暂无信息源，点击上方按钮添加

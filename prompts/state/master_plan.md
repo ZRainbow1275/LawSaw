@@ -19,7 +19,7 @@
   `cargo test --workspace` ✅；
   `cmd.exe /c "cd /d D:\\Desktop\\LawSaw\\apps\\web && pnpm test"` ✅；
   `cmd.exe /c "cd /d D:\\Desktop\\LawSaw\\apps\\web && pnpm e2e"` ✅；
-  `bash scripts/no-dockerhub/e2e.sh --name law-eye-e2e-core001--` ✅（CORE-001 回归：E2E + Monkey 门禁通过）
+  `bash scripts/no-dockerhub/e2e.sh --name law-eye-e2e-web001-verify5 --web-mode prod` ✅（WEB-001 回归：E2E + Monkey 门禁通过；产物：`tmp/no-dockerhub/law-eye-e2e-web001-verify5/logs/`）
 
 **质量门槛（逐步收敛到强制）**
 - Rust：`cargo test` 通过（workspace）

@@ -50,6 +50,7 @@ function createE2ECredentials(): E2ECredentials {
 
 const CONSOLE_ERROR_ALLOWLIST: RegExp[] = [
 	/^Failed to load resource: the server responded with a status of 401 \(Unauthorized\)$/,
+	/^Failed to load resource: the server responded with a status of 403 \(Forbidden\)$/,
 ];
 
 function createPageErrorGate() {
@@ -68,7 +69,7 @@ function createPageErrorGate() {
 
 		page.on("response", (response) => {
 			const status = response.status();
-			if (status < 500) return;
+			if (status < 500 && status !== 429) return;
 			errors.push(`http_${status}: ${response.request().method()} ${response.url()}`);
 		});
 
@@ -260,14 +261,125 @@ async function registerAndLogin(
 	await page.close();
 }
 
-test.describe.serial("LawSaw 关键用户流 E2E", () => {
-	let auth:
-		| {
-				statePath: string;
-				unique: string;
-				displayName: string;
-		  }
-		| undefined;
+async function loginExistingUser(
+	context: BrowserContext,
+	baseURL: string,
+	credentials: Pick<E2ECredentials, "email" | "password">,
+) {
+	const loginUrl = new URL("/api/v1/auth/login", baseURL).toString();
+	const meUrl = new URL("/api/v1/auth/me", baseURL).toString();
+
+	const payload = {
+		email: credentials.email,
+		password: credentials.password,
+	};
+
+	const requestTimeoutMs = 20_000;
+	const doLogin = async () =>
+		context.request.post(loginUrl, {
+			data: payload,
+			timeout: requestTimeoutMs,
+			headers: {
+				Origin: baseURL,
+				Referer: new URL("/login", baseURL).toString(),
+			},
+		});
+
+	const maxAttempts = 5;
+	let response: Awaited<ReturnType<typeof doLogin>> | null = null;
+	let lastError: unknown = null;
+	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+		try {
+			response = await doLogin();
+		} catch (error) {
+			lastError = error;
+			response = null;
+		}
+
+		if (!response) {
+			await new Promise((resolve) =>
+				setTimeout(resolve, Math.min(10_000, 500 * 2 ** (attempt - 1))),
+			);
+			continue;
+		}
+
+		if (response.status() === 429) {
+			const retryAfterRaw = response.headers()["retry-after"];
+			const retryAfterSeconds = retryAfterRaw
+				? Number.parseInt(retryAfterRaw, 10)
+				: Number.NaN;
+			const delayMs =
+				Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+					? retryAfterSeconds * 1000
+					: 5_000;
+			await new Promise((resolve) => setTimeout(resolve, delayMs));
+			continue;
+		}
+
+		if (response.status() >= 500 && attempt < maxAttempts) {
+			await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+			continue;
+		}
+
+		break;
+	}
+
+	if (!response) {
+		const detail = lastError instanceof Error ? lastError.message : String(lastError);
+		throw new Error(`Login request failed: ${detail}`);
+	}
+
+	const loginText = await response.text();
+	if (!response.ok()) {
+		throw new Error(`Login failed: ${response.status()} ${loginText.slice(0, 200)}`);
+	}
+
+	let loginJson: unknown = null;
+	try {
+		loginJson = JSON.parse(loginText) as unknown;
+	} catch {
+		throw new Error(`Login returned non-JSON: ${loginText.slice(0, 200)}`);
+	}
+	if (
+		!loginJson ||
+		typeof loginJson !== "object" ||
+		!("success" in loginJson) ||
+		(loginJson as { success?: unknown }).success !== true
+	) {
+		throw new Error(`Login returned unexpected payload: ${loginText.slice(0, 200)}`);
+	}
+
+	const maxMeAttempts = 5;
+	let meResponse: Awaited<ReturnType<typeof context.request.get>> | null = null;
+	for (let attempt = 1; attempt <= maxMeAttempts; attempt++) {
+		meResponse = await context.request.get(meUrl, { timeout: 10_000 });
+		if (meResponse.ok()) break;
+		if (meResponse.status() >= 500 && attempt < maxMeAttempts) {
+			await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+			continue;
+		}
+		break;
+	}
+
+	if (!meResponse) throw new Error("Auth session check failed: missing response");
+	const meText = await meResponse.text();
+	if (!meResponse.ok()) {
+		throw new Error(
+			`Auth session not established: ${meResponse.status()} ${meText.slice(0, 200)}`,
+		);
+	}
+}
+
+	test.describe.serial("LawSaw 关键用户流 E2E", () => {
+		let auth:
+			| {
+					statePath: string;
+					unique: string;
+					displayName: string;
+					email: string;
+					password: string;
+			  }
+			| undefined;
 
 	test.beforeAll(async ({ browser }, testInfo) => {
 		testInfo.setTimeout(180_000);
@@ -289,21 +401,35 @@ test.describe.serial("LawSaw 关键用户流 E2E", () => {
 		await context.storageState({ path: statePath });
 		await context.close();
 
-		auth = {
-			statePath,
-			unique: credentials.unique,
-			displayName: credentials.displayName,
-		};
-	});
+			auth = {
+				statePath,
+				unique: credentials.unique,
+				displayName: credentials.displayName,
+				email: credentials.email,
+				password: credentials.password,
+			};
+		});
 
-	test("未登录访问受保护页面应重定向到登录页", async ({ page }) => {
-		const gate = createPageErrorGate();
-		gate.attach(page);
-		await page.goto("/articles");
-		await expect(page).toHaveURL(/\/login(?:\?|$)/, { timeout: 90_000 });
-		await expect(page.getByLabel("邮箱")).toBeVisible();
-		gate.assertNoErrors();
-	});
+		test("未登录访问受保护页面应重定向到登录页", async ({ page }) => {
+			if (!auth) throw new Error("E2E 登录态初始化失败（auth state missing）。");
+			const gate = createPageErrorGate();
+			gate.attach(page);
+			await page.goto("/articles");
+			await expect(page).toHaveURL(/\/login(?:\?|$)/, { timeout: 90_000 });
+
+			const redirected = new URL(page.url());
+			expect(redirected.searchParams.get("returnTo")).toBe("/articles");
+
+			await expect(page.getByLabel("邮箱")).toBeVisible();
+			await page.getByLabel("邮箱").fill(auth.email);
+			await page.getByLabel("密码").fill(auth.password);
+			await page.getByRole("button", { name: "登录" }).click();
+			await expect(page).toHaveURL(/\/articles(?:\?|$)/, { timeout: 90_000 });
+			await expect(
+				page.getByRole("heading", { name: "资讯列表", level: 1 }),
+			).toBeVisible({ timeout: 90_000 });
+			gate.assertNoErrors();
+		});
 
 	test("移动端抽屉导航：打开/关闭/跳转/锁滚动", async ({ browser }, testInfo) => {
 		if (!auth) throw new Error("E2E 登录态初始化失败（auth state missing）。");
@@ -697,4 +823,124 @@ test.describe.serial("LawSaw 关键用户流 E2E", () => {
 		gate.assertNoErrors();
 		await context.close();
 	});
+
+		test("会话失效（401）应跳转登录并可恢复 returnTo", async ({ browser }, testInfo) => {
+			if (!auth) throw new Error("E2E 登录态初始化失败（auth state missing）。");
+			const baseURL = testInfo.project.use.baseURL as string | undefined;
+			if (!baseURL) throw new Error("Playwright baseURL 未配置，无法运行用例。");
+			test.setTimeout(180_000);
+
+			const context = await browser.newContext({ baseURL });
+			await waitForStackReady(context, baseURL);
+			await loginExistingUser(context, baseURL, auth);
+			const page = await context.newPage();
+			const gate = createPageErrorGate();
+			gate.attach(page);
+
+			await page.goto("/sources");
+			await expect(
+				page.getByRole("heading", { name: "信息源管理", level: 1 }),
+			).toBeVisible({ timeout: 90_000 });
+
+			// 模拟会话过期：清 cookie，但不刷新页面（保持 UI 假登录态），再触发一个需要鉴权的操作。
+			await context.clearCookies();
+			await page.getByRole("button", { name: "抓取" }).first().click();
+
+			await expect(page).toHaveURL(/\/login\?returnTo=/, { timeout: 90_000 });
+			const redirected = new URL(page.url());
+			expect(redirected.searchParams.get("returnTo")).toBe("/sources");
+
+			await page.getByLabel("邮箱").fill(auth.email);
+			await page.getByLabel("密码").fill(auth.password);
+			await page.getByRole("button", { name: "登录" }).click();
+			await expect(page).toHaveURL(/\/sources(?:\?|$)/, { timeout: 90_000 });
+			await expect(
+				page.getByRole("heading", { name: "信息源管理", level: 1 }),
+			).toBeVisible({ timeout: 90_000 });
+
+			gate.assertNoErrors();
+			await context.close();
+		});
+
+		test("权限不足（403）应提示且不重试", async ({ browser }, testInfo) => {
+			if (!auth) throw new Error("E2E 登录态初始化失败（auth state missing）。");
+			const baseURL = testInfo.project.use.baseURL as string | undefined;
+			if (!baseURL) throw new Error("Playwright baseURL 未配置，无法运行用例。");
+			test.setTimeout(180_000);
+
+			const context = await browser.newContext({ baseURL });
+			await waitForStackReady(context, baseURL);
+			await loginExistingUser(context, baseURL, auth);
+			const page = await context.newPage();
+			const gate = createPageErrorGate();
+			gate.attach(page);
+
+			let sourcesHit = 0;
+			await page.route("**/api/v1/sources", async (route) => {
+				sourcesHit += 1;
+				await route.fulfill({
+					status: 403,
+					contentType: "application/json",
+					body: JSON.stringify({ error: "Permission denied" }),
+				});
+			});
+
+			await page.goto("/sources");
+			await expect(
+				page.getByRole("heading", { name: "信息源管理", level: 1 }),
+			).toBeVisible({ timeout: 90_000 });
+
+			await expect(
+				page.locator('[aria-live="polite"]').getByText("权限不足", { exact: true }),
+			).toBeVisible({ timeout: 30_000 });
+			await expect(page.getByText("加载失败", { exact: true })).toBeVisible({
+				timeout: 90_000,
+			});
+
+			// 403 应被 QueryClient 识别为不可重试（避免放大无效流量）。
+			await page.waitForTimeout(1500);
+			expect(sourcesHit).toBe(1);
+
+			gate.assertNoErrors();
+			await context.close();
+		});
+
+		test("临时 5xx 失败可通过手动重试恢复", async ({ browser }, testInfo) => {
+			if (!auth) throw new Error("E2E 登录态初始化失败（auth state missing）。");
+			const baseURL = testInfo.project.use.baseURL as string | undefined;
+			if (!baseURL) throw new Error("Playwright baseURL 未配置，无法运行用例。");
+			test.setTimeout(180_000);
+
+			const context = await browser.newContext({ baseURL });
+			await waitForStackReady(context, baseURL);
+			await loginExistingUser(context, baseURL, auth);
+			const page = await context.newPage();
+
+			// 该用例会制造 5xx，避免使用全局 error gate（其会把 5xx 视为失败信号）。
+			let failuresLeft = 3;
+			await page.route("**/api/v1/sources", async (route) => {
+				if (failuresLeft > 0) {
+					failuresLeft -= 1;
+					await route.fulfill({
+						status: 503,
+						contentType: "application/json",
+						body: JSON.stringify({ error: "Service unavailable" }),
+					});
+					return;
+				}
+				await route.continue();
+			});
+
+			await page.goto("/sources");
+			await expect(page.getByText("加载失败", { exact: true })).toBeVisible({
+				timeout: 90_000,
+			});
+
+			await page.getByRole("button", { name: "重试" }).click();
+			await expect(page.getByRole("button", { name: "抓取" }).first()).toBeVisible({
+				timeout: 90_000,
+			});
+
+			await context.close();
+		});
 	});

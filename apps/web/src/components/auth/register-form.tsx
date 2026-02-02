@@ -3,13 +3,15 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
+import { safeReturnTo } from "@/lib/utils";
 import { useToastStore } from "@/stores/toast-store";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export function RegisterForm() {
 	const router = useRouter();
 	const { register } = useAuth();
+	const [returnTo, setReturnTo] = useState<string | null>(null);
 	const [tenantSlug, setTenantSlug] = useState("");
 	const [tenantName, setTenantName] = useState("");
 	const [email, setEmail] = useState("");
@@ -17,6 +19,12 @@ export function RegisterForm() {
 	const [displayName, setDisplayName] = useState("");
 	const [error, setError] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
+
+	useEffect(() => {
+		setReturnTo(
+			safeReturnTo(new URLSearchParams(window.location.search).get("returnTo")),
+		);
+	}, []);
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -56,12 +64,17 @@ export function RegisterForm() {
 			});
 
 			if (result.success) {
+				const nextReturnTo =
+					returnTo ||
+					safeReturnTo(
+						new URLSearchParams(window.location.search).get("returnTo"),
+					);
 				useToastStore.getState().addToast({
 					type: "success",
 					title: "注册成功",
 					description: "已自动登录",
 				});
-				router.push("/");
+				router.replace(nextReturnTo || "/");
 			} else {
 				setError(result.error || "注册失败，请重试");
 			}
@@ -177,7 +190,10 @@ export function RegisterForm() {
 
 			<p className="text-center text-sm text-neutral-500">
 				已有账号？{" "}
-				<a href="/login" className="text-primary-600 hover:underline">
+				<a
+					href={returnTo ? `/login?returnTo=${encodeURIComponent(returnTo)}` : "/login"}
+					className="text-primary-600 hover:underline"
+				>
 					立即登录
 				</a>
 			</p>

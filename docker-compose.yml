@@ -209,6 +209,9 @@ services:
 
   n8n:
     image: docker.n8n.io/n8nio/n8n:latest
+    # Optional automation service. Keep behind a profile so `docker compose up`
+    # remains usable in restricted networks where docker.n8n.io may be unreachable.
+    profiles: ["n8n"]
     environment:
       - N8N_HOST=localhost
       - N8N_PORT=5678
