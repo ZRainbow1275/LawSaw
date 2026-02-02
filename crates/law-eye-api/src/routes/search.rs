@@ -94,6 +94,9 @@ pub struct AskResponse {
 const KEYWORD_SEARCH_MAX_LIMIT: i64 = 50;
 const SEMANTIC_SEARCH_MAX_LIMIT: i64 = 20;
 const ASK_MAX_TOP_K: i64 = 20;
+const KEYWORD_QUERY_MAX_CHARS: usize = 1024;
+const SEMANTIC_QUERY_MAX_CHARS: usize = 2048;
+const ASK_QUESTION_MAX_CHARS: usize = 4096;
 
 /// Full-text search
 #[utoipa::path(
@@ -136,6 +139,11 @@ pub(crate) async fn search(
     let q = query.q.trim();
     if q.is_empty() {
         return Err(AppError::validation("Query cannot be empty"));
+    }
+    if q.len() > KEYWORD_QUERY_MAX_CHARS {
+        return Err(AppError::validation(format!(
+            "Query too long (max {KEYWORD_QUERY_MAX_CHARS} chars)"
+        )));
     }
 
     let limit = query.limit.clamp(1, KEYWORD_SEARCH_MAX_LIMIT);
@@ -203,6 +211,11 @@ pub(crate) async fn semantic_search(
     if query.is_empty() {
         return Err(AppError::validation("Query cannot be empty"));
     }
+    if query.len() > SEMANTIC_QUERY_MAX_CHARS {
+        return Err(AppError::validation(format!(
+            "Query too long (max {SEMANTIC_QUERY_MAX_CHARS} chars)"
+        )));
+    }
 
     let limit = req.limit.clamp(1, SEMANTIC_SEARCH_MAX_LIMIT);
 
@@ -267,6 +280,11 @@ pub(crate) async fn ask_question(
     let question = req.question.trim();
     if question.is_empty() {
         return Err(AppError::validation("Question cannot be empty"));
+    }
+    if question.len() > ASK_QUESTION_MAX_CHARS {
+        return Err(AppError::validation(format!(
+            "Question too long (max {ASK_QUESTION_MAX_CHARS} chars)"
+        )));
     }
 
     let top_k = req.top_k.clamp(1, ASK_MAX_TOP_K);

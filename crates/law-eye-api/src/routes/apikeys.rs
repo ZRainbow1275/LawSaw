@@ -12,6 +12,12 @@ use crate::auth::AuthSession;
 use crate::state::AppState;
 use crate::{ApiError, ApiResult, AppError};
 
+const APIKEY_NAME_MAX_LEN: usize = 100;
+const APIKEY_PERMISSION_MAX_LEN: usize = 64;
+const APIKEY_MAX_PERMISSIONS: usize = 32;
+const APIKEY_RATE_LIMIT_MIN: i32 = 1;
+const APIKEY_RATE_LIMIT_MAX: i32 = 10_000;
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_keys))
@@ -110,6 +116,7 @@ pub(crate) async fn list_keys(
     ),
     responses(
         (status = 201, description = "API key created", body = CreateKeyResponse),
+        (status = 400, description = "Validation error", body = ApiError),
         (status = 401, description = "Not authenticated", body = ApiError),
         (status = 500, description = "Server error", body = ApiError)
     )
@@ -117,11 +124,53 @@ pub(crate) async fn list_keys(
 pub(crate) async fn create_key(
     State(state): State<AppState>,
     auth_session: AuthSession,
-    Json(req): Json<CreateKeyRequest>,
+    Json(mut req): Json<CreateKeyRequest>,
 ) -> ApiResult<(StatusCode, Json<CreateKeyResponse>)> {
     let user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+
+    let name = req.name.trim();
+    if name.is_empty() {
+        return Err(AppError::validation("API key name cannot be empty"));
+    }
+    if name.len() > APIKEY_NAME_MAX_LEN {
+        return Err(AppError::validation(format!(
+            "API key name too long (max {APIKEY_NAME_MAX_LEN})"
+        )));
+    }
+    req.name = name.to_string();
+
+    if let Some(perms) = req.permissions.take() {
+        use std::collections::BTreeSet;
+        let mut unique = BTreeSet::<String>::new();
+        for raw in perms {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                return Err(AppError::validation("API key permission cannot be empty"));
+            }
+            if trimmed.len() > APIKEY_PERMISSION_MAX_LEN {
+                return Err(AppError::validation(format!(
+                    "API key permission too long (max {APIKEY_PERMISSION_MAX_LEN})"
+                )));
+            }
+            unique.insert(trimmed.to_string());
+            if unique.len() > APIKEY_MAX_PERMISSIONS {
+                return Err(AppError::validation(format!(
+                    "Too many permissions (max {APIKEY_MAX_PERMISSIONS})"
+                )));
+            }
+        }
+        req.permissions = Some(unique.into_iter().collect());
+    }
+
+    if let Some(limit) = req.rate_limit {
+        if !(APIKEY_RATE_LIMIT_MIN..=APIKEY_RATE_LIMIT_MAX).contains(&limit) {
+            return Err(AppError::validation(format!(
+                "rate_limit must be between {APIKEY_RATE_LIMIT_MIN} and {APIKEY_RATE_LIMIT_MAX}"
+            )));
+        }
+    }
 
     let input = law_eye_db::CreateApiKey {
         user_id: Some(user.id),

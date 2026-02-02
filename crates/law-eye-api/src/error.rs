@@ -53,6 +53,13 @@ impl AppError {
         }
     }
 
+    pub fn bad_request_with_code(code: impl Into<String>, msg: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::BAD_REQUEST,
+            body: ApiError::new(msg).with_code(code),
+        }
+    }
+
     pub fn unauthorized(msg: impl Into<String>) -> Self {
         Self {
             status: StatusCode::UNAUTHORIZED,
@@ -113,6 +120,20 @@ impl AppError {
         Self {
             status: StatusCode::BAD_REQUEST,
             body: ApiError::new(msg).with_code("VALIDATION_ERROR"),
+        }
+    }
+
+    pub fn validation_with_code(code: impl Into<String>, msg: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::BAD_REQUEST,
+            body: ApiError::new(msg).with_code(code),
+        }
+    }
+
+    pub fn payload_too_large(msg: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::PAYLOAD_TOO_LARGE,
+            body: ApiError::new(msg).with_code("PAYLOAD_TOO_LARGE"),
         }
     }
 }

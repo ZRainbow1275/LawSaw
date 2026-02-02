@@ -18,12 +18,147 @@ use law_eye_db::{CreateAuditLog, CreateSource};
 use law_eye_queue::IngestTask;
 use serde_json::Value;
 use std::net::SocketAddr;
+use url::{Host, Url};
+
+const SOURCE_NAME_MAX_LEN: usize = 100;
+const SOURCE_URL_MAX_LEN: usize = 2048;
+const SOURCE_SCHEDULE_MAX_LEN: usize = 128;
+const SOURCE_PRIORITY_MIN: i32 = 0;
+const SOURCE_PRIORITY_MAX: i32 = 100;
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_sources).post(create_source))
         .route("/{id}", get(get_source))
         .route("/{id}/fetch", post(trigger_fetch))
+}
+
+fn allow_internal_source_urls() -> bool {
+    // Local dev/test environments may need to ingest from localhost fixtures.
+    // In production, deny internal/loopback by default to reduce SSRF risk.
+    std::env::var_os("PRODUCTION").is_none()
+}
+
+fn is_internal_host<S: AsRef<str>>(host: &Host<S>) -> bool {
+    fn is_internal_ip(ip: std::net::IpAddr) -> bool {
+        match ip {
+            std::net::IpAddr::V4(v4) => {
+                v4.is_private()
+                    || v4.is_loopback()
+                    || v4.is_link_local()
+                    || v4.is_multicast()
+                    || v4.is_broadcast()
+                    || v4.is_unspecified()
+            }
+            std::net::IpAddr::V6(v6) => {
+                v6.is_loopback()
+                    || v6.is_unique_local()
+                    || v6.is_unicast_link_local()
+                    || v6.is_multicast()
+                    || v6.is_unspecified()
+            }
+        }
+    }
+
+    match host {
+        Host::Domain(domain) => {
+            let lower = domain.as_ref().trim().to_ascii_lowercase();
+            lower == "localhost" || lower.ends_with(".localhost")
+        }
+        Host::Ipv4(ip) => is_internal_ip(std::net::IpAddr::V4(*ip)),
+        Host::Ipv6(ip) => is_internal_ip(std::net::IpAddr::V6(*ip)),
+    }
+}
+
+fn validate_source_name(name: &str) -> Result<String, AppError> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::validation("Source name cannot be empty"));
+    }
+    if trimmed.len() > SOURCE_NAME_MAX_LEN {
+        return Err(AppError::validation(format!(
+            "Source name too long (max {SOURCE_NAME_MAX_LEN})"
+        )));
+    }
+    Ok(trimmed.to_string())
+}
+
+fn validate_source_url(raw: &str, allow_internal: bool) -> Result<String, AppError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::validation_with_code(
+            "INVALID_URL",
+            "URL cannot be empty",
+        ));
+    }
+    if trimmed.len() > SOURCE_URL_MAX_LEN {
+        return Err(AppError::validation_with_code(
+            "INVALID_URL",
+            format!("URL too long (max {SOURCE_URL_MAX_LEN})"),
+        ));
+    }
+
+    let url = Url::parse(trimmed).map_err(|_| {
+        AppError::validation_with_code("INVALID_URL", "URL must be a valid http/https URL")
+    })?;
+
+    match url.scheme() {
+        "http" | "https" => {}
+        _ => {
+            return Err(AppError::validation_with_code(
+                "INVALID_URL",
+                "URL scheme must be http or https",
+            ))
+        }
+    }
+
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(AppError::validation_with_code(
+            "INVALID_URL",
+            "URL must not contain embedded credentials",
+        ));
+    }
+
+    let host = url.host().ok_or_else(|| {
+        AppError::validation_with_code("INVALID_URL", "URL must include a host")
+    })?;
+
+    if !allow_internal && is_internal_host(&host) {
+        return Err(AppError::validation_with_code(
+            "SSRF_BLOCKED",
+            "Internal/loopback URLs are not allowed in production",
+        ));
+    }
+
+    Ok(trimmed.to_string())
+}
+
+fn validate_source_schedule(schedule: Option<String>) -> Result<Option<String>, AppError> {
+    let Some(schedule) = schedule else {
+        return Ok(None);
+    };
+    let trimmed = schedule.trim().to_string();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if trimmed.len() > SOURCE_SCHEDULE_MAX_LEN {
+        return Err(AppError::validation(format!(
+            "Schedule too long (max {SOURCE_SCHEDULE_MAX_LEN})"
+        )));
+    }
+    Ok(Some(trimmed))
+}
+
+fn validate_source_priority(priority: Option<i32>) -> Result<Option<i32>, AppError> {
+    let Some(priority) = priority else {
+        return Ok(None);
+    };
+    if !(SOURCE_PRIORITY_MIN..=SOURCE_PRIORITY_MAX).contains(&priority) {
+        return Err(AppError::validation(format!(
+            "Priority must be between {SOURCE_PRIORITY_MIN} and {SOURCE_PRIORITY_MAX}"
+        )));
+    }
+    Ok(Some(priority))
 }
 
 fn validate_spider_config(config: &Value) -> Result<(), AppError> {
@@ -219,7 +354,7 @@ pub(crate) async fn create_source(
     auth_session: AuthSession,
     headers: HeaderMap,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    Json(input): Json<CreateSourceRequest>,
+    Json(mut input): Json<CreateSourceRequest>,
 ) -> ApiResult<(StatusCode, Json<SourceResponse>)> {
     let user = auth_session
         .user
@@ -234,13 +369,19 @@ pub(crate) async fn create_source(
         return Err(AppError::forbidden("Admin permission required"));
     }
 
+    input.name = validate_source_name(&input.name)?;
+    input.url = validate_source_url(&input.url, allow_internal_source_urls())?;
+    input.schedule = validate_source_schedule(input.schedule)?;
+    input.priority = validate_source_priority(input.priority)?;
+
     match input.source_type.as_str() {
         "rss" => {}
         "spider" => validate_spider_config(&input.config)?,
         "api" => {
-            return Err(AppError::validation(
+            return Err(AppError::bad_request_with_code(
+                "UNSUPPORTED_SOURCE_TYPE",
                 "API source type is not supported yet (worker does not implement it)",
-            ))
+            ));
         }
         _ => return Err(AppError::validation("Invalid source type")),
     }
@@ -295,6 +436,30 @@ pub(crate) async fn create_source(
     .map_err(AppError::from)?;
 
     Ok((StatusCode::CREATED, Json(SourceResponse::from(source))))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_source_url_allows_localhost_in_non_production() {
+        let url = validate_source_url("http://127.0.0.1:1234/rss.xml", true).unwrap();
+        assert_eq!(url, "http://127.0.0.1:1234/rss.xml");
+    }
+
+    #[test]
+    fn validate_source_url_blocks_localhost_in_production() {
+        let err = validate_source_url("http://127.0.0.1:1234/rss.xml", false).unwrap_err();
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+        assert_eq!(err.body.code.as_deref(), Some("SSRF_BLOCKED"));
+    }
+
+    #[test]
+    fn validate_source_url_rejects_non_http_scheme() {
+        let err = validate_source_url("file:///etc/passwd", true).unwrap_err();
+        assert_eq!(err.body.code.as_deref(), Some("INVALID_URL"));
+    }
 }
 
 /// Trigger ingest fetch (admin only)

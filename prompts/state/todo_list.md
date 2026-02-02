@@ -17,6 +17,6 @@
 
 ## Next（下一批）
 - [x] API-001 OpenAPI 契约补全与稳定化 ✅（Spec：`prompts/specs/archive/api_spec.md`；增强 `crates/law-eye-api/src/openapi.rs` 元信息与回归测试；`cargo test --workspace` 通过）
-- [ ] API-002 关键接口的输入校验与错误码规范化
+- [x] API-002 关键接口的输入校验与错误码规范化 ✅（Spec：`prompts/specs/archive/api_validation_spec.md`；sources URL/SSRF 校验 + search 长度上限 + apikey 创建校验；新增单测；`bash scripts/no-dockerhub/e2e.sh --name law-eye-e2e-api002-check1` 通过）
 - [ ] CORE-001 识别并修复潜在 N+1 查询路径
 - [ ] WEB-001 前端关键路径与错误恢复体验（登录态、失败重试）
