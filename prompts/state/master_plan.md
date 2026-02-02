@@ -22,6 +22,7 @@
   `bash scripts/no-dockerhub/e2e.sh --name law-eye-e2e-web001-verify5 --web-mode prod` ✅（WEB-001 回归：E2E + Monkey 门禁通过；产物：`tmp/no-dockerhub/law-eye-e2e-web001-verify5/logs/`）
   `bash scripts/no-dockerhub/e2e.sh --name law-eye-e2e-infra002-verify1 --web-mode prod` ✅（INFRA-002 回归：E2E + Monkey 门禁通过；产物：`tmp/no-dockerhub/law-eye-e2e-infra002-verify1/logs/`；默认 compose 的 web/worker 均为 healthy）
   `bash scripts/no-dockerhub/e2e.sh --name law-eye-e2e-qa006-verify1 --web-mode prod` ✅（QA-006 回归：E2E + Monkey 门禁通过；标准负载 p95_2xx < 200ms；产物：`tmp/no-dockerhub/law-eye-e2e-qa006-verify1/logs/`）
+  `README.md` ✅（一键部署/排障口径已补齐）
 
 **质量门槛（逐步收敛到强制）**
 - Rust：`cargo test` 通过（workspace）
