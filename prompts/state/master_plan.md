@@ -20,6 +20,7 @@
   `cmd.exe /c "cd /d D:\\Desktop\\LawSaw\\apps\\web && pnpm test"` ✅；
   `cmd.exe /c "cd /d D:\\Desktop\\LawSaw\\apps\\web && pnpm e2e"` ✅；
   `bash scripts/no-dockerhub/e2e.sh --name law-eye-e2e-web001-verify5 --web-mode prod` ✅（WEB-001 回归：E2E + Monkey 门禁通过；产物：`tmp/no-dockerhub/law-eye-e2e-web001-verify5/logs/`）
+  `bash scripts/no-dockerhub/e2e.sh --name law-eye-e2e-infra002-verify1 --web-mode prod` ✅（INFRA-002 回归：E2E + Monkey 门禁通过；产物：`tmp/no-dockerhub/law-eye-e2e-infra002-verify1/logs/`；默认 compose 的 web/worker 均为 healthy）
 
 **质量门槛（逐步收敛到强制）**
 - Rust：`cargo test` 通过（workspace）

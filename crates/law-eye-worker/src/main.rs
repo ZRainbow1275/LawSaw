@@ -3,14 +3,14 @@ use law_eye_ai::{AiService, ClassifyResult, RiskAssessment, SummaryResult, TagsR
 use law_eye_common::AppConfig;
 use law_eye_core::{ArticleService, SourceService};
 use law_eye_crawler::{RawArticle, RssFetcher, SpiderConfig, WebSpider};
-use law_eye_db::{create_pool_with_session_role_retry, CreateArticle};
+use law_eye_db::{create_pool_with_session_role, create_pool_with_session_role_retry, CreateArticle};
 use law_eye_queue::{AiTask, AiTaskType, IngestTask, PushTask, ReservedTask, TaskQueue};
 use serde_json::json;
 use sqlx::PgPool;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::signal;
-use tokio::time::{Duration, Instant};
+use tokio::time::{timeout, Duration, Instant};
 use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -957,8 +957,45 @@ async fn wait_for_shutdown_signal() {
     }
 }
 
+async fn run_healthcheck() -> anyhow::Result<()> {
+    let config = AppConfig::load()
+        .await
+        .context("load application config (file/env + optional Vault secrets)")?;
+
+    let check_timeout = Duration::from_secs(2);
+
+    let pool = timeout(
+        check_timeout,
+        create_pool_with_session_role(
+            &config.database.url,
+            1,
+            config.database.session_role.as_deref(),
+        ),
+    )
+    .await
+    .context("healthcheck: postgres connect timed out")??;
+
+    timeout(check_timeout, sqlx::query("SELECT 1").execute(&pool))
+        .await
+        .context("healthcheck: postgres query timed out")?
+        .context("healthcheck: postgres query failed")?;
+
+    let task_queue = TaskQueue::new(&config.redis.url).context("healthcheck: init redis client")?;
+    timeout(check_timeout, task_queue.ping())
+        .await
+        .context("healthcheck: redis ping timed out")?
+        .context("healthcheck: redis ping failed")?;
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    if std::env::args().any(|arg| arg == "--healthcheck") {
+        run_healthcheck().await.context("healthcheck")?;
+        return Ok(());
+    }
+
     let is_production = std::env::var_os("PRODUCTION").is_some();
 
     if is_production {

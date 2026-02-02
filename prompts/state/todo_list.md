@@ -20,3 +20,6 @@
 - [x] API-002 关键接口的输入校验与错误码规范化 ✅（Spec：`prompts/specs/archive/api_validation_spec.md`；sources URL/SSRF 校验 + search 长度上限 + apikey 创建校验；新增单测；`bash scripts/no-dockerhub/e2e.sh --name law-eye-e2e-api002-check1` 通过）
 - [x] CORE-001 识别并修复潜在 N+1 查询路径 ✅（Feedback 列表移除逐条回填加密导致的 N+1 写入；新增解密单测；E2E+Monkey 门禁通过；Spec：`prompts/specs/archive/core_nplus1_spec.md`）
 - [x] WEB-001 前端关键路径与错误恢复体验（登录态、失败重试）✅（Spec：`prompts/specs/archive/web_ux_spec.md`；验证：`bash scripts/no-dockerhub/e2e.sh --name law-eye-e2e-web001-verify5 --web-mode prod`；`cmd.exe /c "cd /d D:\\Desktop\\LawSaw\\apps\\web && pnpm test"`；`cargo test --workspace`）
+- [x] INFRA-002 Compose 健康检查补全（web/worker）与“全服务 healthy”硬门槛对齐 ✅（Spec：`prompts/specs/archive/infra_healthcheck_spec.md`；`docker compose ps`：web/worker 均为 healthy；验证：`bash scripts/no-dockerhub/e2e.sh --name law-eye-e2e-infra002-verify1 --web-mode prod`）
+- [ ] QA-006 性能门禁收敛：p95 < 200ms（标准负载）+ 日志落盘
+- [ ] DOC-001 根目录 README：架构图 + 一键部署（docker compose）+ 运行/排障手册
