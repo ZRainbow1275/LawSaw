@@ -11,7 +11,7 @@
 - [x] [SEC-002] CI 增加 Secret 扫描（TruffleHog） ✅ - `.github/workflows/ci.yml`
 - [x] [SEC-003] Worker Webhook 出站加固：URL 校验 + 超时（防 SSRF/无限挂起） ✅ - `crates/law-eye-worker/src/main.rs:870`
 - [x] [SEC-004] Sources URL SSRF 策略改为 fail-closed（含 DNS 解析阻断私网/链路本地） ✅ - `crates/law-eye-api/src/routes/sources.rs:36`
-- [ ] [SEC-005] HTML 渲染收口：DOMPurify allowlist/URI policy + CSP 背书 - `apps/web/src/components/article/article-content.tsx:20`
+- [x] [SEC-005] HTML 渲染收口：移除 `iframe` + 外链强制 `rel=noopener noreferrer` ✅ - `apps/web/src/components/article/article-content.tsx:20`
 - [ ] [SEC-006] 前端“加密”fail-open 改造（禁止静默降级明文） - `apps/web/src/lib/crypto.ts:121`
 - [ ] [REL-001] MCP 服务器移除 `unwrap()` panic（返回结构化错误响应） - `crates/law-eye-mcp/src/server.rs:68`
 - [ ] [OBS-001] 清理/收敛空 `catch {}`（最少要打点/上报） - `apps/web/src/app/sw/route.ts:85`

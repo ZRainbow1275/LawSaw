@@ -17,7 +17,7 @@ export function ArticleContent({ content, className }: ArticleContentProps) {
 		// 仅在浏览器端用 DOMPurify 清洗后注入。
 		if (typeof window === "undefined") return "";
 
-		return DOMPurify.sanitize(content, {
+		const sanitized = DOMPurify.sanitize(content, {
 			ALLOWED_TAGS: [
 				"p",
 				"br",
@@ -56,7 +56,6 @@ export function ArticleContent({ content, className }: ArticleContentProps) {
 				"video",
 				"audio",
 				"source",
-				"iframe",
 			],
 			ALLOWED_ATTR: [
 				"href",
@@ -73,12 +72,28 @@ export function ArticleContent({ content, className }: ArticleContentProps) {
 				"autoplay",
 				"loop",
 				"muted",
-				"frameborder",
-				"allowfullscreen",
 			],
 			ADD_ATTR: ["target"],
 			FORBID_TAGS: ["script", "style"],
 		});
+
+		// 强制外链在新窗口打开时携带安全 rel，避免 tabnabbing。
+		const doc = new DOMParser().parseFromString(sanitized, "text/html");
+		for (const anchor of Array.from(doc.querySelectorAll<HTMLAnchorElement>("a[target]"))) {
+			const target = anchor.getAttribute("target")?.trim();
+			if (!target || target === "_self") continue;
+
+			const rel = (anchor.getAttribute("rel") ?? "")
+				.split(/\s+/)
+				.map((value) => value.trim())
+				.filter(Boolean);
+			for (const value of ["noopener", "noreferrer"]) {
+				if (!rel.includes(value)) rel.push(value);
+			}
+			anchor.setAttribute("rel", rel.join(" "));
+		}
+
+		return doc.body.innerHTML;
 	}, [content]);
 
 	if (!content) {
@@ -131,7 +146,6 @@ export function ArticleContent({ content, className }: ArticleContentProps) {
 				"prose-li:text-neutral-700 prose-li:leading-relaxed prose-li:my-2",
 				// 嵌入媒体
 				"[&_img]:max-w-full [&_img]:h-auto",
-				"[&_iframe]:w-full [&_iframe]:aspect-video [&_iframe]:rounded-xl [&_iframe]:shadow-card",
 				// 法律条款特殊样式
 				"[&_.legal-clause]:pl-4 [&_.legal-clause]:border-l-2 [&_.legal-clause]:border-primary-200",
 				"[&_.risk-highlight]:bg-error-light [&_.risk-highlight]:px-1 [&_.risk-highlight]:rounded",
