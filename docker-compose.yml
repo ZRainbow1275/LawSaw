@@ -4,6 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile.postgres-pgvector
     image: lawsaw-postgres-pgvector:local
+    user: "postgres"
     environment:
       POSTGRES_DB: law_eye
       POSTGRES_USER: law_eye
@@ -12,6 +13,9 @@ services:
       - "127.0.0.1:${POSTGRES_HOST_PORT:-5435}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U law_eye"]
       interval: 10s
@@ -20,6 +24,17 @@ services:
     networks:
       - law-eye-network
     restart: unless-stopped
+
+  postgres-init:
+    image: lawsaw-postgres-pgvector:local
+    user: "0:0"
+    entrypoint: ["bash", "-lc"]
+    command: "chown -R postgres:postgres /var/lib/postgresql/data"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - law-eye-network
+    restart: "no"
 
   redis-init:
     image: alpine:3.20

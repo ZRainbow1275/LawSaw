@@ -32,28 +32,29 @@ POSTGRES_DB="${POSTGRES_DB:-postgres}"
 BIN="/usr/lib/postgresql/16/bin"
 
 if [ ! -s "${PGDATA}/PG_VERSION" ]; then
-  install -d -o postgres -g postgres -m 0700 "${PGDATA}"
-  su - postgres -c "${BIN}/initdb -D '${PGDATA}' --encoding=UTF8 --locale=C"
+  mkdir -p "${PGDATA}"
+  chmod 700 "${PGDATA}"
+  "${BIN}/initdb" -D "${PGDATA}" --encoding=UTF8 --locale=C
 
   echo "listen_addresses='*'" >> "${PGDATA}/postgresql.conf"
   echo "password_encryption='scram-sha-256'" >> "${PGDATA}/postgresql.conf"
   echo "host all all 0.0.0.0/0 scram-sha-256" >> "${PGDATA}/pg_hba.conf"
   echo "host all all ::/0 scram-sha-256" >> "${PGDATA}/pg_hba.conf"
 
-  su - postgres -c "${BIN}/pg_ctl -D '${PGDATA}' -o \"-c listen_addresses='*'\" -w start"
+  "${BIN}/pg_ctl" -D "${PGDATA}" -o "-c listen_addresses='*'" -w start
 
-  if ! su - postgres -c "psql -tAc \"SELECT 1 FROM pg_roles WHERE rolname='${POSTGRES_USER}'\"" | grep -q 1; then
-    su - postgres -c "psql -v ON_ERROR_STOP=1 --username=postgres -c \"CREATE ROLE \\\"${POSTGRES_USER}\\\" WITH LOGIN SUPERUSER PASSWORD '${POSTGRES_PASSWORD}';\""
+  if ! psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${POSTGRES_USER}'" --username=postgres | grep -q 1; then
+    psql -v ON_ERROR_STOP=1 --username=postgres -c "CREATE ROLE \\\"${POSTGRES_USER}\\\" WITH LOGIN SUPERUSER PASSWORD '${POSTGRES_PASSWORD}';"
   fi
 
-  if ! su - postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='${POSTGRES_DB}'\"" | grep -q 1; then
-    su - postgres -c "psql -v ON_ERROR_STOP=1 --username=postgres -c \"CREATE DATABASE \\\"${POSTGRES_DB}\\\" OWNER \\\"${POSTGRES_USER}\\\";\""
+  if ! psql -tAc "SELECT 1 FROM pg_database WHERE datname='${POSTGRES_DB}'" --username=postgres | grep -q 1; then
+    psql -v ON_ERROR_STOP=1 --username=postgres -c "CREATE DATABASE \\\"${POSTGRES_DB}\\\" OWNER \\\"${POSTGRES_USER}\\\";"
   fi
 
-  su - postgres -c "${BIN}/pg_ctl -D '${PGDATA}' -m fast -w stop"
+  "${BIN}/pg_ctl" -D "${PGDATA}" -m fast -w stop
 fi
 
-exec su - postgres -c "${BIN}/postgres -D '${PGDATA}' -c listen_addresses='*'"
+exec "${BIN}/postgres" -D "${PGDATA}" -c listen_addresses='*'
 EOS
 
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
@@ -62,5 +63,6 @@ VOLUME ["/var/lib/postgresql/data"]
 
 EXPOSE 5432
 
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+USER postgres
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
