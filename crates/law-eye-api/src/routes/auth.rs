@@ -16,9 +16,10 @@ use crate::middleware::rate_limit::RateLimitLayer;
 use crate::state::AppState;
 use crate::{ApiError, ApiResult, AppError};
 
-static EMAIL_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap());
-static TENANT_SLUG_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[a-z][a-z0-9-]{2,31}$").unwrap());
+static EMAIL_RE: Lazy<Option<Regex>> =
+    Lazy::new(|| Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").ok());
+static TENANT_SLUG_RE: Lazy<Option<Regex>> =
+    Lazy::new(|| Regex::new(r"^[a-z][a-z0-9-]{2,31}$").ok());
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -102,8 +103,16 @@ pub(crate) async fn register(
     mut auth_session: AuthSession,
     Json(req): Json<RegisterRequest>,
 ) -> ApiResult<(StatusCode, Json<AuthResponse>)> {
+    let email_re = EMAIL_RE.as_ref().ok_or_else(|| {
+        AppError::internal_with_code("REGEX_INIT_FAILED", "Internal server error")
+    })?;
+
+    let tenant_slug_re = TENANT_SLUG_RE.as_ref().ok_or_else(|| {
+        AppError::internal_with_code("REGEX_INIT_FAILED", "Internal server error")
+    })?;
+
     // Validate input
-    if req.email.is_empty() || !EMAIL_RE.is_match(&req.email) {
+    if req.email.is_empty() || !email_re.is_match(&req.email) {
         return Err(AppError::validation("Invalid email address"));
     }
 
@@ -115,7 +124,7 @@ pub(crate) async fn register(
 
     let tenant_slug = req.tenant_slug.unwrap_or_else(|| "default".to_string());
     let tenant_slug = tenant_slug.trim().to_ascii_lowercase();
-    if !TENANT_SLUG_RE.is_match(&tenant_slug) {
+    if !tenant_slug_re.is_match(&tenant_slug) {
         return Err(AppError::validation(
             "Invalid tenant_slug (expected: ^[a-z][a-z0-9-]{2,31}$)",
         ));

@@ -7,7 +7,7 @@ use law_eye_crawler::{CleaningStage, Pipeline, RssFetcher};
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    let fetcher = RssFetcher::new();
+    let fetcher = RssFetcher::new()?;
     let pipeline = Pipeline::new().add_stage(CleaningStage);
 
     // 公开可用的新闻/法律 RSS 源 (已验证可用)

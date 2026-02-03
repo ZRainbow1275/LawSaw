@@ -21,14 +21,14 @@ pub struct WebSpider {
 }
 
 impl WebSpider {
-    pub fn new() -> Self {
-        Self {
-            client: Client::builder()
-                .timeout(std::time::Duration::from_secs(30))
-                .user_agent("LawEye/1.0")
-                .build()
-                .expect("Failed to create HTTP client"),
-        }
+    pub fn new() -> Result<Self> {
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .user_agent("LawEye/1.0")
+            .build()
+            .map_err(|e| Error::Config(format!("Failed to create HTTP client: {}", e)))?;
+
+        Ok(Self { client })
     }
 
     pub async fn fetch(
@@ -102,11 +102,5 @@ impl WebSpider {
 
         info!("Spidered {} articles", articles.len());
         Ok(articles)
-    }
-}
-
-impl Default for WebSpider {
-    fn default() -> Self {
-        Self::new()
     }
 }

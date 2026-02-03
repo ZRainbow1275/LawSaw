@@ -108,18 +108,18 @@ impl Worker {
         allow_internal_source_urls: bool,
         allow_internal_webhook_urls: bool,
         push_http_client: reqwest::Client,
-    ) -> Self {
-        Self {
+    ) -> anyhow::Result<Self> {
+        Ok(Self {
             pool,
             task_queue: Arc::new(task_queue),
-            rss_fetcher: RssFetcher::new(),
-            web_spider: WebSpider::new(),
+            rss_fetcher: RssFetcher::new().context("create RSS fetcher")?,
+            web_spider: WebSpider::new().context("create web spider")?,
             ai_service,
             push_http_client,
             allow_internal_source_urls,
             allow_internal_webhook_urls,
             shutdown,
-        }
+        })
     }
 
     async fn run(&self) -> anyhow::Result<()> {
@@ -1023,8 +1023,17 @@ async fn wait_for_shutdown_signal() {
     {
         use tokio::signal::unix::{signal as unix_signal, SignalKind};
 
-        let mut term =
-            unix_signal(SignalKind::terminate()).expect("install SIGTERM handler for worker");
+        let mut term = match unix_signal(SignalKind::terminate()) {
+            Ok(signal) => signal,
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    "failed to install SIGTERM handler for worker; falling back to ctrl_c only"
+                );
+                let _ = signal::ctrl_c().await;
+                return;
+            }
+        };
 
         tokio::select! {
             _ = signal::ctrl_c() => {}
@@ -1156,6 +1165,6 @@ async fn main() -> anyhow::Result<()> {
         config.security.allow_internal_source_urls,
         config.security.allow_internal_webhook_urls,
         push_http_client,
-    );
+    )?;
     worker.run().await
 }

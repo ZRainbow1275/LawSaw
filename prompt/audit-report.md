@@ -11,7 +11,7 @@
 - [x] [SEC-302] 前端 HTML 渲染安全加固（DOMPurify URI scheme policy + 媒体/链接属性白名单再收紧） ✅ 禁止未知 URI scheme（仅允许 http/https/mailto/tel）；移除 video/audio/source；对 a/img 做二次校验并强制 `_blank` 外链 `rel=noopener noreferrer` - `apps/web/src/components/article/article-content.tsx`
 
 ### HIGH（高优先级）
-- [ ] [REL-301] 移除生产代码路径中的 `unwrap/expect/panic!`（保留 tests；错误转为结构化响应）
+- [x] [REL-301] 移除生产代码路径中的 `unwrap/expect/panic!`（保留 tests；错误转为结构化响应） ✅ signal handler/header/regex/client 初始化等改为可恢复/可传播错误；crawler fetcher/spider 初始化返回 Result；worker 构造链路改为 Result - `crates/law-eye-api/src/main.rs`、`crates/law-eye-api/src/middleware/request_id.rs`、`crates/law-eye-api/src/routes/auth.rs`、`crates/law-eye-crawler/src/rss.rs`、`crates/law-eye-crawler/src/spider.rs`、`crates/law-eye-crawler/src/pipeline.rs`、`crates/law-eye-worker/src/main.rs`、`crates/law-eye-mcp/src/main.rs`
 - [ ] [SEC-303] API 输入校验基线：写接口启用严格 Schema Validation（拒绝未知字段 + 约束校验 + 统一 4xx）
 
 **审计日期**：2026-01-26  

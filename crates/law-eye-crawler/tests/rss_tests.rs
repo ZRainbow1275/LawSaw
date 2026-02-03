@@ -22,14 +22,8 @@ const SAMPLE_RSS_FEED: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 
 #[test]
 fn test_rss_fetcher_creation() {
-    let fetcher = RssFetcher::new();
+    let fetcher = RssFetcher::new().expect("RssFetcher must be constructible");
     // 确保 fetcher 可以成功创建
-    let _ = fetcher;
-}
-
-#[test]
-fn test_rss_fetcher_default() {
-    let fetcher = RssFetcher::default();
     let _ = fetcher;
 }
 
@@ -113,7 +107,7 @@ fn test_feed_rs_parsing_atom_feed() {
 #[tokio::test]
 #[ignore = "需要网络连接"]
 async fn test_rss_fetch_from_real_source() {
-    let fetcher = RssFetcher::new();
+    let fetcher = RssFetcher::new().expect("RssFetcher must be constructible");
     // 使用一个稳定的公共 RSS 源进行测试
     let result = fetcher
         .fetch("https://feeds.bbci.co.uk/news/rss.xml", false)

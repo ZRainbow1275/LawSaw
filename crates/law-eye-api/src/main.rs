@@ -172,8 +172,18 @@ async fn shutdown_signal() {
     {
         use tokio::signal::unix::{signal, SignalKind};
 
-        let mut term =
-            signal(SignalKind::terminate()).expect("install SIGTERM handler for graceful shutdown");
+        let mut term = match signal(SignalKind::terminate()) {
+            Ok(signal) => signal,
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    "failed to install SIGTERM handler; falling back to ctrl_c only"
+                );
+                let _ = tokio::signal::ctrl_c().await;
+                info!("Received shutdown signal, starting graceful shutdown");
+                return;
+            }
+        };
 
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {}

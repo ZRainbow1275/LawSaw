@@ -10,14 +10,14 @@ pub struct RssFetcher {
 }
 
 impl RssFetcher {
-    pub fn new() -> Self {
-        Self {
-            client: Client::builder()
-                .timeout(std::time::Duration::from_secs(30))
-                .user_agent("LawEye/1.0")
-                .build()
-                .expect("Failed to create HTTP client"),
-        }
+    pub fn new() -> Result<Self> {
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .user_agent("LawEye/1.0")
+            .build()
+            .map_err(|e| Error::Config(format!("Failed to create HTTP client: {}", e)))?;
+
+        Ok(Self { client })
     }
 
     pub async fn fetch(&self, url: &str, allow_internal: bool) -> Result<Vec<RawArticle>> {
@@ -66,11 +66,5 @@ impl RssFetcher {
 
         info!("Fetched {} articles from RSS", articles.len());
         Ok(articles)
-    }
-}
-
-impl Default for RssFetcher {
-    fn default() -> Self {
-        Self::new()
     }
 }

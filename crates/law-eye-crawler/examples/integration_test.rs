@@ -21,7 +21,7 @@ async fn main() -> anyhow::Result<()> {
     println!("│ 测试 1: RSS 爬虫                                         │");
     println!("└──────────────────────────────────────────────────────────┘");
 
-    let rss_fetcher = RssFetcher::new();
+    let rss_fetcher = RssFetcher::new()?;
     let rss_sources = vec![
         ("BBC 中文", "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"),
         ("Guardian Law", "https://www.theguardian.com/law/rss"),
@@ -50,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
     println!("│ 测试 2: WebSpider                                        │");
     println!("└──────────────────────────────────────────────────────────┘");
 
-    let spider = WebSpider::new();
+    let spider = WebSpider::new()?;
     let hn_config = SpiderConfig {
         list_selector: ".athing".to_string(),
         title_selector: ".titleline > a".to_string(),

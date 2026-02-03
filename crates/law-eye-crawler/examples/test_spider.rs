@@ -7,7 +7,7 @@ use law_eye_crawler::{SpiderConfig, WebSpider};
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    let spider = WebSpider::new();
+    let spider = WebSpider::new()?;
 
     println!("\n========================================");
     println!("  LawSaw WebSpider 爬虫功能测试");

@@ -51,7 +51,7 @@ impl Default for Pipeline {
     }
 }
 
-static HTML_TAG_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"<[^>]+>").unwrap());
+static HTML_TAG_RE: Lazy<Option<Regex>> = Lazy::new(|| Regex::new(r"<[^>]+>").ok());
 
 pub struct CleaningStage;
 
@@ -64,7 +64,10 @@ impl PipelineStage for CleaningStage {
                 .replace("<br/>", "\n")
                 .replace("<p>", "\n")
                 .replace("</p>", "");
-            article.content = Some(HTML_TAG_RE.replace_all(&stripped, "").trim().to_string());
+            article.content = match HTML_TAG_RE.as_ref() {
+                Some(re) => Some(re.replace_all(&stripped, "").trim().to_string()),
+                None => Some(stripped.trim().to_string()),
+            };
         }
         Some(article)
     }

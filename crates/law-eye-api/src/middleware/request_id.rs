@@ -9,6 +9,7 @@ use std::{
     task::{Context, Poll},
 };
 use tower::{Layer, Service};
+use tracing::warn;
 use uuid::Uuid;
 
 #[derive(Clone, Debug)]
@@ -150,12 +151,16 @@ fn parse_request_id(value: Option<&HeaderValue>) -> (String, HeaderValue) {
 
     match HeaderValue::from_str(&request_id) {
         Ok(header_value) => (request_id, header_value),
-        Err(_) => {
-            // Defensive fallback: should not happen because header values are already validated.
-            let request_id = Uuid::new_v4().to_string();
-            let header_value =
-                HeaderValue::from_str(&request_id).expect("uuid should be a valid header value");
-            (request_id, header_value)
+        Err(err) => {
+            warn!(
+                error = %err,
+                request_id = %request_id,
+                "invalid x-request-id header value, using fallback"
+            );
+            (
+                "invalid-request-id".to_string(),
+                HeaderValue::from_static("invalid-request-id"),
+            )
         }
     }
 }
