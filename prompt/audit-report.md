@@ -8,7 +8,7 @@
 - [x] [SEC-301] Enterprise Vault 状态/Unseal key 不得落盘在仓库目录 ✅ 已将默认落盘迁移到用户 state 目录（脚本兼容 Windows Git Bash）
 - [x] [OPS-301] Postgres 容器非 root 运行 ✅ 引入 `postgres-init` chown + `postgres` 用户运行（compose 依赖顺序已补齐）
 - [x] [OPS-302] 增加 `/health/live` 与 `/health/ready` 端点（K8s 探针） ✅ `/health` 保持为 readiness；`/health/live` 不依赖外部服务，`/health/ready` 依赖 postgres/redis 并带 2s timeout - `crates/law-eye-api/src/routes/health.rs`
-- [ ] [SEC-302] 前端 HTML 渲染安全加固（DOMPurify URI scheme policy + 媒体/链接属性白名单再收紧）
+- [x] [SEC-302] 前端 HTML 渲染安全加固（DOMPurify URI scheme policy + 媒体/链接属性白名单再收紧） ✅ 禁止未知 URI scheme（仅允许 http/https/mailto/tel）；移除 video/audio/source；对 a/img 做二次校验并强制 `_blank` 外链 `rel=noopener noreferrer` - `apps/web/src/components/article/article-content.tsx`
 
 ### HIGH（高优先级）
 - [ ] [REL-301] 移除生产代码路径中的 `unwrap/expect/panic!`（保留 tests；错误转为结构化响应）

@@ -53,9 +53,6 @@ export function ArticleContent({ content, className }: ArticleContentProps) {
 				"div",
 				"span",
 				"hr",
-				"video",
-				"audio",
-				"source",
 			],
 			ALLOWED_ATTR: [
 				"href",
@@ -68,29 +65,57 @@ export function ArticleContent({ content, className }: ArticleContentProps) {
 				"id",
 				"target",
 				"rel",
-				"controls",
-				"autoplay",
-				"loop",
-				"muted",
 			],
 			ADD_ATTR: ["target"],
-			FORBID_TAGS: ["script", "style"],
+			ALLOW_UNKNOWN_PROTOCOLS: false,
+			ALLOWED_URI_REGEXP:
+				/^(?:(?:https?|mailto|tel):|(?!(?:[a-z][a-z0-9+.-]*):))/i,
+			FORBID_TAGS: ["script", "style", "iframe"],
 		});
 
-		// 强制外链在新窗口打开时携带安全 rel，避免 tabnabbing。
-		const doc = new DOMParser().parseFromString(sanitized, "text/html");
-		for (const anchor of Array.from(doc.querySelectorAll<HTMLAnchorElement>("a[target]"))) {
-			const target = anchor.getAttribute("target")?.trim();
-			if (!target || target === "_self") continue;
+		const allowedLinkProtocols = new Set(["http:", "https:", "mailto:", "tel:"]);
+		const allowedImageProtocols = new Set(["http:", "https:"]);
 
-			const rel = (anchor.getAttribute("rel") ?? "")
-				.split(/\s+/)
-				.map((value) => value.trim())
-				.filter(Boolean);
-			for (const value of ["noopener", "noreferrer"]) {
-				if (!rel.includes(value)) rel.push(value);
+		const isSafeUrl = (raw: string, allowedProtocols: Set<string>) => {
+			try {
+				const url = new URL(raw, window.location.origin);
+				return allowedProtocols.has(url.protocol);
+			} catch {
+				return false;
 			}
-			anchor.setAttribute("rel", rel.join(" "));
+		};
+
+		const doc = new DOMParser().parseFromString(sanitized, "text/html");
+
+		for (const anchor of Array.from(doc.querySelectorAll<HTMLAnchorElement>("a"))) {
+			const href = anchor.getAttribute("href")?.trim();
+			if (href && !isSafeUrl(href, allowedLinkProtocols)) {
+				anchor.removeAttribute("href");
+				anchor.removeAttribute("target");
+				anchor.removeAttribute("rel");
+				continue;
+			}
+
+			const target = anchor.getAttribute("target")?.trim();
+			if (target && target !== "_blank" && target !== "_self") {
+				anchor.removeAttribute("target");
+				anchor.removeAttribute("rel");
+				continue;
+			}
+
+			if (target === "_blank") {
+				anchor.setAttribute("rel", "noopener noreferrer");
+			} else {
+				anchor.removeAttribute("target");
+				anchor.removeAttribute("rel");
+			}
+		}
+
+		for (const img of Array.from(doc.querySelectorAll<HTMLImageElement>("img[src]"))) {
+			const src = img.getAttribute("src")?.trim();
+			if (!src || !isSafeUrl(src, allowedImageProtocols)) {
+				img.remove();
+			}
 		}
 
 		return doc.body.innerHTML;
