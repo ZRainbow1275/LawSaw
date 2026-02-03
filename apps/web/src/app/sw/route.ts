@@ -64,7 +64,10 @@ async function staleWhileRevalidate(request) {
       if (resp.ok) cache.put(request, resp.clone());
       return resp;
     })
-    .catch(() => undefined);
+    .catch((err) => {
+      console.warn("[sw] runtime fetch failed", err);
+      return undefined;
+    });
 
   return cached || (await fetchPromise) || new Response("", { status: 504 });
 }
@@ -82,7 +85,9 @@ self.addEventListener("activate", (event) => {
     const keys = await caches.keys();
     await Promise.all(keys.filter((k) => !k.startsWith(CACHE_VERSION)).map((k) => caches.delete(k)));
     if (self.registration.navigationPreload) {
-      try { await self.registration.navigationPreload.enable(); } catch {}
+      try { await self.registration.navigationPreload.enable(); } catch (err) {
+        console.warn("[sw] navigationPreload enable failed", err);
+      }
     }
     self.clients.claim();
   })());
@@ -99,7 +104,8 @@ self.addEventListener("fetch", (event) => {
         const preload = await event.preloadResponse;
         if (preload) return preload;
         return await fetch(request);
-      } catch {
+      } catch (err) {
+        console.warn("[sw] navigation fetch failed", err);
         return new Response(OFFLINE_HTML, {
           headers: { "Content-Type": "text/html; charset=utf-8" },
           status: 200

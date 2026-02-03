@@ -14,7 +14,7 @@
 - [x] [SEC-005] HTML 渲染收口：移除 `iframe` + 外链强制 `rel=noopener noreferrer` ✅ - `apps/web/src/components/article/article-content.tsx:20`
 - [x] [SEC-006] 前端“加密”fail-open 改造（显式标记明文/加密 + warn） ✅ - `apps/web/src/lib/crypto.ts:121`
 - [x] [REL-001] MCP 服务器移除 `unwrap()` panic（返回结构化错误响应） ✅ - `crates/law-eye-mcp/src/server.rs:68`
-- [ ] [OBS-001] 清理/收敛空 `catch {}`（最少要打点/上报） - `apps/web/src/app/sw/route.ts:85`
+- [x] [OBS-001] 清理/收敛空 `catch {}`（增加 `console.warn` 打点，保留错误对象） ✅ - `apps/web/src/app/sw/route.ts:85`
 
 ### OPS（工作区卫生）
 - [ ] [OPS-001] `tmp/enterprise/pki/*.key` 私钥材料工作流外移 + 文档化可再生（避免“仓库目录=密钥仓库”） - `tmp/enterprise/pki/*.key`
