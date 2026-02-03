@@ -129,7 +129,8 @@ export class ApiClient {
 	private emitError(error: ApiClientError): void {
 		try {
 			this.errorHandler?.(error);
-		} catch {
+		} catch (err) {
+			console.warn("[api] error handler threw", err);
 			// Never let a global hook break request error semantics.
 		}
 	}

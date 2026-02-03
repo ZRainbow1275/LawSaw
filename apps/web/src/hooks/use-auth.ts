@@ -1,8 +1,9 @@
 "use client";
 
-import { apiClient } from "@/lib/api";
+import { ApiClientError, apiClient } from "@/lib/api";
 import type { User } from "@/lib/api/types";
 import { assertAuthResponse, assertUserDetailResponse } from "@/lib/api/types";
+import { reportClientError } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 import { useCallback } from "react";
 
@@ -30,6 +31,11 @@ export function useAuth() {
 		logout: storeLogout,
 	} = useAuthStore();
 
+	const shouldReportError = useCallback((error: unknown): boolean => {
+		if (!(error instanceof ApiClientError)) return true;
+		return error.status === 0 || error.status >= 500;
+	}, []);
+
 	const refreshAuthz = useCallback(
 		async (nextUser: User | null) => {
 			if (!nextUser) {
@@ -43,11 +49,17 @@ export function useAuth() {
 					assertUserDetailResponse,
 				);
 				setAuthz({ roles: detail.roles, permissions: detail.permissions });
-			} catch {
+			} catch (err) {
+				if (shouldReportError(err)) {
+					reportClientError(err, {
+						source: "auth.refreshAuthz",
+						extra: { userId: nextUser.id },
+					});
+				}
 				setAuthz(null);
 			}
 		},
-		[setAuthz],
+		[setAuthz, shouldReportError],
 	);
 
 	const refreshSession = useCallback(async () => {
@@ -59,11 +71,14 @@ export function useAuth() {
 			);
 			setUser(response.user);
 			await refreshAuthz(response.user);
-		} catch {
+		} catch (err) {
+			if (shouldReportError(err)) {
+				reportClientError(err, { source: "auth.refreshSession" });
+			}
 			setUser(null);
 			setAuthz(null);
 		}
-	}, [setUser, setAuthz, setLoading, refreshAuthz]);
+	}, [setUser, setAuthz, setLoading, refreshAuthz, shouldReportError]);
 
 	const login = useCallback(
 		async (credentials: LoginCredentials) => {
@@ -118,12 +133,14 @@ export function useAuth() {
 	const logout = useCallback(async () => {
 		try {
 			await apiClient.post("/api/v1/auth/logout");
-		} catch {
-			// Ignore logout errors
+		} catch (err) {
+			if (shouldReportError(err)) {
+				reportClientError(err, { source: "auth.logout" });
+			}
 		} finally {
 			storeLogout();
 		}
-	}, [storeLogout]);
+	}, [storeLogout, shouldReportError]);
 
 	return {
 		user,
