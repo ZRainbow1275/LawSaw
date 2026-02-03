@@ -10,7 +10,16 @@ VAULT_ADDR="https://127.0.0.1:8200"
 
 DOTENV_FILE="${ROOT_DIR}/.env"
 
-PKI_DIR="${ROOT_DIR}/tmp/enterprise/pki"
+DEFAULT_STATE_HOME="${XDG_STATE_HOME:-${HOME}/.local/state}"
+DEFAULT_PKI_DIR="${DEFAULT_STATE_HOME}/law-eye/enterprise/pki"
+PKI_DIR_RAW="${LAW_EYE_ENTERPRISE_PKI_DIR:-$DEFAULT_PKI_DIR}"
+mkdir -p "$PKI_DIR_RAW"
+PKI_DIR="$(cd "$PKI_DIR_RAW" && pwd)"
+PKI_DIR_ENV="$PKI_DIR"
+if command -v cygpath >/dev/null 2>&1; then
+  PKI_DIR_ENV="$(cygpath -m "$PKI_DIR")"
+fi
+export LAW_EYE_ENTERPRISE_PKI_DIR="$PKI_DIR_ENV"
 VAULT_STATE_DIR="${ROOT_DIR}/tmp/enterprise/vault"
 SECRETS_DIR="${ROOT_DIR}/tmp/enterprise/secrets"
 

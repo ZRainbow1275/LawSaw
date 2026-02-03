@@ -7,7 +7,7 @@ services:
     command: vault server -config=/vault/config/vault.hcl
     volumes:
       - ./infra/vault/vault-config.hcl:/vault/config/vault.hcl:ro
-      - ./tmp/enterprise/pki:/vault/tls:ro
+      - ${LAW_EYE_ENTERPRISE_PKI_DIR:?missing LAW_EYE_ENTERPRISE_PKI_DIR}:/vault/tls:ro
       - vault_data:/vault/file
     networks:
       - law-eye-network
@@ -70,7 +70,7 @@ services:
       minio:
         condition: service_healthy
     volumes:
-      - ./tmp/enterprise/pki:/etc/vault/pki:ro
+      - ${LAW_EYE_ENTERPRISE_PKI_DIR:?missing LAW_EYE_ENTERPRISE_PKI_DIR}:/etc/vault/pki:ro
 
   worker:
     environment:
@@ -100,7 +100,7 @@ services:
       minio:
         condition: service_healthy
     volumes:
-      - ./tmp/enterprise/pki:/etc/vault/pki:ro
+      - ${LAW_EYE_ENTERPRISE_PKI_DIR:?missing LAW_EYE_ENTERPRISE_PKI_DIR}:/etc/vault/pki:ro
 
   web:
     build:
@@ -122,7 +122,7 @@ services:
         condition: service_healthy
     volumes:
       - ./infra/caddy/Caddyfile.api-mtls:/etc/caddy/Caddyfile:ro
-      - ./tmp/enterprise/pki:/etc/caddy/pki:ro
+      - ${LAW_EYE_ENTERPRISE_PKI_DIR:?missing LAW_EYE_ENTERPRISE_PKI_DIR}:/etc/caddy/pki:ro
       - caddy_api_mtls_data:/data
       - caddy_api_mtls_config:/config
     networks:
@@ -141,7 +141,7 @@ services:
       - "443:443"
     volumes:
       - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./tmp/enterprise/pki:/etc/caddy/pki:ro
+      - ${LAW_EYE_ENTERPRISE_PKI_DIR:?missing LAW_EYE_ENTERPRISE_PKI_DIR}:/etc/caddy/pki:ro
       - caddy_data:/data
       - caddy_config:/config
     networks:

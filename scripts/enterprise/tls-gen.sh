@@ -10,9 +10,29 @@ else
 fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-OUT_DIR="${ROOT_DIR}/tmp/enterprise/pki"
 
-mkdir -p "$OUT_DIR"
+DEFAULT_STATE_HOME="${XDG_STATE_HOME:-${HOME}/.local/state}"
+DEFAULT_OUT_DIR="${DEFAULT_STATE_HOME}/law-eye/enterprise/pki"
+OUT_DIR_RAW="${LAW_EYE_ENTERPRISE_PKI_DIR:-$DEFAULT_OUT_DIR}"
+
+mkdir -p "$OUT_DIR_RAW"
+OUT_DIR="$(cd "$OUT_DIR_RAW" && pwd)"
+
+case "$OUT_DIR" in
+  "$ROOT_DIR"|"$ROOT_DIR"/*)
+    if [[ "${LAW_EYE_ALLOW_PKI_IN_REPO:-}" != "1" ]]; then
+      echo "[tls] ERROR: refusing to write private keys under repo root: $OUT_DIR" >&2
+      echo "[tls] Set LAW_EYE_ENTERPRISE_PKI_DIR to a directory outside the repo, or set LAW_EYE_ALLOW_PKI_IN_REPO=1 to override." >&2
+      exit 1
+    fi
+    ;;
+esac
+
+OUT_DIR_ENV="$OUT_DIR"
+if command -v cygpath >/dev/null 2>&1; then
+  OUT_DIR_ENV="$(cygpath -m "$OUT_DIR")"
+fi
+export LAW_EYE_ENTERPRISE_PKI_DIR="$OUT_DIR_ENV"
 
 CA_KEY="${OUT_DIR}/ca.key"
 CA_CERT="${OUT_DIR}/ca.crt"

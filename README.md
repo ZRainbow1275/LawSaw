@@ -136,7 +136,20 @@ bash scripts/no-dockerhub/e2e.sh --name law-eye-e2e-local --web-mode prod
 
 ## 企业/云端模式（Vault + Gateway）
 
-仓库提供 `docker-compose.enterprise.yml`，用于启用 Vault 注入敏感配置、以及 Caddy 网关（含 mTLS 组件）。这是高级部署路径，通常需要额外的 PKI/证书准备（见 `infra/` 与 `tmp/enterprise/`）。
+仓库提供 `docker-compose.enterprise.yml`，用于启用 Vault 注入敏感配置、以及 Caddy 网关（含 mTLS 组件）。这是高级部署路径，需要额外的 PKI/证书准备（见 `infra/` 与 `scripts/enterprise/*`）。
+
+⚠️ **PKI 私钥不应留在仓库目录**：企业 compose 通过环境变量 `LAW_EYE_ENTERPRISE_PKI_DIR` 挂载证书/私钥目录（建议放到用户目录的 state/config 路径下），避免出现 `tmp/enterprise/pki/*.key` 这类“工作区=密钥仓库”的高风险习惯。
+
+快速开始（Git Bash）：
+
+```bash
+# 推荐：放到用户目录（而不是仓库目录）下
+export LAW_EYE_ENTERPRISE_PKI_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/law-eye/enterprise/pki"
+
+./scripts/enterprise/tls-gen.sh
+./scripts/enterprise/vault-init-enterprise.sh
+docker compose -f docker-compose.yml -f docker-compose.enterprise.yml up -d
+```
 
 ## 排障（Troubleshooting）
 
