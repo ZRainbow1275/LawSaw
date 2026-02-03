@@ -54,8 +54,8 @@
 - [x] Metrics endpoint with production token gating (Prometheus exporter in `crates/law-eye-api/src/main.rs`)
 - [x] E2E test suite (Playwright under `apps/web/e2e`)
 - [x] Secret scanning in CI (TruffleHog) ✅
-- [ ] API security header baseline (CSP/HSTS/Permissions-Policy/nosniff/frame-ancestors) at the edge
-- [ ] Centralized client-side error reporting (web telemetry) to avoid silent failures on the frontend
+- [x] API security header baseline (CSP/HSTS/Permissions-Policy/nosniff/frame-ancestors) ✅ (implemented in API; consider enforcing at gateway too)
+- [x] Centralized client-side error reporting (web telemetry) ✅ (global handlers + unified reporter)
 
 ## ✅ RECOMMENDED ACTION PLAN
 1. **Stop key sprawl**: purge `tmp/enterprise/pki/*.key` from the workspace workflow; assume leakage and rotate if ever shared.
