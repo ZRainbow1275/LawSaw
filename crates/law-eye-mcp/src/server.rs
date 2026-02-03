@@ -1,11 +1,22 @@
 use crate::protocol::*;
 use law_eye_ai::LlmGateway;
 use law_eye_core::{ArticleService, CategoryService, RagService};
+use serde::Serialize;
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use std::sync::Arc;
 use tracing::{error, info};
 use uuid::Uuid;
+
+fn jsonrpc_ok<T: Serialize>(id: Option<Value>, payload: T) -> JsonRpcResponse {
+    match serde_json::to_value(payload) {
+        Ok(value) => JsonRpcResponse::success(id, value),
+        Err(err) => {
+            error!(error = %err, "JSON-RPC response serialization failed");
+            JsonRpcResponse::error(id, -32603, "Internal error")
+        }
+    }
+}
 
 pub struct McpServer {
     pool: PgPool,
@@ -65,7 +76,7 @@ impl McpServer {
             },
         };
 
-        JsonRpcResponse::success(id, serde_json::to_value(result).unwrap())
+        jsonrpc_ok(id, result)
     }
 
     fn handle_list_tools(&self, id: Option<Value>) -> JsonRpcResponse {
@@ -146,7 +157,7 @@ impl McpServer {
         ];
 
         let result = ListToolsResult { tools };
-        JsonRpcResponse::success(id, serde_json::to_value(result).unwrap())
+        jsonrpc_ok(id, result)
     }
 
     async fn handle_call_tool(&self, id: Option<Value>, params: Option<Value>) -> JsonRpcResponse {
@@ -174,14 +185,14 @@ impl McpServer {
                     content: vec![ToolContent::Text { text }],
                     is_error: None,
                 };
-                JsonRpcResponse::success(id, serde_json::to_value(tool_result).unwrap())
+                jsonrpc_ok(id, tool_result)
             }
             Err(e) => {
                 let tool_result = CallToolResult {
                     content: vec![ToolContent::Text { text: e }],
                     is_error: Some(true),
                 };
-                JsonRpcResponse::success(id, serde_json::to_value(tool_result).unwrap())
+                jsonrpc_ok(id, tool_result)
             }
         }
     }
@@ -348,7 +359,7 @@ impl McpServer {
         ];
 
         let result = ListResourcesResult { resources };
-        JsonRpcResponse::success(id, serde_json::to_value(result).unwrap())
+        jsonrpc_ok(id, result)
     }
 
     async fn handle_read_resource(
@@ -480,6 +491,6 @@ impl McpServer {
             }],
         };
 
-        JsonRpcResponse::success(id, serde_json::to_value(result).unwrap())
+        jsonrpc_ok(id, result)
     }
 }

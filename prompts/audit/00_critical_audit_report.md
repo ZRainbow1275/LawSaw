@@ -13,7 +13,7 @@
 - [x] [SEC-004] Sources URL SSRF 策略改为 fail-closed（含 DNS 解析阻断私网/链路本地） ✅ - `crates/law-eye-api/src/routes/sources.rs:36`
 - [x] [SEC-005] HTML 渲染收口：移除 `iframe` + 外链强制 `rel=noopener noreferrer` ✅ - `apps/web/src/components/article/article-content.tsx:20`
 - [x] [SEC-006] 前端“加密”fail-open 改造（显式标记明文/加密 + warn） ✅ - `apps/web/src/lib/crypto.ts:121`
-- [ ] [REL-001] MCP 服务器移除 `unwrap()` panic（返回结构化错误响应） - `crates/law-eye-mcp/src/server.rs:68`
+- [x] [REL-001] MCP 服务器移除 `unwrap()` panic（返回结构化错误响应） ✅ - `crates/law-eye-mcp/src/server.rs:68`
 - [ ] [OBS-001] 清理/收敛空 `catch {}`（最少要打点/上报） - `apps/web/src/app/sw/route.ts:85`
 
 ### OPS（工作区卫生）
