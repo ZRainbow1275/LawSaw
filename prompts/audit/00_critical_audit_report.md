@@ -20,7 +20,7 @@
 - [x] [OPS-001] 外移 enterprise PKI：改用 `LAW_EYE_ENTERPRISE_PKI_DIR`（默认用户 state 目录）+ 脚本拒绝写入仓库根目录 ✅ - `docker-compose.enterprise.yml`
 
 ### NEXT（后续收敛）
-- [ ] [SEC-007] API 安全响应头基线（CSP/HSTS/nosniff/frame-ancestors/permissions-policy） - `crates/law-eye-api/src/main.rs`
+- [x] [SEC-007] API 安全响应头基线（CSP/HSTS/nosniff/frame-ancestors/permissions-policy） ✅ - `crates/law-eye-api/src/main.rs`
 - [ ] [OBS-002] 前端集中式错误上报（Sentry/OTel）替代吞错 - `apps/web/src`
 
 ##  CRITICAL VULNERABILITIES (Must Fix Immediately)

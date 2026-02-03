@@ -7,10 +7,12 @@ mod state;
 pub use error::{ApiError, ApiResult, AppError};
 
 use anyhow::Context;
+use axum::body::Body;
 use axum::error_handling::HandleErrorLayer;
 use axum::extract::DefaultBodyLimit;
-use axum::http::{header, HeaderName, HeaderValue, Method};
-use axum::response::IntoResponse;
+use axum::http::{header, HeaderName, HeaderValue, Method, Request};
+use axum::middleware::Next;
+use axum::response::{IntoResponse, Response};
 use axum_login::AuthManagerLayerBuilder;
 use law_eye_ai::{AiService, LlmGateway};
 use law_eye_common::vault::{PlaintextCipher, SensitiveStringCipher, VaultTransitCipher};
@@ -37,6 +39,21 @@ use crate::middleware::{CsrfLayer, RequestIdLayer};
 use crate::state::AppState;
 
 const DB_CONNECT_MAX_ATTEMPTS: u32 = 30;
+const SECURITY_HEADERS_HSTS: &str = "max-age=31536000; includeSubDomains";
+const SECURITY_HEADERS_CSP_DEFAULT: &str =
+    "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'; object-src 'none'";
+const SECURITY_HEADERS_CSP_SWAGGER_UI: &str = "default-src 'self'; \
+  base-uri 'none'; \
+  frame-ancestors 'none'; \
+  form-action 'none'; \
+  object-src 'none'; \
+  script-src 'self' 'unsafe-inline'; \
+  style-src 'self' 'unsafe-inline'; \
+  img-src 'self' data:; \
+  font-src 'self' data:; \
+  connect-src 'self'";
+const SECURITY_HEADERS_PERMISSIONS_POLICY: &str =
+    "accelerometer=(), autoplay=(), camera=(), display-capture=(), encrypted-media=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), usb=(), web-share=()";
 
 fn healthcheck_port() -> u16 {
     std::env::var("LAW_EYE__SERVER__PORT")
@@ -170,6 +187,69 @@ async fn shutdown_signal() {
     }
 
     info!("Received shutdown signal, starting graceful shutdown");
+}
+
+async fn apply_security_headers(req: Request<Body>, next: Next) -> Response {
+    let is_production = std::env::var_os("PRODUCTION").is_some();
+    let path = req.uri().path().to_string();
+
+    let mut response = next.run(req).await;
+    let headers = response.headers_mut();
+
+    let header_x_content_type_options = HeaderName::from_static("x-content-type-options");
+    if !headers.contains_key(&header_x_content_type_options) {
+        headers.insert(
+            header_x_content_type_options,
+            HeaderValue::from_static("nosniff"),
+        );
+    }
+
+    let header_x_frame_options = HeaderName::from_static("x-frame-options");
+    if !headers.contains_key(&header_x_frame_options) {
+        headers.insert(header_x_frame_options, HeaderValue::from_static("DENY"));
+    }
+
+    let header_referrer_policy = HeaderName::from_static("referrer-policy");
+    if !headers.contains_key(&header_referrer_policy) {
+        headers.insert(header_referrer_policy, HeaderValue::from_static("no-referrer"));
+    }
+
+    let header_permissions_policy = HeaderName::from_static("permissions-policy");
+    if !headers.contains_key(&header_permissions_policy) {
+        match HeaderValue::from_str(SECURITY_HEADERS_PERMISSIONS_POLICY) {
+            Ok(value) => {
+                headers.insert(header_permissions_policy, value);
+            }
+            Err(_) => {
+                warn!("Invalid Permissions-Policy header value; skipping");
+            }
+        }
+    }
+
+    let header_csp = HeaderName::from_static("content-security-policy");
+    if !headers.contains_key(&header_csp) {
+        let csp = if path.starts_with("/api-docs/swagger-ui") {
+            SECURITY_HEADERS_CSP_SWAGGER_UI
+        } else {
+            SECURITY_HEADERS_CSP_DEFAULT
+        };
+
+        match HeaderValue::from_str(csp) {
+            Ok(value) => {
+                headers.insert(header_csp, value);
+            }
+            Err(_) => warn!("Invalid CSP header value; skipping"),
+        }
+    }
+
+    if is_production {
+        let header_hsts = HeaderName::from_static("strict-transport-security");
+        if !headers.contains_key(&header_hsts) {
+            headers.insert(header_hsts, HeaderValue::from_static(SECURITY_HEADERS_HSTS));
+        }
+    }
+
+    response
 }
 
 #[tokio::main]
@@ -409,7 +489,11 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
-    let app = app.layer(trace).layer(RequestIdLayer::new()).layer(cors);
+    let app = app
+        .layer(trace)
+        .layer(RequestIdLayer::new())
+        .layer(cors)
+        .layer(axum::middleware::from_fn(apply_security_headers));
 
     let addr = format!("{}:{}", config.server.host, config.server.port);
     info!("Server listening on {}", addr);
