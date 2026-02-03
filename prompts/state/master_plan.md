@@ -11,6 +11,11 @@
 - Monkey Tests 全部通过（不得导致系统崩溃/死锁/持续 5xx）
 
 **最近一次验证（落盘口径）**
+- 2026-02-03：`cargo test --workspace` ✅；
+  `pnpm -C apps/web test` ✅；
+  `E2E_BASE_URL=http://127.0.0.1:8849 E2E_RSS_URL=http://rss-fixture:8000/rss.xml pnpm -C apps/web e2e` ✅（6 passed；基于 docker compose 项目 `lawsaw-e2e`）；
+  `python scripts/monkey/api_monkey.py --base-url http://127.0.0.1:13001 --requests 300 --concurrency 24 --timeout-ms 3000 --p95-threshold-ms 500 --max-5xx 0 --max-net-errors 0 --max-timeouts 0 --report-json prompts/logs/monkey_api_report.json` ✅；
+  `python scripts/monkey/web_monkey.py --base-url http://127.0.0.1:8849 --requests 200 --concurrency 16 --timeout-ms 3000 --p95-threshold-ms 500 --max-5xx 0 --max-net-errors 0 --max-timeouts 0 --report-json prompts/logs/monkey_web_report.json` ✅；
 - 2026-02-02：`docker compose up -d` ✅（No services to build）；
   `docker compose ps` ✅（全服务 healthy）；
   `python3 scripts/monkey/api_monkey.py --p95-threshold-ms 500 --max-5xx 0 --max-net-errors 0 --max-timeouts 0` ✅（生成 `prompts/logs/monkey_api_report.json`）；

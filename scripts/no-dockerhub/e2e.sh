@@ -24,6 +24,7 @@ EOF
 }
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+RUNTIME_E2E_ENV_FILE="$ROOT/tmp/e2e-env.json"
 
 STACK_NAME="law-eye-e2e-$(date +%Y%m%d%H%M%S)-$RANDOM"
 KEEP=0
@@ -185,6 +186,10 @@ cleanup() {
     exit "$exit_code"
   fi
 
+  # Avoid leaving behind a stale runtime file that can mislead future runs of
+  # `pnpm -C apps/web e2e` into connecting to a dead port.
+  rm -f "$RUNTIME_E2E_ENV_FILE" >/dev/null 2>&1 || true
+
   stop_rss_server || true
   bash "$ROOT/scripts/no-dockerhub/stop-stack.sh" --name "$STACK_NAME" --purge >/dev/null 2>&1 || true
   exit "$exit_code"
@@ -220,7 +225,7 @@ export LAW_EYE_API_PROXY_TARGET
 export E2E_BASE_URL="http://127.0.0.1:${WEB_PORT}"
 export E2E_RSS_URL="http://127.0.0.1:${RSS_PORT}/rss.xml"
 
-E2E_ENV_FILE="$ROOT/tmp/e2e-env.json"
+E2E_ENV_FILE="$RUNTIME_E2E_ENV_FILE"
 python3 - "$E2E_ENV_FILE" <<'PY'
 import json
 import os

@@ -23,6 +23,15 @@
 - [x] [SEC-007] API 安全响应头基线（CSP/HSTS/nosniff/frame-ancestors/permissions-policy） ✅ - `crates/law-eye-api/src/main.rs`
 - [x] [OBS-002] 前端集中式错误上报：统一 `reportClientError` + 全局 `error/unhandledrejection` 监听，替代吞错 ✅ - `apps/web/src`
 
+### QA（回归与开发体验）
+- [x] [QA-001] E2E 运行器清理 `tmp/e2e-env.json`（避免 stale base_url 影响 `pnpm -C apps/web e2e`） ✅ - `scripts/no-dockerhub/e2e.sh`
+
+### VERIFY（回归验证记录）
+- [x] [VER-001] `cargo test --workspace` ✅（2026-02-03）
+- [x] [VER-002] `pnpm -C apps/web test` ✅（2026-02-03）
+- [x] [VER-003] Playwright E2E ✅（2026-02-03；`E2E_BASE_URL=http://127.0.0.1:8849`，`E2E_RSS_URL=http://rss-fixture:8000/rss.xml`；6 passed）
+- [x] [VER-004] Monkey（API/Web）✅（2026-02-03；API：`p95_2xx=359ms` @ 300req/24c（门槛 500ms）；Web：`p95_2xx=145ms` @ 200req/16c）
+
 ##  CRITICAL VULNERABILITIES (Must Fix Immediately)
 *(Issues that compromise Security or Uptime)*
 | ID | File | Line | Issue Type | Risk Description | Remediation |
