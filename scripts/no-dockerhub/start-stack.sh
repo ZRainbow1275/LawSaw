@@ -730,6 +730,7 @@ export LAW_EYE__DATABASE__SESSION_ROLE="law_eye_app"
 export LAW_EYE__SERVER__HOST="${LAW_EYE__SERVER__HOST:-0.0.0.0}"
 export LAW_EYE__SERVER__PORT="$API_PORT"
 export LAW_EYE__SERVER__ALLOWED_ORIGINS="http://localhost:${WEB_PORT},http://127.0.0.1:${WEB_PORT}"
+export LAW_EYE__SECURITY__ALLOW_INTERNAL_SOURCE_URLS="${LAW_EYE__SECURITY__ALLOW_INTERNAL_SOURCE_URLS:-true}"
 export WEB_PORT="$WEB_PORT"
 
 # Avoid Windows-mounted target dir issues by placing build artifacts in the WSL filesystem.

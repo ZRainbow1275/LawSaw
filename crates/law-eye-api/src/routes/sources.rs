@@ -17,7 +17,11 @@ use crate::{ApiError, ApiResult, AppError};
 use law_eye_db::{CreateAuditLog, CreateSource};
 use law_eye_queue::IngestTask;
 use serde_json::Value;
+use std::net::IpAddr;
 use std::net::SocketAddr;
+use std::time::Duration;
+use tokio::net::lookup_host;
+use tokio::time::timeout;
 use url::{Host, Url};
 
 const SOURCE_NAME_MAX_LEN: usize = 100;
@@ -25,6 +29,7 @@ const SOURCE_URL_MAX_LEN: usize = 2048;
 const SOURCE_SCHEDULE_MAX_LEN: usize = 128;
 const SOURCE_PRIORITY_MIN: i32 = 0;
 const SOURCE_PRIORITY_MAX: i32 = 100;
+const DNS_LOOKUP_TIMEOUT_SECS: u64 = 2;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -33,40 +38,34 @@ pub fn router() -> Router<AppState> {
         .route("/{id}/fetch", post(trigger_fetch))
 }
 
-fn allow_internal_source_urls() -> bool {
-    // Local dev/test environments may need to ingest from localhost fixtures.
-    // In production, deny internal/loopback by default to reduce SSRF risk.
-    std::env::var_os("PRODUCTION").is_none()
+fn is_internal_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                || v4.is_multicast()
+                || v4.is_broadcast()
+                || v4.is_unspecified()
+        }
+        IpAddr::V6(v6) => {
+            v6.is_loopback()
+                || v6.is_unique_local()
+                || v6.is_unicast_link_local()
+                || v6.is_multicast()
+                || v6.is_unspecified()
+        }
+    }
 }
 
 fn is_internal_host<S: AsRef<str>>(host: &Host<S>) -> bool {
-    fn is_internal_ip(ip: std::net::IpAddr) -> bool {
-        match ip {
-            std::net::IpAddr::V4(v4) => {
-                v4.is_private()
-                    || v4.is_loopback()
-                    || v4.is_link_local()
-                    || v4.is_multicast()
-                    || v4.is_broadcast()
-                    || v4.is_unspecified()
-            }
-            std::net::IpAddr::V6(v6) => {
-                v6.is_loopback()
-                    || v6.is_unique_local()
-                    || v6.is_unicast_link_local()
-                    || v6.is_multicast()
-                    || v6.is_unspecified()
-            }
-        }
-    }
-
     match host {
         Host::Domain(domain) => {
             let lower = domain.as_ref().trim().to_ascii_lowercase();
             lower == "localhost" || lower.ends_with(".localhost")
         }
-        Host::Ipv4(ip) => is_internal_ip(std::net::IpAddr::V4(*ip)),
-        Host::Ipv6(ip) => is_internal_ip(std::net::IpAddr::V6(*ip)),
+        Host::Ipv4(ip) => is_internal_ip(IpAddr::V4(*ip)),
+        Host::Ipv6(ip) => is_internal_ip(IpAddr::V6(*ip)),
     }
 }
 
@@ -83,7 +82,7 @@ fn validate_source_name(name: &str) -> Result<String, AppError> {
     Ok(trimmed.to_string())
 }
 
-fn validate_source_url(raw: &str, allow_internal: bool) -> Result<String, AppError> {
+async fn validate_source_url(raw: &str, allow_internal: bool) -> Result<String, AppError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Err(AppError::validation_with_code(
@@ -123,11 +122,44 @@ fn validate_source_url(raw: &str, allow_internal: bool) -> Result<String, AppErr
         AppError::validation_with_code("INVALID_URL", "URL must include a host")
     })?;
 
-    if !allow_internal && is_internal_host(&host) {
-        return Err(AppError::validation_with_code(
-            "SSRF_BLOCKED",
-            "Internal/loopback URLs are not allowed in production",
-        ));
+    if !allow_internal {
+        if is_internal_host(&host) {
+            return Err(AppError::validation_with_code(
+                "SSRF_BLOCKED",
+                "Internal/loopback URLs are not allowed",
+            ));
+        }
+
+        // Resolve domain -> IPs and block if it maps to internal ranges (e.g., docker service DNS).
+        if let Host::Domain(domain) = &host {
+            let port = url
+                .port_or_known_default()
+                .unwrap_or_else(|| if url.scheme() == "https" { 443 } else { 80 });
+
+            let lookup = timeout(
+                Duration::from_secs(DNS_LOOKUP_TIMEOUT_SECS),
+                lookup_host((domain.as_ref(), port)),
+            )
+            .await
+            .map_err(|_| {
+                AppError::validation_with_code(
+                    "INVALID_URL",
+                    "URL host DNS resolution timed out",
+                )
+            })?
+            .map_err(|_| {
+                AppError::validation_with_code("INVALID_URL", "URL host DNS resolution failed")
+            })?;
+
+            for addr in lookup {
+                if is_internal_ip(addr.ip()) {
+                    return Err(AppError::validation_with_code(
+                        "SSRF_BLOCKED",
+                        "URL resolves to an internal IP and is not allowed",
+                    ));
+                }
+            }
+        }
     }
 
     Ok(trimmed.to_string())
@@ -370,7 +402,7 @@ pub(crate) async fn create_source(
     }
 
     input.name = validate_source_name(&input.name)?;
-    input.url = validate_source_url(&input.url, allow_internal_source_urls())?;
+    input.url = validate_source_url(&input.url, state.allow_internal_source_urls).await?;
     input.schedule = validate_source_schedule(input.schedule)?;
     input.priority = validate_source_priority(input.priority)?;
 
@@ -442,22 +474,28 @@ pub(crate) async fn create_source(
 mod tests {
     use super::*;
 
-    #[test]
-    fn validate_source_url_allows_localhost_in_non_production() {
-        let url = validate_source_url("http://127.0.0.1:1234/rss.xml", true).unwrap();
+    #[tokio::test]
+    async fn validate_source_url_allows_localhost_in_non_production() {
+        let url = validate_source_url("http://127.0.0.1:1234/rss.xml", true)
+            .await
+            .unwrap();
         assert_eq!(url, "http://127.0.0.1:1234/rss.xml");
     }
 
-    #[test]
-    fn validate_source_url_blocks_localhost_in_production() {
-        let err = validate_source_url("http://127.0.0.1:1234/rss.xml", false).unwrap_err();
+    #[tokio::test]
+    async fn validate_source_url_blocks_localhost_in_production() {
+        let err = validate_source_url("http://127.0.0.1:1234/rss.xml", false)
+            .await
+            .unwrap_err();
         assert_eq!(err.status, StatusCode::BAD_REQUEST);
         assert_eq!(err.body.code.as_deref(), Some("SSRF_BLOCKED"));
     }
 
-    #[test]
-    fn validate_source_url_rejects_non_http_scheme() {
-        let err = validate_source_url("file:///etc/passwd", true).unwrap_err();
+    #[tokio::test]
+    async fn validate_source_url_rejects_non_http_scheme() {
+        let err = validate_source_url("file:///etc/passwd", true)
+            .await
+            .unwrap_err();
         assert_eq!(err.body.code.as_deref(), Some("INVALID_URL"));
     }
 }

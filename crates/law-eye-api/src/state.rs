@@ -30,6 +30,7 @@ pub struct AppState {
     pub apikey_service: Arc<ApiKeyService>,
     pub metrics_handle: PrometheusHandle,
     pub metrics_token: Option<String>,
+    pub allow_internal_source_urls: bool,
 }
 
 impl AppState {
@@ -42,6 +43,7 @@ impl AppState {
         object_service: Option<ObjectService>,
         metrics_handle: PrometheusHandle,
         metrics_token: Option<String>,
+        allow_internal_source_urls: bool,
         feedback_cipher: Arc<dyn SensitiveStringCipher>,
     ) -> Self {
         let gateway = Arc::new(llm_gateway.unwrap_or_else(|| {
@@ -69,6 +71,7 @@ impl AppState {
             apikey_service: Arc::new(ApiKeyService::new(pool)),
             metrics_handle,
             metrics_token,
+            allow_internal_source_urls,
         }
     }
 }

@@ -140,6 +140,8 @@ pub struct AppConfig {
     #[serde(default)]
     pub metrics: MetricsConfig,
     #[serde(default)]
+    pub security: SecurityConfig,
+    #[serde(default)]
     pub secrets: SecretsConfig,
     #[serde(default)]
     pub encryption: EncryptionConfig,
@@ -234,6 +236,13 @@ impl Default for AiConfig {
 pub struct MetricsConfig {
     /// Prometheus scrape token (production-only). If unset in production, `/metrics` returns 404.
     pub token: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct SecurityConfig {
+    /// Allow internal/loopback/private URLs for user-provided sources (development/testing only).
+    #[serde(default)]
+    pub allow_internal_source_urls: bool,
 }
 
 impl AppConfig {
@@ -360,6 +369,7 @@ impl Default for AppConfig {
             },
             ai: AiConfig::default(),
             metrics: MetricsConfig::default(),
+            security: SecurityConfig::default(),
             secrets: SecretsConfig::default(),
             encryption: EncryptionConfig::default(),
             object_storage: ObjectStorageConfig::default(),

@@ -324,6 +324,7 @@ async fn main() -> anyhow::Result<()> {
         object_service,
         metrics_handle,
         config.metrics.token.clone(),
+        config.security.allow_internal_source_urls,
         feedback_cipher,
     );
 

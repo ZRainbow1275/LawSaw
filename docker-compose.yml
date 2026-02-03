@@ -120,6 +120,8 @@ services:
       # 使用 LAW_EYE__ 前缀匹配 config.rs 中的环境变量解析
       LAW_EYE__SERVER__HOST: "0.0.0.0"
       LAW_EYE__SERVER__PORT: "3001"
+      # Local/e2e: allow localhost + docker service URLs for RSS fixtures.
+      LAW_EYE__SECURITY__ALLOW_INTERNAL_SOURCE_URLS: "true"
       LAW_EYE__DATABASE__URL: postgres://law_eye:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/law_eye
       LAW_EYE__DATABASE__MAX_CONNECTIONS: "10"
       LAW_EYE__DATABASE__SESSION_ROLE: "law_eye_app"
@@ -162,6 +164,7 @@ services:
     environment:
       LAW_EYE__SERVER__HOST: "0.0.0.0"
       LAW_EYE__SERVER__PORT: "3002"
+      LAW_EYE__SECURITY__ALLOW_INTERNAL_SOURCE_URLS: "true"
       LAW_EYE__DATABASE__URL: postgres://law_eye:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/law_eye
       LAW_EYE__DATABASE__MAX_CONNECTIONS: "10"
       LAW_EYE__DATABASE__SESSION_ROLE: "law_eye_app"
