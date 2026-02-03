@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
-use crate::{ApiError, ApiResult, AppError};
+use crate::{ApiError, ApiJson, ApiResult, AppError};
 
 const APIKEY_NAME_MAX_LEN: usize = 100;
 const APIKEY_PERMISSION_MAX_LEN: usize = 64;
@@ -27,6 +27,7 @@ pub fn router() -> Router<AppState> {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateKeyRequest {
     pub name: String,
     pub permissions: Option<Vec<String>>,
@@ -124,7 +125,7 @@ pub(crate) async fn list_keys(
 pub(crate) async fn create_key(
     State(state): State<AppState>,
     auth_session: AuthSession,
-    Json(mut req): Json<CreateKeyRequest>,
+    ApiJson(mut req): ApiJson<CreateKeyRequest>,
 ) -> ApiResult<(StatusCode, Json<CreateKeyResponse>)> {
     let user = auth_session
         .user

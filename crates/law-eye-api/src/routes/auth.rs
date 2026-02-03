@@ -14,7 +14,7 @@ use regex::Regex;
 use crate::auth::{AuthSession, AuthenticatedUser, Credentials};
 use crate::middleware::rate_limit::RateLimitLayer;
 use crate::state::AppState;
-use crate::{ApiError, ApiResult, AppError};
+use crate::{ApiError, ApiJson, ApiResult, AppError};
 
 static EMAIL_RE: Lazy<Option<Regex>> =
     Lazy::new(|| Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").ok());
@@ -33,6 +33,7 @@ pub fn router() -> Router<AppState> {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RegisterRequest {
     pub email: String,
     pub password: String,
@@ -101,7 +102,7 @@ impl From<law_eye_db::User> for UserResponse {
 pub(crate) async fn register(
     State(state): State<AppState>,
     mut auth_session: AuthSession,
-    Json(req): Json<RegisterRequest>,
+    ApiJson(req): ApiJson<RegisterRequest>,
 ) -> ApiResult<(StatusCode, Json<AuthResponse>)> {
     let email_re = EMAIL_RE.as_ref().ok_or_else(|| {
         AppError::internal_with_code("REGEX_INIT_FAILED", "Internal server error")
@@ -206,7 +207,7 @@ pub(crate) async fn register(
 )]
 pub(crate) async fn login(
     mut auth_session: AuthSession,
-    Json(creds): Json<Credentials>,
+    ApiJson(creds): ApiJson<Credentials>,
 ) -> ApiResult<Json<AuthResponse>> {
     let user = auth_session
         .authenticate(creds)

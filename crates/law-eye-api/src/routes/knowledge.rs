@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, State},
     routing::{get, post},
     Json, Router,
 };
@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
-use crate::{ApiError, ApiResult, AppError};
+use crate::{ApiError, ApiJson, ApiQuery, ApiResult, AppError};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -72,6 +72,7 @@ impl From<law_eye_db::Entity> for KnowledgeEntityResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct TopEntitiesQuery {
     pub limit: Option<i64>,
 }
@@ -96,7 +97,7 @@ pub struct TopEntitiesQuery {
 pub(crate) async fn list_top_entities(
     State(state): State<AppState>,
     auth_session: AuthSession,
-    Query(query): Query<TopEntitiesQuery>,
+    ApiQuery(query): ApiQuery<TopEntitiesQuery>,
 ) -> ApiResult<Json<Vec<KnowledgeEntityResponse>>> {
     let user = auth_session
         .user
@@ -120,6 +121,7 @@ pub(crate) async fn list_top_entities(
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SearchEntitiesQuery {
     pub q: String,
     pub limit: Option<i64>,
@@ -147,7 +149,7 @@ pub struct SearchEntitiesQuery {
 pub(crate) async fn search_entities(
     State(state): State<AppState>,
     auth_session: AuthSession,
-    Query(query): Query<SearchEntitiesQuery>,
+    ApiQuery(query): ApiQuery<SearchEntitiesQuery>,
 ) -> ApiResult<Json<Vec<KnowledgeEntityResponse>>> {
     let user = auth_session
         .user
@@ -229,6 +231,7 @@ pub struct RelatedEntityResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RelatedEntitiesQuery {
     pub limit: Option<i64>,
 }
@@ -288,7 +291,7 @@ pub(crate) async fn get_related_entities(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
-    Query(query): Query<RelatedEntitiesQuery>,
+    ApiQuery(query): ApiQuery<RelatedEntitiesQuery>,
 ) -> ApiResult<Json<Vec<RelatedEntityResponse>>> {
     let user = auth_session
         .user
@@ -400,6 +403,7 @@ pub struct EntityArticleResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct EntityArticlesQuery {
     pub limit: Option<i64>,
 }
@@ -426,7 +430,7 @@ pub(crate) async fn get_entity_articles(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
-    Query(query): Query<EntityArticlesQuery>,
+    ApiQuery(query): ApiQuery<EntityArticlesQuery>,
 ) -> ApiResult<Json<Vec<EntityArticleResponse>>> {
     let user = auth_session
         .user
@@ -465,6 +469,7 @@ pub(crate) async fn get_entity_articles(
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct BackfillRequest {
     pub limit: Option<i64>,
 }
@@ -496,7 +501,7 @@ pub struct BackfillResponse {
 pub(crate) async fn backfill(
     State(state): State<AppState>,
     auth_session: AuthSession,
-    Json(req): Json<BackfillRequest>,
+    ApiJson(req): ApiJson<BackfillRequest>,
 ) -> ApiResult<Json<BackfillResponse>> {
     let user = auth_session
         .user

@@ -1,8 +1,11 @@
 use axum::{
+    extract::{FromRequest, FromRequestParts, Query, Request},
+    http::request::Parts,
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
 };
+use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tracing::error;
 use utoipa::ToSchema;
@@ -193,3 +196,57 @@ impl From<law_eye_common::Error> for AppError {
 }
 
 pub type ApiResult<T> = Result<T, AppError>;
+
+pub struct ApiJson<T>(pub T);
+
+impl<S, T> FromRequest<S> for ApiJson<T>
+where
+    S: Send + Sync,
+    T: DeserializeOwned,
+{
+    type Rejection = AppError;
+
+    async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
+        let Json(value) = Json::<T>::from_request(req, state)
+            .await
+            .map_err(map_json_rejection)?;
+        Ok(Self(value))
+    }
+}
+
+pub struct ApiQuery<T>(pub T);
+
+impl<S, T> FromRequestParts<S> for ApiQuery<T>
+where
+    S: Send + Sync,
+    T: DeserializeOwned,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let Query(value) = Query::<T>::from_request_parts(parts, state)
+            .await
+            .map_err(map_query_rejection)?;
+        Ok(Self(value))
+    }
+}
+
+fn map_json_rejection(rejection: axum::extract::rejection::JsonRejection) -> AppError {
+    bad_request_rejection("INVALID_JSON", "Invalid request body", rejection.body_text())
+}
+
+fn map_query_rejection(rejection: axum::extract::rejection::QueryRejection) -> AppError {
+    bad_request_rejection("INVALID_QUERY", "Invalid query parameters", rejection.body_text())
+}
+
+fn bad_request_rejection(code: &str, message: &str, reason: String) -> AppError {
+    let mut body = ApiError::new(message).with_code(code);
+    if !is_production() {
+        body.details = Some(serde_json::json!({ "reason": reason }));
+    }
+
+    AppError {
+        status: StatusCode::BAD_REQUEST,
+        body,
+    }
+}

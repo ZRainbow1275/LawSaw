@@ -1,5 +1,5 @@
 use axum::{
-    extract::{ConnectInfo, Multipart, Path, Query, State},
+    extract::{ConnectInfo, Multipart, Path, State},
     http::{header::USER_AGENT, HeaderMap},
     routing::{get, patch, post},
     Json, Router,
@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
-use crate::{ApiError, ApiResult, AppError};
+use crate::{ApiError, ApiJson, ApiQuery, ApiResult, AppError};
 use std::net::{IpAddr, SocketAddr};
 
 pub fn router() -> Router<AppState> {
@@ -25,6 +25,7 @@ pub fn router() -> Router<AppState> {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ListQuery {
     #[serde(default = "default_limit")]
     pub limit: i64,
@@ -35,6 +36,9 @@ pub struct ListQuery {
 fn default_limit() -> i64 {
     20
 }
+
+const DISPLAY_NAME_MAX_LEN: usize = 100;
+const AVATAR_URL_MAX_LEN: usize = 2048;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct UsersListResponse {
@@ -104,6 +108,7 @@ pub struct UserDetailResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateUserRequest {
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
@@ -111,6 +116,7 @@ pub struct UpdateUserRequest {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateRolesRequest {
     pub add_roles: Option<Vec<String>>,
     pub remove_roles: Option<Vec<String>>,
@@ -148,7 +154,7 @@ async fn check_admin_permission(state: &AppState, user_id: Uuid) -> Result<bool,
 pub(crate) async fn list_users(
     State(state): State<AppState>,
     auth_session: AuthSession,
-    Query(query): Query<ListQuery>,
+    ApiQuery(query): ApiQuery<ListQuery>,
 ) -> ApiResult<Json<UsersListResponse>> {
     let user = auth_session
         .user
@@ -261,7 +267,7 @@ pub(crate) async fn update_user(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
-    Json(req): Json<UpdateUserRequest>,
+    ApiJson(req): ApiJson<UpdateUserRequest>,
 ) -> ApiResult<Json<UserProfileResponse>> {
     let current_user = auth_session
         .user
@@ -282,10 +288,56 @@ pub(crate) async fn update_user(
         return Err(AppError::not_found("User not found"));
     }
 
+    let display_name = match req.display_name {
+        Some(value) => {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                None
+            } else if trimmed.len() > DISPLAY_NAME_MAX_LEN {
+                return Err(AppError::validation(format!(
+                    "display_name too long (max {DISPLAY_NAME_MAX_LEN})"
+                )));
+            } else {
+                Some(trimmed.to_string())
+            }
+        }
+        None => None,
+    };
+
+    let avatar_url = match req.avatar_url {
+        Some(value) => {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                None
+            } else if trimmed.len() > AVATAR_URL_MAX_LEN {
+                return Err(AppError::validation(format!(
+                    "avatar_url too long (max {AVATAR_URL_MAX_LEN})"
+                )));
+            } else {
+                Some(trimmed.to_string())
+            }
+        }
+        None => None,
+    };
+
+    let preferences = match req.preferences {
+        Some(value) => {
+            if !value.is_object() {
+                return Err(AppError::validation("preferences must be an object"));
+            }
+            Some(value)
+        }
+        None => None,
+    };
+
+    if display_name.is_none() && avatar_url.is_none() && preferences.is_none() {
+        return Err(AppError::validation("No fields to update"));
+    }
+
     let update = UpdateUser {
-        display_name: req.display_name,
-        avatar_url: req.avatar_url,
-        preferences: req.preferences,
+        display_name,
+        avatar_url,
+        preferences,
     };
 
     let user = state
@@ -421,7 +473,7 @@ pub(crate) async fn update_user_roles(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path(id): Path<Uuid>,
-    Json(req): Json<UpdateRolesRequest>,
+    ApiJson(req): ApiJson<UpdateRolesRequest>,
 ) -> ApiResult<Json<SuccessResponse>> {
     fn normalize_role_names(input: Option<Vec<String>>) -> Result<Vec<String>, String> {
         use std::collections::BTreeSet;

@@ -1,6 +1,6 @@
 use axum::{
     extract::ConnectInfo,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::HeaderMap,
     http::StatusCode,
     routing::get,
@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
-use crate::{ApiError, ApiResult, AppError};
+use crate::{ApiError, ApiJson, ApiQuery, ApiResult, AppError};
 use law_eye_db::{CreateAuditLog, CreateFeedback, UpdateFeedback};
 use std::net::SocketAddr;
 
@@ -72,12 +72,14 @@ impl From<law_eye_db::Feedback> for FeedbackResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ListParams {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateFeedbackRequest {
     #[serde(rename = "type")]
     pub feedback_type: String,
@@ -89,6 +91,7 @@ pub struct CreateFeedbackRequest {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateFeedbackRequest {
     pub status: Option<String>,
     pub admin_response: Option<String>,
@@ -115,7 +118,7 @@ pub struct UpdateFeedbackRequest {
 pub(crate) async fn list_feedbacks(
     State(state): State<AppState>,
     auth_session: AuthSession,
-    Query(params): Query<ListParams>,
+    ApiQuery(params): ApiQuery<ListParams>,
 ) -> ApiResult<Json<Vec<FeedbackResponse>>> {
     let user = auth_session
         .user
@@ -173,7 +176,7 @@ pub(crate) async fn list_feedbacks(
 pub(crate) async fn list_my_feedbacks(
     State(state): State<AppState>,
     auth_session: AuthSession,
-    Query(params): Query<ListParams>,
+    ApiQuery(params): ApiQuery<ListParams>,
 ) -> ApiResult<Json<Vec<FeedbackResponse>>> {
     let user = auth_session
         .user
@@ -211,7 +214,7 @@ pub(crate) async fn create_feedback(
     auth_session: AuthSession,
     headers: HeaderMap,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    Json(req): Json<CreateFeedbackRequest>,
+    ApiJson(req): ApiJson<CreateFeedbackRequest>,
 ) -> ApiResult<(StatusCode, Json<FeedbackResponse>)> {
     let user = auth_session
         .user
@@ -348,7 +351,7 @@ pub(crate) async fn update_feedback(
     headers: HeaderMap,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(id): Path<Uuid>,
-    Json(req): Json<UpdateFeedbackRequest>,
+    ApiJson(req): ApiJson<UpdateFeedbackRequest>,
 ) -> ApiResult<Json<FeedbackResponse>> {
     let user = auth_session
         .user

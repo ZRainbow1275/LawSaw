@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
-use crate::{ApiError, ApiResult, AppError};
+use crate::{ApiError, ApiJson, ApiResult, AppError};
 use law_eye_db::{CreateAuditLog, CreateSource};
 use law_eye_queue::IngestTask;
 use law_eye_common::egress::{validate_outbound_url, OutboundUrlPolicy};
@@ -146,6 +146,7 @@ impl From<law_eye_db::Source> for SourceResponse {
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateSourceRequest {
     pub name: String,
     pub url: String,
@@ -280,7 +281,7 @@ pub(crate) async fn create_source(
     auth_session: AuthSession,
     headers: HeaderMap,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    Json(mut input): Json<CreateSourceRequest>,
+    ApiJson(mut input): ApiJson<CreateSourceRequest>,
 ) -> ApiResult<(StatusCode, Json<SourceResponse>)> {
     let user = auth_session
         .user

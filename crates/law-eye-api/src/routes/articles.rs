@@ -1,5 +1,5 @@
 use axum::{
-    extract::{ConnectInfo, Path, Query, State},
+    extract::{ConnectInfo, Path, State},
     http::HeaderMap,
     routing::{get, post},
     Json, Router,
@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
-use crate::{ApiError, ApiResult, AppError};
+use crate::{ApiError, ApiJson, ApiQuery, ApiResult, AppError};
 use std::net::SocketAddr;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -58,6 +58,7 @@ impl From<law_eye_db::Article> for ArticleResponse {
 }
 
 #[derive(Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ListParams {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
@@ -130,11 +131,13 @@ pub struct ArticleAnalyticsSummaryResponse {
 }
 
 #[derive(Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct TrendParams {
     pub days: Option<i64>,
 }
 
 #[derive(Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateArticleRequest {
     pub title: Option<String>,
     pub content: Option<String>,
@@ -143,6 +146,7 @@ pub struct UpdateArticleRequest {
 }
 
 #[derive(Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct BatchStatusRequest {
     pub ids: Vec<Uuid>,
     pub status: String,
@@ -208,7 +212,7 @@ fn is_valid_status(status: &str) -> bool {
 pub(crate) async fn list_articles(
     State(state): State<AppState>,
     auth_session: AuthSession,
-    Query(params): Query<ListParams>,
+    ApiQuery(params): ApiQuery<ListParams>,
 ) -> ApiResult<Json<ArticleListResponse>> {
     let user = auth_session
         .user
@@ -431,7 +435,7 @@ pub(crate) async fn get_category_counts(
 pub(crate) async fn get_trends(
     State(state): State<AppState>,
     auth_session: AuthSession,
-    Query(params): Query<TrendParams>,
+    ApiQuery(params): ApiQuery<TrendParams>,
 ) -> ApiResult<Json<Vec<ArticleTrendPointResponse>>> {
     let user = auth_session
         .user
@@ -487,7 +491,7 @@ pub(crate) async fn get_trends(
 pub(crate) async fn list_recent(
     State(state): State<AppState>,
     auth_session: AuthSession,
-    Query(params): Query<ListParams>,
+    ApiQuery(params): ApiQuery<ListParams>,
 ) -> ApiResult<Json<Vec<ArticleResponse>>> {
     let user = auth_session
         .user
@@ -576,7 +580,7 @@ pub(crate) async fn update_article(
     headers: HeaderMap,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(id): Path<Uuid>,
-    Json(req): Json<UpdateArticleRequest>,
+    ApiJson(req): ApiJson<UpdateArticleRequest>,
 ) -> ApiResult<Json<ArticleResponse>> {
     let user = auth_session
         .user
@@ -980,7 +984,7 @@ pub(crate) async fn batch_update_status(
     auth_session: AuthSession,
     headers: HeaderMap,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    Json(req): Json<BatchStatusRequest>,
+    ApiJson(req): ApiJson<BatchStatusRequest>,
 ) -> ApiResult<Json<BatchStatusResponse>> {
     let user = auth_session
         .user

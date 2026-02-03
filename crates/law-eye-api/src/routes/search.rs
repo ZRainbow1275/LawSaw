@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Query, State},
+    extract::State,
     routing::{get, post},
     Json, Router,
 };
@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
-use crate::{ApiError, ApiResult, AppError};
+use crate::{ApiError, ApiJson, ApiQuery, ApiResult, AppError};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -19,6 +19,7 @@ pub fn router() -> Router<AppState> {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SearchQuery {
     pub q: String,
     #[serde(default = "default_limit")]
@@ -46,6 +47,7 @@ pub struct SearchResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SemanticSearchRequest {
     pub query: String,
     #[serde(default = "default_limit")]
@@ -66,6 +68,7 @@ pub struct SemanticSearchResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AskRequest {
     pub question: String,
     #[serde(default = "default_top_k")]
@@ -121,7 +124,7 @@ const ASK_QUESTION_MAX_CHARS: usize = 4096;
 pub(crate) async fn search(
     State(state): State<AppState>,
     auth_session: AuthSession,
-    Query(query): Query<SearchQuery>,
+    ApiQuery(query): ApiQuery<SearchQuery>,
 ) -> ApiResult<Json<SearchResponse>> {
     let user = auth_session
         .user
@@ -188,7 +191,7 @@ pub(crate) async fn search(
 pub(crate) async fn semantic_search(
     State(state): State<AppState>,
     auth_session: AuthSession,
-    Json(req): Json<SemanticSearchRequest>,
+    ApiJson(req): ApiJson<SemanticSearchRequest>,
 ) -> ApiResult<Json<SemanticSearchResponse>> {
     let user = auth_session
         .user
@@ -258,7 +261,7 @@ pub(crate) async fn semantic_search(
 pub(crate) async fn ask_question(
     State(state): State<AppState>,
     auth_session: AuthSession,
-    Json(req): Json<AskRequest>,
+    ApiJson(req): ApiJson<AskRequest>,
 ) -> ApiResult<Json<AskResponse>> {
     let user = auth_session
         .user

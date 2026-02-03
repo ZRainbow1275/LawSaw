@@ -4,7 +4,7 @@ mod middleware;
 mod openapi;
 mod routes;
 mod state;
-pub use error::{ApiError, ApiResult, AppError};
+pub use error::{ApiError, ApiJson, ApiQuery, ApiResult, AppError};
 
 use anyhow::Context;
 use axum::body::Body;

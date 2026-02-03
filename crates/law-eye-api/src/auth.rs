@@ -47,6 +47,7 @@ impl AuthUser for AuthenticatedUser {
 
 // Credentials for login
 #[derive(Debug, Clone, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct Credentials {
     pub email: String,
     pub password: String,

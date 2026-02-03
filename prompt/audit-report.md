@@ -12,7 +12,7 @@
 
 ### HIGH（高优先级）
 - [x] [REL-301] 移除生产代码路径中的 `unwrap/expect/panic!`（保留 tests；错误转为结构化响应） ✅ signal handler/header/regex/client 初始化等改为可恢复/可传播错误；crawler fetcher/spider 初始化返回 Result；worker 构造链路改为 Result - `crates/law-eye-api/src/main.rs`、`crates/law-eye-api/src/middleware/request_id.rs`、`crates/law-eye-api/src/routes/auth.rs`、`crates/law-eye-crawler/src/rss.rs`、`crates/law-eye-crawler/src/spider.rs`、`crates/law-eye-crawler/src/pipeline.rs`、`crates/law-eye-worker/src/main.rs`、`crates/law-eye-mcp/src/main.rs`
-- [ ] [SEC-303] API 输入校验基线：写接口启用严格 Schema Validation（拒绝未知字段 + 约束校验 + 统一 4xx）
+- [x] [SEC-303] API 输入校验基线：写接口启用严格 Schema Validation（拒绝未知字段 + 约束校验 + 统一 4xx） ✅ 引入 `ApiJson/ApiQuery` 将 JSON/Query 解析失败统一映射为结构化 4xx（含错误码）；为请求/查询结构体开启 `deny_unknown_fields`；补齐关键字段约束校验（例如 users.update）- `crates/law-eye-api/src/error.rs`、`crates/law-eye-api/src/main.rs`、`crates/law-eye-api/src/auth.rs`、`crates/law-eye-api/src/routes/*.rs`
 
 **审计日期**：2026-01-26  
 **审计对象**：Rust（Axum）后端 + Next.js（React）前端 + Docker 运行栈（PostgreSQL/Redis/n8n）  
