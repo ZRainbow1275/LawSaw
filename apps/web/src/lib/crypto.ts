@@ -11,6 +11,18 @@ const KEY_DB_NAME = "lawsaw_secure_storage";
 const KEY_STORE_NAME = "crypto_keys";
 const KEY_ID = "default";
 
+const ENCRYPTED_PREFIX = "enc:v1:";
+const PLAINTEXT_PREFIX = "plain:v1:";
+
+let warnedPlaintextFallback = false;
+function warnPlaintextFallback(reason: string): void {
+	if (warnedPlaintextFallback) return;
+	warnedPlaintextFallback = true;
+	console.warn(
+		`SecureStorage encryption unavailable; storing PLAINTEXT (${reason}).`,
+	);
+}
+
 let dbPromise: Promise<IDBDatabase> | null = null;
 let keyPromise: Promise<CryptoKey | null> | null = null;
 
@@ -119,17 +131,21 @@ async function getKey(): Promise<CryptoKey | null> {
  * 加密数据
  */
 export async function encryptData(data: unknown): Promise<string> {
-	try {
-		const key = await getKey();
-		if (!key) return safeJsonStringify(data);
+	const json = safeJsonStringify(data);
+	const key = await getKey();
+	if (!key) {
+		warnPlaintextFallback("missing key");
+		return `${PLAINTEXT_PREFIX}${json}`;
+	}
 
+	try {
 		const encoder = new TextEncoder();
 		const iv = crypto.getRandomValues(new Uint8Array(12));
 
 		const encrypted = await crypto.subtle.encrypt(
 			{ name: "AES-GCM", iv },
 			key,
-			encoder.encode(safeJsonStringify(data)),
+			encoder.encode(json),
 		);
 
 		// 合并 IV 和加密数据
@@ -138,10 +154,10 @@ export async function encryptData(data: unknown): Promise<string> {
 		combined.set(new Uint8Array(encrypted), iv.length);
 
 		// Base64 编码
-		return bytesToBase64(combined);
-	} catch {
-		// 降级到普通 JSON
-		return safeJsonStringify(data);
+		return `${ENCRYPTED_PREFIX}${bytesToBase64(combined)}`;
+	} catch (error) {
+		warnPlaintextFallback(error instanceof Error ? error.message : "unknown");
+		return `${PLAINTEXT_PREFIX}${json}`;
 	}
 }
 
@@ -152,9 +168,17 @@ export async function decryptData<T = unknown>(
 	encrypted: string,
 ): Promise<T | null> {
 	try {
-		// 尝试解析为普通 JSON（兼容旧数据）
+		if (encrypted.startsWith(PLAINTEXT_PREFIX)) {
+			return JSON.parse(encrypted.slice(PLAINTEXT_PREFIX.length)) as T;
+		}
+
+		const payload = encrypted.startsWith(ENCRYPTED_PREFIX)
+			? encrypted.slice(ENCRYPTED_PREFIX.length)
+			: encrypted;
+
+		// 兼容旧数据：可能是纯 JSON
 		try {
-			return JSON.parse(encrypted) as T;
+			return JSON.parse(payload) as T;
 		} catch {
 			// 继续尝试解密
 		}
@@ -162,7 +186,7 @@ export async function decryptData<T = unknown>(
 		const key = await getKey();
 		if (!key) return null;
 
-		const combined = base64ToBytes(encrypted);
+		const combined = base64ToBytes(payload);
 		if (combined.length <= 12) return null;
 
 		const iv = combined.slice(0, 12);
@@ -198,13 +222,8 @@ export class SecureStorage {
 	async setItem<T>(key: string, value: T): Promise<void> {
 		if (typeof window === "undefined") return;
 
-		try {
-			const encrypted = await encryptData(value);
-			localStorage.setItem(this.getKey(key), encrypted);
-		} catch {
-			// 降级到普通存储
-			localStorage.setItem(this.getKey(key), safeJsonStringify(value));
-		}
+		const encrypted = await encryptData(value);
+		localStorage.setItem(this.getKey(key), encrypted);
 	}
 
 	async getItem<T>(key: string): Promise<T | null> {
