@@ -20,8 +20,21 @@ if command -v cygpath >/dev/null 2>&1; then
   PKI_DIR_ENV="$(cygpath -m "$PKI_DIR")"
 fi
 export LAW_EYE_ENTERPRISE_PKI_DIR="$PKI_DIR_ENV"
-VAULT_STATE_DIR="${ROOT_DIR}/tmp/enterprise/vault"
-SECRETS_DIR="${ROOT_DIR}/tmp/enterprise/secrets"
+
+DEFAULT_VAULT_STATE_DIR="${DEFAULT_STATE_HOME}/law-eye/enterprise/vault"
+VAULT_STATE_DIR_RAW="${LAW_EYE_ENTERPRISE_VAULT_STATE_DIR:-$DEFAULT_VAULT_STATE_DIR}"
+mkdir -p "$VAULT_STATE_DIR_RAW"
+VAULT_STATE_DIR="$(cd "$VAULT_STATE_DIR_RAW" && pwd)"
+
+DEFAULT_SECRETS_DIR="${DEFAULT_STATE_HOME}/law-eye/enterprise/secrets"
+SECRETS_DIR_RAW="${LAW_EYE_ENTERPRISE_SECRETS_DIR:-$DEFAULT_SECRETS_DIR}"
+mkdir -p "$SECRETS_DIR_RAW"
+SECRETS_DIR="$(cd "$SECRETS_DIR_RAW" && pwd)"
+
+LEGACY_VAULT_STATE_DIR="${ROOT_DIR}/tmp/enterprise/vault"
+if [[ -f "${LEGACY_VAULT_STATE_DIR}/unseal.key" || -f "${LEGACY_VAULT_STATE_DIR}/root.token" || -f "${LEGACY_VAULT_STATE_DIR}/init.json" ]]; then
+  echo "[vault] WARNING: legacy Vault state exists under ${LEGACY_VAULT_STATE_DIR}; move/delete it to avoid key sprawl." >&2
+fi
 
 INIT_JSON="${VAULT_STATE_DIR}/init.json"
 UNSEAL_KEY_FILE="${VAULT_STATE_DIR}/unseal.key"

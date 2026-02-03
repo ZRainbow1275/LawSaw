@@ -1,5 +1,19 @@
 # LawSaw（法眼 / Law Eye）深度审计报告（v2.3）
 
+## 修复任务清单（v2.4 / 2026-02-03）
+
+> 来源：`prompts/audit/01_comprehensive_audit.md`（scorched-earth 静态扫描增量）
+
+### CRITICAL（必须修复）
+- [x] [SEC-301] Enterprise Vault 状态/Unseal key 不得落盘在仓库目录 ✅ 已将默认落盘迁移到用户 state 目录（脚本兼容 Windows Git Bash）
+- [ ] [OPS-301] Postgres 容器非 root 运行（引入 init chown；compose 依赖顺序）
+- [ ] [OPS-302] 增加 `/health/live` 与 `/health/ready` 端点（K8s 探针）
+- [ ] [SEC-302] 前端 HTML 渲染安全加固（DOMPurify URI scheme policy + 媒体/链接属性白名单再收紧）
+
+### HIGH（高优先级）
+- [ ] [REL-301] 移除生产代码路径中的 `unwrap/expect/panic!`（保留 tests；错误转为结构化响应）
+- [ ] [SEC-303] API 输入校验基线：写接口启用严格 Schema Validation（拒绝未知字段 + 约束校验 + 统一 4xx）
+
 **审计日期**：2026-01-26  
 **审计对象**：Rust（Axum）后端 + Next.js（React）前端 + Docker 运行栈（PostgreSQL/Redis/n8n）  
 **审计目标**：面向大型企业 10+ 年商用（安全、可靠、可演进、可运维、可审计、可合规）  
