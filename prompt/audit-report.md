@@ -9,10 +9,12 @@
 - [x] [OPS-301] Postgres 容器非 root 运行 ✅ 引入 `postgres-init` chown + `postgres` 用户运行（compose 依赖顺序已补齐）
 - [x] [OPS-302] 增加 `/health/live` 与 `/health/ready` 端点（K8s 探针） ✅ `/health` 保持为 readiness；`/health/live` 不依赖外部服务，`/health/ready` 依赖 postgres/redis 并带 2s timeout - `crates/law-eye-api/src/routes/health.rs`
 - [x] [SEC-302] 前端 HTML 渲染安全加固（DOMPurify URI scheme policy + 媒体/链接属性白名单再收紧） ✅ 禁止未知 URI scheme（仅允许 http/https/mailto/tel）；移除 video/audio/source；对 a/img 做二次校验并强制 `_blank` 外链 `rel=noopener noreferrer` - `apps/web/src/components/article/article-content.tsx`
+- [x] [OPS-303] Compose init 容器 root 运行需隔离（禁网/最小 capabilities/只读 rootfs/no-new-privileges）✅ `postgres-init/redis-init/minio-init` 已设置 `network_mode: none`、`cap_drop: ALL` + `cap_add: CHOWN`、`read_only: true`、`tmpfs: /tmp`、`no-new-privileges` - `docker-compose.yml`
 
 ### HIGH（高优先级）
 - [x] [REL-301] 移除生产代码路径中的 `unwrap/expect/panic!`（保留 tests；错误转为结构化响应） ✅ signal handler/header/regex/client 初始化等改为可恢复/可传播错误；crawler fetcher/spider 初始化返回 Result；worker 构造链路改为 Result - `crates/law-eye-api/src/main.rs`、`crates/law-eye-api/src/middleware/request_id.rs`、`crates/law-eye-api/src/routes/auth.rs`、`crates/law-eye-crawler/src/rss.rs`、`crates/law-eye-crawler/src/spider.rs`、`crates/law-eye-crawler/src/pipeline.rs`、`crates/law-eye-worker/src/main.rs`、`crates/law-eye-mcp/src/main.rs`
 - [x] [SEC-303] API 输入校验基线：写接口启用严格 Schema Validation（拒绝未知字段 + 约束校验 + 统一 4xx） ✅ 引入 `ApiJson/ApiQuery` 将 JSON/Query 解析失败统一映射为结构化 4xx（含错误码）；为请求/查询结构体开启 `deny_unknown_fields`；补齐关键字段约束校验（例如 users.update）- `crates/law-eye-api/src/error.rs`、`crates/law-eye-api/src/main.rs`、`crates/law-eye-api/src/auth.rs`、`crates/law-eye-api/src/routes/*.rs`
+- [ ] [SUP-301] n8n 镜像禁止使用 `:latest`（固定版本/摘要，支持 env override）- `docker-compose.yml`
 
 **审计日期**：2026-01-26  
 **审计对象**：Rust（Axum）后端 + Next.js（React）前端 + Docker 运行栈（PostgreSQL/Redis/n8n）  
