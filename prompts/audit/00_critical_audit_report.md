@@ -8,7 +8,7 @@
 
 ### CRITICAL（必须修复）
 - [x] [SEC-001] Redact 示例 DSN 内嵌口令（copy/paste 扩散风险） ✅ - `config/mcp-config.example.json:6`
-- [ ] [SEC-002] CI 增加 Secret 扫描（gitleaks/trufflehog） - `.github/workflows/ci.yml`
+- [x] [SEC-002] CI 增加 Secret 扫描（TruffleHog） ✅ - `.github/workflows/ci.yml`
 - [ ] [SEC-003] Worker Webhook 出站加固：URL 校验 + 超时（防 SSRF/无限挂起） - `crates/law-eye-worker/src/main.rs:870`
 - [ ] [SEC-004] Sources URL SSRF 策略改为 fail-closed（含 DNS 解析阻断私网/链路本地） - `crates/law-eye-api/src/routes/sources.rs:36`
 - [ ] [SEC-005] HTML 渲染收口：DOMPurify allowlist/URI policy + CSP 背书 - `apps/web/src/components/article/article-content.tsx:20`
@@ -53,7 +53,7 @@
 - [x] Structured logging in production (JSON tracing in `crates/law-eye-api/src/main.rs`)
 - [x] Metrics endpoint with production token gating (Prometheus exporter in `crates/law-eye-api/src/main.rs`)
 - [x] E2E test suite (Playwright under `apps/web/e2e`)
-- [ ] Secret scanning in CI (gitleaks/trufflehog) to catch `.env`/`*.key` incidents early
+- [x] Secret scanning in CI (TruffleHog) ✅
 - [ ] API security header baseline (CSP/HSTS/Permissions-Policy/nosniff/frame-ancestors) at the edge
 - [ ] Centralized client-side error reporting (web telemetry) to avoid silent failures on the frontend
 

@@ -15,6 +15,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  secrets:
+    name: Secrets (TruffleHog)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Secret Scanning
+        uses: trufflesecurity/trufflehog@v3.91.2
+        with:
+          extra_args: --log-level=2 --results=verified,unknown
+
   rust:
     name: Rust
     runs-on: ubuntu-latest
