@@ -1,13 +1,13 @@
 use anyhow::Context;
 use law_eye_ai::{AiService, ClassifyResult, RiskAssessment, SummaryResult, TagsResult};
 use law_eye_common::AppConfig;
+use law_eye_common::egress::{validate_outbound_url, OutboundUrlPolicy};
 use law_eye_core::{ArticleService, SourceService};
 use law_eye_crawler::{RawArticle, RssFetcher, SpiderConfig, WebSpider};
 use law_eye_db::{create_pool_with_session_role, create_pool_with_session_role_retry, CreateArticle};
 use law_eye_queue::{AiTask, AiTaskType, IngestTask, PushTask, ReservedTask, TaskQueue};
 use serde_json::json;
 use sqlx::PgPool;
-use std::net::IpAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::signal;
@@ -28,71 +28,11 @@ const VISIBILITY_TIMEOUT_INGEST_MS: i64 = 10 * 60 * 1_000;
 const VISIBILITY_TIMEOUT_AI_MS: i64 = 20 * 60 * 1_000;
 const VISIBILITY_TIMEOUT_PUSH_MS: i64 = 5 * 60 * 1_000;
 
-fn allow_internal_webhook_urls(is_production: bool) -> bool {
-    // Local dev/test environments may need to post to localhost.
-    // In production, deny internal/loopback by default to reduce SSRF risk.
-    !is_production
-}
-
-fn is_internal_ip(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(v4) => {
-            v4.is_private()
-                || v4.is_loopback()
-                || v4.is_link_local()
-                || v4.is_multicast()
-                || v4.is_broadcast()
-                || v4.is_unspecified()
-        }
-        IpAddr::V6(v6) => {
-            v6.is_loopback()
-                || v6.is_unique_local()
-                || v6.is_unicast_link_local()
-                || v6.is_multicast()
-                || v6.is_unspecified()
-        }
-    }
-}
-
-fn is_internal_host(host: &str) -> bool {
-    let lower = host.trim().to_ascii_lowercase();
-    if lower == "localhost" || lower.ends_with(".localhost") {
-        return true;
-    }
-    lower
-        .parse::<IpAddr>()
-        .ok()
-        .is_some_and(is_internal_ip)
-}
-
-fn validate_webhook_url(raw: &str, is_production: bool) -> anyhow::Result<reqwest::Url> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        anyhow::bail!("webhook_url cannot be empty");
-    }
-
-    let url = reqwest::Url::parse(trimmed).context("parse webhook_url")?;
-    match url.scheme() {
-        "http" | "https" => {}
-        _ => anyhow::bail!("webhook_url scheme must be http or https"),
-    }
-
-    if is_production && url.scheme() != "https" {
-        anyhow::bail!("webhook_url must be https in production");
-    }
-
-    if !url.username().is_empty() || url.password().is_some() {
-        anyhow::bail!("webhook_url must not contain embedded credentials");
-    }
-
-    let host = url
-        .host_str()
-        .ok_or_else(|| anyhow::anyhow!("webhook_url must include host"))?;
-
-    if !allow_internal_webhook_urls(is_production) && is_internal_host(host) {
-        anyhow::bail!("webhook_url host is internal and not allowed in production");
-    }
-
+async fn validate_webhook_url(raw: &str, allow_internal: bool) -> anyhow::Result<reqwest::Url> {
+    let policy = OutboundUrlPolicy::https_or_http_internal(allow_internal);
+    let url = validate_outbound_url(raw, &policy)
+        .await
+        .map_err(|e| anyhow::anyhow!("{}: {}", e.code(), e))?;
     Ok(url)
 }
 
@@ -100,26 +40,50 @@ fn validate_webhook_url(raw: &str, is_production: bool) -> anyhow::Result<reqwes
 mod webhook_url_tests {
     use super::*;
 
-    #[test]
-    fn validate_webhook_url_requires_https_in_production() {
-        assert!(validate_webhook_url("http://example.com/hook", true).is_err());
-        assert!(validate_webhook_url("https://example.com/hook", true).is_ok());
+    #[tokio::test]
+    async fn validate_webhook_url_requires_https_for_external_by_default() {
+        assert!(
+            validate_webhook_url("http://example.com/hook", false)
+                .await
+                .is_err()
+        );
+        assert!(
+            validate_webhook_url("https://example.com/hook", false)
+                .await
+                .is_ok()
+        );
     }
 
-    #[test]
-    fn validate_webhook_url_blocks_internal_hosts_in_production() {
-        assert!(validate_webhook_url("https://127.0.0.1/hook", true).is_err());
-        assert!(validate_webhook_url("https://localhost/hook", true).is_err());
+    #[tokio::test]
+    async fn validate_webhook_url_blocks_internal_hosts_by_default() {
+        assert!(
+            validate_webhook_url("https://127.0.0.1/hook", false)
+                .await
+                .is_err()
+        );
+        assert!(
+            validate_webhook_url("https://localhost/hook", false)
+                .await
+                .is_err()
+        );
     }
 
-    #[test]
-    fn validate_webhook_url_allows_localhost_in_non_production() {
-        assert!(validate_webhook_url("http://127.0.0.1:1234/hook", false).is_ok());
+    #[tokio::test]
+    async fn validate_webhook_url_allows_localhost_when_configured() {
+        assert!(
+            validate_webhook_url("http://127.0.0.1:1234/hook", true)
+                .await
+                .is_ok()
+        );
     }
 
-    #[test]
-    fn validate_webhook_url_rejects_userinfo_credentials() {
-        assert!(validate_webhook_url("https://user:pass@example.com/hook", true).is_err());
+    #[tokio::test]
+    async fn validate_webhook_url_rejects_userinfo_credentials() {
+        assert!(
+            validate_webhook_url("https://user:pass@example.com/hook", false)
+                .await
+                .is_err()
+        );
     }
 }
 
@@ -130,7 +94,8 @@ struct Worker {
     web_spider: WebSpider,
     ai_service: Option<AiService>,
     push_http_client: reqwest::Client,
-    is_production: bool,
+    allow_internal_source_urls: bool,
+    allow_internal_webhook_urls: bool,
     shutdown: Arc<AtomicBool>,
 }
 
@@ -140,7 +105,8 @@ impl Worker {
         task_queue: TaskQueue,
         ai_service: Option<AiService>,
         shutdown: Arc<AtomicBool>,
-        is_production: bool,
+        allow_internal_source_urls: bool,
+        allow_internal_webhook_urls: bool,
         push_http_client: reqwest::Client,
     ) -> Self {
         Self {
@@ -150,7 +116,8 @@ impl Worker {
             web_spider: WebSpider::new(),
             ai_service,
             push_http_client,
-            is_production,
+            allow_internal_source_urls,
+            allow_internal_webhook_urls,
             shutdown,
         }
     }
@@ -452,7 +419,10 @@ impl Worker {
         let source_service = SourceService::new(self.pool.clone());
 
         let articles = match task.source_type.as_str() {
-            "rss" => self.rss_fetcher.fetch(&task.url).await,
+            "rss" => self
+                .rss_fetcher
+                .fetch(&task.url, self.allow_internal_source_urls)
+                .await,
             "spider" => {
                 let config: SpiderConfig = match serde_json::from_value(task.config) {
                     Ok(c) => c,
@@ -465,7 +435,9 @@ impl Worker {
                         return Err(anyhow::anyhow!(msg));
                     }
                 };
-                self.web_spider.fetch(&task.url, &config).await
+                self.web_spider
+                    .fetch(&task.url, &config, self.allow_internal_source_urls)
+                    .await
             }
             _ => {
                 let msg = format!("Unknown source type: {}", task.source_type);
@@ -969,7 +941,8 @@ impl Worker {
             warn!("Push task missing tenant_id; falling back to default tenant");
         }
 
-        let webhook_url = validate_webhook_url(&task.webhook_url, self.is_production)?;
+        let webhook_url =
+            validate_webhook_url(&task.webhook_url, self.allow_internal_webhook_urls).await?;
         let article_service = ArticleService::new(self.pool.clone());
 
         let mut articles = Vec::new();
@@ -1175,6 +1148,14 @@ async fn main() -> anyhow::Result<()> {
         .build()
         .context("build webhook http client")?;
 
-    let worker = Worker::new(pool, task_queue, ai_service, shutdown, is_production, push_http_client);
+    let worker = Worker::new(
+        pool,
+        task_queue,
+        ai_service,
+        shutdown,
+        config.security.allow_internal_source_urls,
+        config.security.allow_internal_webhook_urls,
+        push_http_client,
+    );
     worker.run().await
 }

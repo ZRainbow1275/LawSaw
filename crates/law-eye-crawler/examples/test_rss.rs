@@ -40,7 +40,7 @@ async fn main() -> anyhow::Result<()> {
     for (name, url) in rss_sources {
         println!("📡 正在抓取: {} ({})", name, url);
 
-        match fetcher.fetch(url).await {
+        match fetcher.fetch(url, false).await {
             Ok(articles) => {
                 let processed = pipeline.process_batch(articles);
                 println!("   ✅ 成功获取 {} 篇文章", processed.len());

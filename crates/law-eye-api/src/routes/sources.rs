@@ -16,57 +16,22 @@ use crate::state::AppState;
 use crate::{ApiError, ApiResult, AppError};
 use law_eye_db::{CreateAuditLog, CreateSource};
 use law_eye_queue::IngestTask;
+use law_eye_common::egress::{validate_outbound_url, OutboundUrlPolicy};
 use serde_json::Value;
-use std::net::IpAddr;
 use std::net::SocketAddr;
 use std::time::Duration;
-use tokio::net::lookup_host;
-use tokio::time::timeout;
-use url::{Host, Url};
 
 const SOURCE_NAME_MAX_LEN: usize = 100;
 const SOURCE_URL_MAX_LEN: usize = 2048;
 const SOURCE_SCHEDULE_MAX_LEN: usize = 128;
 const SOURCE_PRIORITY_MIN: i32 = 0;
 const SOURCE_PRIORITY_MAX: i32 = 100;
-const DNS_LOOKUP_TIMEOUT_SECS: u64 = 2;
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_sources).post(create_source))
         .route("/{id}", get(get_source))
         .route("/{id}/fetch", post(trigger_fetch))
-}
-
-fn is_internal_ip(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(v4) => {
-            v4.is_private()
-                || v4.is_loopback()
-                || v4.is_link_local()
-                || v4.is_multicast()
-                || v4.is_broadcast()
-                || v4.is_unspecified()
-        }
-        IpAddr::V6(v6) => {
-            v6.is_loopback()
-                || v6.is_unique_local()
-                || v6.is_unicast_link_local()
-                || v6.is_multicast()
-                || v6.is_unspecified()
-        }
-    }
-}
-
-fn is_internal_host<S: AsRef<str>>(host: &Host<S>) -> bool {
-    match host {
-        Host::Domain(domain) => {
-            let lower = domain.as_ref().trim().to_ascii_lowercase();
-            lower == "localhost" || lower.ends_with(".localhost")
-        }
-        Host::Ipv4(ip) => is_internal_ip(IpAddr::V4(*ip)),
-        Host::Ipv6(ip) => is_internal_ip(IpAddr::V6(*ip)),
-    }
 }
 
 fn validate_source_name(name: &str) -> Result<String, AppError> {
@@ -83,86 +48,15 @@ fn validate_source_name(name: &str) -> Result<String, AppError> {
 }
 
 async fn validate_source_url(raw: &str, allow_internal: bool) -> Result<String, AppError> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return Err(AppError::validation_with_code(
-            "INVALID_URL",
-            "URL cannot be empty",
-        ));
-    }
-    if trimmed.len() > SOURCE_URL_MAX_LEN {
-        return Err(AppError::validation_with_code(
-            "INVALID_URL",
-            format!("URL too long (max {SOURCE_URL_MAX_LEN})"),
-        ));
-    }
+    let policy = OutboundUrlPolicy::http_and_https(allow_internal)
+        .with_max_len(SOURCE_URL_MAX_LEN)
+        .with_dns_lookup_timeout(Duration::from_secs(2));
 
-    let url = Url::parse(trimmed).map_err(|_| {
-        AppError::validation_with_code("INVALID_URL", "URL must be a valid http/https URL")
-    })?;
+    let url = validate_outbound_url(raw, &policy)
+        .await
+        .map_err(|err| AppError::validation_with_code(err.code(), err.to_string()))?;
 
-    match url.scheme() {
-        "http" | "https" => {}
-        _ => {
-            return Err(AppError::validation_with_code(
-                "INVALID_URL",
-                "URL scheme must be http or https",
-            ))
-        }
-    }
-
-    if !url.username().is_empty() || url.password().is_some() {
-        return Err(AppError::validation_with_code(
-            "INVALID_URL",
-            "URL must not contain embedded credentials",
-        ));
-    }
-
-    let host = url.host().ok_or_else(|| {
-        AppError::validation_with_code("INVALID_URL", "URL must include a host")
-    })?;
-
-    if !allow_internal {
-        if is_internal_host(&host) {
-            return Err(AppError::validation_with_code(
-                "SSRF_BLOCKED",
-                "Internal/loopback URLs are not allowed",
-            ));
-        }
-
-        // Resolve domain -> IPs and block if it maps to internal ranges (e.g., docker service DNS).
-        if let Host::Domain(domain) = &host {
-            let port = url
-                .port_or_known_default()
-                .unwrap_or_else(|| if url.scheme() == "https" { 443 } else { 80 });
-
-            let lookup = timeout(
-                Duration::from_secs(DNS_LOOKUP_TIMEOUT_SECS),
-                lookup_host((domain.as_ref(), port)),
-            )
-            .await
-            .map_err(|_| {
-                AppError::validation_with_code(
-                    "INVALID_URL",
-                    "URL host DNS resolution timed out",
-                )
-            })?
-            .map_err(|_| {
-                AppError::validation_with_code("INVALID_URL", "URL host DNS resolution failed")
-            })?;
-
-            for addr in lookup {
-                if is_internal_ip(addr.ip()) {
-                    return Err(AppError::validation_with_code(
-                        "SSRF_BLOCKED",
-                        "URL resolves to an internal IP and is not allowed",
-                    ));
-                }
-            }
-        }
-    }
-
-    Ok(trimmed.to_string())
+    Ok(url.to_string())
 }
 
 fn validate_source_schedule(schedule: Option<String>) -> Result<Option<String>, AppError> {

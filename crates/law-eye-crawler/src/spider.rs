@@ -1,4 +1,5 @@
 use crate::RawArticle;
+use law_eye_common::egress::{validate_outbound_url, OutboundUrlPolicy};
 use law_eye_common::{Error, Result};
 use reqwest::Client;
 use scraper::{Html, Selector};
@@ -30,12 +31,22 @@ impl WebSpider {
         }
     }
 
-    pub async fn fetch(&self, url: &str, config: &SpiderConfig) -> Result<Vec<RawArticle>> {
-        info!("Spidering page: {}", url);
+    pub async fn fetch(
+        &self,
+        url: &str,
+        config: &SpiderConfig,
+        allow_internal: bool,
+    ) -> Result<Vec<RawArticle>> {
+        let policy = OutboundUrlPolicy::http_and_https(allow_internal);
+        let page_url = validate_outbound_url(url, &policy)
+            .await
+            .map_err(|e| Error::Validation(format!("{}: {}", e.code(), e)))?;
+
+        info!("Spidering page: {}", page_url);
 
         let response = self
             .client
-            .get(url)
+            .get(page_url.as_str())
             .send()
             .await
             .map_err(|e| Error::Http(e.to_string()))?;
@@ -73,8 +84,8 @@ impl WebSpider {
                 let full_link = if link.starts_with("http") {
                     link
                 } else {
-                    let base = url::Url::parse(url).map_err(|e| Error::Parse(e.to_string()))?;
-                    base.join(&link)
+                    page_url
+                        .join(&link)
                         .map_err(|e| Error::Parse(e.to_string()))?
                         .to_string()
                 };

@@ -25,7 +25,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     match spider
-        .fetch("https://news.ycombinator.com/", &hn_config)
+        .fetch("https://news.ycombinator.com/", &hn_config, false)
         .await
     {
         Ok(articles) => {
@@ -60,7 +60,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     match spider
-        .fetch("https://github.com/trending/rust?since=daily", &gh_config)
+        .fetch("https://github.com/trending/rust?since=daily", &gh_config, false)
         .await
     {
         Ok(articles) => {
@@ -89,6 +89,7 @@ async fn main() -> anyhow::Result<()> {
         .fetch(
             "https://www.moj.gov.cn/pub/sfbgw/ywdt/ywdt.html",
             &moj_config,
+            false,
         )
         .await
     {

@@ -55,6 +55,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 						endpoint: error.endpoint,
 						status: error.status,
 						requestId: error.requestId,
+						cause: (error as { cause?: unknown }).cause,
 					},
 				});
 			}

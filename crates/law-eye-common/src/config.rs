@@ -243,6 +243,12 @@ pub struct SecurityConfig {
     /// Allow internal/loopback/private URLs for user-provided sources (development/testing only).
     #[serde(default)]
     pub allow_internal_source_urls: bool,
+    /// Allow internal/loopback/private URLs for outbound webhooks (development/testing only).
+    ///
+    /// This is a high-risk toggle. Prefer explicit allowlists at the boundary instead of broadly
+    /// enabling internal destinations.
+    #[serde(default)]
+    pub allow_internal_webhook_urls: bool,
 }
 
 impl AppConfig {

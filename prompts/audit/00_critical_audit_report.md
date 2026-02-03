@@ -15,6 +15,7 @@
 - [x] [SEC-006] 前端“加密”fail-open 改造（显式标记明文/加密 + warn） ✅ - `apps/web/src/lib/crypto.ts:121`
 - [x] [REL-001] MCP 服务器移除 `unwrap()` panic（返回结构化错误响应） ✅ - `crates/law-eye-mcp/src/server.rs:68`
 - [x] [OBS-001] 清理/收敛空 `catch {}`（增加 `console.warn` 打点，保留错误对象） ✅ - `apps/web/src/app/sw/route.ts:85`
+- [x] [SEC-008] 出站 URL 策略统一：收口到 `law-eye-common::egress`，并在 API/worker/crawler 的真实发包边界再次校验 ✅（DNS 解析阻断私网/链路本地、超时、禁止 userinfo、协议白名单） - `crates/law-eye-common/src/egress.rs`
 
 ### OPS（工作区卫生）
 - [x] [OPS-001] 外移 enterprise PKI：改用 `LAW_EYE_ENTERPRISE_PKI_DIR`（默认用户 state 目录）+ 脚本拒绝写入仓库根目录 ✅ - `docker-compose.enterprise.yml`
@@ -29,8 +30,8 @@
 ### VERIFY（回归验证记录）
 - [x] [VER-001] `cargo test --workspace` ✅（2026-02-03）
 - [x] [VER-002] `pnpm -C apps/web test` ✅（2026-02-03）
-- [x] [VER-003] Playwright E2E ✅（2026-02-03；`E2E_BASE_URL=http://127.0.0.1:8849`，`E2E_RSS_URL=http://rss-fixture:8000/rss.xml`；6 passed）
-- [x] [VER-004] Monkey（API/Web）✅（2026-02-03；API：`p95_2xx=359ms` @ 300req/24c（门槛 500ms）；Web：`p95_2xx=145ms` @ 200req/16c）
+- [x] [VER-003] Playwright E2E ✅（2026-02-03；`scripts/no-dockerhub/e2e.sh`；`E2E_BASE_URL=http://127.0.0.1:18849`，`E2E_RSS_URL=http://127.0.0.1:53151/rss.xml`；6 passed）
+- [x] [VER-004] Monkey（API/Web）✅（2026-02-03；API：`p95_2xx=63ms` @ 300req/24c（门槛 200ms）；Web：`p95_2xx=40ms` @ 200req/16c（门槛 200ms））
 
 ##  CRITICAL VULNERABILITIES (Must Fix Immediately)
 *(Issues that compromise Security or Uptime)*

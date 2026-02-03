@@ -115,7 +115,9 @@ fn test_feed_rs_parsing_atom_feed() {
 async fn test_rss_fetch_from_real_source() {
     let fetcher = RssFetcher::new();
     // 使用一个稳定的公共 RSS 源进行测试
-    let result = fetcher.fetch("https://feeds.bbci.co.uk/news/rss.xml").await;
+    let result = fetcher
+        .fetch("https://feeds.bbci.co.uk/news/rss.xml", false)
+        .await;
 
     // 我们只检查是否能够获取到文章，不检查具体内容
     if let Ok(articles) = result {

@@ -1,5 +1,6 @@
 use crate::RawArticle;
 use feed_rs::parser;
+use law_eye_common::egress::{validate_outbound_url, OutboundUrlPolicy};
 use law_eye_common::{Error, Result};
 use reqwest::Client;
 use tracing::info;
@@ -19,12 +20,17 @@ impl RssFetcher {
         }
     }
 
-    pub async fn fetch(&self, url: &str) -> Result<Vec<RawArticle>> {
+    pub async fn fetch(&self, url: &str, allow_internal: bool) -> Result<Vec<RawArticle>> {
+        let policy = OutboundUrlPolicy::http_and_https(allow_internal);
+        let url = validate_outbound_url(url, &policy)
+            .await
+            .map_err(|e| Error::Validation(format!("{}: {}", e.code(), e)))?;
+
         info!("Fetching RSS feed: {}", url);
 
         let response = self
             .client
-            .get(url)
+            .get(url.as_str())
             .send()
             .await
             .map_err(|e| Error::Http(e.to_string()))?;

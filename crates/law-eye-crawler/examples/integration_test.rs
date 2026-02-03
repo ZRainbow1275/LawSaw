@@ -30,7 +30,7 @@ async fn main() -> anyhow::Result<()> {
 
     let mut rss_total = 0;
     for (name, url) in &rss_sources {
-        match rss_fetcher.fetch(url).await {
+        match rss_fetcher.fetch(url, false).await {
             Ok(articles) => {
                 println!("  ✅ {} - {} 篇文章", name, articles.len());
                 rss_total += articles.len();
@@ -61,7 +61,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     match spider
-        .fetch("https://news.ycombinator.com/", &hn_config)
+        .fetch("https://news.ycombinator.com/", &hn_config, false)
         .await
     {
         Ok(articles) => {
@@ -134,7 +134,7 @@ async fn main() -> anyhow::Result<()> {
 
     // 获取真实数据检验
     match rss_fetcher
-        .fetch("https://feeds.bbci.co.uk/zhongwen/simp/rss.xml")
+        .fetch("https://feeds.bbci.co.uk/zhongwen/simp/rss.xml", false)
         .await
     {
         Ok(articles) => {
