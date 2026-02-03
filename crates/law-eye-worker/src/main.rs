@@ -7,6 +7,7 @@ use law_eye_db::{create_pool_with_session_role, create_pool_with_session_role_re
 use law_eye_queue::{AiTask, AiTaskType, IngestTask, PushTask, ReservedTask, TaskQueue};
 use serde_json::json;
 use sqlx::PgPool;
+use std::net::IpAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::signal;
@@ -27,12 +28,109 @@ const VISIBILITY_TIMEOUT_INGEST_MS: i64 = 10 * 60 * 1_000;
 const VISIBILITY_TIMEOUT_AI_MS: i64 = 20 * 60 * 1_000;
 const VISIBILITY_TIMEOUT_PUSH_MS: i64 = 5 * 60 * 1_000;
 
+fn allow_internal_webhook_urls(is_production: bool) -> bool {
+    // Local dev/test environments may need to post to localhost.
+    // In production, deny internal/loopback by default to reduce SSRF risk.
+    !is_production
+}
+
+fn is_internal_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                || v4.is_multicast()
+                || v4.is_broadcast()
+                || v4.is_unspecified()
+        }
+        IpAddr::V6(v6) => {
+            v6.is_loopback()
+                || v6.is_unique_local()
+                || v6.is_unicast_link_local()
+                || v6.is_multicast()
+                || v6.is_unspecified()
+        }
+    }
+}
+
+fn is_internal_host(host: &str) -> bool {
+    let lower = host.trim().to_ascii_lowercase();
+    if lower == "localhost" || lower.ends_with(".localhost") {
+        return true;
+    }
+    lower
+        .parse::<IpAddr>()
+        .ok()
+        .is_some_and(is_internal_ip)
+}
+
+fn validate_webhook_url(raw: &str, is_production: bool) -> anyhow::Result<reqwest::Url> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("webhook_url cannot be empty");
+    }
+
+    let url = reqwest::Url::parse(trimmed).context("parse webhook_url")?;
+    match url.scheme() {
+        "http" | "https" => {}
+        _ => anyhow::bail!("webhook_url scheme must be http or https"),
+    }
+
+    if is_production && url.scheme() != "https" {
+        anyhow::bail!("webhook_url must be https in production");
+    }
+
+    if !url.username().is_empty() || url.password().is_some() {
+        anyhow::bail!("webhook_url must not contain embedded credentials");
+    }
+
+    let host = url
+        .host_str()
+        .ok_or_else(|| anyhow::anyhow!("webhook_url must include host"))?;
+
+    if !allow_internal_webhook_urls(is_production) && is_internal_host(host) {
+        anyhow::bail!("webhook_url host is internal and not allowed in production");
+    }
+
+    Ok(url)
+}
+
+#[cfg(test)]
+mod webhook_url_tests {
+    use super::*;
+
+    #[test]
+    fn validate_webhook_url_requires_https_in_production() {
+        assert!(validate_webhook_url("http://example.com/hook", true).is_err());
+        assert!(validate_webhook_url("https://example.com/hook", true).is_ok());
+    }
+
+    #[test]
+    fn validate_webhook_url_blocks_internal_hosts_in_production() {
+        assert!(validate_webhook_url("https://127.0.0.1/hook", true).is_err());
+        assert!(validate_webhook_url("https://localhost/hook", true).is_err());
+    }
+
+    #[test]
+    fn validate_webhook_url_allows_localhost_in_non_production() {
+        assert!(validate_webhook_url("http://127.0.0.1:1234/hook", false).is_ok());
+    }
+
+    #[test]
+    fn validate_webhook_url_rejects_userinfo_credentials() {
+        assert!(validate_webhook_url("https://user:pass@example.com/hook", true).is_err());
+    }
+}
+
 struct Worker {
     pool: PgPool,
     task_queue: Arc<TaskQueue>,
     rss_fetcher: RssFetcher,
     web_spider: WebSpider,
     ai_service: Option<AiService>,
+    push_http_client: reqwest::Client,
+    is_production: bool,
     shutdown: Arc<AtomicBool>,
 }
 
@@ -42,6 +140,8 @@ impl Worker {
         task_queue: TaskQueue,
         ai_service: Option<AiService>,
         shutdown: Arc<AtomicBool>,
+        is_production: bool,
+        push_http_client: reqwest::Client,
     ) -> Self {
         Self {
             pool,
@@ -49,6 +149,8 @@ impl Worker {
             rss_fetcher: RssFetcher::new(),
             web_spider: WebSpider::new(),
             ai_service,
+            push_http_client,
+            is_production,
             shutdown,
         }
     }
@@ -867,7 +969,7 @@ impl Worker {
             warn!("Push task missing tenant_id; falling back to default tenant");
         }
 
-        let client = reqwest::Client::new();
+        let webhook_url = validate_webhook_url(&task.webhook_url, self.is_production)?;
         let article_service = ArticleService::new(self.pool.clone());
 
         let mut articles = Vec::new();
@@ -888,7 +990,13 @@ impl Worker {
             "articles": articles.len()
         });
 
-        match client.post(&task.webhook_url).json(&payload).send().await {
+        match self
+            .push_http_client
+            .post(webhook_url)
+            .json(&payload)
+            .send()
+            .await
+        {
             Ok(resp) => {
                 if resp.status().is_success() {
                     info!("Push sent successfully");
@@ -1052,6 +1160,21 @@ async fn main() -> anyhow::Result<()> {
         shutdown_clone.store(true, Ordering::Relaxed);
     });
 
-    let worker = Worker::new(pool, task_queue, ai_service, shutdown);
+    let push_timeout_ms = if config.server.request_timeout_ms == 0 {
+        warn!("LAW_EYE__SERVER__REQUEST_TIMEOUT_MS is 0; using 30000ms for outbound webhook timeout");
+        30_000
+    } else {
+        config.server.request_timeout_ms
+    };
+
+    let push_http_client = reqwest::Client::builder()
+        .timeout(Duration::from_millis(push_timeout_ms))
+        .connect_timeout(Duration::from_secs(5))
+        .redirect(reqwest::redirect::Policy::none())
+        .user_agent("LawEyeWorker/1.0")
+        .build()
+        .context("build webhook http client")?;
+
+    let worker = Worker::new(pool, task_queue, ai_service, shutdown, is_production, push_http_client);
     worker.run().await
 }
