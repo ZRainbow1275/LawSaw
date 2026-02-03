@@ -20,8 +20,18 @@ pub struct HealthResponse {
     pub redis: DependencyHealth,
 }
 
+#[derive(Serialize, ToSchema)]
+pub struct LivenessResponse {
+    pub status: String,
+    pub version: String,
+}
+
 pub fn router() -> Router<crate::state::AppState> {
-    Router::new().route("/", get(health_check))
+    Router::new()
+        // Backward-compatible: keep `/health` as readiness check.
+        .route("/", get(health_check))
+        .route("/ready", get(ready_check))
+        .route("/live", get(live_check))
 }
 
 #[utoipa::path(
@@ -33,6 +43,26 @@ pub fn router() -> Router<crate::state::AppState> {
     )
 )]
 pub(crate) async fn health_check(
+    State(state): State<AppState>,
+) -> (StatusCode, Json<HealthResponse>) {
+    readiness_check(State(state)).await
+}
+
+#[utoipa::path(
+    get,
+    path = "/health/ready",
+    responses(
+        (status = 200, description = "Service is ready", body = HealthResponse),
+        (status = 503, description = "Service is not ready", body = HealthResponse)
+    )
+)]
+pub(crate) async fn ready_check(
+    State(state): State<AppState>,
+) -> (StatusCode, Json<HealthResponse>) {
+    readiness_check(State(state)).await
+}
+
+async fn readiness_check(
     State(state): State<AppState>,
 ) -> (StatusCode, Json<HealthResponse>) {
     let check_timeout = Duration::from_secs(2);
@@ -80,6 +110,21 @@ pub(crate) async fn health_check(
             version: env!("CARGO_PKG_VERSION").to_string(),
             postgres: DependencyHealth { ok: postgres_ok },
             redis: DependencyHealth { ok: redis_ok },
+        }),
+    )
+}
+
+#[utoipa::path(
+    get,
+    path = "/health/live",
+    responses((status = 200, description = "Service is alive", body = LivenessResponse))
+)]
+pub(crate) async fn live_check() -> (StatusCode, Json<LivenessResponse>) {
+    (
+        StatusCode::OK,
+        Json(LivenessResponse {
+            status: "ok".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
         }),
     )
 }

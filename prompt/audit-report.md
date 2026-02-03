@@ -7,7 +7,7 @@
 ### CRITICAL（必须修复）
 - [x] [SEC-301] Enterprise Vault 状态/Unseal key 不得落盘在仓库目录 ✅ 已将默认落盘迁移到用户 state 目录（脚本兼容 Windows Git Bash）
 - [x] [OPS-301] Postgres 容器非 root 运行 ✅ 引入 `postgres-init` chown + `postgres` 用户运行（compose 依赖顺序已补齐）
-- [ ] [OPS-302] 增加 `/health/live` 与 `/health/ready` 端点（K8s 探针）
+- [x] [OPS-302] 增加 `/health/live` 与 `/health/ready` 端点（K8s 探针） ✅ `/health` 保持为 readiness；`/health/live` 不依赖外部服务，`/health/ready` 依赖 postgres/redis 并带 2s timeout - `crates/law-eye-api/src/routes/health.rs`
 - [ ] [SEC-302] 前端 HTML 渲染安全加固（DOMPurify URI scheme policy + 媒体/链接属性白名单再收紧）
 
 ### HIGH（高优先级）
