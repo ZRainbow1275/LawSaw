@@ -277,7 +277,7 @@ impl Default for AppConfig {
                 port: 3000,
             },
             database: DatabaseConfig {
-                url: "postgres://law_eye:law_eye@localhost:5432/law_eye".to_string(),
+                url: "postgres://law_eye:your_password@localhost:5432/law_eye".to_string(),
                 max_connections: 10,
             },
             redis: RedisConfig {
@@ -1874,7 +1874,7 @@ host = "0.0.0.0"
 port = 3000
 
 [database]
-url = "postgres://law_eye:law_eye@localhost:5432/law_eye"
+url = "postgres://law_eye:your_password@localhost:5432/law_eye"
 max_connections = 10
 
 [redis]
@@ -1889,7 +1889,7 @@ LAW_EYE__SERVER__HOST=0.0.0.0
 LAW_EYE__SERVER__PORT=3000
 
 # Database
-LAW_EYE__DATABASE__URL=postgres://law_eye:law_eye@localhost:5432/law_eye
+LAW_EYE__DATABASE__URL=postgres://law_eye:your_password@localhost:5432/law_eye
 LAW_EYE__DATABASE__MAX_CONNECTIONS=10
 
 # Redis
@@ -1911,7 +1911,7 @@ services:
     environment:
       POSTGRES_DB: law_eye
       POSTGRES_USER: law_eye
-      POSTGRES_PASSWORD: law_eye
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     ports:
       - "5432:5432"
     volumes:

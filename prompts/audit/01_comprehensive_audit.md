@@ -64,15 +64,13 @@
 - `crates/law-eye-crawler/src/pipeline.rs:54`: 发现 unwrap/expect/panic（潜在宕机点）。
 - `crates/law-eye-crawler/src/rss.rs:19`: 发现 unwrap/expect/panic（潜在宕机点）。
 
-### Blocking I/O (std::fs): 3 处
-- `crates/law-eye-common/src/config.rs:479`: 发现 std::fs::*（若位于 async/高频路径，会阻塞线程）。
-- `crates/law-eye-common/src/config.rs:481`: 发现 std::fs::*（若位于 async/高频路径，会阻塞线程）。
-- `crates/law-eye-common/src/config.rs:483`: 发现 std::fs::*（若位于 async/高频路径，会阻塞线程）。
+### Blocking I/O (std::fs): 0 处
+- ✅ Vault TLS 证书/密钥读取已改为 `tokio::fs::read(...).await`（避免 async 路径阻塞 runtime worker 线程；见 `PERF-307`）。
 
 ##  SEVERITY 3: OPS GAPS (DevOps Readiness)
 - [x] Docker/Compose 仅保留短生命周期 root init 且已隔离（禁网/最小能力/只读 rootfs/no-new-privileges）
 - [x] 已提供 /health/live 与 /health/ready
-- [ ] 镜像 digest 仍未全面固定（已移除 :latest 并固定 tag；建议在 CI 中生成并锁定 digest）
+- [x] 镜像 digest 已全面固定（Compose + enterprise compose + Dockerfile + 脚本内联 Dockerfile 均使用 tag@sha256；CI 已启用 TruffleHog/RustSec/pnpm audit + SBOM）
 - [x] 未发现敏感字段日志（仅静态启发式）
 
 ## ️ PILLAR-BY-PILLAR FINDINGS (Enterprise Audit Matrix)

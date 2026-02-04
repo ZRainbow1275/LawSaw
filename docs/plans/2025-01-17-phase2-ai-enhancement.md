@@ -1265,7 +1265,7 @@ impl Default for AppConfig {
                 port: 3001,
             },
             database: DatabaseConfig {
-                url: "postgres://law_eye:law_eye@localhost:5435/law_eye".to_string(),
+                url: "postgres://law_eye:your_password@localhost:5435/law_eye".to_string(),
                 max_connections: 10,
             },
             redis: RedisConfig {
@@ -1285,7 +1285,7 @@ host = "0.0.0.0"
 port = 3001
 
 [database]
-url = "postgres://law_eye:law_eye@localhost:5435/law_eye"
+url = "postgres://law_eye:your_password@localhost:5435/law_eye"
 max_connections = 10
 
 [redis]
@@ -1305,14 +1305,14 @@ LAW_EYE__SERVER__HOST=0.0.0.0
 LAW_EYE__SERVER__PORT=3001
 
 # Database
-LAW_EYE__DATABASE__URL=postgres://law_eye:law_eye@localhost:5435/law_eye
+LAW_EYE__DATABASE__URL=postgres://law_eye:your_password@localhost:5435/law_eye
 LAW_EYE__DATABASE__MAX_CONNECTIONS=10
 
 # Redis
 LAW_EYE__REDIS__URL=redis://localhost:6380
 
 # AI
-LAW_EYE__AI__API_KEY=sk-your-openai-api-key
+LAW_EYE__AI__API_KEY=your_openai_api_key_here
 LAW_EYE__AI__BASE_URL=https://api.openai.com/v1
 LAW_EYE__AI__MODEL=gpt-4o-mini
 LAW_EYE__AI__EMBEDDING_MODEL=text-embedding-3-small
