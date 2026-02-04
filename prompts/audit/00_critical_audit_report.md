@@ -16,6 +16,9 @@
 - [x] [REL-001] MCP 服务器移除 `unwrap()` panic（返回结构化错误响应） ✅ - `crates/law-eye-mcp/src/server.rs:68`
 - [x] [OBS-001] 清理/收敛空 `catch {}`（增加 `console.warn` 打点，保留错误对象） ✅ - `apps/web/src/app/sw/route.ts:85`
 - [x] [SEC-008] 出站 URL 策略统一：收口到 `law-eye-common::egress`，并在 API/worker/crawler 的真实发包边界再次校验 ✅（DNS 解析阻断私网/链路本地、超时、禁止 userinfo、协议白名单） - `crates/law-eye-common/src/egress.rs`
+- [x] [SEC-009] 移除工作区 `.env` 依赖 ✅：`scripts/no-dockerhub/*.sh` 默认改用用户 state 目录（`$XDG_STATE_HOME`/`$HOME/.local/state`）生成/读取 `secrets.env`；并显式警告 repo-root `.env`（不再读取） - `scripts/no-dockerhub/*.sh` / `.env.example`
+- [ ] [SEC-010] Vault state 彻底外移：init.json/unseal.key/root.token 默认写入用户 state 目录；rotate/revoke 脚本统一路径并禁止读取 `tmp/enterprise/vault` - `scripts/enterprise/vault-*.sh`
+- [ ] [SEC-011] Docker 本地栈 root init 最小能力：移除 `DAC_READ_SEARCH`，并避免递归 `chown -R`（仅修复卷根目录权限） - `docker-compose.yml`
 
 ### OPS（工作区卫生）
 - [x] [OPS-001] 外移 enterprise PKI：改用 `LAW_EYE_ENTERPRISE_PKI_DIR`（默认用户 state 目录）+ 脚本拒绝写入仓库根目录 ✅ - `docker-compose.enterprise.yml`
@@ -32,6 +35,9 @@
 - [x] [VER-002] `pnpm -C apps/web test` ✅（2026-02-03）
 - [x] [VER-003] Playwright E2E ✅（2026-02-03；`scripts/no-dockerhub/e2e.sh`；`E2E_BASE_URL=http://127.0.0.1:18849`，`E2E_RSS_URL=http://127.0.0.1:53151/rss.xml`；6 passed）
 - [x] [VER-004] Monkey（API/Web）✅（2026-02-03；API：`p95_2xx=63ms` @ 300req/24c（门槛 200ms）；Web：`p95_2xx=40ms` @ 200req/16c（门槛 200ms））
+- [x] [VER-005] `cargo test --workspace` ✅（2026-02-04）
+- [x] [VER-006] `pnpm -C apps/web lint` ✅（2026-02-04）
+- [x] [VER-007] `pnpm -C apps/web test` ✅（2026-02-04）
 
 ##  CRITICAL VULNERABILITIES (Must Fix Immediately)
 *(Issues that compromise Security or Uptime)*

@@ -56,7 +56,17 @@ if [[ -z "$STACK_NAME" ]]; then
   exit 1
 fi
 
-STATE_DIR="$ROOT/tmp/no-dockerhub/$STACK_NAME"
+DEFAULT_STATE_HOME="${XDG_STATE_HOME:-${HOME}/.local/state}"
+DEFAULT_STATE_DIR="${DEFAULT_STATE_HOME}/law-eye/no-dockerhub/${STACK_NAME}"
+LEGACY_STATE_DIR="$ROOT/tmp/no-dockerhub/$STACK_NAME"
+
+STATE_DIR_RAW="${LAW_EYE_NO_DOCKERHUB_STATE_DIR:-$DEFAULT_STATE_DIR}"
+if [[ -z "${LAW_EYE_NO_DOCKERHUB_STATE_DIR:-}" && ! -d "$STATE_DIR_RAW" && -d "$LEGACY_STATE_DIR" ]]; then
+  echo "WARN: falling back to legacy repo-workspace state dir for stop: $LEGACY_STATE_DIR" >&2
+  STATE_DIR_RAW="$LEGACY_STATE_DIR"
+fi
+
+STATE_DIR="$STATE_DIR_RAW"
 PID_DIR="$STATE_DIR/pids"
 
 pid_exists() {

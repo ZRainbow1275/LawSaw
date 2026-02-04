@@ -86,7 +86,13 @@ if [[ "$WEB_MODE" != "dev" && "$WEB_MODE" != "prod" ]]; then
 fi
 export LAW_EYE_WEB_MODE="$WEB_MODE"
 
-STATE_DIR="$ROOT/tmp/no-dockerhub/$STACK_NAME"
+DEFAULT_STATE_HOME="${XDG_STATE_HOME:-${HOME}/.local/state}"
+DEFAULT_STATE_DIR="${DEFAULT_STATE_HOME}/law-eye/no-dockerhub/${STACK_NAME}"
+STATE_DIR_RAW="${LAW_EYE_NO_DOCKERHUB_STATE_DIR:-$DEFAULT_STATE_DIR}"
+mkdir -p "$STATE_DIR_RAW"
+STATE_DIR="$(cd "$STATE_DIR_RAW" && pwd)"
+export LAW_EYE_NO_DOCKERHUB_STATE_DIR="$STATE_DIR"
+
 LOG_DIR="$STATE_DIR/logs"
 PID_DIR="$STATE_DIR/pids"
 mkdir -p "$LOG_DIR" "$PID_DIR"
@@ -196,20 +202,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-ENV_FILE="$STATE_DIR/.env.e2e"
-python3 - "$ENV_FILE" <<'PY'
-import secrets
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-password = secrets.token_urlsafe(24)
-path.write_text(f"POSTGRES_PASSWORD={password}\n", encoding="utf-8")
-PY
-
 start_rss_server
 
-START_ARGS=(--name "$STACK_NAME" --env-file "$ENV_FILE" --fresh)
+START_ARGS=(--name "$STACK_NAME" --fresh)
 if [[ "$REBUILD" -eq 1 ]]; then
   START_ARGS+=(--rebuild)
 fi
