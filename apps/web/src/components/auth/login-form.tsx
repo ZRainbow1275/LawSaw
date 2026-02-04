@@ -8,11 +8,30 @@ import { useToastStore } from "@/stores/toast-store";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function validateEmail(value: string): string | null {
+	const trimmed = value.trim();
+	if (!trimmed) return "请输入邮箱";
+	if (trimmed.length > 254) return "邮箱过长";
+	if (!EMAIL_RE.test(trimmed)) return "邮箱格式不正确";
+	return null;
+}
+
+function validatePassword(value: string): string | null {
+	if (!value.trim()) return "请输入密码";
+	if (value.length > 1024) return "密码过长";
+	return null;
+}
+
 export function LoginForm() {
 	const router = useRouter();
 	const { login } = useAuth();
 	const [returnTo, setReturnTo] = useState<string | null>(null);
 	const [error, setError] = useState("");
+	const [email, setEmail] = useState("");
+	const [password, setPassword] = useState("");
+	const [touched, setTouched] = useState({ email: false, password: false });
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
 	useEffect(() => {
@@ -25,19 +44,19 @@ export function LoginForm() {
 		e.preventDefault();
 		setError("");
 
-		const formData = new FormData(e.currentTarget);
-		const email = formData.get("email") as string;
-		const password = formData.get("password") as string;
+		setTouched({ email: true, password: true });
 
-		if (!email?.trim() || !password?.trim()) {
-			setError("请输入邮箱和密码");
+		const emailError = validateEmail(email);
+		const passwordError = validatePassword(password);
+		if (emailError || passwordError) {
+			setError(emailError || passwordError || "请检查输入内容");
 			return;
 		}
 
 		setIsSubmitting(true);
 
 		try {
-			const result = await login({ email, password });
+			const result = await login({ email: email.trim(), password });
 			if (result.success) {
 				const nextReturnTo =
 					returnTo ||
@@ -74,10 +93,20 @@ export function LoginForm() {
 					id="email"
 					name="email"
 					type="email"
+					value={email}
+					onChange={(e) => setEmail(e.target.value)}
+					onBlur={() => setTouched((v) => ({ ...v, email: true }))}
 					placeholder="your@email.com"
 					required
 					autoComplete="email"
+					aria-invalid={touched.email && !!validateEmail(email)}
+					aria-describedby={touched.email && validateEmail(email) ? "email-error" : undefined}
 				/>
+				{touched.email && validateEmail(email) && (
+					<p id="email-error" className="text-xs text-error">
+						{validateEmail(email)}
+					</p>
+				)}
 			</div>
 
 			<div className="space-y-2">
@@ -91,13 +120,31 @@ export function LoginForm() {
 					id="password"
 					name="password"
 					type="password"
+					value={password}
+					onChange={(e) => setPassword(e.target.value)}
+					onBlur={() => setTouched((v) => ({ ...v, password: true }))}
 					placeholder="••••••••"
 					required
 					autoComplete="current-password"
+					aria-invalid={touched.password && !!validatePassword(password)}
+					aria-describedby={
+						touched.password && validatePassword(password)
+							? "password-error"
+							: undefined
+					}
 				/>
+				{touched.password && validatePassword(password) && (
+					<p id="password-error" className="text-xs text-error">
+						{validatePassword(password)}
+					</p>
+				)}
 			</div>
 
-			<Button type="submit" className="w-full" disabled={isSubmitting}>
+			<Button
+				type="submit"
+				className="w-full"
+				disabled={isSubmitting || !!validateEmail(email) || !!validatePassword(password)}
+			>
 				{isSubmitting ? "登录中..." : "登录"}
 			</Button>
 

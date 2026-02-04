@@ -1,11 +1,15 @@
 use axum::{
-    extract::State,
+    extract::{ConnectInfo, State},
+    http::HeaderMap,
     http::StatusCode,
     routing::{get, post},
     Json, Router,
 };
-use law_eye_db::CreateUser;
+use law_eye_db::{CreateAuditLog, CreateUser};
+use law_eye_common::Error;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
+use std::net::SocketAddr;
 use utoipa::ToSchema;
 
 use once_cell::sync::Lazy;
@@ -28,6 +32,11 @@ pub fn router() -> Router<AppState> {
             post(register).layer(RateLimitLayer::register()),
         )
         .route("/login", post(login).layer(RateLimitLayer::login()))
+        .route(
+            "/password-reset/request",
+            post(request_password_reset).layer(RateLimitLayer::password_reset()),
+        )
+        .route("/password-reset/confirm", post(confirm_password_reset))
         .route("/logout", post(logout))
         .route("/me", get(get_current_user))
 }
@@ -49,6 +58,30 @@ pub struct AuthResponse {
     pub success: bool,
     pub message: String,
     pub user: Option<UserResponse>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PasswordResetRequest {
+    pub email: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PasswordResetRequestResponse {
+    pub success: bool,
+    pub message: String,
+    /// Development-only: returns the raw token when `PRODUCTION` is not set.
+    pub debug_token: Option<String>,
+    /// Development-only: token expiry timestamp.
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PasswordResetConfirmRequest {
+    pub email: String,
+    pub token: String,
+    pub new_password: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -102,6 +135,8 @@ impl From<law_eye_db::User> for UserResponse {
 pub(crate) async fn register(
     State(state): State<AppState>,
     mut auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     ApiJson(req): ApiJson<RegisterRequest>,
 ) -> ApiResult<(StatusCode, Json<AuthResponse>)> {
     let email_re = EMAIL_RE.as_ref().ok_or_else(|| {
@@ -117,11 +152,7 @@ pub(crate) async fn register(
         return Err(AppError::validation("Invalid email address"));
     }
 
-    if req.password.len() < 8 {
-        return Err(AppError::validation(
-            "Password must be at least 8 characters",
-        ));
-    }
+    validate_password_policy(&req.password)?;
 
     let tenant_slug = req.tenant_slug.unwrap_or_else(|| "default".to_string());
     let tenant_slug = tenant_slug.trim().to_ascii_lowercase();
@@ -184,6 +215,30 @@ pub(crate) async fn register(
         .await
         .map_err(|e| AppError::internal(format!("Session error: {}", e)))?;
 
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    state
+        .audit_service
+        .log(
+            tenant.id,
+            CreateAuditLog {
+                user_id: Some(user.id),
+                action: "auth.register".to_string(),
+                resource: "auth".to_string(),
+                resource_id: Some(user.id),
+                old_value: None,
+                new_value: Some(json!({
+                    "tenant_id": tenant.id,
+                    "email": user.email,
+                    "display_name": user.display_name,
+                    "assigned_role": default_role,
+                })),
+                ip_address,
+                user_agent,
+            },
+        )
+        .await
+        .map_err(AppError::from)?;
+
     Ok((
         StatusCode::CREATED,
         Json(AuthResponse {
@@ -206,7 +261,10 @@ pub(crate) async fn register(
     )
 )]
 pub(crate) async fn login(
+    State(state): State<AppState>,
     mut auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     ApiJson(creds): ApiJson<Credentials>,
 ) -> ApiResult<Json<AuthResponse>> {
     let user = auth_session
@@ -219,6 +277,27 @@ pub(crate) async fn login(
         .login(&user)
         .await
         .map_err(|e| AppError::internal(format!("Session error: {}", e)))?;
+
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    state
+        .audit_service
+        .log(
+            user.tenant_id,
+            CreateAuditLog {
+                user_id: Some(user.id),
+                action: "auth.login".to_string(),
+                resource: "auth".to_string(),
+                resource_id: Some(user.id),
+                old_value: None,
+                new_value: Some(json!({
+                    "email": user.email,
+                })),
+                ip_address,
+                user_agent,
+            },
+        )
+        .await
+        .map_err(AppError::from)?;
 
     Ok(Json(AuthResponse {
         success: true,
@@ -235,17 +314,45 @@ pub(crate) async fn login(
         (status = 200, description = "Logout successful", body = AuthResponse)
     )
 )]
-pub(crate) async fn logout(mut auth_session: AuthSession) -> (StatusCode, Json<AuthResponse>) {
-    let _ = auth_session.logout().await;
+pub(crate) async fn logout(
+    State(state): State<AppState>,
+    mut auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+) -> ApiResult<Json<AuthResponse>> {
+    let user = auth_session.user.clone();
 
-    (
-        StatusCode::OK,
-        Json(AuthResponse {
-            success: true,
-            message: "Logout successful".to_string(),
-            user: None,
-        }),
-    )
+    auth_session
+        .logout()
+        .await
+        .map_err(|e| AppError::internal(format!("Session error: {}", e)))?;
+
+    if let Some(user) = user {
+        let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+        state
+            .audit_service
+            .log(
+                user.tenant_id,
+                CreateAuditLog {
+                    user_id: Some(user.id),
+                    action: "auth.logout".to_string(),
+                    resource: "auth".to_string(),
+                    resource_id: Some(user.id),
+                    old_value: None,
+                    new_value: None,
+                    ip_address,
+                    user_agent,
+                },
+            )
+            .await
+            .map_err(AppError::from)?;
+    }
+
+    Ok(Json(AuthResponse {
+        success: true,
+        message: "Logout successful".to_string(),
+        user: None,
+    }))
 }
 
 /// 获取当前用户
@@ -269,5 +376,210 @@ pub(crate) async fn get_current_user(auth_session: AuthSession) -> ApiResult<Jso
         success: true,
         message: "Authenticated".to_string(),
         user: Some(user.into()),
+    }))
+}
+
+fn validate_password_policy(password: &str) -> Result<(), AppError> {
+    let password = password.trim();
+
+    if password.len() < 12 {
+        return Err(AppError::validation(
+            "Password must be at least 12 characters",
+        ));
+    }
+    if password.len() > 128 {
+        return Err(AppError::validation("Password is too long"));
+    }
+    if password.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(AppError::validation(
+            "Password must not contain whitespace or control characters",
+        ));
+    }
+
+    let has_lower = password.chars().any(|c| c.is_ascii_lowercase());
+    let has_upper = password.chars().any(|c| c.is_ascii_uppercase());
+    let has_digit = password.chars().any(|c| c.is_ascii_digit());
+    let has_symbol = password.chars().any(|c| !c.is_ascii_alphanumeric());
+
+    if !(has_lower && has_upper && has_digit && has_symbol) {
+        return Err(AppError::validation(
+            "Password must include uppercase, lowercase, number, and symbol",
+        ));
+    }
+
+    Ok(())
+}
+
+fn password_reset_ttl_seconds() -> u64 {
+    const DEFAULT_TTL_SECS: u64 = 60 * 60; // 1h
+    const MAX_TTL_SECS: u64 = 60 * 60 * 24; // 24h cap
+
+    std::env::var("LAW_EYE__AUTH__PASSWORD_RESET_TTL_SECONDS")
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(DEFAULT_TTL_SECS)
+        .min(MAX_TTL_SECS)
+}
+
+/// 请求密码重置（生产环境应通过邮件/短信等渠道交付 token；本实现默认仅在非生产返回 debug_token）
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/password-reset/request",
+    request_body = PasswordResetRequest,
+    responses(
+        (status = 200, description = "Request accepted", body = PasswordResetRequestResponse),
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
+    )
+)]
+pub(crate) async fn request_password_reset(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    ApiJson(req): ApiJson<PasswordResetRequest>,
+) -> ApiResult<Json<PasswordResetRequestResponse>> {
+    let email_re = EMAIL_RE.as_ref().ok_or_else(|| {
+        AppError::internal_with_code("REGEX_INIT_FAILED", "Internal server error")
+    })?;
+
+    if req.email.is_empty() || !email_re.is_match(&req.email) {
+        return Err(AppError::validation("Invalid email address"));
+    }
+
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    let is_production = std::env::var_os("PRODUCTION").is_some();
+
+    let mut debug_token: Option<String> = None;
+    let mut expires_at: Option<chrono::DateTime<chrono::Utc>> = None;
+
+    // Avoid account enumeration: return 200 even if user doesn't exist.
+    match state.user_service.get_by_email(&req.email).await {
+        Ok(user) => {
+            let ttl_seconds = password_reset_ttl_seconds();
+            let (token, raw_token) = state
+                .password_reset_service
+                .create_token(
+                    user.tenant_id,
+                    user.id,
+                    ttl_seconds,
+                    ip_address.clone(),
+                    user_agent.clone(),
+                )
+                .await
+                .map_err(AppError::from)?;
+
+            state
+                .audit_service
+                .log(
+                    user.tenant_id,
+                    CreateAuditLog {
+                        user_id: Some(user.id),
+                        action: "auth.password_reset.request".to_string(),
+                        resource: "auth".to_string(),
+                        resource_id: Some(user.id),
+                        old_value: None,
+                        new_value: Some(json!({
+                            "expires_at": token.expires_at,
+                        })),
+                        ip_address,
+                        user_agent,
+                    },
+                )
+                .await
+                .map_err(AppError::from)?;
+
+            if !is_production {
+                debug_token = Some(raw_token);
+                expires_at = Some(token.expires_at);
+            }
+        }
+        Err(Error::NotFound(_)) => {}
+        Err(err) => return Err(AppError::from(err)),
+    }
+
+    Ok(Json(PasswordResetRequestResponse {
+        success: true,
+        message: if is_production {
+            "If an account exists, reset instructions will be delivered out-of-band."
+        } else {
+            "Password reset token generated (development-only)."
+        }
+        .to_string(),
+        debug_token,
+        expires_at,
+    }))
+}
+
+/// 确认密码重置（使用 token + 新密码）
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/password-reset/confirm",
+    request_body = PasswordResetConfirmRequest,
+    responses(
+        (status = 200, description = "Password reset successful", body = AuthResponse),
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 401, description = "Invalid token", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
+    )
+)]
+pub(crate) async fn confirm_password_reset(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    ApiJson(req): ApiJson<PasswordResetConfirmRequest>,
+) -> ApiResult<Json<AuthResponse>> {
+    let email_re = EMAIL_RE.as_ref().ok_or_else(|| {
+        AppError::internal_with_code("REGEX_INIT_FAILED", "Internal server error")
+    })?;
+
+    if req.email.is_empty() || !email_re.is_match(&req.email) {
+        return Err(AppError::validation("Invalid email address"));
+    }
+
+    validate_password_policy(&req.new_password)?;
+
+    let user = state
+        .user_service
+        .get_by_email(&req.email)
+        .await
+        .map_err(|e| match e {
+            Error::NotFound(_) => AppError::unauthorized("Invalid token or email"),
+            other => AppError::from(other),
+        })?;
+
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+
+    let password_hash = law_eye_core::PasswordResetService::hash_password(&req.new_password)
+        .map_err(AppError::from)?;
+
+    state
+        .password_reset_service
+        .consume_and_reset_password(user.tenant_id, user.id, &req.token, &password_hash)
+        .await
+        .map_err(AppError::from)?;
+
+    state
+        .audit_service
+        .log(
+            user.tenant_id,
+            CreateAuditLog {
+                user_id: Some(user.id),
+                action: "auth.password_reset.confirm".to_string(),
+                resource: "auth".to_string(),
+                resource_id: Some(user.id),
+                old_value: None,
+                new_value: None,
+                ip_address,
+                user_agent,
+            },
+        )
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(Json(AuthResponse {
+        success: true,
+        message: "Password reset successful".to_string(),
+        user: None,
     }))
 }

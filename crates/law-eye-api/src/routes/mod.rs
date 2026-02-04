@@ -19,6 +19,7 @@ use axum::{
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::get,
+    Extension,
     Router,
 };
 use metrics::{counter, histogram};
@@ -26,7 +27,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::Instant;
 
 use crate::middleware::rate_limit::RateLimitLayer;
-use crate::middleware::RequireAuth;
+use crate::middleware::{RequireAuth, RequirePermission, RequiredPermission, RequiredPermissions};
 use crate::state::AppState;
 
 async fn metrics_endpoint(State(state): State<AppState>, headers: HeaderMap) -> Response {
@@ -115,18 +116,46 @@ pub(super) fn extract_audit_meta(
     (ip_address, user_agent)
 }
 
+fn require_permission(router: Router<AppState>, permission: &'static str) -> Router<AppState> {
+    router
+        .layer(middleware::from_extractor::<RequirePermission>())
+        .layer(Extension(RequiredPermission(permission)))
+}
+
+fn require_permissions(
+    router: Router<AppState>,
+    read: &'static str,
+    write: &'static str,
+) -> Router<AppState> {
+    router
+        .layer(middleware::from_extractor::<RequirePermission>())
+        .layer(Extension(RequiredPermissions { read, write }))
+}
+
 pub fn create_router(state: AppState) -> Router {
     let protected_api = Router::new()
-        .nest("/articles", articles::router())
-        .nest("/sources", sources::router())
-        .nest("/categories", categories::router())
-        .nest("/feedbacks", feedbacks::router())
-        .nest("/ai", ai::router())
-        .nest("/users", users::router())
-        .nest("/objects", objects::router())
-        .nest("/search", search::router())
-        .nest("/apikeys", apikeys::router())
-        .nest("/knowledge", knowledge::router())
+        .nest(
+            "/articles",
+            require_permissions(articles::router(), "articles:read", "articles:write"),
+        )
+        .nest(
+            "/sources",
+            require_permissions(sources::router(), "sources:read", "*"),
+        )
+        .nest("/categories", require_permission(categories::router(), "categories:read"))
+        .nest(
+            "/feedbacks",
+            require_permission(feedbacks::router(), "feedbacks:write"),
+        )
+        .nest(
+            "/ai",
+            require_permissions(ai::router(), "articles:read", "articles:write"),
+        )
+        .nest("/users", require_permission(users::router(), "users:read"))
+        .nest("/objects", require_permission(objects::router(), "objects:read"))
+        .nest("/search", require_permission(search::router(), "articles:read"))
+        .nest("/apikeys", require_permission(apikeys::router(), "apikeys:manage"))
+        .nest("/knowledge", require_permission(knowledge::router(), "articles:read"))
         // Default deny: everything under /api/v1 requires an authenticated session,
         // except routes explicitly mounted outside this protected router (e.g. /api/v1/auth/*).
         .layer(middleware::from_extractor::<RequireAuth>())

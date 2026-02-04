@@ -8,6 +8,54 @@ import { useToastStore } from "@/stores/toast-store";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function validateEmail(value: string): string | null {
+	const trimmed = value.trim();
+	if (!trimmed) return "请输入邮箱";
+	if (trimmed.length > 254) return "邮箱过长";
+	if (!EMAIL_RE.test(trimmed)) return "邮箱格式不正确";
+	return null;
+}
+
+type PasswordCheck = { label: string; ok: boolean };
+
+function passwordChecks(password: string): PasswordCheck[] {
+	const value = password;
+	return [
+		{ label: "至少 12 个字符", ok: value.length >= 12 },
+		{ label: "不超过 128 个字符", ok: value.length <= 128 },
+		{ label: "包含大写字母", ok: /[A-Z]/.test(value) },
+		{ label: "包含小写字母", ok: /[a-z]/.test(value) },
+		{ label: "包含数字", ok: /\d/.test(value) },
+		{ label: "包含符号", ok: /[^A-Za-z0-9]/.test(value) },
+		{ label: "不包含空白字符", ok: !/\s/.test(value) },
+	];
+}
+
+function passwordStrengthLabel(password: string): "弱" | "中" | "强" {
+	const checks = passwordChecks(password);
+	const score = checks.filter((c) => c.ok).length;
+	if (score >= 7) return "强";
+	if (score >= 5) return "中";
+	return "弱";
+}
+
+function validatePasswordPolicy(password: string): string | null {
+	if (!password) return "请输入密码";
+	if (password.length < 12) return "密码至少需要 12 个字符";
+	if (password.length > 128) return "密码不能超过 128 个字符";
+	if (/\s/.test(password)) return "密码不能包含空白字符";
+	const hasLower = /[a-z]/.test(password);
+	const hasUpper = /[A-Z]/.test(password);
+	const hasDigit = /\d/.test(password);
+	const hasSymbol = /[^A-Za-z0-9]/.test(password);
+	if (!(hasLower && hasUpper && hasDigit && hasSymbol)) {
+		return "密码需包含大写/小写字母、数字和符号";
+	}
+	return null;
+}
+
 export function RegisterForm() {
 	const router = useRouter();
 	const { register } = useAuth();
@@ -16,8 +64,14 @@ export function RegisterForm() {
 	const [tenantName, setTenantName] = useState("");
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
+	const [confirmPassword, setConfirmPassword] = useState("");
 	const [displayName, setDisplayName] = useState("");
 	const [error, setError] = useState("");
+	const [touched, setTouched] = useState({
+		email: false,
+		password: false,
+		confirmPassword: false,
+	});
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
 	useEffect(() => {
@@ -30,8 +84,17 @@ export function RegisterForm() {
 		e.preventDefault();
 		setError("");
 
-		if (password.length < 8) {
-			setError("密码至少需要8个字符");
+		setTouched({ email: true, password: true, confirmPassword: true });
+
+		const emailError = validateEmail(email);
+		const passwordError = validatePasswordPolicy(password);
+		if (emailError || passwordError) {
+			setError(emailError || passwordError || "请检查输入内容");
+			return;
+		}
+
+		if (password !== confirmPassword) {
+			setError("两次输入的密码不一致");
 			return;
 		}
 
@@ -53,7 +116,7 @@ export function RegisterForm() {
 		setIsSubmitting(true);
 		try {
 			const result = await register({
-				email,
+				email: email.trim(),
 				password,
 				display_name: displayName || undefined,
 				tenant_slug: normalizedTenantSlug || undefined,
@@ -160,10 +223,18 @@ export function RegisterForm() {
 					type="email"
 					value={email}
 					onChange={(e) => setEmail(e.target.value)}
+					onBlur={() => setTouched((v) => ({ ...v, email: true }))}
 					placeholder="your@email.com"
 					required
 					autoComplete="email"
+					aria-invalid={touched.email && !!validateEmail(email)}
+					aria-describedby={touched.email && validateEmail(email) ? "email-error" : undefined}
 				/>
+				{touched.email && validateEmail(email) && (
+					<p id="email-error" className="text-xs text-error">
+						{validateEmail(email)}
+					</p>
+				)}
 			</div>
 
 			<div className="space-y-2">
@@ -178,13 +249,88 @@ export function RegisterForm() {
 					type="password"
 					value={password}
 					onChange={(e) => setPassword(e.target.value)}
-					placeholder="至少8个字符"
+					onBlur={() => setTouched((v) => ({ ...v, password: true }))}
+					placeholder="至少12个字符"
 					required
 					autoComplete="new-password"
+					aria-invalid={touched.password && !!validatePasswordPolicy(password)}
+					aria-describedby={
+						touched.password && validatePasswordPolicy(password)
+							? "password-error"
+							: undefined
+					}
 				/>
+				<div className="space-y-1">
+					<p className="text-xs text-neutral-500">
+						强度：{password ? passwordStrengthLabel(password) : "—"}
+					</p>
+					<ul className="space-y-0.5 text-xs">
+						{passwordChecks(password).map((c) => (
+							<li
+								key={c.label}
+								className={c.ok ? "text-emerald-700" : "text-neutral-500"}
+							>
+								{c.label}
+							</li>
+						))}
+					</ul>
+				</div>
+				{touched.password && validatePasswordPolicy(password) && (
+					<p id="password-error" className="text-xs text-error">
+						{validatePasswordPolicy(password)}
+					</p>
+				)}
 			</div>
 
-			<Button type="submit" className="w-full" disabled={isSubmitting}>
+			<div className="space-y-2">
+				<label
+					htmlFor="confirmPassword"
+					className="text-sm font-medium text-neutral-700"
+				>
+					确认密码
+				</label>
+				<Input
+					id="confirmPassword"
+					type="password"
+					value={confirmPassword}
+					onChange={(e) => setConfirmPassword(e.target.value)}
+					onBlur={() => setTouched((v) => ({ ...v, confirmPassword: true }))}
+					placeholder="再次输入密码"
+					required
+					autoComplete="new-password"
+					aria-invalid={
+						touched.confirmPassword &&
+						!!confirmPassword &&
+						password !== confirmPassword
+					}
+					aria-describedby={
+						touched.confirmPassword &&
+						!!confirmPassword &&
+						password !== confirmPassword
+							? "confirm-password-error"
+							: undefined
+					}
+				/>
+				{touched.confirmPassword &&
+					!!confirmPassword &&
+					password !== confirmPassword && (
+						<p id="confirm-password-error" className="text-xs text-error">
+							两次输入的密码不一致
+						</p>
+					)}
+			</div>
+
+			<Button
+				type="submit"
+				className="w-full"
+				disabled={
+					isSubmitting ||
+					!!validateEmail(email) ||
+					!!validatePasswordPolicy(password) ||
+					!confirmPassword ||
+					password !== confirmPassword
+				}
+			>
 				{isSubmitting ? "注册中..." : "创建账户"}
 			</Button>
 

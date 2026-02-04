@@ -137,6 +137,15 @@ impl RateLimitLayer {
         Self::new(max_requests, window_seconds)
     }
 
+    pub fn password_reset() -> Self {
+        // Password reset requests per client IP (default: 3 per hour).
+        let max_requests =
+            env_u32("LAW_EYE__RATE_LIMIT__PASSWORD_RESET_MAX_REQUESTS").unwrap_or(3);
+        let window_seconds =
+            env_u64("LAW_EYE__RATE_LIMIT__PASSWORD_RESET_WINDOW_SECONDS").unwrap_or(3600);
+        Self::new(max_requests, window_seconds)
+    }
+
     pub fn api() -> Self {
         // General API per client IP.
         //

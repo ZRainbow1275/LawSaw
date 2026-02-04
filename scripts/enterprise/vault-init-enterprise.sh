@@ -57,6 +57,9 @@ INIT_JSON="${VAULT_STATE_DIR}/init.json"
 UNSEAL_KEY_FILE="${VAULT_STATE_DIR}/unseal.key"
 ROOT_TOKEN_FILE="${VAULT_STATE_DIR}/root.token"
 
+VAULT_UNSEAL_KEY_SHARES="${LAW_EYE_ENTERPRISE_VAULT_UNSEAL_KEY_SHARES:-5}"
+VAULT_UNSEAL_KEY_THRESHOLD="${LAW_EYE_ENTERPRISE_VAULT_UNSEAL_KEY_THRESHOLD:-3}"
+
 CA_CERT="${PKI_DIR}/ca.crt"
 BOOTSTRAP_CLIENT_CERT="${PKI_DIR}/vault-bootstrap-client.crt"
 BOOTSTRAP_CLIENT_KEY="${PKI_DIR}/vault-bootstrap-client.key"
@@ -259,7 +262,7 @@ init_and_unseal() {
 
     set +e
     local init_output
-    init_output="$(vault_exec operator init -key-shares=1 -key-threshold=1 -format=json 2>&1)"
+    init_output="$(vault_exec operator init -key-shares="$VAULT_UNSEAL_KEY_SHARES" -key-threshold="$VAULT_UNSEAL_KEY_THRESHOLD" -format=json 2>&1)"
     local init_code=$?
     set -e
 
@@ -271,7 +274,7 @@ init_and_unseal() {
         wait_vault_ready
 
         set +e
-        init_output="$(vault_exec operator init -key-shares=1 -key-threshold=1 -format=json 2>&1)"
+        init_output="$(vault_exec operator init -key-shares="$VAULT_UNSEAL_KEY_SHARES" -key-threshold="$VAULT_UNSEAL_KEY_THRESHOLD" -format=json 2>&1)"
         init_code=$?
         set -e
       fi
@@ -284,15 +287,49 @@ init_and_unseal() {
     fi
 
     printf '%s' "$init_output" > "$INIT_JSON"
-    json_get "unseal_keys_b64.0" "$INIT_JSON" | tr -d '\r\n' > "$UNSEAL_KEY_FILE"
+    rm -f "$UNSEAL_KEY_FILE" || true
+    for ((i=0; i<VAULT_UNSEAL_KEY_SHARES; i++)); do
+      json_get "unseal_keys_b64.${i}" "$INIT_JSON" | tr -d '\r\n' >> "$UNSEAL_KEY_FILE"
+      echo >> "$UNSEAL_KEY_FILE"
+    done
     json_get "root_token" "$INIT_JSON" | tr -d '\r\n' > "$ROOT_TOKEN_FILE"
     chmod 600 "$UNSEAL_KEY_FILE" "$ROOT_TOKEN_FILE" || true
   fi
 
+  set +e
+  vault_exec status >/dev/null 2>&1
+  local status_code=$?
+  set -e
+  if [[ $status_code -eq 0 ]]; then
+    echo "[vault] already unsealed."
+    return 0
+  fi
+
+  if [[ $status_code -ne 2 ]]; then
+    echo "[vault] vault status unexpected (exit=$status_code)" >&2
+    exit 1
+  fi
+
+  if [[ "$VAULT_UNSEAL_KEY_THRESHOLD" -gt "$VAULT_UNSEAL_KEY_SHARES" ]]; then
+    echo "[vault] invalid unseal settings: threshold > shares" >&2
+    exit 1
+  fi
+
   echo "[vault] unsealing..."
-  local unseal_key
-  unseal_key="$(read_trimmed "$UNSEAL_KEY_FILE")"
-  vault_exec operator unseal "$unseal_key" >/dev/null
+  local count=0
+  while IFS= read -r unseal_key; do
+    [[ -z "$unseal_key" ]] && continue
+    vault_exec operator unseal "$unseal_key" >/dev/null
+    count=$((count + 1))
+    if [[ $count -ge $VAULT_UNSEAL_KEY_THRESHOLD ]]; then
+      break
+    fi
+  done < "$UNSEAL_KEY_FILE"
+
+  if [[ $count -lt $VAULT_UNSEAL_KEY_THRESHOLD ]]; then
+    echo "[vault] not enough unseal keys available (have=$count need=$VAULT_UNSEAL_KEY_THRESHOLD)" >&2
+    exit 1
+  fi
 }
 
 configure_vault() {

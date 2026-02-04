@@ -6,6 +6,7 @@ pub mod email;
 pub mod feedback;
 pub mod knowledge;
 pub mod object;
+pub mod password_reset;
 pub mod rag;
 pub mod source;
 pub mod tenant;
@@ -19,6 +20,7 @@ pub use email::{CategorySection, DailyDigest, DigestArticle, EmailTemplate, Emai
 pub use feedback::FeedbackService;
 pub use knowledge::KnowledgeService;
 pub use object::{ObjectService, UploadUserAvatarInput, OBJECT_KIND_USER_AVATAR};
+pub use password_reset::PasswordResetService;
 pub use rag::{RagAnswer, RagSearchResult, RagService, RagSource};
 pub use source::SourceService;
 pub use tenant::{with_tenant_tx, TenantService};

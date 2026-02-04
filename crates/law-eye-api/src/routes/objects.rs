@@ -1,10 +1,13 @@
 use axum::{
-    extract::{Path, State},
-    http::{header, HeaderValue, StatusCode},
+    extract::{ConnectInfo, Path, State},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
     Router,
 };
+use law_eye_db::CreateAuditLog;
+use serde_json::json;
+use std::net::SocketAddr;
 use uuid::Uuid;
 
 use crate::auth::AuthSession;
@@ -34,6 +37,8 @@ pub fn router() -> Router<AppState> {
 pub(crate) async fn get_object(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Response> {
     let user = auth_session
@@ -59,6 +64,29 @@ pub(crate) async fn get_object(
     if !is_admin && object.owner_user_id != Some(user.id) {
         return Err(AppError::forbidden("Access denied"));
     }
+
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    state
+        .audit_service
+        .log(
+            user.tenant_id,
+            CreateAuditLog {
+                user_id: Some(user.id),
+                action: "objects.download".to_string(),
+                resource: "objects".to_string(),
+                resource_id: Some(id),
+                old_value: None,
+                new_value: Some(json!({
+                    "kind": object.kind,
+                    "content_type": object.content_type,
+                    "byte_size": object.byte_size,
+                })),
+                ip_address,
+                user_agent,
+            },
+        )
+        .await
+        .map_err(AppError::from)?;
 
     let bytes = object_service
         .get_object_bytes(&object)

@@ -32,6 +32,8 @@ impl Modify for SecurityAddon {
         crate::routes::health::health_check,
         crate::routes::auth::register,
         crate::routes::auth::login,
+        crate::routes::auth::request_password_reset,
+        crate::routes::auth::confirm_password_reset,
         crate::routes::auth::logout,
         crate::routes::auth::get_current_user,
         crate::routes::articles::list_articles,

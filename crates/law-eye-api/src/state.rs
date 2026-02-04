@@ -2,7 +2,8 @@ use law_eye_ai::{AiService, LlmGateway};
 use law_eye_common::vault::SensitiveStringCipher;
 use law_eye_core::{
     ApiKeyService, ArticleService, AuditService, CategoryService, FeedbackService,
-    KnowledgeService, ObjectService, RagService, SourceService, TenantService, UserService,
+    KnowledgeService, ObjectService, PasswordResetService, RagService, SourceService, TenantService,
+    UserService,
 };
 use law_eye_queue::TaskQueue;
 use metrics_exporter_prometheus::PrometheusHandle;
@@ -18,6 +19,7 @@ pub struct AppState {
     pub category_service: Arc<CategoryService>,
     pub feedback_service: Arc<FeedbackService>,
     pub user_service: Arc<UserService>,
+    pub password_reset_service: Arc<PasswordResetService>,
     pub tenant_service: Arc<TenantService>,
     pub audit_service: Arc<AuditService>,
     pub object_service: Option<Arc<ObjectService>>,
@@ -61,6 +63,7 @@ impl AppState {
             category_service: Arc::new(CategoryService::new(pool.clone())),
             feedback_service: Arc::new(FeedbackService::new(pool.clone(), feedback_cipher)),
             user_service: Arc::new(UserService::new(pool.clone())),
+            password_reset_service: Arc::new(PasswordResetService::new(pool.clone())),
             tenant_service: Arc::new(TenantService::new(pool.clone())),
             audit_service: Arc::new(AuditService::new(pool.clone())),
             object_service: object_service.map(Arc::new),
