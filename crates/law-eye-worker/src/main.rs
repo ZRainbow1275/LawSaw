@@ -28,6 +28,16 @@ const VISIBILITY_TIMEOUT_INGEST_MS: i64 = 10 * 60 * 1_000;
 const VISIBILITY_TIMEOUT_AI_MS: i64 = 20 * 60 * 1_000;
 const VISIBILITY_TIMEOUT_PUSH_MS: i64 = 5 * 60 * 1_000;
 
+// Hard per-task execution budgets. These should be < visibility timeouts to allow retries.
+const TASK_TIMEOUT_INGEST_SECS: u64 = 8 * 60;
+const TASK_TIMEOUT_AI_SECS: u64 = 10 * 60;
+const TASK_TIMEOUT_PUSH_SECS: u64 = 60;
+
+fn is_ai_rate_limited_error(error_msg: &str) -> bool {
+    let msg = error_msg.to_ascii_lowercase();
+    msg.contains("status code: 429") || msg.contains("rate limit") || msg.contains("too many requests")
+}
+
 async fn validate_webhook_url(raw: &str, allow_internal: bool) -> anyhow::Result<reqwest::Url> {
     let policy = OutboundUrlPolicy::https_or_http_internal(allow_internal);
     let url = validate_outbound_url(raw, &policy)
@@ -240,8 +250,14 @@ impl Worker {
         }
 
         let payload = task.payload.clone();
-        match self.process_ingest_task(payload).await {
-            Ok(()) => {
+        let result = timeout(
+            Duration::from_secs(TASK_TIMEOUT_INGEST_SECS),
+            self.process_ingest_task(payload),
+        )
+        .await;
+
+        match result {
+            Ok(Ok(())) => {
                 if let Err(e) = self.task_queue.mark_done(queue, task_id).await {
                     error!("Failed to mark ingest task {} done: {}", task_id, e);
                 }
@@ -253,8 +269,11 @@ impl Worker {
                     error!("Failed to ack ingest task {}: {}", task_id, e);
                 }
             }
-            Err(e) => {
-                let error_msg = e.to_string();
+            Ok(Err(e)) => {
+                let mut error_msg = e.to_string();
+                if is_ai_rate_limited_error(&error_msg) {
+                    error_msg = format!("AI_RATE_LIMITED: {}", error_msg);
+                }
                 match self
                     .task_queue
                     .retry_or_dead_letter(queue, task, error_msg)
@@ -272,6 +291,30 @@ impl Worker {
                     Err(e) => {
                         error!(
                             "Failed to schedule retry/DLQ for ingest task {}: {}",
+                            task_id, e
+                        );
+                    }
+                }
+            }
+            Err(_) => {
+                let error_msg = format!("TASK_TIMEOUT after {}s", TASK_TIMEOUT_INGEST_SECS);
+                match self
+                    .task_queue
+                    .retry_or_dead_letter(queue, task, error_msg)
+                    .await
+                {
+                    Ok(_) => {
+                        if let Err(e) = self
+                            .task_queue
+                            .ack_reserved(queue, &reserved.raw_payload)
+                            .await
+                        {
+                            error!("Failed to ack timed out ingest task {}: {}", task_id, e);
+                        }
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to schedule retry/DLQ for timed out ingest task {}: {}",
                             task_id, e
                         );
                     }
@@ -304,8 +347,14 @@ impl Worker {
         }
 
         let payload = task.payload.clone();
-        match self.process_ai_task(payload).await {
-            Ok(()) => {
+        let result = timeout(
+            Duration::from_secs(TASK_TIMEOUT_AI_SECS),
+            self.process_ai_task(payload),
+        )
+        .await;
+
+        match result {
+            Ok(Ok(())) => {
                 if let Err(e) = self.task_queue.mark_done(queue, task_id).await {
                     error!("Failed to mark AI task {} done: {}", task_id, e);
                 }
@@ -317,7 +366,7 @@ impl Worker {
                     error!("Failed to ack AI task {}: {}", task_id, e);
                 }
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 let error_msg = e.to_string();
                 match self
                     .task_queue
@@ -336,6 +385,30 @@ impl Worker {
                     Err(e) => {
                         error!(
                             "Failed to schedule retry/DLQ for AI task {}: {}",
+                            task_id, e
+                        );
+                    }
+                }
+            }
+            Err(_) => {
+                let error_msg = format!("TASK_TIMEOUT after {}s", TASK_TIMEOUT_AI_SECS);
+                match self
+                    .task_queue
+                    .retry_or_dead_letter(queue, task, error_msg)
+                    .await
+                {
+                    Ok(_) => {
+                        if let Err(e) = self
+                            .task_queue
+                            .ack_reserved(queue, &reserved.raw_payload)
+                            .await
+                        {
+                            error!("Failed to ack timed out AI task {}: {}", task_id, e);
+                        }
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to schedule retry/DLQ for timed out AI task {}: {}",
                             task_id, e
                         );
                     }
@@ -368,8 +441,14 @@ impl Worker {
         }
 
         let payload = task.payload.clone();
-        match self.process_push_task(payload).await {
-            Ok(()) => {
+        let result = timeout(
+            Duration::from_secs(TASK_TIMEOUT_PUSH_SECS),
+            self.process_push_task(payload),
+        )
+        .await;
+
+        match result {
+            Ok(Ok(())) => {
                 if let Err(e) = self.task_queue.mark_done(queue, task_id).await {
                     error!("Failed to mark push task {} done: {}", task_id, e);
                 }
@@ -381,7 +460,7 @@ impl Worker {
                     error!("Failed to ack push task {}: {}", task_id, e);
                 }
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 let error_msg = e.to_string();
                 match self
                     .task_queue
@@ -400,6 +479,30 @@ impl Worker {
                     Err(e) => {
                         error!(
                             "Failed to schedule retry/DLQ for push task {}: {}",
+                            task_id, e
+                        );
+                    }
+                }
+            }
+            Err(_) => {
+                let error_msg = format!("TASK_TIMEOUT after {}s", TASK_TIMEOUT_PUSH_SECS);
+                match self
+                    .task_queue
+                    .retry_or_dead_letter(queue, task, error_msg)
+                    .await
+                {
+                    Ok(_) => {
+                        if let Err(e) = self
+                            .task_queue
+                            .ack_reserved(queue, &reserved.raw_payload)
+                            .await
+                        {
+                            error!("Failed to ack timed out push task {}: {}", task_id, e);
+                        }
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to schedule retry/DLQ for timed out push task {}: {}",
                             task_id, e
                         );
                     }

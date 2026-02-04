@@ -2,12 +2,44 @@ use deadpool_redis::{Config, Pool, Runtime};
 use law_eye_common::{Error, Result};
 use redis::AsyncCommands;
 use serde::{de::DeserializeOwned, Serialize};
+use tokio::time::{sleep, Duration, Instant};
 use tracing::{error, info, warn};
 
 const DEFAULT_MAX_RETRIES: u32 = 3;
 const RETRY_BASE_DELAY_MS: u64 = 5_000;
 const RETRY_MAX_DELAY_MS: u64 = 60_000;
+const RETRY_RATE_LIMIT_BASE_DELAY_MS: u64 = 60_000;
+const RETRY_RATE_LIMIT_MAX_DELAY_MS: u64 = 10 * 60_000;
 const DONE_TTL_SECS: u64 = 60 * 60 * 24 * 7;
+const RESERVE_POLL_INTERVAL_MS: u64 = 200;
+const PROCESS_DELAYED_MAX_BATCH: u32 = 500;
+
+// Atomic reserve: move from <queue> to <queue:processing> and track in <queue:inflight> with a timestamp.
+const LUA_RESERVE_RETRYABLE_ATOMIC: &str = r#"
+local src = KEYS[1]
+local dst = KEYS[2]
+local inflight = KEYS[3]
+local now = ARGV[1]
+local payload = redis.call('RPOPLPUSH', src, dst)
+if payload then
+  redis.call('ZADD', inflight, now, payload)
+end
+return payload
+"#;
+
+// Atomic delayed processing: move due tasks from <queue:delayed> into <queue>.
+const LUA_PROCESS_DELAYED_ATOMIC: &str = r#"
+local delayed = KEYS[1]
+local queue = KEYS[2]
+local now = ARGV[1]
+local max_batch = ARGV[2]
+local tasks = redis.call('ZRANGEBYSCORE', delayed, 0, now, 'LIMIT', 0, max_batch)
+for i,task in ipairs(tasks) do
+  redis.call('ZREM', delayed, task)
+  redis.call('RPUSH', queue, task)
+end
+return #tasks
+"#;
 
 pub struct TaskQueue {
     pool: Pool,
@@ -145,22 +177,37 @@ impl TaskQueue {
             .await
             .map_err(|e| Error::Internal(e.to_string()))?;
 
-        let payload: Option<String> = redis::cmd("BRPOPLPUSH")
-            .arg(queue)
-            .arg(&processing_queue)
-            .arg(timeout as usize)
-            .query_async(&mut conn)
-            .await
-            .map_err(|e| Error::Internal(e.to_string()))?;
-
-        let Some(raw_payload) = payload else {
-            return Ok(None);
+        // NOTE: Redis blocking pop (BRPOPLPUSH) cannot be composed atomically with ZADD.
+        // We implement an atomic reserve with RPOPLPUSH+ZADD in a Lua script, and emulate blocking
+        // behavior via bounded polling.
+        let script = redis::Script::new(LUA_RESERVE_RETRYABLE_ATOMIC);
+        let deadline = if timeout == 0 {
+            None
+        } else {
+            Some(Instant::now() + Duration::from_secs(timeout))
         };
 
-        let now = chrono::Utc::now().timestamp_millis();
-        conn.zadd::<_, _, _, ()>(&inflight_queue, &raw_payload, now)
-            .await
-            .map_err(|e| Error::Internal(e.to_string()))?;
+        let raw_payload = loop {
+            let now = chrono::Utc::now().timestamp_millis();
+            let payload: Option<String> = script
+                .key(queue)
+                .key(&processing_queue)
+                .key(&inflight_queue)
+                .arg(now)
+                .invoke_async(&mut conn)
+                .await
+                .map_err(|e| Error::Internal(e.to_string()))?;
+
+            if let Some(payload) = payload {
+                break payload;
+            }
+
+            match deadline {
+                None => return Ok(None),
+                Some(deadline) if Instant::now() >= deadline => return Ok(None),
+                Some(_) => sleep(Duration::from_millis(RESERVE_POLL_INTERVAL_MS)).await,
+            }
+        };
 
         let task = match parse_retryable_or_wrap::<T>(&raw_payload) {
             Ok(task) => task,
@@ -343,7 +390,11 @@ impl TaskQueue {
 
             // Add delay before retry using Redis ZADD for delayed queue
             let delayed_queue = format!("{}:delayed", queue);
-            let delay_ms = retry_backoff_ms(task.retry_count);
+            let delay_ms = if is_rate_limited_error(&error_msg) {
+                retry_backoff_ms_rate_limited(task.retry_count)
+            } else {
+                retry_backoff_ms(task.retry_count)
+            };
             let retry_at = chrono::Utc::now().timestamp_millis() + delay_ms as i64;
 
             let mut conn = self
@@ -382,30 +433,24 @@ impl TaskQueue {
             .await
             .map_err(|e| Error::Internal(e.to_string()))?;
 
-        // Get tasks that are ready to be processed
-        let ready_tasks: Vec<String> = conn
-            .zrangebyscore(&delayed_queue, 0i64, now)
+        // Use a Lua script to atomically move due tasks back into the main queue.
+        // This prevents the ZREM -> RPUSH split-brain that could permanently lose tasks on failure.
+        let script = redis::Script::new(LUA_PROCESS_DELAYED_ATOMIC);
+        let moved: i64 = script
+            .key(&delayed_queue)
+            .key(queue)
+            .arg(now)
+            .arg(PROCESS_DELAYED_MAX_BATCH)
+            .invoke_async(&mut conn)
             .await
             .map_err(|e| Error::Internal(e.to_string()))?;
 
-        let count = ready_tasks.len() as u32;
-
-        for task_payload in ready_tasks {
-            // Move from delayed queue to main queue
-            conn.zrem::<_, _, ()>(&delayed_queue, &task_payload)
-                .await
-                .map_err(|e| Error::Internal(e.to_string()))?;
-
-            conn.rpush::<_, _, ()>(queue, &task_payload)
-                .await
-                .map_err(|e| Error::Internal(e.to_string()))?;
+        let moved_u32 = u32::try_from(moved).unwrap_or(0);
+        if moved_u32 > 0 {
+            info!("Moved {} delayed tasks back to {}", moved_u32, queue);
         }
 
-        if count > 0 {
-            info!("Moved {} delayed tasks back to {}", count, queue);
-        }
-
-        Ok(count)
+        Ok(moved_u32)
     }
 
     pub async fn queue_length(&self, queue: &str) -> Result<usize> {
@@ -467,6 +512,25 @@ fn retry_backoff_ms(retry_count: u32) -> u64 {
         delay = delay.saturating_mul(2);
     }
     delay.min(RETRY_MAX_DELAY_MS)
+}
+
+fn retry_backoff_ms_rate_limited(retry_count: u32) -> u64 {
+    let exp = retry_count.saturating_sub(1);
+    let mut delay = RETRY_RATE_LIMIT_BASE_DELAY_MS;
+    for _ in 0..exp {
+        delay = delay.saturating_mul(2);
+    }
+    delay.min(RETRY_RATE_LIMIT_MAX_DELAY_MS)
+}
+
+fn is_rate_limited_error(error_msg: &str) -> bool {
+    let msg = error_msg.to_ascii_lowercase();
+    msg.contains("rate limit")
+        || msg.contains("too many requests")
+        || msg.contains("status code: 429")
+        || msg.contains("http 429")
+        || msg.contains(" ai_rate_limited")
+        || msg.starts_with("ai_rate_limited")
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
