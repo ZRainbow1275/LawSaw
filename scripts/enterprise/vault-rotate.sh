@@ -17,8 +17,38 @@ if command -v cygpath >/dev/null 2>&1; then
   PKI_DIR_ENV="$(cygpath -m "$PKI_DIR")"
 fi
 export LAW_EYE_ENTERPRISE_PKI_DIR="$PKI_DIR_ENV"
-VAULT_STATE_DIR="${ROOT_DIR}/tmp/enterprise/vault"
-SECRETS_DIR="${ROOT_DIR}/tmp/enterprise/secrets"
+
+DEFAULT_VAULT_STATE_DIR="${DEFAULT_STATE_HOME}/law-eye/enterprise/vault"
+VAULT_STATE_DIR_RAW="${LAW_EYE_ENTERPRISE_VAULT_STATE_DIR:-$DEFAULT_VAULT_STATE_DIR}"
+mkdir -p "$VAULT_STATE_DIR_RAW"
+VAULT_STATE_DIR="$(cd "$VAULT_STATE_DIR_RAW" && pwd)"
+
+DEFAULT_SECRETS_DIR="${DEFAULT_STATE_HOME}/law-eye/enterprise/secrets"
+SECRETS_DIR_RAW="${LAW_EYE_ENTERPRISE_SECRETS_DIR:-$DEFAULT_SECRETS_DIR}"
+mkdir -p "$SECRETS_DIR_RAW"
+SECRETS_DIR="$(cd "$SECRETS_DIR_RAW" && pwd)"
+
+LEGACY_VAULT_STATE_DIR="${ROOT_DIR}/tmp/enterprise/vault"
+LEGACY_SECRETS_DIR="${ROOT_DIR}/tmp/enterprise/secrets"
+
+migrate_legacy_file() {
+  local src="$1"
+  local dst="$2"
+  if [[ -f "$src" && ! -f "$dst" ]]; then
+    echo "[rotate] migrating legacy secret file: ${src} -> ${dst}" >&2
+    mv "$src" "$dst" 2>/dev/null || { cp "$src" "$dst" && rm -f "$src"; }
+    chmod 600 "$dst" >/dev/null 2>&1 || true
+  fi
+}
+
+if [[ -d "$LEGACY_VAULT_STATE_DIR" ]]; then
+  migrate_legacy_file "${LEGACY_VAULT_STATE_DIR}/root.token" "${VAULT_STATE_DIR}/root.token"
+  migrate_legacy_file "${LEGACY_VAULT_STATE_DIR}/init.json" "${VAULT_STATE_DIR}/init.json"
+  migrate_legacy_file "${LEGACY_VAULT_STATE_DIR}/unseal.key" "${VAULT_STATE_DIR}/unseal.key"
+fi
+if [[ -d "$LEGACY_SECRETS_DIR" ]]; then
+  migrate_legacy_file "${LEGACY_SECRETS_DIR}/postgres_password" "${SECRETS_DIR}/postgres_password"
+fi
 
 ROOT_TOKEN_FILE="${VAULT_STATE_DIR}/root.token"
 POSTGRES_PASSWORD_FILE="${SECRETS_DIR}/postgres_password"

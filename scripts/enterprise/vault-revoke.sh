@@ -5,7 +5,32 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 VAULT_CONTAINER="law-eye-vault"
 VAULT_ADDR="https://127.0.0.1:8200"
-VAULT_STATE_DIR="${ROOT_DIR}/tmp/enterprise/vault"
+
+DEFAULT_STATE_HOME="${XDG_STATE_HOME:-${HOME}/.local/state}"
+DEFAULT_VAULT_STATE_DIR="${DEFAULT_STATE_HOME}/law-eye/enterprise/vault"
+VAULT_STATE_DIR_RAW="${LAW_EYE_ENTERPRISE_VAULT_STATE_DIR:-$DEFAULT_VAULT_STATE_DIR}"
+mkdir -p "$VAULT_STATE_DIR_RAW"
+VAULT_STATE_DIR="$(cd "$VAULT_STATE_DIR_RAW" && pwd)"
+
+LEGACY_VAULT_STATE_DIR="${ROOT_DIR}/tmp/enterprise/vault"
+
+migrate_legacy_file() {
+  local name="$1"
+  local src="${LEGACY_VAULT_STATE_DIR}/${name}"
+  local dst="${VAULT_STATE_DIR}/${name}"
+  if [[ -f "$src" && ! -f "$dst" ]]; then
+    echo "[revoke] migrating legacy Vault state file: ${src} -> ${dst}" >&2
+    mv "$src" "$dst" 2>/dev/null || { cp "$src" "$dst" && rm -f "$src"; }
+    chmod 600 "$dst" >/dev/null 2>&1 || true
+  fi
+}
+
+if [[ -d "$LEGACY_VAULT_STATE_DIR" ]]; then
+  migrate_legacy_file "root.token"
+  migrate_legacy_file "init.json"
+  migrate_legacy_file "unseal.key"
+fi
+
 ROOT_TOKEN_FILE="${VAULT_STATE_DIR}/root.token"
 
 usage() {

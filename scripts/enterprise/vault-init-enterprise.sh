@@ -32,8 +32,25 @@ mkdir -p "$SECRETS_DIR_RAW"
 SECRETS_DIR="$(cd "$SECRETS_DIR_RAW" && pwd)"
 
 LEGACY_VAULT_STATE_DIR="${ROOT_DIR}/tmp/enterprise/vault"
-if [[ -f "${LEGACY_VAULT_STATE_DIR}/unseal.key" || -f "${LEGACY_VAULT_STATE_DIR}/root.token" || -f "${LEGACY_VAULT_STATE_DIR}/init.json" ]]; then
-  echo "[vault] WARNING: legacy Vault state exists under ${LEGACY_VAULT_STATE_DIR}; move/delete it to avoid key sprawl." >&2
+LEGACY_SECRETS_DIR="${ROOT_DIR}/tmp/enterprise/secrets"
+
+migrate_legacy_file() {
+  local src="$1"
+  local dst="$2"
+  if [[ -f "$src" && ! -f "$dst" ]]; then
+    echo "[vault] migrating legacy secret file: ${src} -> ${dst}" >&2
+    mv "$src" "$dst" 2>/dev/null || { cp "$src" "$dst" && rm -f "$src"; }
+    chmod 600 "$dst" >/dev/null 2>&1 || true
+  fi
+}
+
+if [[ -d "$LEGACY_VAULT_STATE_DIR" ]]; then
+  migrate_legacy_file "${LEGACY_VAULT_STATE_DIR}/init.json" "${VAULT_STATE_DIR}/init.json"
+  migrate_legacy_file "${LEGACY_VAULT_STATE_DIR}/unseal.key" "${VAULT_STATE_DIR}/unseal.key"
+  migrate_legacy_file "${LEGACY_VAULT_STATE_DIR}/root.token" "${VAULT_STATE_DIR}/root.token"
+fi
+if [[ -d "$LEGACY_SECRETS_DIR" ]]; then
+  migrate_legacy_file "${LEGACY_SECRETS_DIR}/postgres_password" "${SECRETS_DIR}/postgres_password"
 fi
 
 INIT_JSON="${VAULT_STATE_DIR}/init.json"
