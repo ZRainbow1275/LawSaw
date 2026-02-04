@@ -566,12 +566,6 @@ else
   if image_exists alpine/minio:RELEASE.2025-10-15T17-29-55Z; then
     MINIO_IMAGE="alpine/minio:RELEASE.2025-10-15T17-29-55Z"
     echo "Using existing image: $MINIO_IMAGE"
-  elif image_exists quay.io/minio/minio:latest; then
-    MINIO_IMAGE="quay.io/minio/minio:latest"
-    echo "Using existing image: $MINIO_IMAGE"
-  elif image_exists minio/minio:latest; then
-    MINIO_IMAGE="minio/minio:latest"
-    echo "Using existing image: $MINIO_IMAGE"
   else
     echo "Building image: $MINIO_IMAGE"
     build_minio_image
