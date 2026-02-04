@@ -1,5 +1,15 @@
--- Enable pgvector extension
-CREATE EXTENSION IF NOT EXISTS vector;
+-- Required extensions are provisioned by the Postgres bootstrap (or must be installed manually
+-- when using an external Postgres instance). We validate presence here to avoid running
+-- migrations with elevated privileges.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pgcrypto') THEN
+        RAISE EXCEPTION 'Missing required extension: pgcrypto';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') THEN
+        RAISE EXCEPTION 'Missing required extension: vector';
+    END IF;
+END $$;
 
 -- Article chunks for vector search
 CREATE TABLE IF NOT EXISTS article_chunks (

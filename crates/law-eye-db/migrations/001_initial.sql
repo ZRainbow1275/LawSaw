@@ -1,6 +1,12 @@
--- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+-- Required extensions are provisioned by the Postgres bootstrap (or must be installed manually
+-- when using an external Postgres instance). We validate presence here to avoid running
+-- migrations with elevated privileges.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pgcrypto') THEN
+        RAISE EXCEPTION 'Missing required extension: pgcrypto';
+    END IF;
+END $$;
 
 -- Sources table
 CREATE TABLE sources (

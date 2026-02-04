@@ -474,40 +474,85 @@ set -euo pipefail
 
 PGDATA="${PGDATA:-/var/lib/postgresql/data}"
 POSTGRES_USER="${POSTGRES_USER:-postgres}"
-POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-postgres}"
+POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
 POSTGRES_DB="${POSTGRES_DB:-postgres}"
 
 BIN="/usr/lib/postgresql/16/bin"
 
+if [[ -z "${POSTGRES_PASSWORD}" ]]; then
+  echo "ERROR: POSTGRES_PASSWORD is required" >&2
+  exit 1
+fi
+if [[ "${POSTGRES_PASSWORD}" == "postgres" || "${POSTGRES_PASSWORD}" == "password" ]]; then
+  echo "ERROR: POSTGRES_PASSWORD must not be a default value" >&2
+  exit 1
+fi
+if [[ -z "${POSTGRES_USER}" ]]; then
+  echo "ERROR: POSTGRES_USER is required" >&2
+  exit 1
+fi
+if [[ -z "${POSTGRES_DB}" ]]; then
+  echo "ERROR: POSTGRES_DB is required" >&2
+  exit 1
+fi
+
 if [ ! -s "${PGDATA}/PG_VERSION" ]; then
-  install -d -o postgres -g postgres -m 0700 "${PGDATA}"
-  su - postgres -c "${BIN}/initdb -D '${PGDATA}' --encoding=UTF8 --locale=C"
+  mkdir -p "${PGDATA}"
+  chmod 700 "${PGDATA}"
+  "${BIN}/initdb" -D "${PGDATA}" --encoding=UTF8 --locale=C
 
   echo "listen_addresses='*'" >> "${PGDATA}/postgresql.conf"
   echo "password_encryption='scram-sha-256'" >> "${PGDATA}/postgresql.conf"
   echo "host all all 0.0.0.0/0 scram-sha-256" >> "${PGDATA}/pg_hba.conf"
   echo "host all all ::/0 scram-sha-256" >> "${PGDATA}/pg_hba.conf"
 
-  su - postgres -c "${BIN}/pg_ctl -D '${PGDATA}' -o \"-c listen_addresses='*'\" -w start"
+  "${BIN}/pg_ctl" -D "${PGDATA}" -o "-c listen_addresses='*'" -w start
 
-  if ! su - postgres -c "psql -tAc \"SELECT 1 FROM pg_roles WHERE rolname='${POSTGRES_USER}'\"" | grep -q 1; then
-    su - postgres -c "psql -v ON_ERROR_STOP=1 --username=postgres -c \"CREATE ROLE \\\"${POSTGRES_USER}\\\" WITH LOGIN SUPERUSER PASSWORD '${POSTGRES_PASSWORD}';\""
-  fi
+  psql -v ON_ERROR_STOP=1 --username=postgres -v app_user="${POSTGRES_USER}" -v app_pass="${POSTGRES_PASSWORD}" <<'SQL'
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_user') THEN
+    EXECUTE format(
+      'ALTER ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION',
+      :'app_user',
+      :'app_pass'
+    );
+  ELSE
+    EXECUTE format(
+      'CREATE ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION',
+      :'app_user',
+      :'app_pass'
+    );
+  END IF;
+END $$;
+SQL
 
-  if ! su - postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='${POSTGRES_DB}'\"" | grep -q 1; then
-    su - postgres -c "psql -v ON_ERROR_STOP=1 --username=postgres -c \"CREATE DATABASE \\\"${POSTGRES_DB}\\\" OWNER \\\"${POSTGRES_USER}\\\";\""
-  fi
+  psql -v ON_ERROR_STOP=1 --username=postgres -v db_name="${POSTGRES_DB}" -v db_owner="${POSTGRES_USER}" <<'SQL'
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'db_name') THEN
+    EXECUTE format('CREATE DATABASE %I OWNER %I', :'db_name', :'db_owner');
+  ELSE
+    EXECUTE format('ALTER DATABASE %I OWNER TO %I', :'db_name', :'db_owner');
+  END IF;
+END $$;
+SQL
 
-  su - postgres -c "${BIN}/pg_ctl -D '${PGDATA}' -m fast -w stop"
+  psql -v ON_ERROR_STOP=1 --username=postgres --dbname="${POSTGRES_DB}" -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'
+  psql -v ON_ERROR_STOP=1 --username=postgres --dbname="${POSTGRES_DB}" -c 'CREATE EXTENSION IF NOT EXISTS pgcrypto;'
+  psql -v ON_ERROR_STOP=1 --username=postgres --dbname="${POSTGRES_DB}" -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+
+  "${BIN}/pg_ctl" -D "${PGDATA}" -m fast -w stop
 fi
 
-exec su - postgres -c "${BIN}/postgres -D '${PGDATA}' -c listen_addresses='*'"
+exec "${BIN}/postgres" -D "${PGDATA}" -c listen_addresses='*'
 EOS
 
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 VOLUME ["/var/lib/postgresql/data"]
 EXPOSE 5432
+USER postgres
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 EOF
 }
@@ -606,6 +651,23 @@ if [[ "$FRESH" -eq 1 ]]; then
 fi
 
 RUNNING=1
+echo "Preparing postgres volume..."
+docker volume create "$POSTGRES_VOLUME" >/dev/null 2>&1 || true
+if ! docker run --rm --user 0:0 \
+  --entrypoint sh \
+  --network none \
+  --read-only \
+  --cap-drop ALL \
+  --cap-add CHOWN \
+  --security-opt no-new-privileges \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev \
+  -v "$POSTGRES_VOLUME":/var/lib/postgresql/data \
+  lawsaw-postgres-pgvector:local \
+  -c 'set -eux; chown -R postgres:postgres /var/lib/postgresql/data; chmod 700 /var/lib/postgresql/data; ls -ld /var/lib/postgresql/data' >"$LOG_DIR/postgres.init.log" 2>&1; then
+  echo "ERROR: failed to prepare postgres volume. See: $LOG_DIR/postgres.init.log" >&2
+  exit 1
+fi
+
 echo "Preparing redis volume..."
 docker volume create "$REDIS_VOLUME" >/dev/null 2>&1 || true
 if ! docker run --rm --user 0:0 \

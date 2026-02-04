@@ -11,6 +11,7 @@
 - [x] [SEC-302] 前端 HTML 渲染安全加固（DOMPurify URI scheme policy + 媒体/链接属性白名单再收紧） ✅ 禁止未知 URI scheme（仅允许 http/https/mailto/tel）；移除 video/audio/source；对 a/img 做二次校验并强制 `_blank` 外链 `rel=noopener noreferrer` - `apps/web/src/components/article/article-content.tsx`
 - [x] [OPS-303] Compose init 容器 root 运行需隔离（禁网/最小 capabilities/只读 rootfs/no-new-privileges）✅ `postgres-init/redis-init/minio-init` 已设置 `network_mode: none`、`cap_drop: ALL` + `cap_add: CHOWN`、`read_only: true`、`tmpfs: /tmp`、`no-new-privileges` - `docker-compose.yml`
 - [x] [OPS-304] `start-stack.sh` root init 容器需隔离（禁网/最小 capabilities/只读 rootfs/no-new-privileges）✅ root `docker run` 预热卷增加 `--network none --read-only --cap-drop ALL --cap-add CHOWN --security-opt no-new-privileges --tmpfs /tmp` - `scripts/no-dockerhub/start-stack.sh`
+- [x] [SEC-304] Postgres 启动链最小权限（禁止暴露 superuser、移除默认口令、预置扩展避免迁移需要超权）✅ `POSTGRES_PASSWORD` 改为强制非默认；`POSTGRES_USER` 以 NOSUPERUSER 创建/收敛；bootstrap 以本地 superuser 预置 `uuid-ossp/pgcrypto/vector`；迁移改为校验扩展存在（不再 CREATE EXTENSION）；`start-stack.sh` 新增隔离的 postgres 卷 chown 预热 - `Dockerfile.postgres-pgvector`、`scripts/no-dockerhub/start-stack.sh`、`crates/law-eye-db/migrations/001_initial.sql`、`crates/law-eye-db/migrations/002_vectors.sql`
 
 ### HIGH（高优先级）
 - [x] [REL-301] 移除生产代码路径中的 `unwrap/expect/panic!`（保留 tests；错误转为结构化响应） ✅ signal handler/header/regex/client 初始化等改为可恢复/可传播错误；crawler fetcher/spider 初始化返回 Result；worker 构造链路改为 Result - `crates/law-eye-api/src/main.rs`、`crates/law-eye-api/src/middleware/request_id.rs`、`crates/law-eye-api/src/routes/auth.rs`、`crates/law-eye-crawler/src/rss.rs`、`crates/law-eye-crawler/src/spider.rs`、`crates/law-eye-crawler/src/pipeline.rs`、`crates/law-eye-worker/src/main.rs`、`crates/law-eye-mcp/src/main.rs`
@@ -18,6 +19,9 @@
 - [x] [SUP-301] n8n 镜像禁止使用 `:latest`（固定版本/摘要，支持 env override）✅ `image` 改为 `${N8N_IMAGE:-docker.n8n.io/n8nio/n8n:2.4.7}` - `docker-compose.yml`
 - [x] [SUP-302] `start-stack.sh` 禁止回退到 `minio/*:latest`（仅允许固定版本或本地构建）✅ 移除 `quay.io/minio/minio:latest` 与 `minio/minio:latest` 回退分支 - `scripts/no-dockerhub/start-stack.sh`
 - [x] [DOC-304] 回填综合审计报告与当前修复状态一致（移除已修复误报 + 更新日期/分数/OPS 勾选）✅ 已同步关键误报（.env/unseal/health/schema/image pinning）并更新日期/分数 - `prompts/audit/01_comprehensive_audit.md`
+- [ ] [SUP-303] Compose 外部镜像 digest 全固定（禁止漂移），同时保留 env override - `docker-compose.yml`、`docker-compose.enterprise.yml`
+- [ ] [SUP-304] Dockerfile 基础镜像 digest 全固定（devcontainers base/rust/node）- `Dockerfile.api`、`Dockerfile.worker`、`Dockerfile.web`、`Dockerfile.redis`、`Dockerfile.postgres-pgvector`
+- [ ] [DOC-305] 文档/方案中禁止 `:latest`（替换为固定版本或明确“勿用 latest”）- `docs/plans/*`
 
 **审计日期**：2026-01-26  
 **审计对象**：Rust（Axum）后端 + Next.js（React）前端 + Docker 运行栈（PostgreSQL/Redis/n8n）  
