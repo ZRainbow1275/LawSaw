@@ -561,19 +561,18 @@ build_minio_image() {
   docker build -t lawsaw-minio:local - <<'EOF'
 FROM mcr.microsoft.com/devcontainers/base:ubuntu@sha256:3dcb059253b2ebb44de3936620e1cff3dadcd2c1c982d579081ca8128c1eb319
 ARG DEBIAN_FRONTEND=noninteractive
-ARG MINIO_VERSION=RELEASE.2025-10-15T17-29-55Z
+ARG MINIO_VERSION=RELEASE.2025-09-07T16-13-09Z
+ARG MINIO_SHA256=7c5bd8512c6e966455b1d198209358b2d191c77a83ab377c4073281065fb855f
 
 RUN set -eux; \
   apt-get update; \
   apt-get install -y ca-certificates curl; \
   rm -rf /var/lib/apt/lists/*; \
-  urls="https://dl.min.io/server/minio/release/linux-amd64/archive/minio.${MINIO_VERSION} https://dl.min.io/server/minio/release/linux-amd64/minio"; \
-  for url in $urls; do \
-    if curl -fsSL --connect-timeout 10 --max-time 180 --retry 3 --retry-delay 2 "$url" -o /usr/local/bin/minio; then \
-      break; \
-    fi; \
-  done; \
+  test -n "$MINIO_SHA256"; \
+  url="https://dl.min.io/server/minio/release/linux-amd64/archive/minio.${MINIO_VERSION}"; \
+  curl -fsSL --connect-timeout 10 --max-time 180 --retry 3 --retry-delay 2 "$url" -o /usr/local/bin/minio; \
   test -s /usr/local/bin/minio; \
+  echo "${MINIO_SHA256}  /usr/local/bin/minio" | sha256sum -c -; \
   chmod +x /usr/local/bin/minio
 
 WORKDIR /data

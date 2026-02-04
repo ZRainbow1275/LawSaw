@@ -23,7 +23,7 @@
 - [x] [SUP-304] Dockerfile 基础镜像 digest 全固定（devcontainers base/rust/node）✅ 固定 `mcr.microsoft.com/devcontainers/{base,rust,javascript-node}` digest（避免 tag 漂移）- `Dockerfile.api`、`Dockerfile.worker`、`Dockerfile.web`、`Dockerfile.redis`、`Dockerfile.postgres-pgvector`
 - [x] [DOC-305] 文档/方案中禁止 `:latest`（替换为固定版本或明确“勿用 latest”）✅ `n8n` 文档示例已从 `:latest` 改为固定版本+digest - `docs/plans/*`
 - [x] [SUP-305] `start-stack.sh` 内联 Dockerfile 基础镜像 digest 固定（避免本地构建供应链漂移）✅ `FROM mcr.microsoft.com/devcontainers/base:ubuntu` 改为 `tag@sha256` 固定 - `scripts/no-dockerhub/start-stack.sh`
-- [ ] [SUP-306] `start-stack.sh` MinIO 本地构建禁止“下载失败回退 latest”，并对下载产物做 SHA256 校验（固定版本）- `scripts/no-dockerhub/start-stack.sh`
+- [x] [SUP-306] `start-stack.sh` MinIO 本地构建禁止“下载失败回退 latest”，并对下载产物做 SHA256 校验（固定版本）✅ 固定 `MINIO_VERSION` 且强制校验 `MINIO_SHA256`，移除 `dl.min.io/.../minio`（latest）回退 - `scripts/no-dockerhub/start-stack.sh`
 
 **审计日期**：2026-01-26  
 **审计对象**：Rust（Axum）后端 + Next.js（React）前端 + Docker 运行栈（PostgreSQL/Redis/n8n）  
