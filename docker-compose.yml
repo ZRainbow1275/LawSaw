@@ -29,7 +29,7 @@ services:
     image: lawsaw-postgres-pgvector:local
     user: "0:0"
     entrypoint: ["bash", "-lc"]
-    command: "chown -R postgres:postgres /var/lib/postgresql/data"
+    command: "chown postgres:postgres /var/lib/postgresql/data"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     network_mode: "none"
@@ -47,7 +47,7 @@ services:
   redis-init:
     image: alpine:3.20@sha256:a4f4213abb84c497377b8544c81b3564f313746700372ec4fe84653e4fb03805
     user: "0:0"
-    command: ["sh", "-c", "chown -R 1000:1000 /data"]
+    command: ["sh", "-c", "mkdir -p /data/appendonlydir && chown 1000:1000 /data /data/appendonlydir"]
     volumes:
       - redis_data:/data
     network_mode: "none"
@@ -88,7 +88,7 @@ services:
   minio-init:
     image: alpine:3.20@sha256:a4f4213abb84c497377b8544c81b3564f313746700372ec4fe84653e4fb03805
     user: "0:0"
-    command: ["sh", "-c", "chown -R 1000:1000 /data"]
+    command: ["sh", "-c", "chown 1000:1000 /data"]
     volumes:
       - minio_data:/data
     network_mode: "none"
