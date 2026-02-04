@@ -1,5 +1,5 @@
 # Build stage
-FROM mcr.microsoft.com/devcontainers/rust:1 AS builder
+FROM mcr.microsoft.com/devcontainers/rust:1@sha256:1435dfe4083cddbb68e909b7ea6b370b2aa43e01a17f780e3410b422dfd93507 AS builder
 
 WORKDIR /app
 
