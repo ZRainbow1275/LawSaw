@@ -65,13 +65,33 @@ STATE_DIR_RAW="${LAW_EYE_NO_DOCKERHUB_STATE_DIR:-$DEFAULT_STATE_DIR}"
 if [[ -z "${LAW_EYE_NO_DOCKERHUB_STATE_DIR:-}" && -d "$LEGACY_STATE_DIR" ]]; then
   echo "SECURITY WARNING: legacy state dir exists under repo workspace: $LEGACY_STATE_DIR" >&2
   echo "  - This script will NOT use it anymore (to avoid secret sprawl)." >&2
-  echo "  - Delete/migrate it manually if it contains sensitive files (e.g. .env, .env.e2e)." >&2
 fi
 mkdir -p "$STATE_DIR_RAW"
 STATE_DIR="$(cd "$STATE_DIR_RAW" && pwd)"
 LOG_DIR="$STATE_DIR/logs"
 PID_DIR="$STATE_DIR/pids"
 mkdir -p "$LOG_DIR" "$PID_DIR"
+
+if [[ -z "${LAW_EYE_NO_DOCKERHUB_STATE_DIR:-}" && -d "$LEGACY_STATE_DIR" ]]; then
+  migrate_legacy_env_file() {
+    local src="$1"
+    local dst="$2"
+    if [[ -f "$src" ]]; then
+      echo "INFO: migrating legacy env file: ${src} -> ${dst}" >&2
+      mkdir -p "$(dirname "$dst")"
+      mv "$src" "$dst" 2>/dev/null || { cp "$src" "$dst" && rm -f "$src"; }
+      chmod 600 "$dst" >/dev/null 2>&1 || true
+    fi
+  }
+
+  if [[ ! -f "$STATE_DIR/secrets.env" ]]; then
+    migrate_legacy_env_file "$LEGACY_STATE_DIR/.env" "$STATE_DIR/secrets.env"
+    migrate_legacy_env_file "$LEGACY_STATE_DIR/.env.e2e" "$STATE_DIR/secrets.env"
+  else
+    migrate_legacy_env_file "$LEGACY_STATE_DIR/.env" "$STATE_DIR/legacy.repo.secrets.env"
+    migrate_legacy_env_file "$LEGACY_STATE_DIR/.env.e2e" "$STATE_DIR/legacy.repo.secrets.e2e.env"
+  fi
+fi
 
 cleanup_on_exit() {
   local exit_code=$?

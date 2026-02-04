@@ -19,6 +19,7 @@
 - [x] [SEC-009] 移除工作区 `.env` 依赖 ✅：`scripts/no-dockerhub/*.sh` 默认改用用户 state 目录（`$XDG_STATE_HOME`/`$HOME/.local/state`）生成/读取 `secrets.env`；并显式警告 repo-root `.env`（不再读取） - `scripts/no-dockerhub/*.sh` / `.env.example`
 - [x] [SEC-010] Vault state 彻底外移 ✅：init/rotate/revoke 统一使用用户 state 目录（`LAW_EYE_ENTERPRISE_*_DIR`）并自动迁移 legacy `tmp/enterprise/{vault,secrets}` - `scripts/enterprise/vault-*.sh`
 - [ ] [SEC-011] Docker 本地栈 root init 最小能力：移除 `DAC_READ_SEARCH`，并避免递归 `chown -R`（仅修复卷根目录权限） - `docker-compose.yml`
+- [x] [SEC-012] no-dockerhub legacy state 自动迁移 ✅：启动时将 `tmp/no-dockerhub/<stack>/.env*` 迁移到用户 state（优先落到 `secrets.env`）并移除 legacy 副本 - `scripts/no-dockerhub/start-stack.sh`
 
 ### OPS（工作区卫生）
 - [x] [OPS-001] 外移 enterprise PKI：改用 `LAW_EYE_ENTERPRISE_PKI_DIR`（默认用户 state 目录）+ 脚本拒绝写入仓库根目录 ✅ - `docker-compose.enterprise.yml`
@@ -41,6 +42,9 @@
 - [x] [VER-008] `cargo test --workspace` ✅（2026-02-04；SEC-010）
 - [x] [VER-009] `pnpm -C apps/web lint` ✅（2026-02-04；SEC-010）
 - [x] [VER-010] `pnpm -C apps/web test` ✅（2026-02-04；SEC-010）
+- [x] [VER-011] `cargo test --workspace` ✅（2026-02-04；SEC-012）
+- [x] [VER-012] `pnpm -C apps/web lint` ✅（2026-02-04；SEC-012）
+- [x] [VER-013] `pnpm -C apps/web test` ✅（2026-02-04；SEC-012）
 
 ##  CRITICAL VULNERABILITIES (Must Fix Immediately)
 *(Issues that compromise Security or Uptime)*
