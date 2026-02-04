@@ -1,16 +1,16 @@
 # ️ ENTERPRISE GAP ANALYSIS REPORT
-**Date**: 2026-02-03
-**System Maturity Score**: 15/100
+**Date**: 2026-02-04
+**System Maturity Score**: 30/100
 
 ##  SEVERITY 1: CRITICAL BLOCKERS (Must Fix Before Deploy)
 *(Security risks, data loss risks, potential crashes)*
 | ID | Component | Issue | Violation Type | Remediation |
 |----|-----------|-------|----------------|-------------|
-| S1-01 | `.env` | 工作区存在明文敏感配置（口令/API Key/JWT Secret）且文件被纳入仓库 | OWASP A07 / Secret Management | 将所有密钥迁移到 Secret Manager/Vault/KMS 注入；立刻轮换已暴露凭证；CI 强制 Secret 扫描并阻断；禁止把 .env 纳入版本控制。 |
-| S1-02 | `tmp/enterprise/vault/unseal.key` | Vault Unseal Key 落盘于工作区（等同 Vault root 级别控制权） | Zero Trust / Key Material Sprawl | 从工作区移除并视为已泄露进行轮换；改为一次性生成/外部安全存储；严禁在仓库目录生成/缓存。 |
-| S1-03 | `Dockerfile.postgres-pgvector` / `docker-compose*.yml` | Postgres 容器/初始化链存在 root 启动路径（或 root init 容器） | Container Hardening / Privilege Escalation | 确保运行期为非 root（USER postgres/指定 user）；最小权限；移除默认弱口令；避免创建 SUPERUSER；加固 entrypoint 与卷权限。 |
-| S1-04 | `apps/web/src/components/article/article-content.tsx` | 存在 HTML 直出渲染点（dangerouslySetInnerHTML） | OWASP A03 XSS | 优先改为结构化渲染；若必须保留：收紧 DOMPurify allowlist + 明确 URI scheme policy + CSP。 |
-| S1-05 | `crates/law-eye-api/src/routes/*` | 未发现系统级请求 Schema Validation 网关（仅 serde 反序列化不足以满足 Zero Trust） | Input Validation / OWASP A04 | 为所有公开写接口引入显式验证层（validator/garde 等）；query/body 白名单 + range + 业务约束；统一 4xx 错误结构；增加负向用例。 |
+| S1-01 | `.env` | `.env` 仍属于明文敏感配置载体（禁止生产落盘）；但该仓库已通过 `.gitignore` 排除且未被版本控制追踪 | OWASP A07 / Secret Management | 生产环境必须使用 Secret Manager/Vault/KMS 注入；CI 继续强制 Secret 扫描并阻断；若历史曾暴露请立即轮换凭证。 |
+| S1-02 | `tmp/enterprise/vault/unseal.key` | Vault Unseal Key 属于 root 级关键材料（禁止在仓库目录落盘）；当前已迁移到用户 state 目录并由 `.gitignore` 排除 | Zero Trust / Key Material Sprawl | 维持“仓库内零落盘”约束；按需要启用一次性生成/外部安全存储；若历史落盘视为已泄露并执行轮换流程。 |
+| S1-03 | `docker-compose.yml` / `scripts/no-dockerhub/start-stack.sh` | 存在短生命周期 root init（卷 chown）；已做禁网/最小能力/只读 rootfs/no-new-privileges 隔离，但仍应尽量消除 root 路径 | Container Hardening / Privilege Escalation | 保持运行期服务 non-root；root init 仅保留 CHOWN 且禁网；进一步方案：评估 rootless/预置卷权限/替代存储驱动以移除 chown 需求。 |
+| S1-04 | `apps/web/src/components/article/article-content.tsx` | 仍存在 HTML 直出渲染点（dangerouslySetInnerHTML），但已通过收紧 DOMPurify allowlist + URI scheme policy 进行加固 | OWASP A03 XSS | 结构化渲染优先；保留直出则必须配套 CSP（script-src/nonce 等）与回归用例（a/img 协议与属性白名单）。 |
+| S1-05 | `crates/law-eye-api/src/routes/*` | 已补齐 API 输入校验基线（统一 JSON/Query 解析失败 4xx + deny_unknown_fields + 关键约束），但仍缺少“全路由统一的业务级校验网关” | Input Validation / OWASP A04 | 继续推进：validator/garde 等显式校验层 + 负向测试；对所有写接口实现字段范围/语义约束与统一错误码。 |
 
 ## ⚠️ SEVERITY 2: ARCHITECTURAL DEBT (Refactoring Candidates)
 *(Issues affecting maintainability and scalability)*
@@ -70,9 +70,9 @@
 - `crates/law-eye-common/src/config.rs:483`: 发现 std::fs::*（若位于 async/高频路径，会阻塞线程）。
 
 ##  SEVERITY 3: OPS GAPS (DevOps Readiness)
-- [ ] Docker/Compose 存在 root 运行路径（含 init/root user）
-- [ ] 缺少 /health/live 与 /health/ready
-- [ ] 使用 latest 或未固定 tag/digest 镜像
+- [x] Docker/Compose 仅保留短生命周期 root init 且已隔离（禁网/最小能力/只读 rootfs/no-new-privileges）
+- [x] 已提供 /health/live 与 /health/ready
+- [ ] 镜像 digest 仍未全面固定（已移除 :latest 并固定 tag；建议在 CI 中生成并锁定 digest）
 - [x] 未发现敏感字段日志（仅静态启发式）
 
 ## ️ PILLAR-BY-PILLAR FINDINGS (Enterprise Audit Matrix)
@@ -134,14 +134,14 @@
 ### 5. OBSERVABILITY & OPS (12-Factor App)
 - **Structured Logging**: Rust 侧发现 tracing/TraceLayer；前端多为 console 日志，缺少 trace_id 贯穿。
 - **Configuration**: Rust 配置支持 env + 文件 + Vault（加分），但 .env 落盘并入仓库属于重大倒扣分。
-- **Health Checks**: 发现 /health，缺少 /health/live 和 /health/ready。
+- **Health Checks**: 已提供 `/health`、`/health/live` 与 `/health/ready`（建议在 K8s/网关侧配置探针并强制超时/告警）。
 
 ### 6. SUPPLY CHAIN & DEPENDENCIES
 - **Lock Files**: 发现 Cargo.lock 与 apps/web/pnpm-lock.yaml（确定性构建基础）。
 - **CI Security Gates**: .github/workflows/ci.yml 包含 TruffleHog、RustSec、pnpm audit、SBOM 生成。
 - **pnpm audit (apps/web)**: {'info': 0, 'low': 0, 'moderate': 0, 'high': 0, 'critical': 0}
 - **pnpm audit --dev (apps/web)**: {'info': 0, 'low': 0, 'moderate': 0, 'high': 0, 'critical': 0}
-- **Container Image Pinning**: 2 处使用 latest 或未固定 tag/digest。
+- **Container Image Pinning**: 已移除可执行路径中的 `:latest`（compose n8n 已固定版本，脚本 MinIO 已移除 latest 回退）；仍建议进一步固定 digest。
 
 ## ️ EXECUTABLE REMEDIATION ROADMAP
 1. **[Immediate]** 清除并轮换所有已落盘密钥（.env、unseal.key 等）；迁移到 Vault/KMS/Secret Manager 注入。

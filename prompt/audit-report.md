@@ -17,6 +17,7 @@
 - [x] [SEC-303] API 输入校验基线：写接口启用严格 Schema Validation（拒绝未知字段 + 约束校验 + 统一 4xx） ✅ 引入 `ApiJson/ApiQuery` 将 JSON/Query 解析失败统一映射为结构化 4xx（含错误码）；为请求/查询结构体开启 `deny_unknown_fields`；补齐关键字段约束校验（例如 users.update）- `crates/law-eye-api/src/error.rs`、`crates/law-eye-api/src/main.rs`、`crates/law-eye-api/src/auth.rs`、`crates/law-eye-api/src/routes/*.rs`
 - [x] [SUP-301] n8n 镜像禁止使用 `:latest`（固定版本/摘要，支持 env override）✅ `image` 改为 `${N8N_IMAGE:-docker.n8n.io/n8nio/n8n:2.4.7}` - `docker-compose.yml`
 - [x] [SUP-302] `start-stack.sh` 禁止回退到 `minio/*:latest`（仅允许固定版本或本地构建）✅ 移除 `quay.io/minio/minio:latest` 与 `minio/minio:latest` 回退分支 - `scripts/no-dockerhub/start-stack.sh`
+- [x] [DOC-304] 回填综合审计报告与当前修复状态一致（移除已修复误报 + 更新日期/分数/OPS 勾选）✅ 已同步关键误报（.env/unseal/health/schema/image pinning）并更新日期/分数 - `prompts/audit/01_comprehensive_audit.md`
 
 **审计日期**：2026-01-26  
 **审计对象**：Rust（Axum）后端 + Next.js（React）前端 + Docker 运行栈（PostgreSQL/Redis/n8n）  
