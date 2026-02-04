@@ -25,6 +25,7 @@ import {
 	ZoomIn,
 	ZoomOut,
 } from "lucide-react";
+import Image from "next/image";
 import { useCallback, useState } from "react";
 
 // ============================================
@@ -434,6 +435,12 @@ export function MediaPreviewTrigger({
 	children,
 }: MediaPreviewTriggerProps) {
 	const Icon = mediaTypeIcons[media.type];
+	const thumbnailSrc = media.thumbnail || media.url;
+	const thumbnailAlt = media.alt || media.title || "预览";
+	const isPreviewUrl =
+		thumbnailSrc.startsWith("blob:") || thumbnailSrc.startsWith("data:");
+	const isRemoteHttp =
+		thumbnailSrc.startsWith("http://") || thumbnailSrc.startsWith("https://");
 
 	if (children) {
 		return (
@@ -456,13 +463,17 @@ export function MediaPreviewTrigger({
 				"hover:border-primary-300 hover:shadow-md transition-all",
 				className,
 			)}
-		>
+	>
 			{/* 缩略图或图标 */}
 			{media.thumbnail || media.type === "image" ? (
-				<img
-					src={media.thumbnail || media.url}
-					alt={media.alt || media.title || "预览"}
-					className="w-full h-full object-cover"
+				<Image
+					src={thumbnailSrc}
+					alt={thumbnailAlt}
+					fill
+					sizes="(max-width: 640px) 40vw, 240px"
+					className="object-cover"
+					unoptimized={isRemoteHttp || isPreviewUrl}
+					loader={({ src }) => src}
 				/>
 			) : (
 				<div className="w-full h-full flex items-center justify-center bg-neutral-50">

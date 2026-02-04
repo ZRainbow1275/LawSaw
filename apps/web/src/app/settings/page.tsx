@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
-import { apiClient, resolveApiUrl } from "@/lib/api";
+import { apiClient } from "@/lib/api";
 import {
 	type ApiKey,
 	assertApiKeyListResponse,
@@ -43,6 +43,7 @@ import {
 	Trash2,
 	User,
 } from "lucide-react";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 
@@ -402,8 +403,10 @@ function SettingsContent() {
 	const allowedAvatarTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 	const avatarSrc =
-		avatarPreviewUrl ||
-		(user?.avatar_url ? resolveApiUrl(user.avatar_url) : null);
+		avatarPreviewUrl || user?.avatar_url || null;
+	const isPreviewAvatar =
+		typeof avatarSrc === "string" &&
+		(avatarSrc.startsWith("blob:") || avatarSrc.startsWith("data:"));
 	const avatarInitial = (profile.displayName || profile.email || "用户")
 		.trim()
 		.charAt(0)
@@ -501,10 +504,14 @@ function SettingsContent() {
 												<div className="flex flex-col gap-4 sm:flex-row sm:items-center">
 													<div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-neutral-100 bg-neutral-50">
 														{avatarSrc ? (
-															<img
+															<Image
 																src={avatarSrc}
 																alt="头像"
+																width={64}
+																height={64}
+																sizes="64px"
 																className="h-16 w-16 object-cover"
+																unoptimized={isPreviewAvatar}
 															/>
 														) : (
 															<span className="text-lg font-semibold text-neutral-600">
