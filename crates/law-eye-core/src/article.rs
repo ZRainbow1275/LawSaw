@@ -243,6 +243,62 @@ impl ArticleService {
         .await
     }
 
+    pub async fn upsert_many(&self, tenant_id: Uuid, inputs: &[CreateArticle]) -> Result<Vec<Uuid>> {
+        if inputs.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let mut qb: QueryBuilder<'_, Postgres> = QueryBuilder::new(
+                    r#"
+                    INSERT INTO articles (source_id, title, link, content, author, published_at)
+                    "#,
+                );
+
+                qb.push_values(inputs, |mut row, input| {
+                    row.push_bind(input.source_id)
+                        .push_bind(&input.title)
+                        .push_bind(&input.link)
+                        .push_bind(&input.content)
+                        .push_bind(&input.author)
+                        .push_bind(input.published_at);
+                });
+
+                qb.push(
+                    r#"
+                    ON CONFLICT (tenant_id, link) DO UPDATE SET
+                        source_id = EXCLUDED.source_id,
+                        title = EXCLUDED.title,
+                        content = COALESCE(EXCLUDED.content, articles.content),
+                        author = COALESCE(EXCLUDED.author, articles.author),
+                        published_at = COALESCE(EXCLUDED.published_at, articles.published_at),
+                        updated_at = NOW()
+                    WHERE
+                        articles.source_id IS DISTINCT FROM EXCLUDED.source_id
+                        OR articles.title IS DISTINCT FROM EXCLUDED.title
+                        OR articles.content IS DISTINCT FROM COALESCE(EXCLUDED.content, articles.content)
+                        OR articles.author IS DISTINCT FROM COALESCE(EXCLUDED.author, articles.author)
+                        OR articles.published_at IS DISTINCT FROM COALESCE(EXCLUDED.published_at, articles.published_at)
+                    RETURNING id
+                    "#,
+                );
+
+                let ids = qb
+                    .build_query_as::<(Uuid,)>()
+                    .fetch_all(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?
+                    .into_iter()
+                    .map(|row| row.0)
+                    .collect::<Vec<_>>();
+
+                Ok(ids)
+            })
+        })
+        .await
+    }
+
     /// Update article
     pub async fn update(
         &self,

@@ -3,11 +3,12 @@ use law_eye_ai::{AiService, ClassifyResult, RiskAssessment, SummaryResult, TagsR
 use law_eye_common::AppConfig;
 use law_eye_common::egress::{validate_outbound_url, OutboundUrlPolicy};
 use law_eye_core::{ArticleService, SourceService};
-use law_eye_crawler::{RawArticle, RssFetcher, SpiderConfig, WebSpider};
+use law_eye_crawler::{RssFetcher, SpiderConfig, WebSpider};
 use law_eye_db::{create_pool_with_session_role, create_pool_with_session_role_retry, CreateArticle};
 use law_eye_queue::{AiTask, AiTaskType, IngestTask, PushTask, ReservedTask, TaskQueue};
 use serde_json::json;
 use sqlx::PgPool;
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::signal;
@@ -564,36 +565,45 @@ impl Worker {
         match articles {
             Ok(articles) => {
                 let article_service = ArticleService::new(self.pool.clone());
-                let mut saved = 0;
+                let mut seen_links = HashSet::with_capacity(articles.len());
+                let mut create_articles = Vec::with_capacity(articles.len());
 
                 for article in articles {
-                    match self
-                        .save_article(&article_service, tenant_id, task.source_id, article)
-                        .await
-                    {
-                        Ok(Some(article_id)) => {
-                            saved += 1;
-                            if self.ai_service.is_some() {
-                                let ai_task = AiTask {
-                                    tenant_id,
-                                    article_id,
-                                    task_type: AiTaskType::Full,
-                                };
-                                if let Err(e) =
-                                    self.task_queue.enqueue_retryable(QUEUE_AI, ai_task).await
-                                {
-                                    error!("Failed to enqueue AI task: {}", e);
-                                }
-                            }
-                        }
-                        Ok(None) => {}
-                        Err(e) => {
-                            error!("Failed to save article: {}", e);
+                    if seen_links.contains(&article.link) {
+                        continue;
+                    }
+                    seen_links.insert(article.link.clone());
+
+                    create_articles.push(CreateArticle {
+                        source_id: task.source_id,
+                        title: article.title,
+                        link: article.link,
+                        content: article.content,
+                        author: article.author,
+                        published_at: article.published_at,
+                    });
+                }
+
+                let saved_article_ids = article_service.upsert_many(tenant_id, &create_articles).await?;
+
+                for article_id in &saved_article_ids {
+                    if self.ai_service.is_some() {
+                        let ai_task = AiTask {
+                            tenant_id,
+                            article_id: *article_id,
+                            task_type: AiTaskType::Full,
+                        };
+                        if let Err(e) = self.task_queue.enqueue_retryable(QUEUE_AI, ai_task).await {
+                            error!("Failed to enqueue AI task: {}", e);
                         }
                     }
                 }
 
-                info!("Saved {} articles from source {}", saved, task.source_id);
+                info!(
+                    "Upserted {} articles from source {}",
+                    saved_article_ids.len(),
+                    task.source_id
+                );
                 let _ = source_service
                     .update_last_fetch(tenant_id, task.source_id, None)
                     .await;
@@ -609,30 +619,6 @@ impl Worker {
                 Err(anyhow::anyhow!(msg))
             }
         }
-    }
-
-    async fn save_article(
-        &self,
-        service: &ArticleService,
-        tenant_id: uuid::Uuid,
-        source_id: uuid::Uuid,
-        article: RawArticle,
-    ) -> anyhow::Result<Option<uuid::Uuid>> {
-        if service.exists_by_link(tenant_id, &article.link).await? {
-            return Ok(None);
-        }
-
-        let create = CreateArticle {
-            source_id,
-            title: article.title,
-            link: article.link,
-            content: article.content,
-            author: article.author,
-            published_at: article.published_at,
-        };
-
-        let created = service.create(tenant_id, create).await?;
-        Ok(Some(created.id))
     }
 
     async fn process_ai_task(&self, task: AiTask) -> anyhow::Result<()> {
