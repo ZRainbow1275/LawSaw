@@ -1,7 +1,8 @@
 use axum::{
+    body::Body,
     extract::{ConnectInfo, Path, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
-    response::{IntoResponse, Response},
+    response::Response,
     routing::get,
     Router,
 };
@@ -88,18 +89,26 @@ pub(crate) async fn get_object(
         .await
         .map_err(AppError::from)?;
 
-    let bytes = object_service
-        .get_object_bytes(&object)
+    let stream = object_service
+        .get_object_stream(&object)
         .await
         .map_err(AppError::from)?;
 
-    let mut response = (StatusCode::OK, bytes).into_response();
+    let mut response = Response::new(Body::new(stream.into_inner()));
+    *response.status_mut() = StatusCode::OK;
     let content_type = HeaderValue::from_str(&object.content_type)
         .map_err(|_| AppError::internal("Invalid object content-type"))?;
 
     response
         .headers_mut()
         .insert(header::CONTENT_TYPE, content_type);
+    if object.byte_size >= 0 {
+        let content_length = HeaderValue::from_str(&object.byte_size.to_string())
+            .map_err(|_| AppError::internal("Invalid object byte_size"))?;
+        response
+            .headers_mut()
+            .insert(header::CONTENT_LENGTH, content_length);
+    }
 
     response.headers_mut().insert(
         header::CACHE_CONTROL,

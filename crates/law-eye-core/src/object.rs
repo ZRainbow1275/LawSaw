@@ -326,7 +326,7 @@ impl ObjectService {
         .await
     }
 
-    pub async fn get_object_bytes(&self, object: &Object) -> Result<Vec<u8>> {
+    pub async fn get_object_stream(&self, object: &Object) -> Result<ByteStream> {
         let resp = self
             .client
             .get_object()
@@ -336,12 +336,6 @@ impl ObjectService {
             .await
             .map_err(|e| Error::Http(format!("Get object failed: {e:?}")))?;
 
-        let data = resp
-            .body
-            .collect()
-            .await
-            .map_err(|e| Error::Http(format!("Read object body failed: {e:?}")))?;
-
-        Ok(data.into_bytes().to_vec())
+        Ok(resp.body)
     }
 }
