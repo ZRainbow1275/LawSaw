@@ -56,57 +56,6 @@ async fn validate_webhook_url(raw: &str, allow_internal: bool) -> anyhow::Result
     Ok(url)
 }
 
-#[cfg(test)]
-mod webhook_url_tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn validate_webhook_url_requires_https_for_external_by_default() {
-        assert!(
-            validate_webhook_url("http://example.com/hook", false)
-                .await
-                .is_err()
-        );
-        assert!(
-            validate_webhook_url("https://example.com/hook", false)
-                .await
-                .is_ok()
-        );
-    }
-
-    #[tokio::test]
-    async fn validate_webhook_url_blocks_internal_hosts_by_default() {
-        assert!(
-            validate_webhook_url("https://127.0.0.1/hook", false)
-                .await
-                .is_err()
-        );
-        assert!(
-            validate_webhook_url("https://localhost/hook", false)
-                .await
-                .is_err()
-        );
-    }
-
-    #[tokio::test]
-    async fn validate_webhook_url_allows_localhost_when_configured() {
-        assert!(
-            validate_webhook_url("http://127.0.0.1:1234/hook", true)
-                .await
-                .is_ok()
-        );
-    }
-
-    #[tokio::test]
-    async fn validate_webhook_url_rejects_userinfo_credentials() {
-        assert!(
-            validate_webhook_url("https://user:pass@example.com/hook", false)
-                .await
-                .is_err()
-        );
-    }
-}
-
 struct Worker {
     pool: PgPool,
     task_queue: Arc<TaskQueue>,
@@ -1265,4 +1214,55 @@ async fn main() -> anyhow::Result<()> {
         push_http_client,
     )?;
     worker.run().await
+}
+
+#[cfg(test)]
+mod webhook_url_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn validate_webhook_url_requires_https_for_external_by_default() {
+        assert!(
+            validate_webhook_url("http://example.com/hook", false)
+                .await
+                .is_err()
+        );
+        assert!(
+            validate_webhook_url("https://example.com/hook", false)
+                .await
+                .is_ok()
+        );
+    }
+
+    #[tokio::test]
+    async fn validate_webhook_url_blocks_internal_hosts_by_default() {
+        assert!(
+            validate_webhook_url("https://127.0.0.1/hook", false)
+                .await
+                .is_err()
+        );
+        assert!(
+            validate_webhook_url("https://localhost/hook", false)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn validate_webhook_url_allows_localhost_when_configured() {
+        assert!(
+            validate_webhook_url("http://127.0.0.1:1234/hook", true)
+                .await
+                .is_ok()
+        );
+    }
+
+    #[tokio::test]
+    async fn validate_webhook_url_rejects_userinfo_credentials() {
+        assert!(
+            validate_webhook_url("https://user:pass@example.com/hook", false)
+                .await
+                .is_err()
+        );
+    }
 }

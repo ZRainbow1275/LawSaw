@@ -43,7 +43,7 @@ pub struct RequiredPermissions {
 /// - Attach either:
 ///   - `RequiredPermission("<perm>")`, or
 ///   - `RequiredPermissions { read: "<perm>", write: "<perm>" }`
-///   to a router/route via `Extension`
+///     to a router/route via `Extension`
 /// - Add `middleware::from_extractor::<RequirePermission>()`
 ///
 /// If no required permission policy is attached, the request is rejected (403).
