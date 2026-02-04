@@ -608,14 +608,32 @@ fi
 RUNNING=1
 echo "Preparing redis volume..."
 docker volume create "$REDIS_VOLUME" >/dev/null 2>&1 || true
-if ! docker run --rm --user 0:0 -v "$REDIS_VOLUME":/data lawsaw-redis:local sh -c 'set -eux; chown -R 1000:1000 /data; mkdir -p /data/appendonlydir; chown -R 1000:1000 /data/appendonlydir; ls -ld /data /data/appendonlydir' >"$LOG_DIR/redis.init.log" 2>&1; then
+if ! docker run --rm --user 0:0 \
+  --network none \
+  --read-only \
+  --cap-drop ALL \
+  --cap-add CHOWN \
+  --security-opt no-new-privileges \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev \
+  -v "$REDIS_VOLUME":/data \
+  lawsaw-redis:local \
+  sh -c 'set -eux; chown -R 1000:1000 /data; mkdir -p /data/appendonlydir; chown -R 1000:1000 /data/appendonlydir; ls -ld /data /data/appendonlydir' >"$LOG_DIR/redis.init.log" 2>&1; then
   echo "ERROR: failed to prepare redis volume. See: $LOG_DIR/redis.init.log" >&2
   exit 1
 fi
 
 echo "Preparing minio volume..."
 docker volume create "$MINIO_VOLUME" >/dev/null 2>&1 || true
-if ! docker run --rm --user 0:0 -v "$MINIO_VOLUME":/data lawsaw-redis:local sh -c 'set -eux; chown -R 1000:1000 /data; ls -ld /data' >"$LOG_DIR/minio.init.log" 2>&1; then
+if ! docker run --rm --user 0:0 \
+  --network none \
+  --read-only \
+  --cap-drop ALL \
+  --cap-add CHOWN \
+  --security-opt no-new-privileges \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev \
+  -v "$MINIO_VOLUME":/data \
+  lawsaw-redis:local \
+  sh -c 'set -eux; chown -R 1000:1000 /data; ls -ld /data' >"$LOG_DIR/minio.init.log" 2>&1; then
   echo "ERROR: failed to prepare minio volume. See: $LOG_DIR/minio.init.log" >&2
   exit 1
 fi
