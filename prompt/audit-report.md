@@ -21,7 +21,7 @@
 - [x] [DOC-304] 回填综合审计报告与当前修复状态一致（移除已修复误报 + 更新日期/分数/OPS 勾选）✅ 已同步关键误报（.env/unseal/health/schema/image pinning）并更新日期/分数 - `prompts/audit/01_comprehensive_audit.md`
 - [x] [SUP-303] Compose 外部镜像 digest 全固定（禁止漂移），同时保留 env override ✅ 固定 `alpine/minio/vault/caddy/n8n` digest；并通过 `MINIO_IMAGE/VAULT_IMAGE/CADDY_IMAGE/N8N_IMAGE` 支持覆盖 - `docker-compose.yml`、`docker-compose.enterprise.yml`
 - [x] [SUP-304] Dockerfile 基础镜像 digest 全固定（devcontainers base/rust/node）✅ 固定 `mcr.microsoft.com/devcontainers/{base,rust,javascript-node}` digest（避免 tag 漂移）- `Dockerfile.api`、`Dockerfile.worker`、`Dockerfile.web`、`Dockerfile.redis`、`Dockerfile.postgres-pgvector`
-- [ ] [DOC-305] 文档/方案中禁止 `:latest`（替换为固定版本或明确“勿用 latest”）- `docs/plans/*`
+- [x] [DOC-305] 文档/方案中禁止 `:latest`（替换为固定版本或明确“勿用 latest”）✅ `n8n` 文档示例已从 `:latest` 改为固定版本+digest - `docs/plans/*`
 
 **审计日期**：2026-01-26  
 **审计对象**：Rust（Axum）后端 + Next.js（React）前端 + Docker 运行栈（PostgreSQL/Redis/n8n）  

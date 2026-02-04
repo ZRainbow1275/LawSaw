@@ -1042,7 +1042,7 @@ services:
       - redis
 
   n8n:
-    image: n8nio/n8n:latest
+    image: docker.n8n.io/n8nio/n8n:2.4.7@sha256:b9c6ff711128fe2c422fb51ada978040ba3cc5c1fe8934af2d3f4cc5dc47069d
     environment:
       - N8N_HOST=n8n.law-eye.local
     volumes:
