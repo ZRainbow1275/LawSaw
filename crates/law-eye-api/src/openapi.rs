@@ -48,6 +48,7 @@ impl Modify for SecurityAddon {
         crate::routes::articles::batch_update_status,
         crate::routes::categories::list_categories,
         crate::routes::sources::list_sources,
+        crate::routes::sources::get_source_stats,
         crate::routes::sources::get_source,
         crate::routes::sources::create_source,
         crate::routes::sources::trigger_fetch,

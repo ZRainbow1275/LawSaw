@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
-use crate::{ApiError, ApiJson, ApiResult, AppError};
+use crate::{ApiError, ApiJson, ApiQuery, ApiResult, AppError};
 use law_eye_db::{CreateAuditLog, CreateSource};
 use law_eye_queue::IngestTask;
 use law_eye_common::egress::{validate_outbound_url, OutboundUrlPolicy};
@@ -26,9 +26,12 @@ const SOURCE_URL_MAX_LEN: usize = 2048;
 const SOURCE_SCHEDULE_MAX_LEN: usize = 128;
 const SOURCE_PRIORITY_MIN: i32 = 0;
 const SOURCE_PRIORITY_MAX: i32 = 100;
+const SOURCE_LIST_DEFAULT_LIMIT: i64 = 100;
+const SOURCE_LIST_MAX_LIMIT: i64 = 1000;
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route("/stats", get(get_source_stats))
         .route("/", get(list_sources).post(create_source))
         .route("/{id}", get(get_source))
         .route("/{id}/fetch", post(trigger_fetch))
@@ -126,6 +129,28 @@ pub struct SourceResponse {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ListSourcesParams {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SourceListResponse {
+    pub data: Vec<SourceResponse>,
+    pub total: i64,
+    pub limit: i64,
+    pub offset: i64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SourceStatsResponse {
+    pub total: i64,
+    pub active_count: i64,
+    pub error_count: i64,
+}
+
 impl From<law_eye_db::Source> for SourceResponse {
     fn from(source: law_eye_db::Source) -> Self {
         Self {
@@ -174,24 +199,24 @@ pub struct EnqueueResponse {
     pub message: String,
 }
 
-/// List sources
+/// Source stats (total/active/error)
 #[utoipa::path(
     get,
-    path = "/api/v1/sources",
+    path = "/api/v1/sources/stats",
     security(
         ("session" = [])
     ),
     responses(
-        (status = 200, description = "Sources", body = Vec<SourceResponse>),
+        (status = 200, description = "Source stats", body = SourceStatsResponse),
         (status = 401, description = "Not authenticated", body = ApiError),
         (status = 403, description = "Permission denied", body = ApiError),
         (status = 500, description = "Server error", body = ApiError)
     )
 )]
-pub(crate) async fn list_sources(
+pub(crate) async fn get_source_stats(
     State(state): State<AppState>,
     auth_session: AuthSession,
-) -> ApiResult<Json<Vec<SourceResponse>>> {
+) -> ApiResult<Json<SourceStatsResponse>> {
     let user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
@@ -205,17 +230,85 @@ pub(crate) async fn list_sources(
         return Err(AppError::forbidden("Permission denied"));
     }
 
-    let sources = state
+    let stats = state
         .source_service
-        .list(user.tenant_id)
+        .stats(user.tenant_id)
+        .await
+        .map_err(|e| AppError::internal_with_code("STATS_ERROR", e.to_string()))?;
+
+    Ok(Json(SourceStatsResponse {
+        total: stats.total,
+        active_count: stats.active_count,
+        error_count: stats.error_count,
+    }))
+}
+
+/// List sources
+#[utoipa::path(
+    get,
+    path = "/api/v1/sources",
+    params(
+        ("limit" = Option<i64>, Query, description = "Max results (default 100, max 1000)"),
+        ("offset" = Option<i64>, Query, description = "Offset (default 0)")
+    ),
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "Sources", body = SourceListResponse),
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
+    )
+)]
+pub(crate) async fn list_sources(
+    State(state): State<AppState>,
+    auth_session: AuthSession,
+    ApiQuery(params): ApiQuery<ListSourcesParams>,
+) -> ApiResult<Json<SourceListResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+
+    let can_read = state
+        .user_service
+        .has_permission(user.id, "sources:read")
         .await
         .map_err(AppError::from)?;
-    Ok(Json(
-        sources
-            .into_iter()
-            .map(SourceResponse::from)
-            .collect::<Vec<_>>(),
-    ))
+    if !can_read {
+        return Err(AppError::forbidden("Permission denied"));
+    }
+
+    let mut limit = params.limit.unwrap_or(SOURCE_LIST_DEFAULT_LIMIT);
+    if limit < 1 {
+        return Err(AppError::validation("limit must be >= 1"));
+    }
+    limit = limit.min(SOURCE_LIST_MAX_LIMIT);
+
+    let offset = params.offset.unwrap_or(0);
+    if offset < 0 {
+        return Err(AppError::validation("offset must be >= 0"));
+    }
+
+    let sources = state
+        .source_service
+        .list(user.tenant_id, limit, offset)
+        .await
+        .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?;
+
+    let total = state
+        .source_service
+        .count(user.tenant_id)
+        .await
+        .map_err(|e| AppError::internal_with_code("COUNT_ERROR", e.to_string()))?;
+
+    Ok(Json(SourceListResponse {
+        data: sources.into_iter().map(SourceResponse::from).collect(),
+        total,
+        limit,
+        offset,
+    }))
 }
 
 /// Get source by id

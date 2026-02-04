@@ -8,12 +8,12 @@ import { Header } from "@/components/layout/header";
 import { MainContent } from "@/components/layout/main-content";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useSourceStats } from "@/hooks/use-sources";
 import { apiClient } from "@/lib/api";
 import {
 	assertAiAvailabilityResponse,
 	assertArticleStats,
 	assertHealthResponse,
-	assertSourceList,
 } from "@/lib/api/types";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -52,11 +52,7 @@ export default function Dashboard() {
 		refetchInterval: 30_000,
 	});
 
-	const sourcesQuery = useQuery({
-		queryKey: ["sources"],
-		queryFn: () => apiClient.get("/api/v1/sources", assertSourceList),
-		refetchInterval: 30_000,
-	});
+	const sourceStatsQuery = useSourceStats();
 
 	const aiAvailabilityQuery = useQuery({
 		queryKey: ["aiAvailability"],
@@ -78,7 +74,7 @@ export default function Dashboard() {
 
 	const apiStatus = statusFromQuery(healthQuery);
 	const dbStatus = statusFromQuery(statsQuery);
-	const sourcesStatus = statusFromQuery(sourcesQuery);
+	const sourcesStatus = statusFromQuery(sourceStatsQuery);
 
 	const aiStatus: ServiceStatus = aiAvailabilityQuery.isPending
 		? "loading"
@@ -124,7 +120,7 @@ export default function Dashboard() {
 			name: "采集服务",
 			desc:
 				sourcesStatus === "ok"
-					? `信息源 ${sourcesQuery.data?.length ?? 0} 个可用`
+					? `信息源 ${sourceStatsQuery.data?.total ?? 0} 个可用`
 					: sourcesStatus === "loading"
 						? "检测中"
 						: "异常",

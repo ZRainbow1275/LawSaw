@@ -116,6 +116,19 @@ export interface ArticleListResponse {
 	offset: number;
 }
 
+export interface SourceListResponse {
+	data: Source[];
+	total: number;
+	limit: number;
+	offset: number;
+}
+
+export interface SourceStatsResponse {
+	total: number;
+	active_count: number;
+	error_count: number;
+}
+
 export interface SearchResult {
 	article_id: string;
 	title: string;
@@ -889,6 +902,30 @@ export function assertSourceList(
 	path = "sources",
 ): asserts value is Source[] {
 	assertArray(value, path, assertSource);
+}
+
+export function assertSourceListResponse(
+	value: unknown,
+	path = "sourceList",
+): asserts value is SourceListResponse {
+	assertRecord(value, path);
+
+	const data = getRequired(value, "data", path);
+	assertArray(data, `${path}.data`, assertSource);
+
+	assertNumber(getRequired(value, "total", path), `${path}.total`);
+	assertNumber(getRequired(value, "limit", path), `${path}.limit`);
+	assertNumber(getRequired(value, "offset", path), `${path}.offset`);
+}
+
+export function assertSourceStatsResponse(
+	value: unknown,
+	path = "sourceStats",
+): asserts value is SourceStatsResponse {
+	assertRecord(value, path);
+	assertNumber(getRequired(value, "total", path), `${path}.total`);
+	assertNumber(getRequired(value, "active_count", path), `${path}.active_count`);
+	assertNumber(getRequired(value, "error_count", path), `${path}.error_count`);
 }
 
 export function assertSearchResult(

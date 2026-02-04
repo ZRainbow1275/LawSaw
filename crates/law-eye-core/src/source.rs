@@ -4,6 +4,13 @@ use law_eye_db::{CreateSource, Source};
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
+#[derive(Debug, Clone)]
+pub struct SourceStats {
+    pub total: i64,
+    pub active_count: i64,
+    pub error_count: i64,
+}
+
 pub struct SourceService {
     pool: PgPool,
 }
@@ -13,10 +20,60 @@ impl SourceService {
         Self { pool }
     }
 
-    pub async fn list(&self, tenant_id: Uuid) -> Result<Vec<Source>> {
+    pub async fn count(&self, tenant_id: Uuid) -> Result<i64> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
-                sqlx::query_as::<_, Source>("SELECT * FROM sources ORDER BY priority DESC, name")
+                let result: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM sources")
+                    .fetch_one(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?;
+                Ok(result.0)
+            })
+        })
+        .await
+    }
+
+    pub async fn stats(&self, tenant_id: Uuid) -> Result<SourceStats> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let (total, active_count, error_count): (i64, i64, i64) = sqlx::query_as(
+                    r#"
+                    SELECT
+                        COUNT(*)::bigint AS total,
+                        COUNT(*) FILTER (WHERE is_active = true)::bigint AS active_count,
+                        COUNT(*) FILTER (WHERE last_error IS NOT NULL AND last_error <> '')::bigint AS error_count
+                    FROM sources
+                    "#,
+                )
+                .fetch_one(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
+
+                Ok(SourceStats {
+                    total,
+                    active_count,
+                    error_count,
+                })
+            })
+        })
+        .await
+    }
+
+    pub async fn list(&self, tenant_id: Uuid, limit: i64, offset: i64) -> Result<Vec<Source>> {
+        if limit < 1 {
+            return Err(Error::Validation("limit must be >= 1".to_string()));
+        }
+        if offset < 0 {
+            return Err(Error::Validation("offset must be >= 0".to_string()));
+        }
+
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query_as::<_, Source>(
+                    "SELECT * FROM sources ORDER BY priority DESC, name LIMIT $1 OFFSET $2",
+                )
+                .bind(limit)
+                .bind(offset)
                     .fetch_all(tx.as_mut())
                     .await
                     .map_err(|e| Error::Database(e.to_string()))

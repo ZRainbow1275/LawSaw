@@ -4,7 +4,7 @@ import { AnimatedNumber } from "@/components/ui/animated-number";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useArticleStats } from "@/hooks/use-articles";
-import { useSources } from "@/hooks/use-sources";
+import { useSourceStats } from "@/hooks/use-sources";
 import {
 	cardHoverEffect,
 	fadeVariants,
@@ -131,19 +131,19 @@ function StatCard({ stat, index }: { stat: StatConfig; index: number }) {
 
 export function StatsCards() {
 	const statsQuery = useArticleStats();
-	const sourcesQuery = useSources();
+	const sourceStatsQuery = useSourceStats();
 
 	const activeSources =
-		sourcesQuery.isError || !sourcesQuery.data
+		sourceStatsQuery.isError || !sourceStatsQuery.data
 			? null
-			: sourcesQuery.data.filter((s) => s.is_active).length;
+			: sourceStatsQuery.data.active_count;
 
 	const handleRetry = () => {
 		statsQuery.refetch();
-		sourcesQuery.refetch();
+		sourceStatsQuery.refetch();
 	};
 
-	const hasError = statsQuery.isError || sourcesQuery.isError;
+	const hasError = statsQuery.isError || sourceStatsQuery.isError;
 
 	const stats: StatConfig[] = [
 		{
@@ -162,8 +162,8 @@ export function StatsCards() {
 			value: activeSources,
 			icon: Rss,
 			color: "success",
-			isLoading: sourcesQuery.isLoading,
-			isError: sourcesQuery.isError,
+			isLoading: sourceStatsQuery.isLoading,
+			isError: sourceStatsQuery.isError,
 		},
 		{
 			title: "待处理",

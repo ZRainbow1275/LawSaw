@@ -14,7 +14,7 @@ import {
 	useArticleTrends,
 } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
-import { useSources } from "@/hooks/use-sources";
+import { useSourceStats } from "@/hooks/use-sources";
 import type { ArticleRiskLevel, ArticleSentimentLabel } from "@/lib/api/types";
 import {
 	Activity,
@@ -65,11 +65,11 @@ export default function AnalyticsPage() {
 		refetch: refetchCategories,
 	} = useCategories();
 	const {
-		data: sources,
-		isLoading: sourcesLoading,
-		isError: sourcesError,
-		refetch: refetchSources,
-	} = useSources();
+		data: sourceStats,
+		isLoading: sourceStatsLoading,
+		isError: sourceStatsError,
+		refetch: refetchSourceStats,
+	} = useSourceStats();
 	const {
 		data: trendPoints,
 		isLoading: trendsLoading,
@@ -85,7 +85,7 @@ export default function AnalyticsPage() {
 	} = useArticleCategoryCounts();
 
 	const infraErrors: string[] = [];
-	if (sourcesError) infraErrors.push("信息源");
+	if (sourceStatsError) infraErrors.push("信息源");
 	if (categoriesError) infraErrors.push("分类");
 	const hasInfraError = infraErrors.length > 0;
 
@@ -138,12 +138,12 @@ export default function AnalyticsPage() {
 	}
 
 	const activeSources =
-		sources && !sourcesLoading && !sourcesError
-			? sources.filter((s) => s.is_active).length
+		sourceStats && !sourceStatsLoading && !sourceStatsError
+			? sourceStats.active_count
 			: null;
 	const errorSources =
-		sources && !sourcesLoading && !sourcesError
-			? sources.filter((s) => s.last_error).length
+		sourceStats && !sourceStatsLoading && !sourceStatsError
+			? sourceStats.error_count
 			: null;
 
 	const last7Days =
@@ -270,7 +270,7 @@ export default function AnalyticsPage() {
 									variant="outline"
 									size="sm"
 									onClick={() => {
-										refetchSources();
+										refetchSourceStats();
 										refetchCategories();
 									}}
 								>

@@ -11,6 +11,7 @@ import { ErrorState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import {
 	useCreateSource,
+	useSourceStats,
 	useSources,
 	useTriggerFetch,
 } from "@/hooks/use-sources";
@@ -58,7 +59,12 @@ function formatTime(dateStr: string | null): string {
 }
 
 export default function SourcesPage() {
-	const { data: sources, isLoading, isError, refetch } = useSources();
+	const [page, setPage] = useState(0);
+	const limit = 50;
+	const offset = page * limit;
+
+	const sourcesQuery = useSources({ limit, offset });
+	const sourceStatsQuery = useSourceStats();
 	const triggerFetch = useTriggerFetch();
 	const createSource = useCreateSource();
 	const { permissions } = useAuthStore();
@@ -78,6 +84,11 @@ export default function SourcesPage() {
 		date_selector: "",
 		delay_ms: "",
 	});
+
+	const sources = sourcesQuery.data?.data ?? [];
+	const total = sourcesQuery.data?.total ?? 0;
+	const canPrev = page > 0;
+	const canNext = offset + limit < total;
 
 	const handleTriggerFetch = (id: string) => {
 		if (!isAdmin) return;
@@ -163,8 +174,8 @@ export default function SourcesPage() {
 		);
 	};
 
-	const activeCount = sources?.filter((s) => s.is_active).length ?? 0;
-	const errorCount = sources?.filter((s) => s.last_error).length ?? 0;
+	const activeCount = sourceStatsQuery.data?.active_count ?? 0;
+	const errorCount = sourceStatsQuery.data?.error_count ?? 0;
 
 	return (
 		<ProtectedRoute>
@@ -480,7 +491,7 @@ export default function SourcesPage() {
 								</CardTitle>
 							</CardHeader>
 							<CardContent>
-								{isLoading ? (
+								{sourcesQuery.isLoading ? (
 									<div className="animate-pulse space-y-4">
 										{Array.from(
 											{ length: 5 },
@@ -492,9 +503,17 @@ export default function SourcesPage() {
 											/>
 										))}
 									</div>
-								) : isError ? (
-									<ErrorState action={{ label: "重试", onClick: () => void refetch() }} />
-								) : !sources || sources.length === 0 ? (
+								) : sourcesQuery.isError ? (
+									<ErrorState
+										action={{
+											label: "重试",
+											onClick: () => {
+												void sourcesQuery.refetch();
+												void sourceStatsQuery.refetch();
+											},
+										}}
+									/>
+								) : sources.length === 0 ? (
 									<p className="py-12 text-center text-neutral-500">
 										暂无信息源，点击上方按钮添加
 									</p>
@@ -559,6 +578,31 @@ export default function SourcesPage() {
 												</div>
 											</div>
 										))}
+
+										<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+											<p className="text-xs text-neutral-500">
+												显示 {offset + 1}-
+												{Math.min(offset + sources.length, total)} / {total}
+											</p>
+											<div className="flex items-center gap-2">
+												<Button
+													variant="outline"
+													size="sm"
+													onClick={() => setPage((p) => Math.max(0, p - 1))}
+													disabled={!canPrev || sourcesQuery.isLoading}
+												>
+													上一页
+												</Button>
+												<Button
+													variant="outline"
+													size="sm"
+													onClick={() => setPage((p) => p + 1)}
+													disabled={!canNext || sourcesQuery.isLoading}
+												>
+													下一页
+												</Button>
+											</div>
+										</div>
 									</div>
 								)}
 							</CardContent>
