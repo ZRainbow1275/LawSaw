@@ -15,6 +15,7 @@ export interface Article {
 	sentiment: "positive" | "negative" | "neutral" | "mixed" | null;
 	ai_metadata?: Record<string, unknown>;
 	status: "pending" | "processing" | "published" | "archived" | "rejected";
+	version: number;
 	created_at: string;
 	updated_at: string;
 }
@@ -668,6 +669,7 @@ export function assertArticle(
 		`${path}.status`,
 		ARTICLE_STATUSES,
 	);
+	assertNumber(getRequired(value, "version", path), `${path}.version`);
 	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
 	assertString(getRequired(value, "updated_at", path), `${path}.updated_at`);
 }

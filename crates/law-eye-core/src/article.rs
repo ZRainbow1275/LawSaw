@@ -111,7 +111,8 @@ impl ArticleService {
     pub async fn count(&self, tenant_id: Uuid) -> Result<i64> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
-                let result: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM articles")
+                let result: (i64,) =
+                    sqlx::query_as("SELECT COUNT(*) FROM articles WHERE deleted_at IS NULL")
                     .fetch_one(tx.as_mut())
                     .await
                     .map_err(|e| Error::Database(e.to_string()))?;
@@ -127,6 +128,7 @@ impl ArticleService {
                 sqlx::query_as::<_, Article>(
                     r#"
                 SELECT * FROM articles
+                WHERE deleted_at IS NULL
                 ORDER BY created_at DESC
                 LIMIT $1 OFFSET $2
                 "#,
@@ -211,7 +213,7 @@ impl ArticleService {
             .await
             .map_err(|e| Error::Database(e.to_string()))?;
 
-        sqlx::query_as::<_, Article>("SELECT * FROM articles WHERE id = $1")
+        sqlx::query_as::<_, Article>("SELECT * FROM articles WHERE id = $1 AND deleted_at IS NULL")
             .bind(id)
             .fetch_optional(tx.as_mut())
             .await
@@ -265,7 +267,7 @@ impl ArticleService {
                         .push_bind(input.published_at);
                 });
 
-                qb.push(
+                    qb.push(
                     r#"
                     ON CONFLICT (tenant_id, link) DO UPDATE SET
                         source_id = EXCLUDED.source_id,
@@ -275,11 +277,14 @@ impl ArticleService {
                         published_at = COALESCE(EXCLUDED.published_at, articles.published_at),
                         updated_at = NOW()
                     WHERE
-                        articles.source_id IS DISTINCT FROM EXCLUDED.source_id
-                        OR articles.title IS DISTINCT FROM EXCLUDED.title
-                        OR articles.content IS DISTINCT FROM COALESCE(EXCLUDED.content, articles.content)
-                        OR articles.author IS DISTINCT FROM COALESCE(EXCLUDED.author, articles.author)
-                        OR articles.published_at IS DISTINCT FROM COALESCE(EXCLUDED.published_at, articles.published_at)
+                        articles.deleted_at IS NULL
+                        AND (
+                            articles.source_id IS DISTINCT FROM EXCLUDED.source_id
+                            OR articles.title IS DISTINCT FROM EXCLUDED.title
+                            OR articles.content IS DISTINCT FROM COALESCE(EXCLUDED.content, articles.content)
+                            OR articles.author IS DISTINCT FROM COALESCE(EXCLUDED.author, articles.author)
+                            OR articles.published_at IS DISTINCT FROM COALESCE(EXCLUDED.published_at, articles.published_at)
+                        )
                     RETURNING id
                     "#,
                 );
@@ -321,6 +326,7 @@ impl ArticleService {
                         summary,
                         category_id,
                     },
+                    None,
                 )
                 .await
             })
@@ -334,6 +340,7 @@ impl ArticleService {
         tx: &mut Transaction<'_, Postgres>,
         id: Uuid,
         patch: UpdateArticlePatch<'a>,
+        expected_version: Option<i64>,
     ) -> Result<Article> {
         sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
             .bind(tenant_id.to_string())
@@ -341,7 +348,7 @@ impl ArticleService {
             .await
             .map_err(|e| Error::Database(e.to_string()))?;
 
-        sqlx::query_as::<_, Article>(
+        let updated = sqlx::query_as::<_, Article>(
             r#"
             UPDATE articles SET
                 title = COALESCE($2, title),
@@ -350,6 +357,8 @@ impl ArticleService {
                 category_id = COALESCE($5, category_id),
                 updated_at = NOW()
             WHERE id = $1
+              AND deleted_at IS NULL
+              AND ($6::bigint IS NULL OR version = $6)
             RETURNING *
             "#,
         )
@@ -358,16 +367,38 @@ impl ArticleService {
         .bind(patch.content)
         .bind(patch.summary)
         .bind(patch.category_id)
+        .bind(expected_version)
         .fetch_optional(tx.as_mut())
         .await
-        .map_err(|e| Error::Database(e.to_string()))?
-        .ok_or_else(|| Error::NotFound(format!("Article {} not found", id)))
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        if let Some(article) = updated {
+            return Ok(article);
+        }
+
+        if let Some(expected_version) = expected_version {
+            let current_version = sqlx::query_scalar::<_, i64>(
+                "SELECT version FROM articles WHERE id = $1 AND deleted_at IS NULL",
+            )
+            .bind(id)
+            .fetch_optional(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
+            if let Some(current_version) = current_version {
+                return Err(Error::Conflict(format!(
+                    "Article {id} version mismatch (expected {expected_version}, got {current_version})"
+                )));
+            }
+        }
+
+        Err(Error::NotFound(format!("Article {} not found", id)))
     }
 
     /// Delete article
     pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> Result<()> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
-            Box::pin(async move { self.delete_tx(tenant_id, tx, id).await })
+            Box::pin(async move { self.delete_tx(tenant_id, tx, id, None).await })
         })
         .await
     }
@@ -377,6 +408,7 @@ impl ArticleService {
         tenant_id: Uuid,
         tx: &mut Transaction<'_, Postgres>,
         id: Uuid,
+        expected_version: Option<i64>,
     ) -> Result<()> {
         sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
             .bind(tenant_id.to_string())
@@ -384,13 +416,38 @@ impl ArticleService {
             .await
             .map_err(|e| Error::Database(e.to_string()))?;
 
-        let result = sqlx::query("DELETE FROM articles WHERE id = $1")
+        let result = sqlx::query(
+            r#"
+            UPDATE articles
+            SET deleted_at = NOW(), updated_at = NOW()
+            WHERE id = $1
+              AND deleted_at IS NULL
+              AND ($2::bigint IS NULL OR version = $2)
+            "#,
+        )
             .bind(id)
+            .bind(expected_version)
             .execute(tx.as_mut())
             .await
             .map_err(|e| Error::Database(e.to_string()))?;
 
         if result.rows_affected() == 0 {
+            if let Some(expected_version) = expected_version {
+                let current_version = sqlx::query_scalar::<_, i64>(
+                    "SELECT version FROM articles WHERE id = $1 AND deleted_at IS NULL",
+                )
+                .bind(id)
+                .fetch_optional(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
+
+                if let Some(current_version) = current_version {
+                    return Err(Error::Conflict(format!(
+                        "Article {id} version mismatch (expected {expected_version}, got {current_version})"
+                    )));
+                }
+            }
+
             return Err(Error::NotFound(format!("Article {} not found", id)));
         }
         Ok(())
@@ -413,7 +470,7 @@ impl ArticleService {
 
     pub async fn update_status(&self, tenant_id: Uuid, id: Uuid, status: &str) -> Result<Article> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
-            Box::pin(async move { self.update_status_tx(tenant_id, tx, id, status).await })
+            Box::pin(async move { self.update_status_tx(tenant_id, tx, id, status, None).await })
         })
         .await
     }
@@ -424,6 +481,7 @@ impl ArticleService {
         tx: &mut Transaction<'_, Postgres>,
         id: Uuid,
         status: &str,
+        expected_version: Option<i64>,
     ) -> Result<Article> {
         sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
             .bind(tenant_id.to_string())
@@ -431,18 +489,44 @@ impl ArticleService {
             .await
             .map_err(|e| Error::Database(e.to_string()))?;
 
-        sqlx::query_as::<_, Article>(
+        let updated = sqlx::query_as::<_, Article>(
             r#"
-            UPDATE articles SET status = $2, updated_at = NOW() WHERE id = $1
+            UPDATE articles
+            SET status = $2, updated_at = NOW()
+            WHERE id = $1
+              AND deleted_at IS NULL
+              AND ($3::bigint IS NULL OR version = $3)
             RETURNING *
             "#,
         )
         .bind(id)
         .bind(status)
+        .bind(expected_version)
         .fetch_optional(tx.as_mut())
         .await
-        .map_err(|e| Error::Database(e.to_string()))?
-        .ok_or_else(|| Error::NotFound(format!("Article {} not found", id)))
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        if let Some(article) = updated {
+            return Ok(article);
+        }
+
+        if let Some(expected_version) = expected_version {
+            let current_version = sqlx::query_scalar::<_, i64>(
+                "SELECT version FROM articles WHERE id = $1 AND deleted_at IS NULL",
+            )
+            .bind(id)
+            .fetch_optional(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
+            if let Some(current_version) = current_version {
+                return Err(Error::Conflict(format!(
+                    "Article {id} version mismatch (expected {expected_version}, got {current_version})"
+                )));
+            }
+        }
+
+        Err(Error::NotFound(format!("Article {} not found", id)))
     }
 
     /// Batch update status
@@ -478,6 +562,7 @@ impl ArticleService {
             r#"
             UPDATE articles SET status = $2, updated_at = NOW()
             WHERE id = ANY($1)
+              AND deleted_at IS NULL
             "#,
         )
         .bind(ids)
@@ -501,6 +586,7 @@ impl ArticleService {
                     r#"
                 SELECT * FROM articles
                 WHERE category_id = $1
+                  AND deleted_at IS NULL
                 ORDER BY created_at DESC
                 LIMIT $2
                 "#,
@@ -526,7 +612,8 @@ impl ArticleService {
             sqlx::query_as::<_, Article>(
                 r#"
                 SELECT * FROM articles
-                WHERE to_tsvector('simple', title || ' ' || COALESCE(content, '')) @@ plainto_tsquery('simple', $1)
+                WHERE deleted_at IS NULL
+                  AND to_tsvector('simple', title || ' ' || COALESCE(content, '')) @@ plainto_tsquery('simple', $1)
                 ORDER BY created_at DESC
                 LIMIT $2
                 "#,
@@ -575,7 +662,8 @@ impl ArticleService {
                             a.created_at AS created_at,
                             COUNT(*) OVER() AS total
                         FROM articles a, q
-                        WHERE to_tsvector('simple', a.title || ' ' || COALESCE(a.content, '')) @@ q.query
+                        WHERE a.deleted_at IS NULL
+                          AND to_tsvector('simple', a.title || ' ' || COALESCE(a.content, '')) @@ q.query
                     ),
                     scored AS (
                         SELECT
@@ -630,32 +718,39 @@ impl ArticleService {
     pub async fn get_stats(&self, tenant_id: Uuid) -> Result<ArticleStats> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
-                let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM articles")
+                let total: (i64,) =
+                    sqlx::query_as("SELECT COUNT(*) FROM articles WHERE deleted_at IS NULL")
                     .fetch_one(tx.as_mut())
                     .await
                     .map_err(|e| Error::Database(e.to_string()))?;
 
                 let published: (i64,) =
-                    sqlx::query_as("SELECT COUNT(*) FROM articles WHERE status = 'published'")
+                    sqlx::query_as(
+                        "SELECT COUNT(*) FROM articles WHERE deleted_at IS NULL AND status = 'published'",
+                    )
                         .fetch_one(tx.as_mut())
                         .await
                         .map_err(|e| Error::Database(e.to_string()))?;
 
                 let pending: (i64,) =
-                    sqlx::query_as("SELECT COUNT(*) FROM articles WHERE status = 'pending'")
+                    sqlx::query_as(
+                        "SELECT COUNT(*) FROM articles WHERE deleted_at IS NULL AND status = 'pending'",
+                    )
                         .fetch_one(tx.as_mut())
                         .await
                         .map_err(|e| Error::Database(e.to_string()))?;
 
                 // Count high risk articles (risk_score > 70). `NULL` risk_score will be excluded naturally.
                 let high_risk: (i64,) =
-                    sqlx::query_as("SELECT COUNT(*) FROM articles WHERE risk_score > 70")
+                    sqlx::query_as(
+                        "SELECT COUNT(*) FROM articles WHERE deleted_at IS NULL AND risk_score > 70",
+                    )
                         .fetch_one(tx.as_mut())
                         .await
                         .map_err(|e| Error::Database(e.to_string()))?;
 
                 let today: (i64,) = sqlx::query_as(
-                    "SELECT COUNT(*) FROM articles WHERE created_at >= CURRENT_DATE",
+                    "SELECT COUNT(*) FROM articles WHERE deleted_at IS NULL AND created_at >= CURRENT_DATE",
                 )
                 .fetch_one(tx.as_mut())
                 .await
@@ -680,7 +775,8 @@ impl ArticleService {
                 sqlx::query_as::<_, Article>(
                     r#"
                 SELECT * FROM articles
-                WHERE status = 'published'
+                WHERE deleted_at IS NULL
+                  AND status = 'published'
                 ORDER BY published_at DESC NULLS LAST, created_at DESC
                 LIMIT $1
                 "#,
@@ -719,6 +815,7 @@ impl ArticleService {
                 LEFT JOIN articles a
                     ON a.created_at >= days.day::timestamptz
                    AND a.created_at < (days.day::timestamptz + INTERVAL '1 day')
+                   AND a.deleted_at IS NULL
                 GROUP BY days.day
                 ORDER BY days.day ASC
                 "#,
@@ -744,6 +841,7 @@ impl ArticleService {
                     r#"
                 SELECT category_id, COUNT(*)::bigint AS count
                 FROM articles
+                WHERE deleted_at IS NULL
                 GROUP BY category_id
                 "#,
                 )
@@ -786,6 +884,7 @@ impl ArticleService {
                     COUNT(*) FILTER (WHERE sentiment = 'negative')::bigint AS sentiment_negative,
                     COUNT(*) FILTER (WHERE sentiment = 'mixed')::bigint AS sentiment_mixed
                 FROM articles
+                WHERE deleted_at IS NULL
                 "#,
                 )
                 .fetch_one(tx.as_mut())
@@ -827,17 +926,15 @@ fn push_article_filters<'a>(
     category_id: Option<Uuid>,
     status: Option<&'a str>,
 ) {
-    let mut has_where = false;
+    qb.push(" WHERE deleted_at IS NULL");
 
     if let Some(category_id) = category_id {
-        qb.push(" WHERE category_id = ");
+        qb.push(" AND category_id = ");
         qb.push_bind(category_id);
-        has_where = true;
     }
 
     if let Some(status) = status {
-        qb.push(if has_where { " AND " } else { " WHERE " });
-        qb.push("status = ");
+        qb.push(" AND status = ");
         qb.push_bind(status);
     }
 }

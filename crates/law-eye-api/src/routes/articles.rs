@@ -1,6 +1,7 @@
 use axum::{
     extract::{ConnectInfo, Path, State},
-    http::HeaderMap,
+    http::{header, HeaderMap, HeaderValue},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -31,6 +32,7 @@ pub struct ArticleResponse {
     pub importance: Option<i32>,
     pub sentiment: Option<String>,
     pub status: String,
+    pub version: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -51,6 +53,7 @@ impl From<law_eye_db::Article> for ArticleResponse {
             importance: a.importance,
             sentiment: a.sentiment,
             status: a.status,
+            version: a.version,
             created_at: a.created_at,
             updated_at: a.updated_at,
         }
@@ -189,6 +192,53 @@ fn is_valid_status(status: &str) -> bool {
         status,
         "pending" | "processing" | "published" | "archived" | "rejected"
     )
+}
+
+fn etag_for_version(version: i64) -> ApiResult<HeaderValue> {
+    HeaderValue::from_str(&format!("\"v{version}\""))
+        .map_err(|_| AppError::internal("Failed to format ETag"))
+}
+
+fn parse_if_match_version(headers: &HeaderMap) -> ApiResult<Option<i64>> {
+    let raw = match headers.get(header::IF_MATCH) {
+        Some(value) => value,
+        None => return Ok(None),
+    };
+
+    let raw = raw
+        .to_str()
+        .map_err(|_| AppError::validation("Invalid If-Match header"))?;
+
+    let token = raw.split(',').next().unwrap_or("").trim();
+    if token.is_empty() {
+        return Err(AppError::validation("Invalid If-Match header"));
+    }
+    if token == "*" {
+        return Err(AppError::validation("If-Match '*' is not supported"));
+    }
+
+    let token = token.strip_prefix("W/").unwrap_or(token).trim();
+    let token = token
+        .strip_prefix('"')
+        .and_then(|v| v.strip_suffix('"'))
+        .unwrap_or(token);
+
+    let token = token.strip_prefix('v').unwrap_or(token);
+    let version = token
+        .parse::<i64>()
+        .map_err(|_| AppError::validation("Invalid If-Match version"))?;
+
+    if version < 1 {
+        return Err(AppError::validation("Invalid If-Match version"));
+    }
+
+    Ok(Some(version))
+}
+
+fn require_if_match_version(headers: &HeaderMap) -> ApiResult<i64> {
+    parse_if_match_version(headers)?.ok_or_else(|| {
+        AppError::precondition_required("Missing If-Match header (refresh the resource and retry)")
+    })
 }
 
 #[utoipa::path(
@@ -537,7 +587,7 @@ pub(crate) async fn get_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
-) -> ApiResult<Json<ArticleResponse>> {
+) -> ApiResult<Response> {
     let user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
@@ -556,7 +606,12 @@ pub(crate) async fn get_article(
         .get_by_id(user.tenant_id, id)
         .await
         .map_err(AppError::from)?;
-    Ok(Json(article.into()))
+
+    let body: ArticleResponse = article.into();
+    let etag = etag_for_version(body.version)?;
+    let mut response = Json(body).into_response();
+    response.headers_mut().insert(header::ETAG, etag);
+    Ok(response)
 }
 
 #[utoipa::path(
@@ -583,7 +638,7 @@ pub(crate) async fn update_article(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(id): Path<Uuid>,
     ApiJson(req): ApiJson<UpdateArticleRequest>,
-) -> ApiResult<Json<ArticleResponse>> {
+) -> ApiResult<Response> {
     let user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
@@ -596,6 +651,8 @@ pub(crate) async fn update_article(
     if !can_write {
         return Err(AppError::forbidden("Permission denied"));
     }
+
+    let expected_version = Some(require_if_match_version(&headers)?);
 
     let title = req.title.as_deref().map(str::trim);
     let content = req.content.as_deref().map(str::trim);
@@ -663,6 +720,7 @@ pub(crate) async fn update_article(
                         summary: summary_for_db.as_deref(),
                         category_id,
                     },
+                    expected_version,
                 )
                 .await?;
 
@@ -707,7 +765,11 @@ pub(crate) async fn update_article(
     .await
     .map_err(AppError::from)?;
 
-    Ok(Json(article.into()))
+    let body: ArticleResponse = article.into();
+    let etag = etag_for_version(body.version)?;
+    let mut response = Json(body).into_response();
+    response.headers_mut().insert(header::ETAG, etag);
+    Ok(response)
 }
 
 #[utoipa::path(
@@ -745,6 +807,8 @@ pub(crate) async fn delete_article(
         return Err(AppError::forbidden("Permission denied"));
     }
 
+    let expected_version = Some(require_if_match_version(&headers)?);
+
     let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
     let tenant_id = user.tenant_id;
     let user_id = user.id;
@@ -758,7 +822,9 @@ pub(crate) async fn delete_article(
         Box::pin(async move {
             let before = article_service.get_by_id_tx(tenant_id, tx, id).await?;
 
-            article_service.delete_tx(tenant_id, tx, id).await?;
+            article_service
+                .delete_tx(tenant_id, tx, id, expected_version)
+                .await?;
 
             audit_service
                 .log_tx(
@@ -790,7 +856,7 @@ pub(crate) async fn delete_article(
     })
     .await
     .map_err(|e| match e {
-        Error::NotFound(_) => AppError::from(e),
+        Error::NotFound(_) | Error::Conflict(_) => AppError::from(e),
         _ => AppError::internal_with_code("DELETE_ERROR", e.to_string()),
     })?;
 
@@ -821,7 +887,7 @@ pub(crate) async fn publish_article(
     headers: HeaderMap,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(id): Path<Uuid>,
-) -> ApiResult<Json<ArticleResponse>> {
+) -> ApiResult<Response> {
     let user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
@@ -834,6 +900,8 @@ pub(crate) async fn publish_article(
     if !can_publish {
         return Err(AppError::forbidden("Permission denied"));
     }
+
+    let expected_version = Some(require_if_match_version(&headers)?);
 
     let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
     let tenant_id = user.tenant_id;
@@ -848,7 +916,7 @@ pub(crate) async fn publish_article(
         Box::pin(async move {
             let before = article_service.get_by_id_tx(tenant_id, tx, id).await?;
             let after = article_service
-                .update_status_tx(tenant_id, tx, id, "published")
+                .update_status_tx(tenant_id, tx, id, "published", expected_version)
                 .await?;
 
             audit_service
@@ -877,10 +945,15 @@ pub(crate) async fn publish_article(
     })
     .await
     .map_err(|e| match e {
-        Error::NotFound(_) => AppError::from(e),
+        Error::NotFound(_) | Error::Conflict(_) => AppError::from(e),
         _ => AppError::internal_with_code("PUBLISH_ERROR", e.to_string()),
     })?;
-    Ok(Json(article.into()))
+
+    let body: ArticleResponse = article.into();
+    let etag = etag_for_version(body.version)?;
+    let mut response = Json(body).into_response();
+    response.headers_mut().insert(header::ETAG, etag);
+    Ok(response)
 }
 
 #[utoipa::path(
@@ -904,7 +977,7 @@ pub(crate) async fn archive_article(
     headers: HeaderMap,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(id): Path<Uuid>,
-) -> ApiResult<Json<ArticleResponse>> {
+) -> ApiResult<Response> {
     let user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
@@ -917,6 +990,8 @@ pub(crate) async fn archive_article(
     if !can_publish {
         return Err(AppError::forbidden("Permission denied"));
     }
+
+    let expected_version = Some(require_if_match_version(&headers)?);
 
     let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
     let tenant_id = user.tenant_id;
@@ -931,7 +1006,7 @@ pub(crate) async fn archive_article(
         Box::pin(async move {
             let before = article_service.get_by_id_tx(tenant_id, tx, id).await?;
             let after = article_service
-                .update_status_tx(tenant_id, tx, id, "archived")
+                .update_status_tx(tenant_id, tx, id, "archived", expected_version)
                 .await?;
 
             audit_service
@@ -960,10 +1035,15 @@ pub(crate) async fn archive_article(
     })
     .await
     .map_err(|e| match e {
-        Error::NotFound(_) => AppError::from(e),
+        Error::NotFound(_) | Error::Conflict(_) => AppError::from(e),
         _ => AppError::internal_with_code("ARCHIVE_ERROR", e.to_string()),
     })?;
-    Ok(Json(article.into()))
+
+    let body: ArticleResponse = article.into();
+    let etag = etag_for_version(body.version)?;
+    let mut response = Json(body).into_response();
+    response.headers_mut().insert(header::ETAG, etag);
+    Ok(response)
 }
 
 #[utoipa::path(

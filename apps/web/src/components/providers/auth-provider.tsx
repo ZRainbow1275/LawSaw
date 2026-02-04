@@ -17,6 +17,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 	const router = useRouter();
 	const lastUnauthorizedAt = useRef(0);
 	const lastForbiddenAt = useRef(0);
+	const lastConflictAt = useRef(0);
 	const lastNetworkErrorAt = useRef(0);
 
 	useEffect(() => {
@@ -80,25 +81,40 @@ export function AuthProvider({ children }: AuthProviderProps) {
 				return;
 			}
 
-			if (error.status === 403) {
-				if (now - lastForbiddenAt.current < COOLDOWN_MS) return;
-				lastForbiddenAt.current = now;
+				if (error.status === 403) {
+					if (now - lastForbiddenAt.current < COOLDOWN_MS) return;
+					lastForbiddenAt.current = now;
 
-				useToastStore.getState().addToast({
-					type: "warning",
-					title: "权限不足",
-					description:
-						process.env.NODE_ENV === "production"
-							? "您没有访问该资源的权限"
-							: error.message,
-				});
-				return;
-			}
+					useToastStore.getState().addToast({
+						type: "warning",
+						title: "权限不足",
+						description:
+							process.env.NODE_ENV === "production"
+								? "您没有访问该资源的权限"
+								: error.message,
+					});
+					return;
+				}
 
-			// status=0: 网络错误/超时/取消。避免 toast 风暴：仅作为轻提示。
-			if (error.status === 0) {
-				if (now - lastNetworkErrorAt.current < COOLDOWN_MS) return;
-				lastNetworkErrorAt.current = now;
+				if (error.status === 409) {
+					if (now - lastConflictAt.current < COOLDOWN_MS) return;
+					lastConflictAt.current = now;
+
+					useToastStore.getState().addToast({
+						type: "warning",
+						title: "数据已更新",
+						description:
+							process.env.NODE_ENV === "production"
+								? "该数据已被其他操作更新，请刷新后重试"
+								: error.message,
+					});
+					return;
+				}
+
+				// status=0: 网络错误/超时/取消。避免 toast 风暴：仅作为轻提示。
+				if (error.status === 0) {
+					if (now - lastNetworkErrorAt.current < COOLDOWN_MS) return;
+					lastNetworkErrorAt.current = now;
 
 				useToastStore.getState().addToast({
 					type: "info",

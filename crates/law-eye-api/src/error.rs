@@ -91,6 +91,13 @@ impl AppError {
         }
     }
 
+    pub fn precondition_required(msg: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::PRECONDITION_REQUIRED,
+            body: ApiError::new(msg).with_code("PRECONDITION_REQUIRED"),
+        }
+    }
+
     pub fn internal(msg: impl Into<String>) -> Self {
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
@@ -158,6 +165,7 @@ impl From<law_eye_common::Error> for AppError {
             law_eye_common::Error::Validation(msg) => Self::validation(msg),
             law_eye_common::Error::Unauthorized(msg) => Self::unauthorized(msg),
             law_eye_common::Error::Forbidden(msg) => Self::forbidden(msg),
+            law_eye_common::Error::Conflict(msg) => Self::conflict(msg),
             law_eye_common::Error::Parse(msg) => Self::bad_request(format!("Parse error: {}", msg)),
             law_eye_common::Error::Database(msg) => {
                 error!(error = %msg, error_type = "database", "internal error");

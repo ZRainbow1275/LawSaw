@@ -51,25 +51,35 @@ export function resolveApiUrl(value: string): string {
 	return `${base}/${value}`;
 }
 
+export function ifMatchFromVersion(version: number): string {
+	return `"v${version}"`;
+}
+
 export class ApiClientError extends Error {
 	readonly status: number;
+	readonly code: string | null;
 	readonly endpoint: string;
 	readonly requestId: string | null;
+	readonly details: unknown | null;
 
 	constructor(
 		message: string,
 		options: {
 			status: number;
+			code: string | null;
 			endpoint: string;
 			requestId: string | null;
+			details: unknown | null;
 			cause?: unknown;
 		},
 	) {
 		super(message, options.cause ? { cause: options.cause } : undefined);
 		this.name = "ApiClientError";
 		this.status = options.status;
+		this.code = options.code;
 		this.endpoint = options.endpoint;
 		this.requestId = options.requestId;
+		this.details = options.details;
 	}
 }
 
@@ -81,12 +91,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 async function readErrorInfo(
 	response: Response,
-): Promise<{ message: string; requestId: string | null }> {
+): Promise<{
+	message: string;
+	requestId: string | null;
+	code: string | null;
+	details: unknown | null;
+}> {
 	const contentType = response.headers.get("content-type") || "";
 	if (contentType.includes("application/json")) {
 		try {
 			const data: unknown = await response.json();
-			if (typeof data === "string") return { message: data, requestId: null };
+			if (typeof data === "string") {
+				return { message: data, requestId: null, code: null, details: null };
+			}
 			if (isRecord(data)) {
 				const message =
 					typeof data.error === "string"
@@ -97,16 +114,23 @@ async function readErrorInfo(
 
 				const requestId =
 					typeof data.request_id === "string" ? data.request_id : null;
-				return { message, requestId };
+				const code = typeof data.code === "string" ? data.code : null;
+				const details = "details" in data ? (data.details as unknown) : null;
+				return { message, requestId, code, details };
 			}
-			return { message: JSON.stringify(data), requestId: null };
+			return {
+				message: JSON.stringify(data),
+				requestId: null,
+				code: null,
+				details: null,
+			};
 		} catch {
 			// fallthrough
 		}
 	}
 
 	const message = await response.text().catch(() => "Unknown error");
-	return { message, requestId: null };
+	return { message, requestId: null, code: null, details: null };
 }
 
 export class ApiClient {
@@ -188,30 +212,34 @@ export class ApiClient {
 		try {
 			response = await fetch(url, { ...config, signal: controller.signal });
 		} catch (cause) {
-			if (cause instanceof Error && cause.name === "AbortError") {
-				const error = new ApiClientError(
-					didTimeout
-						? `Request timed out after ${this.timeoutMs}ms`
-						: "Request aborted",
-					{
-						status: 0,
-						endpoint,
-						requestId: null,
-						cause,
-					},
-				);
+				if (cause instanceof Error && cause.name === "AbortError") {
+					const error = new ApiClientError(
+						didTimeout
+							? `Request timed out after ${this.timeoutMs}ms`
+							: "Request aborted",
+						{
+							status: 0,
+							code: null,
+							endpoint,
+							requestId: null,
+							details: null,
+							cause,
+						},
+					);
+					this.emitError(error);
+					throw error;
+				}
+
+				const error = new ApiClientError("Network request failed", {
+					status: 0,
+					code: null,
+					endpoint,
+					requestId: null,
+					details: null,
+					cause,
+				});
 				this.emitError(error);
 				throw error;
-			}
-
-			const error = new ApiClientError("Network request failed", {
-				status: 0,
-				endpoint,
-				requestId: null,
-				cause,
-			});
-			this.emitError(error);
-			throw error;
 		} finally {
 			if (timeoutId) clearTimeout(timeoutId);
 			if (externalSignal && abortListener) {
@@ -221,21 +249,27 @@ export class ApiClient {
 
 		const requestIdFromHeader = response.headers.get("x-request-id");
 
-		if (!response.ok) {
-			const { message, requestId: requestIdFromBody } =
-				await readErrorInfo(response);
-			const requestId = requestIdFromHeader ?? requestIdFromBody;
-			const error = new ApiClientError(
-				requestId ? `${message} (request_id=${requestId})` : message,
-				{
-					status: response.status,
-					endpoint,
-					requestId,
-				},
-			);
-			this.emitError(error);
-			throw error;
-		}
+			if (!response.ok) {
+				const {
+					message,
+					requestId: requestIdFromBody,
+					code,
+					details,
+				} = await readErrorInfo(response);
+				const requestId = requestIdFromHeader ?? requestIdFromBody;
+				const error = new ApiClientError(
+					requestId ? `${message} (request_id=${requestId})` : message,
+					{
+						status: response.status,
+						code,
+						endpoint,
+						requestId,
+						details,
+					},
+				);
+				this.emitError(error);
+				throw error;
+			}
 
 		const requestId = requestIdFromHeader;
 
@@ -248,14 +282,16 @@ export class ApiClient {
 		let parsed: unknown;
 		try {
 			parsed = JSON.parse(text) as unknown;
-		} catch (cause) {
-			throw new ApiClientError("Invalid JSON response", {
-				status: response.status,
-				endpoint,
-				requestId,
-				cause,
-			});
-		}
+			} catch (cause) {
+				throw new ApiClientError("Invalid JSON response", {
+					status: response.status,
+					code: null,
+					endpoint,
+					requestId,
+					details: null,
+					cause,
+				});
+			}
 
 		if (validate) {
 			try {
@@ -264,35 +300,43 @@ export class ApiClient {
 			} catch (cause) {
 				const detail =
 					cause instanceof Error ? cause.message : "Unknown schema error";
-				throw new ApiClientError(
-					requestId
-						? `API 契约校验失败：${detail} (request_id=${requestId})`
-						: `API 契约校验失败：${detail}`,
-					{
-						status: response.status,
-						endpoint,
-						requestId,
-						cause,
-					},
-				);
+					throw new ApiClientError(
+						requestId
+							? `API 契约校验失败：${detail} (request_id=${requestId})`
+							: `API 契约校验失败：${detail}`,
+						{
+							status: response.status,
+							code: null,
+							endpoint,
+							requestId,
+							details: null,
+							cause,
+						},
+					);
+				}
 			}
-		}
 
 		return parsed as T;
 	}
 
-	async get<T>(endpoint: string, validate?: ResponseValidator<T>): Promise<T> {
-		return this.request<T>(endpoint, { method: "GET" }, validate);
+	async get<T>(
+		endpoint: string,
+		validate?: ResponseValidator<T>,
+		options: RequestInit = {},
+	): Promise<T> {
+		return this.request<T>(endpoint, { ...options, method: "GET" }, validate);
 	}
 
 	async post<T>(
 		endpoint: string,
 		data?: unknown,
 		validate?: ResponseValidator<T>,
+		options: RequestInit = {},
 	): Promise<T> {
 		return this.request<T>(
 			endpoint,
 			{
+				...options,
 				method: "POST",
 				body: data ? JSON.stringify(data) : undefined,
 			},
@@ -304,18 +348,25 @@ export class ApiClient {
 		endpoint: string,
 		form: FormData,
 		validate?: ResponseValidator<T>,
+		options: RequestInit = {},
 	): Promise<T> {
-		return this.request<T>(endpoint, { method: "POST", body: form }, validate);
+		return this.request<T>(
+			endpoint,
+			{ ...options, method: "POST", body: form },
+			validate,
+		);
 	}
 
 	async patch<T>(
 		endpoint: string,
 		data: unknown,
 		validate?: ResponseValidator<T>,
+		options: RequestInit = {},
 	): Promise<T> {
 		return this.request<T>(
 			endpoint,
 			{
+				...options,
 				method: "PATCH",
 				body: JSON.stringify(data),
 			},
@@ -326,8 +377,9 @@ export class ApiClient {
 	async delete<T>(
 		endpoint: string,
 		validate?: ResponseValidator<T>,
+		options: RequestInit = {},
 	): Promise<T> {
-		return this.request<T>(endpoint, { method: "DELETE" }, validate);
+		return this.request<T>(endpoint, { ...options, method: "DELETE" }, validate);
 	}
 }
 

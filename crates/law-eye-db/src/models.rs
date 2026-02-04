@@ -63,6 +63,8 @@ pub struct Article {
     pub keywords: Vec<String>,
     pub ai_processed_at: Option<DateTime<Utc>>,
     pub status: String,
+    pub version: i64,
+    pub deleted_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

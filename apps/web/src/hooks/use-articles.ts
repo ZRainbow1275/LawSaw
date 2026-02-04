@@ -1,6 +1,6 @@
 "use client";
 
-import { apiClient } from "@/lib/api";
+import { apiClient, ifMatchFromVersion } from "@/lib/api";
 import {
 	assertArticle,
 	assertArticleAnalyticsSummary,
@@ -97,11 +97,16 @@ export function usePublishArticle() {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: (id: string) =>
+		mutationFn: (input: { id: string; version: number }) =>
 			apiClient.post(
-				`/api/v1/articles/${id}/publish`,
+				`/api/v1/articles/${input.id}/publish`,
 				undefined,
 				assertArticle,
+				{
+					headers: {
+						"If-Match": ifMatchFromVersion(input.version),
+					},
+				},
 			),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["articles"] });
@@ -114,11 +119,16 @@ export function useArchiveArticle() {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: (id: string) =>
+		mutationFn: (input: { id: string; version: number }) =>
 			apiClient.post(
-				`/api/v1/articles/${id}/archive`,
+				`/api/v1/articles/${input.id}/archive`,
 				undefined,
 				assertArticle,
+				{
+					headers: {
+						"If-Match": ifMatchFromVersion(input.version),
+					},
+				},
 			),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["articles"] });
@@ -131,8 +141,12 @@ export function useDeleteArticle() {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: (id: string) =>
-			apiClient.delete(`/api/v1/articles/${id}`, assertDeleteResponse),
+		mutationFn: (input: { id: string; version: number }) =>
+			apiClient.delete(`/api/v1/articles/${input.id}`, assertDeleteResponse, {
+				headers: {
+					"If-Match": ifMatchFromVersion(input.version),
+				},
+			}),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["articles"] });
 			queryClient.invalidateQueries({ queryKey: ["articleStats"] });
