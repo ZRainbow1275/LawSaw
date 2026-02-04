@@ -227,12 +227,13 @@ pub async fn validate_outbound_url(raw: &str, policy: &OutboundUrlPolicy) -> Res
         message: "URL must include a host".to_string(),
     })?;
 
-    if policy.scheme == UrlPolicyScheme::HttpsOrHttpInternal && url.scheme() == "http" {
-        if !(policy.allow_internal && is_internal_host(&host)) {
-            return Err(UrlPolicyError::InvalidUrl {
-                message: "URL scheme must be https".to_string(),
-            });
-        }
+    if policy.scheme == UrlPolicyScheme::HttpsOrHttpInternal
+        && url.scheme() == "http"
+        && !(policy.allow_internal && is_internal_host(&host))
+    {
+        return Err(UrlPolicyError::InvalidUrl {
+            message: "URL scheme must be https".to_string(),
+        });
     }
 
     if policy.allow_internal {
@@ -254,7 +255,7 @@ pub async fn validate_outbound_url(raw: &str, policy: &OutboundUrlPolicy) -> Res
             }
         });
 
-        let lookup = timeout(policy.dns_lookup_timeout, lookup_host((domain.as_ref(), port)))
+        let lookup = timeout(policy.dns_lookup_timeout, lookup_host((*domain, port)))
             .await
             .map_err(|_| UrlPolicyError::InvalidUrl {
                 message: "URL host DNS resolution timed out".to_string(),

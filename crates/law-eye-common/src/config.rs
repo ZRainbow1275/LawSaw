@@ -338,17 +338,16 @@ impl AppConfig {
             ));
         }
 
-        if config.object_storage.enabled {
-            if config.object_storage.endpoint.trim().is_empty()
+        if config.object_storage.enabled
+            && (config.object_storage.endpoint.trim().is_empty()
                 || config.object_storage.region.trim().is_empty()
                 || config.object_storage.bucket.trim().is_empty()
                 || config.object_storage.access_key_id.trim().is_empty()
-                || config.object_storage.secret_access_key.trim().is_empty()
-            {
-                return Err(crate::Error::Config(
-                    "Object storage is enabled, but required fields are missing. Ensure LAW_EYE__OBJECT_STORAGE__ENDPOINT/REGION/BUCKET/ACCESS_KEY_ID/SECRET_ACCESS_KEY are set (or provided via Vault secrets).".into(),
-                ));
-            }
+                || config.object_storage.secret_access_key.trim().is_empty())
+        {
+            return Err(crate::Error::Config(
+                "Object storage is enabled, but required fields are missing. Ensure LAW_EYE__OBJECT_STORAGE__ENDPOINT/REGION/BUCKET/ACCESS_KEY_ID/SECRET_ACCESS_KEY are set (or provided via Vault secrets).".into(),
+            ));
         }
 
         Ok(config)
