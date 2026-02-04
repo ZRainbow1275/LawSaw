@@ -1,6 +1,7 @@
 use crate::types::LlmProvider;
 use async_openai::{
     config::OpenAIConfig,
+    error::OpenAIError,
     types::{
         ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs,
         ChatCompletionRequestUserMessageArgs, CreateChatCompletionRequestArgs,
@@ -8,16 +9,21 @@ use async_openai::{
     },
     Client,
 };
-use law_eye_common::{Error, Result};
+use law_eye_common::{CircuitBreaker, CircuitBreakerConfig, Error, Result};
 use serde::de::DeserializeOwned;
+use std::{sync::Arc, time::Duration};
+use tokio::sync::Semaphore;
 use tracing::{debug, info};
 
 /// LLM Gateway - 统一的 LLM 调用接口
+#[derive(Clone)]
 pub struct LlmGateway {
     client: Client<OpenAIConfig>,
     model: String,
     embedding_model: String,
     provider: LlmProvider,
+    request_semaphore: Arc<Semaphore>,
+    circuit_breaker: CircuitBreaker,
 }
 
 impl LlmGateway {
@@ -30,11 +36,27 @@ impl LlmGateway {
 
         let client = Client::with_config(config);
 
+        let max_concurrency = env_u32("LAW_EYE__AI__MAX_CONCURRENT_REQUESTS")
+            .unwrap_or(4)
+            .clamp(1, 64) as usize;
+
+        let failure_threshold = env_u32("LAW_EYE__AI__CIRCUIT_FAILURE_THRESHOLD")
+            .unwrap_or(5)
+            .clamp(1, 50);
+        let open_seconds = env_u64("LAW_EYE__AI__CIRCUIT_OPEN_SECONDS")
+            .unwrap_or(30)
+            .clamp(1, 600);
+
         Self {
             client,
             model: model.unwrap_or("gpt-4o-mini").to_string(),
             embedding_model: "text-embedding-3-small".to_string(),
             provider: LlmProvider::OpenAI,
+            request_semaphore: Arc::new(Semaphore::new(max_concurrency)),
+            circuit_breaker: CircuitBreaker::new(CircuitBreakerConfig {
+                failure_threshold,
+                open_duration: Duration::from_secs(open_seconds),
+            }),
         }
     }
 
@@ -93,12 +115,33 @@ impl LlmGateway {
             .build()
             .map_err(|e| Error::Internal(e.to_string()))?;
 
-        let response = self
-            .client
-            .chat()
-            .create(request)
+        let breaker_check = self.circuit_breaker.check().await;
+        if !breaker_check.allowed {
+            let retry_after = breaker_check.retry_after_seconds.unwrap_or(30);
+            return Err(Error::Http(format!(
+                "AI_CIRCUIT_OPEN retry_after_seconds={}: circuit open",
+                retry_after
+            )));
+        }
+
+        // Global concurrency limiter to reduce 429s during bursts (e.g. Full task fan-out).
+        let _permit = self
+            .request_semaphore
+            .clone()
+            .acquire_owned()
             .await
-            .map_err(|e| Error::Internal(format!("LLM request failed: {}", e)))?;
+            .map_err(|e| Error::Internal(format!("Failed to acquire AI semaphore: {}", e)))?;
+
+        let response = match self.client.chat().create(request).await {
+            Ok(resp) => {
+                self.circuit_breaker.record_success().await;
+                resp
+            }
+            Err(err) => {
+                self.circuit_breaker.record_failure().await;
+                return Err(map_openai_error(err));
+            }
+        };
 
         let content = response
             .choices
@@ -120,12 +163,32 @@ impl LlmGateway {
             .build()
             .map_err(|e| Error::Internal(e.to_string()))?;
 
-        let response = self
-            .client
-            .embeddings()
-            .create(request)
+        let breaker_check = self.circuit_breaker.check().await;
+        if !breaker_check.allowed {
+            let retry_after = breaker_check.retry_after_seconds.unwrap_or(30);
+            return Err(Error::Http(format!(
+                "AI_CIRCUIT_OPEN retry_after_seconds={}: circuit open",
+                retry_after
+            )));
+        }
+
+        let _permit = self
+            .request_semaphore
+            .clone()
+            .acquire_owned()
             .await
-            .map_err(|e| Error::Internal(format!("Embedding request failed: {}", e)))?;
+            .map_err(|e| Error::Internal(format!("Failed to acquire AI semaphore: {}", e)))?;
+
+        let response = match self.client.embeddings().create(request).await {
+            Ok(resp) => {
+                self.circuit_breaker.record_success().await;
+                resp
+            }
+            Err(err) => {
+                self.circuit_breaker.record_failure().await;
+                return Err(map_openai_error(err));
+            }
+        };
 
         let embedding = response
             .data
@@ -142,6 +205,83 @@ impl LlmGateway {
         tiktoken_rs::cl100k_base()
             .map(|bpe| bpe.encode_with_special_tokens(text).len())
             .unwrap_or(text.len() / 4)
+    }
+}
+
+fn env_u32(name: &str) -> Option<u32> {
+    std::env::var(name).ok().and_then(|raw| raw.trim().parse().ok())
+}
+
+fn env_u64(name: &str) -> Option<u64> {
+    std::env::var(name).ok().and_then(|raw| raw.trim().parse().ok())
+}
+
+fn is_rate_limited_api_error(err: &async_openai::error::ApiError) -> bool {
+    // async-openai already retries 429s internally. If we still get here, treat it as recoverable
+    // and propagate a marker understood by our queue retry logic.
+    if err.r#type.as_deref() == Some("insufficient_quota") {
+        return false;
+    }
+
+    let ty = err.r#type.as_deref().unwrap_or("").to_ascii_lowercase();
+    if ty.contains("rate_limit") {
+        return true;
+    }
+
+    let msg = err.message.to_ascii_lowercase();
+    msg.contains("rate limit") || msg.contains("too many requests") || msg.contains("429")
+}
+
+fn extract_retry_after_seconds_from_message(message: &str) -> Option<u64> {
+    // Best-effort parsing. OpenAI sometimes embeds the wait duration in the message.
+    // Examples: "Please try again in 20s." / "Please try again in 20 seconds."
+    let lower = message.to_ascii_lowercase();
+
+    for marker in ["try again in ", "retry after ", "in ", "after "] {
+        if let Some(pos) = lower.find(marker) {
+            let start = pos + marker.len();
+            let digits: String = lower[start..].chars().take_while(|c| c.is_ascii_digit()).collect();
+            if digits.is_empty() {
+                continue;
+            }
+            if let Ok(value) = digits.parse::<u64>() {
+                return Some(value);
+            }
+        }
+    }
+
+    None
+}
+
+fn map_openai_error(err: OpenAIError) -> Error {
+    match err {
+        OpenAIError::ApiError(api_err) => {
+            if is_rate_limited_api_error(&api_err) {
+                let retry_after = extract_retry_after_seconds_from_message(&api_err.message)
+                    .unwrap_or(60)
+                    .min(60 * 60); // cap at 1h
+
+                return Error::Http(format!(
+                    "AI_RATE_LIMITED retry_after_seconds={}: {}",
+                    retry_after, api_err
+                ));
+            }
+
+            if api_err.r#type.as_deref() == Some("insufficient_quota") {
+                return Error::Config(format!("OpenAI quota exceeded: {}", api_err.message));
+            }
+
+            Error::Internal(format!("LLM request failed: {}", api_err))
+        }
+        OpenAIError::Reqwest(req_err) => {
+            if req_err.status().map(|s| s.as_u16()) == Some(429) {
+                return Error::Http(
+                    "AI_RATE_LIMITED retry_after_seconds=60: HTTP 429".to_string(),
+                );
+            }
+            Error::Http(format!("LLM HTTP error: {}", req_err))
+        }
+        other => Error::Internal(format!("LLM request failed: {}", other)),
     }
 }
 

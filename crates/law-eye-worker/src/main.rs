@@ -35,7 +35,16 @@ const TASK_TIMEOUT_PUSH_SECS: u64 = 60;
 
 fn is_ai_rate_limited_error(error_msg: &str) -> bool {
     let msg = error_msg.to_ascii_lowercase();
-    msg.contains("status code: 429") || msg.contains("rate limit") || msg.contains("too many requests")
+    if msg.contains("insufficient_quota") {
+        return false;
+    }
+
+    msg.contains("status code: 429")
+        || msg.contains("http 429")
+        || msg.contains("rate limit")
+        || msg.contains("rate_limit")
+        || msg.contains("too many requests")
+        || msg.contains("ai_rate_limited")
 }
 
 async fn validate_webhook_url(raw: &str, allow_internal: bool) -> anyhow::Result<reqwest::Url> {

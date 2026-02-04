@@ -15,13 +15,14 @@ pub struct AiService {
 
 impl AiService {
     pub fn new(api_key: &str, base_url: Option<&str>, model: Option<&str>) -> Self {
-        let gateway = Arc::new(LlmGateway::new(api_key, base_url, model));
+        let gateway = LlmGateway::new(api_key, base_url, model);
+        let gateway_arc = Arc::new(gateway.clone());
         Self {
-            classifier: Classifier::new(LlmGateway::new(api_key, base_url, model)),
-            summarizer: Summarizer::new(LlmGateway::new(api_key, base_url, model)),
-            risk_assessor: RiskAssessor::new(LlmGateway::new(api_key, base_url, model)),
-            tag_extractor: TagExtractor::new(LlmGateway::new(api_key, base_url, model)),
-            embedder: Embedder::new(gateway),
+            classifier: Classifier::new(gateway.clone()),
+            summarizer: Summarizer::new(gateway.clone()),
+            risk_assessor: RiskAssessor::new(gateway.clone()),
+            tag_extractor: TagExtractor::new(gateway.clone()),
+            embedder: Embedder::new(gateway_arc),
         }
     }
 

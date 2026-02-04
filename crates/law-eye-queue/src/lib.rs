@@ -380,6 +380,17 @@ impl TaskQueue {
         error_msg: String,
     ) -> Result<bool> {
         let error_msg = error_msg.chars().take(1000).collect::<String>();
+        let rate_limited = is_rate_limited_error(&error_msg);
+
+        // Rate limiting is an external dependency constraint, not a correctness failure.
+        // Give rate-limited tasks a larger retry budget to avoid prematurely sending them to DLQ.
+        if rate_limited {
+            let max_retries = rate_limit_max_retries();
+            if task.max_retries < max_retries {
+                task.max_retries = max_retries;
+            }
+        }
+
         task.increment_retry(error_msg.clone());
 
         if task.can_retry() {
@@ -390,11 +401,18 @@ impl TaskQueue {
 
             // Add delay before retry using Redis ZADD for delayed queue
             let delayed_queue = format!("{}:delayed", queue);
-            let delay_ms = if is_rate_limited_error(&error_msg) {
+            let mut delay_ms = if rate_limited {
                 retry_backoff_ms_rate_limited(task.retry_count)
             } else {
                 retry_backoff_ms(task.retry_count)
             };
+
+            if rate_limited {
+                if let Some(hint_seconds) = parse_retry_after_seconds_hint(&error_msg) {
+                    let hint_ms = hint_seconds.saturating_mul(1000);
+                    delay_ms = delay_ms.max(hint_ms).min(RETRY_RATE_LIMIT_MAX_DELAY_MS);
+                }
+            }
             let retry_at = chrono::Utc::now().timestamp_millis() + delay_ms as i64;
 
             let mut conn = self
@@ -525,12 +543,46 @@ fn retry_backoff_ms_rate_limited(retry_count: u32) -> u64 {
 
 fn is_rate_limited_error(error_msg: &str) -> bool {
     let msg = error_msg.to_ascii_lowercase();
+    // 429 may also represent "insufficient_quota" which is not recoverable by waiting.
+    if msg.contains("insufficient_quota") {
+        return false;
+    }
+
     msg.contains("rate limit")
+        || msg.contains("rate_limit")
         || msg.contains("too many requests")
         || msg.contains("status code: 429")
         || msg.contains("http 429")
+        || msg.contains("ai_circuit_open")
+        || msg.contains("circuit open")
         || msg.contains(" ai_rate_limited")
         || msg.starts_with("ai_rate_limited")
+}
+
+fn parse_retry_after_seconds_hint(error_msg: &str) -> Option<u64> {
+    // Expected format (case-insensitive):
+    // - "... retry_after_seconds=60 ..."
+    let lower = error_msg.to_ascii_lowercase();
+    let key = "retry_after_seconds=";
+    let idx = lower.find(key)?;
+    let rest = &lower[idx + key.len()..];
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        return None;
+    }
+    digits.parse::<u64>().ok()
+}
+
+fn rate_limit_max_retries() -> u32 {
+    const DEFAULT: u32 = 20;
+    const MAX: u32 = 200;
+
+    std::env::var("LAW_EYE__QUEUE__RATE_LIMIT_MAX_RETRIES")
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u32>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(DEFAULT)
+        .min(MAX)
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
