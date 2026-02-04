@@ -434,7 +434,7 @@ image_exists() {
 
 build_redis_image() {
   docker build -t lawsaw-redis:local - <<'EOF'
-FROM mcr.microsoft.com/devcontainers/base:ubuntu
+FROM mcr.microsoft.com/devcontainers/base:ubuntu@sha256:3dcb059253b2ebb44de3936620e1cff3dadcd2c1c982d579081ca8128c1eb319
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
   && apt-get install -y redis-server \
@@ -448,7 +448,7 @@ EOF
 
 build_postgres_image() {
   docker build -t lawsaw-postgres-pgvector:local - <<'EOF'
-FROM mcr.microsoft.com/devcontainers/base:ubuntu
+FROM mcr.microsoft.com/devcontainers/base:ubuntu@sha256:3dcb059253b2ebb44de3936620e1cff3dadcd2c1c982d579081ca8128c1eb319
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \
@@ -559,7 +559,7 @@ EOF
 
 build_minio_image() {
   docker build -t lawsaw-minio:local - <<'EOF'
-FROM mcr.microsoft.com/devcontainers/base:ubuntu
+FROM mcr.microsoft.com/devcontainers/base:ubuntu@sha256:3dcb059253b2ebb44de3936620e1cff3dadcd2c1c982d579081ca8128c1eb319
 ARG DEBIAN_FRONTEND=noninteractive
 ARG MINIO_VERSION=RELEASE.2025-10-15T17-29-55Z
 
