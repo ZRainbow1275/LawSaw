@@ -268,7 +268,7 @@ services:
     restart: unless-stopped
 
   n8n:
-    image: docker.n8n.io/n8nio/n8n:latest
+    image: ${N8N_IMAGE:-docker.n8n.io/n8nio/n8n:2.4.7}
     # Optional automation service. Keep behind a profile so `docker compose up`
     # remains usable in restricted networks where docker.n8n.io may be unreachable.
     profiles: ["n8n"]
