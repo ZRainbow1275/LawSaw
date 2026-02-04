@@ -176,6 +176,9 @@ export interface ApiKey {
 
 export interface ApiKeyListResponse {
 	keys: ApiKey[];
+	total: number;
+	limit: number;
+	offset: number;
 }
 
 export interface CreateApiKeyResponse {
@@ -573,6 +576,9 @@ export function assertApiKeyListResponse(
 	assertRecord(value, path);
 	const keys = getRequired(value, "keys", path);
 	assertArray(keys, `${path}.keys`, assertApiKey);
+	assertNumber(getRequired(value, "total", path), `${path}.total`);
+	assertNumber(getRequired(value, "limit", path), `${path}.limit`);
+	assertNumber(getRequired(value, "offset", path), `${path}.offset`);
 }
 
 export function assertCreateApiKeyResponse(

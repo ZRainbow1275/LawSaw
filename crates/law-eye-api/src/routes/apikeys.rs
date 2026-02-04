@@ -10,13 +10,15 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
-use crate::{ApiError, ApiJson, ApiResult, AppError};
+use crate::{ApiError, ApiJson, ApiQuery, ApiResult, AppError};
 
 const APIKEY_NAME_MAX_LEN: usize = 100;
 const APIKEY_PERMISSION_MAX_LEN: usize = 64;
 const APIKEY_MAX_PERMISSIONS: usize = 32;
 const APIKEY_RATE_LIMIT_MIN: i32 = 1;
 const APIKEY_RATE_LIMIT_MAX: i32 = 10_000;
+const APIKEY_LIST_DEFAULT_LIMIT: i64 = 100;
+const APIKEY_LIST_MAX_LIMIT: i64 = 1000;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -52,9 +54,19 @@ pub struct CreateKeyResponse {
     pub raw_key: String, // Only returned on creation
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ListKeysParams {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct KeyListResponse {
     pub keys: Vec<ApiKeyResponse>,
+    pub total: i64,
+    pub limit: i64,
+    pub offset: i64,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -67,11 +79,16 @@ pub struct SuccessResponse {
 #[utoipa::path(
     get,
     path = "/api/v1/apikeys",
+    params(
+        ("limit" = Option<i64>, Query, description = "Max results (default 100, max 1000)"),
+        ("offset" = Option<i64>, Query, description = "Offset (default 0)")
+    ),
     security(
         ("session" = [])
     ),
     responses(
         (status = 200, description = "List of API keys", body = KeyListResponse),
+        (status = 400, description = "Validation error", body = ApiError),
         (status = 401, description = "Not authenticated", body = ApiError),
         (status = 500, description = "Server error", body = ApiError)
     )
@@ -79,16 +96,34 @@ pub struct SuccessResponse {
 pub(crate) async fn list_keys(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    ApiQuery(params): ApiQuery<ListKeysParams>,
 ) -> ApiResult<Json<KeyListResponse>> {
     let user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
+    let mut limit = params.limit.unwrap_or(APIKEY_LIST_DEFAULT_LIMIT);
+    if limit < 1 {
+        return Err(AppError::validation("limit must be >= 1"));
+    }
+    limit = limit.min(APIKEY_LIST_MAX_LIMIT);
+
+    let offset = params.offset.unwrap_or(0);
+    if offset < 0 {
+        return Err(AppError::validation("offset must be >= 0"));
+    }
+
     let keys = state
         .apikey_service
-        .list_by_user(user.id)
+        .list_by_user(user.id, limit, offset)
         .await
-        .map_err(AppError::from)?;
+        .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?;
+
+    let total = state
+        .apikey_service
+        .count_by_user(user.id)
+        .await
+        .map_err(|e| AppError::internal_with_code("COUNT_ERROR", e.to_string()))?;
 
     Ok(Json(KeyListResponse {
         keys: keys
@@ -104,6 +139,9 @@ pub(crate) async fn list_keys(
                 created_at: k.created_at,
             })
             .collect(),
+        total,
+        limit,
+        offset,
     }))
 }
 

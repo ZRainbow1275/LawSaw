@@ -100,11 +100,31 @@ impl ApiKeyService {
     }
 
     /// List API keys for a user (without hashes)
-    pub async fn list_by_user(&self, user_id: Uuid) -> Result<Vec<ApiKey>> {
+    pub async fn count_by_user(&self, user_id: Uuid) -> Result<i64> {
+        let result: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_keys WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
+        Ok(result.0)
+    }
+
+    /// List API keys for a user (without hashes)
+    pub async fn list_by_user(&self, user_id: Uuid, limit: i64, offset: i64) -> Result<Vec<ApiKey>> {
+        if limit < 1 {
+            return Err(Error::Validation("limit must be >= 1".to_string()));
+        }
+        if offset < 0 {
+            return Err(Error::Validation("offset must be >= 0".to_string()));
+        }
+
         let keys = sqlx::query_as::<_, ApiKey>(
-            "SELECT * FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC",
+            "SELECT * FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
         )
         .bind(user_id)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
         .await
         .map_err(|e| Error::Database(e.to_string()))?;
