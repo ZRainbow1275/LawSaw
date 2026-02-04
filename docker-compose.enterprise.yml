@@ -1,6 +1,6 @@
 services:
   vault:
-    image: hashicorp/vault:1.15.6
+    image: ${VAULT_IMAGE:-hashicorp/vault:1.15.6@sha256:0450896c43b13879b19442b204ce29dd19b5a10fce43d5cf38af17da20f56f4d}
     container_name: law-eye-vault
     cap_add:
       - IPC_LOCK
@@ -14,7 +14,7 @@ services:
     restart: unless-stopped
 
   minio:
-    image: alpine/minio:RELEASE.2025-10-15T17-29-55Z
+    image: ${MINIO_IMAGE:-alpine/minio:RELEASE.2025-10-15T17-29-55Z@sha256:cf23643a6cf9ce159c57643ceb88279e431262282428c9e0bf3a7ef1a97e84b4}
     container_name: law-eye-minio
     user: "1000:1000"
     command: server /data --console-address ":9001"
@@ -115,7 +115,7 @@ services:
     restart: unless-stopped
 
   api-mtls:
-    image: caddy:2.8-alpine
+    image: ${CADDY_IMAGE:-caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17}
     container_name: law-eye-api-mtls
     depends_on:
       api:
@@ -130,7 +130,7 @@ services:
     restart: unless-stopped
 
   gateway:
-    image: caddy:2.8-alpine
+    image: ${CADDY_IMAGE:-caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17}
     container_name: law-eye-gateway
     depends_on:
       - web

@@ -19,7 +19,7 @@
 - [x] [SUP-301] n8n 镜像禁止使用 `:latest`（固定版本/摘要，支持 env override）✅ `image` 改为 `${N8N_IMAGE:-docker.n8n.io/n8nio/n8n:2.4.7}` - `docker-compose.yml`
 - [x] [SUP-302] `start-stack.sh` 禁止回退到 `minio/*:latest`（仅允许固定版本或本地构建）✅ 移除 `quay.io/minio/minio:latest` 与 `minio/minio:latest` 回退分支 - `scripts/no-dockerhub/start-stack.sh`
 - [x] [DOC-304] 回填综合审计报告与当前修复状态一致（移除已修复误报 + 更新日期/分数/OPS 勾选）✅ 已同步关键误报（.env/unseal/health/schema/image pinning）并更新日期/分数 - `prompts/audit/01_comprehensive_audit.md`
-- [ ] [SUP-303] Compose 外部镜像 digest 全固定（禁止漂移），同时保留 env override - `docker-compose.yml`、`docker-compose.enterprise.yml`
+- [x] [SUP-303] Compose 外部镜像 digest 全固定（禁止漂移），同时保留 env override ✅ 固定 `alpine/minio/vault/caddy/n8n` digest；并通过 `MINIO_IMAGE/VAULT_IMAGE/CADDY_IMAGE/N8N_IMAGE` 支持覆盖 - `docker-compose.yml`、`docker-compose.enterprise.yml`
 - [ ] [SUP-304] Dockerfile 基础镜像 digest 全固定（devcontainers base/rust/node）- `Dockerfile.api`、`Dockerfile.worker`、`Dockerfile.web`、`Dockerfile.redis`、`Dockerfile.postgres-pgvector`
 - [ ] [DOC-305] 文档/方案中禁止 `:latest`（替换为固定版本或明确“勿用 latest”）- `docs/plans/*`
 

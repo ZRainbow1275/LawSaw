@@ -45,7 +45,7 @@ services:
     restart: "no"
 
   redis-init:
-    image: alpine:3.20
+    image: alpine:3.20@sha256:a4f4213abb84c497377b8544c81b3564f313746700372ec4fe84653e4fb03805
     user: "0:0"
     command: ["sh", "-c", "chown -R 1000:1000 /data"]
     volumes:
@@ -86,7 +86,7 @@ services:
     restart: unless-stopped
 
   minio-init:
-    image: alpine:3.20
+    image: alpine:3.20@sha256:a4f4213abb84c497377b8544c81b3564f313746700372ec4fe84653e4fb03805
     user: "0:0"
     command: ["sh", "-c", "chown -R 1000:1000 /data"]
     volumes:
@@ -104,7 +104,7 @@ services:
     restart: "no"
 
   minio:
-    image: alpine/minio:RELEASE.2025-10-15T17-29-55Z
+    image: ${MINIO_IMAGE:-alpine/minio:RELEASE.2025-10-15T17-29-55Z@sha256:cf23643a6cf9ce159c57643ceb88279e431262282428c9e0bf3a7ef1a97e84b4}
     user: "1000:1000"
     command: server /data --console-address ":9001"
     environment:
@@ -268,7 +268,7 @@ services:
     restart: unless-stopped
 
   n8n:
-    image: ${N8N_IMAGE:-docker.n8n.io/n8nio/n8n:2.4.7}
+    image: ${N8N_IMAGE:-docker.n8n.io/n8nio/n8n:2.4.7@sha256:b9c6ff711128fe2c422fb51ada978040ba3cc5c1fe8934af2d3f4cc5dc47069d}
     # Optional automation service. Keep behind a profile so `docker compose up`
     # remains usable in restricted networks where docker.n8n.io may be unreachable.
     profiles: ["n8n"]
