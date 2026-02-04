@@ -475,11 +475,14 @@ async fn load_vault_kv_secrets(cfg: &VaultSecretsConfig) -> crate::Result<VaultK
         crate::Error::Config("LAW_EYE__SECRETS__VAULT__CLIENT_KEY_PATH is required".into())
     })?;
 
-    let ca_pem = std::fs::read(ca_cert_path)
+    let ca_pem = tokio::fs::read(ca_cert_path)
+        .await
         .map_err(|err| crate::Error::Config(format!("Read CA cert failed: {err}")))?;
-    let cert_pem = std::fs::read(client_cert_path)
+    let cert_pem = tokio::fs::read(client_cert_path)
+        .await
         .map_err(|err| crate::Error::Config(format!("Read client cert failed: {err}")))?;
-    let key_pem = std::fs::read(client_key_path)
+    let key_pem = tokio::fs::read(client_key_path)
+        .await
         .map_err(|err| crate::Error::Config(format!("Read client key failed: {err}")))?;
 
     let mut identity_pem = Vec::with_capacity(cert_pem.len() + key_pem.len() + 1);

@@ -2,7 +2,7 @@ use crate::{Error, Result};
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::{Deserialize, Serialize};
-use std::{fs, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 use tokio::sync::{Mutex, RwLock};
 
 use crate::config::VaultSecretsConfig;
@@ -207,11 +207,14 @@ impl VaultClient {
             Error::Config("LAW_EYE__SECRETS__VAULT__CLIENT_KEY_PATH is required".into())
         })?;
 
-        let ca_pem = fs::read(ca_cert_path)
+        let ca_pem = tokio::fs::read(ca_cert_path)
+            .await
             .map_err(|err| Error::Config(format!("Read CA cert failed: {err}")))?;
-        let cert_pem = fs::read(client_cert_path)
+        let cert_pem = tokio::fs::read(client_cert_path)
+            .await
             .map_err(|err| Error::Config(format!("Read client cert failed: {err}")))?;
-        let key_pem = fs::read(client_key_path)
+        let key_pem = tokio::fs::read(client_key_path)
+            .await
             .map_err(|err| Error::Config(format!("Read client key failed: {err}")))?;
 
         let mut identity_pem = Vec::with_capacity(cert_pem.len() + key_pem.len() + 1);

@@ -25,6 +25,10 @@
 - [x] [SUP-305] `start-stack.sh` 内联 Dockerfile 基础镜像 digest 固定（避免本地构建供应链漂移）✅ `FROM mcr.microsoft.com/devcontainers/base:ubuntu` 改为 `tag@sha256` 固定 - `scripts/no-dockerhub/start-stack.sh`
 - [x] [SUP-306] `start-stack.sh` MinIO 本地构建禁止“下载失败回退 latest”，并对下载产物做 SHA256 校验（固定版本）✅ 固定 `MINIO_VERSION` 且强制校验 `MINIO_SHA256`，移除 `dl.min.io/.../minio`（latest）回退 - `scripts/no-dockerhub/start-stack.sh`
 - [x] [CODE-306] Rust `cargo clippy -- -D warnings` 清零（保证严格门禁可用）✅ 修复 `collapsible_if`/`useless_asref` 等 clippy 报警并通过全 workspace clippy - `crates/law-eye-common/src/config.rs`、`crates/law-eye-common/src/egress.rs`
+- [x] [PERF-307] 异步启动链中存在阻塞文件 IO（Vault TLS 证书/密钥使用 `std::fs::read`）→ 可能阻塞 Tokio runtime 线程 ✅ 已改为 `tokio::fs::read(...).await`（走 Tokio blocking pool），保持错误语义一致；避免在 async 路径内阻塞 runtime worker 线程 - `crates/law-eye-common/src/config.rs`、`crates/law-eye-common/src/vault.rs`
+- [ ] [API-103] 列表接口缺少分页（`GET /api/v1/sources`）→ 可能返回无界数组（OOM/延迟抖动） ✅ 增加 `limit/offset`（带硬上限）并同步前端调用与 OpenAPI - `crates/law-eye-core/src/source.rs`、`crates/law-eye-api/src/routes/sources.rs`、`apps/web/src/hooks/use-sources.ts`
+- [ ] [API-104] 列表接口缺少分页（`GET /api/v1/apikeys`）→ 可能返回无界数组（OOM/延迟抖动） ✅ 增加 `limit/offset`（带硬上限）并同步前端调用与 OpenAPI - `crates/law-eye-core/src/apikey.rs`、`crates/law-eye-api/src/routes/apikeys.rs`、`apps/web/src/hooks/use-api-keys.ts`
+- [ ] [DOC-307] 文档/审计报告存在“误导性示例密钥/过期勾选项”（如默认弱口令、`sk-` 示例、以及综合审计中仍残留未勾选的已修复项）✅ 清理示例与同步勾选，避免误复制与误报 - `.env.example`、`docs/plans/*`、`prompts/audit/01_comprehensive_audit.md`
 
 **审计日期**：2026-01-26  
 **审计对象**：Rust（Axum）后端 + Next.js（React）前端 + Docker 运行栈（PostgreSQL/Redis/n8n）  
