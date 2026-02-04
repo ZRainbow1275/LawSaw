@@ -163,6 +163,8 @@ pub struct DeleteResponse {
     pub message: String,
 }
 
+const MAX_BATCH_STATUS_IDS: usize = 200;
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_articles))
@@ -1001,6 +1003,11 @@ pub(crate) async fn batch_update_status(
 
     if req.ids.is_empty() {
         return Err(AppError::validation("ids cannot be empty"));
+    }
+    if req.ids.len() > MAX_BATCH_STATUS_IDS {
+        return Err(AppError::validation(format!(
+            "ids cannot exceed {MAX_BATCH_STATUS_IDS}"
+        )));
     }
 
     if !is_valid_status(&req.status) {
