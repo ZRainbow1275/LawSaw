@@ -20,6 +20,13 @@ request_timeout_ms = 30000
 # Max request body size in bytes (0 to disable; not recommended for production).
 max_body_bytes = 1048576
 
+[worker]
+# Worker HTTP health endpoints for K8s probes / docker-compose checks.
+health_enabled = true
+health_host = "0.0.0.0"
+health_port = 3002
+health_check_timeout_ms = 2000
+
 [database]
 url = ""
 max_connections = 10

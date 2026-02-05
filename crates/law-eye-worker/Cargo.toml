@@ -16,6 +16,7 @@ law-eye-queue = { path = "../law-eye-queue" }
 law-eye-ai = { path = "../law-eye-ai" }
 
 tokio.workspace = true
+axum.workspace = true
 sqlx.workspace = true
 serde.workspace = true
 serde_json.workspace = true

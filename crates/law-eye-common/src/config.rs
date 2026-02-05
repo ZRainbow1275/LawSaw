@@ -97,6 +97,22 @@ fn default_object_storage_force_path_style() -> bool {
     true
 }
 
+fn default_object_storage_purge_interval_seconds() -> u64 {
+    60
+}
+
+fn default_object_storage_purge_batch_size() -> i64 {
+    50
+}
+
+fn default_object_storage_purge_grace_period_seconds() -> u64 {
+    0
+}
+
+fn default_object_storage_purge_max_attempts() -> i32 {
+    20
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ObjectStorageConfig {
     #[serde(default)]
@@ -114,6 +130,18 @@ pub struct ObjectStorageConfig {
     pub secret_access_key: String,
     #[serde(default = "default_object_storage_force_path_style")]
     pub force_path_style: bool,
+    /// Purge loop interval in seconds (0 disables background purge).
+    #[serde(default = "default_object_storage_purge_interval_seconds")]
+    pub purge_interval_seconds: u64,
+    /// Max objects to purge per loop iteration (per tenant).
+    #[serde(default = "default_object_storage_purge_batch_size")]
+    pub purge_batch_size: i64,
+    /// Grace period in seconds between soft delete and purge.
+    #[serde(default = "default_object_storage_purge_grace_period_seconds")]
+    pub purge_grace_period_seconds: u64,
+    /// Max purge attempts before giving up (still keeps records for manual intervention).
+    #[serde(default = "default_object_storage_purge_max_attempts")]
+    pub purge_max_attempts: i32,
 }
 
 impl Default for ObjectStorageConfig {
@@ -126,6 +154,10 @@ impl Default for ObjectStorageConfig {
             access_key_id: String::new(),
             secret_access_key: String::new(),
             force_path_style: default_object_storage_force_path_style(),
+            purge_interval_seconds: default_object_storage_purge_interval_seconds(),
+            purge_batch_size: default_object_storage_purge_batch_size(),
+            purge_grace_period_seconds: default_object_storage_purge_grace_period_seconds(),
+            purge_max_attempts: default_object_storage_purge_max_attempts(),
         }
     }
 }
@@ -133,6 +165,8 @@ impl Default for ObjectStorageConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppConfig {
     pub server: ServerConfig,
+    #[serde(default)]
+    pub worker: WorkerConfig,
     pub database: DatabaseConfig,
     pub redis: RedisConfig,
     #[serde(default)]
@@ -169,6 +203,47 @@ pub struct ServerConfig {
     /// Set to 0 to disable (not recommended for production).
     #[serde(default = "default_max_body_bytes")]
     pub max_body_bytes: usize,
+}
+
+fn default_worker_health_enabled() -> bool {
+    true
+}
+
+fn default_worker_health_host() -> String {
+    "0.0.0.0".to_string()
+}
+
+fn default_worker_health_port() -> u16 {
+    3002
+}
+
+fn default_worker_health_check_timeout_ms() -> u64 {
+    2_000
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WorkerConfig {
+    /// Enable worker HTTP health endpoints (`/health/live`, `/health/ready`).
+    #[serde(default = "default_worker_health_enabled")]
+    pub health_enabled: bool,
+    #[serde(default = "default_worker_health_host")]
+    pub health_host: String,
+    #[serde(default = "default_worker_health_port")]
+    pub health_port: u16,
+    /// Timeout for readiness checks (Postgres + Redis ping) in milliseconds.
+    #[serde(default = "default_worker_health_check_timeout_ms")]
+    pub health_check_timeout_ms: u64,
+}
+
+impl Default for WorkerConfig {
+    fn default() -> Self {
+        Self {
+            health_enabled: default_worker_health_enabled(),
+            health_host: default_worker_health_host(),
+            health_port: default_worker_health_port(),
+            health_check_timeout_ms: default_worker_health_check_timeout_ms(),
+        }
+    }
 }
 
 fn default_allowed_origins() -> Vec<String> {
@@ -364,14 +439,13 @@ impl Default for AppConfig {
                 request_timeout_ms: default_request_timeout_ms(),
                 max_body_bytes: default_max_body_bytes(),
             },
+            worker: WorkerConfig::default(),
             database: DatabaseConfig {
                 url: String::new(),
                 max_connections: 10,
                 session_role: None,
             },
-            redis: RedisConfig {
-                url: String::new(),
-            },
+            redis: RedisConfig { url: String::new() },
             ai: AiConfig::default(),
             metrics: MetricsConfig::default(),
             security: SecurityConfig::default(),

@@ -1,10 +1,13 @@
 use anyhow::Context;
+use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
 use law_eye_ai::{AiService, ClassifyResult, RiskAssessment, SummaryResult, TagsResult};
-use law_eye_common::AppConfig;
 use law_eye_common::egress::{validate_outbound_url, OutboundUrlPolicy};
+use law_eye_common::AppConfig;
 use law_eye_core::{ArticleService, SourceService};
 use law_eye_crawler::{RssFetcher, SpiderConfig, WebSpider};
-use law_eye_db::{create_pool_with_session_role, create_pool_with_session_role_retry, CreateArticle};
+use law_eye_db::{
+    create_pool_with_session_role, create_pool_with_session_role_retry, CreateArticle,
+};
 use law_eye_queue::{AiTask, AiTaskType, IngestTask, PushTask, ReservedTask, TaskQueue};
 use serde_json::json;
 use sqlx::PgPool;
@@ -12,6 +15,7 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::signal;
+use tokio::net::TcpListener;
 use tokio::time::{timeout, Duration, Instant};
 use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -33,6 +37,79 @@ const VISIBILITY_TIMEOUT_PUSH_MS: i64 = 5 * 60 * 1_000;
 const TASK_TIMEOUT_INGEST_SECS: u64 = 8 * 60;
 const TASK_TIMEOUT_AI_SECS: u64 = 10 * 60;
 const TASK_TIMEOUT_PUSH_SECS: u64 = 60;
+
+#[derive(Clone)]
+struct WorkerHealthState {
+    pool: PgPool,
+    task_queue: Arc<TaskQueue>,
+    shutdown: Arc<AtomicBool>,
+    check_timeout: Duration,
+}
+
+async fn health_live() -> (StatusCode, Json<serde_json::Value>) {
+    (StatusCode::OK, Json(json!({ "status": "ok" })))
+}
+
+async fn health_ready(State(state): State<WorkerHealthState>) -> (StatusCode, Json<serde_json::Value>) {
+    if state.shutdown.load(Ordering::Relaxed) {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "status": "shutting_down" })),
+        );
+    }
+
+    let db_ok = timeout(state.check_timeout, sqlx::query("SELECT 1").execute(&state.pool))
+        .await
+        .is_ok_and(|res| res.is_ok());
+
+    if !db_ok {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "status": "unready", "dependency": "postgres" })),
+        );
+    }
+
+    let redis_ok = timeout(state.check_timeout, state.task_queue.ping())
+        .await
+        .is_ok_and(|res| res.is_ok());
+
+    if !redis_ok {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "status": "unready", "dependency": "redis" })),
+        );
+    }
+
+    (StatusCode::OK, Json(json!({ "status": "ready" })))
+}
+
+async fn serve_worker_health_http(
+    host: String,
+    port: u16,
+    state: WorkerHealthState,
+) -> anyhow::Result<()> {
+    if port == 0 {
+        warn!("worker health http port is 0; skipping http health server");
+        return Ok(());
+    }
+
+    let addr = format!("{host}:{port}");
+    let listener = TcpListener::bind(&addr)
+        .await
+        .with_context(|| format!("bind worker health http to {addr}"))?;
+
+    let app = Router::new()
+        .route("/health/live", get(health_live))
+        .route("/health/ready", get(health_ready))
+        .route("/health", get(health_ready))
+        .with_state(state);
+
+    info!(%addr, "worker health http server started");
+    axum::serve(listener, app)
+        .await
+        .context("serve worker health http")?;
+    Ok(())
+}
 
 fn is_ai_rate_limited_error(error_msg: &str) -> bool {
     let msg = error_msg.to_ascii_lowercase();
@@ -481,10 +558,11 @@ impl Worker {
         let source_service = SourceService::new(self.pool.clone());
 
         let articles = match task.source_type.as_str() {
-            "rss" => self
-                .rss_fetcher
-                .fetch(&task.url, self.allow_internal_source_urls)
-                .await,
+            "rss" => {
+                self.rss_fetcher
+                    .fetch(&task.url, self.allow_internal_source_urls)
+                    .await
+            }
             "spider" => {
                 let config: SpiderConfig = match serde_json::from_value(task.config) {
                     Ok(c) => c,
@@ -533,7 +611,9 @@ impl Worker {
                     });
                 }
 
-                let saved_article_ids = article_service.upsert_many(tenant_id, &create_articles).await?;
+                let saved_article_ids = article_service
+                    .upsert_many(tenant_id, &create_articles)
+                    .await?;
 
                 for article_id in &saved_article_ids {
                     if self.ai_service.is_some() {
@@ -752,7 +832,7 @@ impl Worker {
             UPDATE articles SET
                 summary = COALESCE(NULLIF($2, ''), summary),
                 risk_score = $3,
-                category_id = (SELECT id FROM categories WHERE slug = $4),
+                category_id = (SELECT id FROM categories WHERE slug = $4 AND deleted_at IS NULL),
                 tags = $5,
                 keywords = $6,
                 ai_metadata = COALESCE(ai_metadata, '{}'::jsonb) || $7::jsonb,
@@ -791,7 +871,7 @@ impl Worker {
         sqlx::query(
             r#"
             UPDATE articles SET
-                category_id = (SELECT id FROM categories WHERE slug = $2),
+                category_id = (SELECT id FROM categories WHERE slug = $2 AND deleted_at IS NULL),
                 ai_metadata = jsonb_set(COALESCE(ai_metadata, '{}'::jsonb) || $3::jsonb, '{tasks,classify}', 'true'::jsonb, true),
                 updated_at = NOW()
             WHERE id = $1
@@ -914,7 +994,7 @@ impl Worker {
 
         let mut tx = self.begin_tenant_tx(tenant_id).await?;
 
-        sqlx::query("DELETE FROM article_chunks WHERE article_id = $1")
+        sqlx::query("UPDATE article_chunks SET deleted_at = NOW() WHERE article_id = $1 AND deleted_at IS NULL")
             .bind(article_id)
             .execute(&mut *tx)
             .await?;
@@ -938,7 +1018,8 @@ impl Worker {
                 DO UPDATE SET
                     content = EXCLUDED.content,
                     embedding = EXCLUDED.embedding,
-                    token_count = EXCLUDED.token_count
+                    token_count = EXCLUDED.token_count,
+                    deleted_at = NULL
                 "#,
             )
             .bind(article_id)
@@ -1167,6 +1248,7 @@ async fn main() -> anyhow::Result<()> {
     .await?;
 
     let task_queue = TaskQueue::new(&config.redis.url)?;
+    let task_queue_for_health = Arc::new(task_queue.clone());
 
     let ai_service = if !config.ai.api_key.is_empty() {
         info!("AI service enabled");
@@ -1189,8 +1271,33 @@ async fn main() -> anyhow::Result<()> {
         shutdown_clone.store(true, Ordering::Relaxed);
     });
 
+    if config.worker.health_enabled {
+        let timeout_ms = if config.worker.health_check_timeout_ms == 0 {
+            2_000
+        } else {
+            config.worker.health_check_timeout_ms
+        };
+        let check_timeout = Duration::from_millis(timeout_ms);
+        let host = config.worker.health_host.clone();
+        let port = config.worker.health_port;
+        let state = WorkerHealthState {
+            pool: pool.clone(),
+            task_queue: task_queue_for_health,
+            shutdown: shutdown.clone(),
+            check_timeout,
+        };
+
+        tokio::spawn(async move {
+            if let Err(err) = serve_worker_health_http(host, port, state).await {
+                error!(error = %err, "worker health http server exited");
+            }
+        });
+    }
+
     let push_timeout_ms = if config.server.request_timeout_ms == 0 {
-        warn!("LAW_EYE__SERVER__REQUEST_TIMEOUT_MS is 0; using 30000ms for outbound webhook timeout");
+        warn!(
+            "LAW_EYE__SERVER__REQUEST_TIMEOUT_MS is 0; using 30000ms for outbound webhook timeout"
+        );
         30_000
     } else {
         config.server.request_timeout_ms
@@ -1222,39 +1329,29 @@ mod webhook_url_tests {
 
     #[tokio::test]
     async fn validate_webhook_url_requires_https_for_external_by_default() {
-        assert!(
-            validate_webhook_url("http://example.com/hook", false)
-                .await
-                .is_err()
-        );
-        assert!(
-            validate_webhook_url("https://example.com/hook", false)
-                .await
-                .is_ok()
-        );
+        assert!(validate_webhook_url("http://example.com/hook", false)
+            .await
+            .is_err());
+        assert!(validate_webhook_url("https://example.com/hook", false)
+            .await
+            .is_ok());
     }
 
     #[tokio::test]
     async fn validate_webhook_url_blocks_internal_hosts_by_default() {
-        assert!(
-            validate_webhook_url("https://127.0.0.1/hook", false)
-                .await
-                .is_err()
-        );
-        assert!(
-            validate_webhook_url("https://localhost/hook", false)
-                .await
-                .is_err()
-        );
+        assert!(validate_webhook_url("https://127.0.0.1/hook", false)
+            .await
+            .is_err());
+        assert!(validate_webhook_url("https://localhost/hook", false)
+            .await
+            .is_err());
     }
 
     #[tokio::test]
     async fn validate_webhook_url_allows_localhost_when_configured() {
-        assert!(
-            validate_webhook_url("http://127.0.0.1:1234/hook", true)
-                .await
-                .is_ok()
-        );
+        assert!(validate_webhook_url("http://127.0.0.1:1234/hook", true)
+            .await
+            .is_ok());
     }
 
     #[tokio::test]

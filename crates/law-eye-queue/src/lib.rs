@@ -41,6 +41,7 @@ end
 return #tasks
 "#;
 
+#[derive(Clone)]
 pub struct TaskQueue {
     pool: Pool,
 }
