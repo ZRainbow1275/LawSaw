@@ -258,6 +258,7 @@
 	"Manage your account security options": "管理账户安全选项",
 	"Max {size}KB": "最大 {size}KB",
 	"Missing user info": "缺少用户信息",
+	"Missing version info. Please refresh the page and retry.": "缺少版本信息，请刷新页面后重试。",
 	"Mixed": "混合",
 	"My feedback": "我的反馈",
 	"Name": "名称",

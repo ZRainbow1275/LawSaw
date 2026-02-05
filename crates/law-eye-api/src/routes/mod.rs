@@ -29,6 +29,7 @@ use std::time::Instant;
 use crate::middleware::rate_limit::RateLimitLayer;
 use crate::middleware::{RequireAuth, RequirePermission, RequiredPermission, RequiredPermissions};
 use crate::state::AppState;
+use crate::AppError;
 
 async fn metrics_endpoint(State(state): State<AppState>, headers: HeaderMap) -> Response {
     if std::env::var_os("PRODUCTION").is_some() {
@@ -114,6 +115,53 @@ pub(super) fn extract_audit_meta(
         .map(|s| s.to_string());
 
     (ip_address, user_agent)
+}
+
+pub(crate) fn etag_for_version(version: i64) -> Result<HeaderValue, AppError> {
+    HeaderValue::from_str(&format!("\"v{version}\""))
+        .map_err(|_| AppError::internal("Failed to format ETag"))
+}
+
+pub(crate) fn parse_if_match_version(headers: &HeaderMap) -> Result<Option<i64>, AppError> {
+    let raw = match headers.get(header::IF_MATCH) {
+        Some(value) => value,
+        None => return Ok(None),
+    };
+
+    let raw = raw
+        .to_str()
+        .map_err(|_| AppError::validation("Invalid If-Match header"))?;
+
+    let token = raw.split(',').next().unwrap_or("").trim();
+    if token.is_empty() {
+        return Err(AppError::validation("Invalid If-Match header"));
+    }
+    if token == "*" {
+        return Err(AppError::validation("If-Match '*' is not supported"));
+    }
+
+    let token = token.strip_prefix("W/").unwrap_or(token).trim();
+    let token = token
+        .strip_prefix('"')
+        .and_then(|v| v.strip_suffix('"'))
+        .unwrap_or(token);
+
+    let token = token.strip_prefix('v').unwrap_or(token);
+    let version = token
+        .parse::<i64>()
+        .map_err(|_| AppError::validation("Invalid If-Match version"))?;
+
+    if version < 1 {
+        return Err(AppError::validation("Invalid If-Match version"));
+    }
+
+    Ok(Some(version))
+}
+
+pub(crate) fn require_if_match_version(headers: &HeaderMap) -> Result<i64, AppError> {
+    parse_if_match_version(headers)?.ok_or_else(|| {
+        AppError::precondition_required("Missing If-Match header (refresh the resource and retry)")
+    })
 }
 
 fn require_permission(router: Router<AppState>, permission: &'static str) -> Router<AppState> {

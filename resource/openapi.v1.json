@@ -5639,6 +5639,7 @@
           "title",
           "content",
           "status",
+          "version",
           "created_at",
           "updated_at"
         ],
@@ -5697,6 +5698,10 @@
               "null"
             ],
             "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -6412,6 +6417,7 @@
           "id",
           "email",
           "is_active",
+          "version",
           "created_at",
           "preferences"
         ],
@@ -6449,7 +6455,11 @@
             ],
             "format": "date-time"
           },
-          "preferences": {}
+          "preferences": {},
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
         }
       },
       "UserResponse": {
@@ -6458,6 +6468,7 @@
           "id",
           "email",
           "is_active",
+          "version",
           "created_at"
         ],
         "properties": {
@@ -6493,6 +6504,10 @@
               "null"
             ],
             "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },

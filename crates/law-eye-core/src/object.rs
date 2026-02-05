@@ -41,6 +41,7 @@ pub struct UploadUserAvatarInput {
     pub tenant_id: Uuid,
     pub actor_user_id: Uuid,
     pub target_user_id: Uuid,
+    pub expected_version: i64,
     pub previous_avatar_url: Option<String>,
     pub content_type: String,
     pub bytes: Vec<u8>,
@@ -208,6 +209,7 @@ impl ObjectService {
             tenant_id,
             actor_user_id,
             target_user_id,
+            expected_version,
             previous_avatar_url,
             content_type,
             bytes,
@@ -275,17 +277,19 @@ impl ObjectService {
                 let user = sqlx::query_as::<_, User>(
                     r#"
                     UPDATE users
-                    SET avatar_url = $3, updated_at = NOW()
-                    WHERE id = $1 AND tenant_id = $2
+                    SET avatar_url = $4, updated_at = NOW()
+                    WHERE id = $1 AND tenant_id = $2 AND version = $3
                     RETURNING *
                     "#,
                 )
                 .bind(target_user_id)
                 .bind(tenant_id)
+                .bind(expected_version)
                 .bind(&avatar_url)
-                .fetch_one(tx.as_mut())
+                .fetch_optional(tx.as_mut())
                 .await
-                .map_err(|e| Error::Database(e.to_string()))?;
+                .map_err(|e| Error::Database(e.to_string()))?
+                .ok_or_else(|| Error::Conflict("User version conflict".to_string()))?;
 
                 let audit_input = CreateAuditLog {
                     user_id: Some(actor_user_id),

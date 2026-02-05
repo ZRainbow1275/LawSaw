@@ -1,10 +1,15 @@
 use axum::{
     extract::{ConnectInfo, Multipart, Path, State},
-    http::{header::USER_AGENT, HeaderMap},
+    http::{
+        header::{self, USER_AGENT},
+        HeaderMap,
+    },
+    response::{IntoResponse, Response},
     routing::{get, patch, post},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
+use law_eye_common::Error;
 use law_eye_core::UploadUserAvatarInput;
 use law_eye_db::{CreateAuditLog, UpdateUser};
 use serde::{Deserialize, Serialize};
@@ -12,6 +17,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::auth::AuthSession;
+use crate::routes::{etag_for_version, require_if_match_version};
 use crate::state::AppState;
 use crate::{ApiError, ApiJson, ApiQuery, ApiResult, AppError};
 use std::net::{IpAddr, SocketAddr};
@@ -61,6 +67,7 @@ pub struct UserResponse {
     pub avatar_url: Option<String>,
     pub is_active: bool,
     pub last_login: Option<chrono::DateTime<chrono::Utc>>,
+    pub version: i64,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -73,6 +80,7 @@ impl From<law_eye_db::User> for UserResponse {
             avatar_url: user.avatar_url,
             is_active: user.is_active,
             last_login: user.last_login,
+            version: user.version,
             created_at: user.created_at,
         }
     }
@@ -86,6 +94,7 @@ pub struct UserProfileResponse {
     pub avatar_url: Option<String>,
     pub is_active: bool,
     pub last_login: Option<chrono::DateTime<chrono::Utc>>,
+    pub version: i64,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub preferences: serde_json::Value,
 }
@@ -99,6 +108,7 @@ impl From<law_eye_db::User> for UserProfileResponse {
             avatar_url: user.avatar_url,
             is_active: user.is_active,
             last_login: user.last_login,
+            version: user.version,
             created_at: user.created_at,
             preferences: user.preferences,
         }
@@ -131,6 +141,7 @@ pub struct UpdateRolesRequest {
 pub struct SuccessResponse {
     pub success: bool,
     pub message: String,
+    pub version: i64,
 }
 
 /// 检查用户是否有管理员权限
@@ -251,7 +262,7 @@ pub(crate) async fn get_user(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
-) -> ApiResult<Json<UserDetailResponse>> {
+) -> ApiResult<Response> {
     let current_user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
@@ -283,11 +294,16 @@ pub(crate) async fn get_user(
         .await
         .map_err(AppError::from)?;
 
-    Ok(Json(UserDetailResponse {
+    let body = UserDetailResponse {
         user: target_user.into(),
         roles: roles.into_iter().map(|r| r.name).collect(),
         permissions,
-    }))
+    };
+
+    let etag = etag_for_version(body.user.version)?;
+    let mut response = Json(body).into_response();
+    response.headers_mut().insert(header::ETAG, etag);
+    Ok(response)
 }
 
 /// 更新用户信息
@@ -310,12 +326,15 @@ pub(crate) async fn get_user(
 pub(crate) async fn update_user(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
     ApiJson(req): ApiJson<UpdateUserRequest>,
-) -> ApiResult<Json<UserProfileResponse>> {
+) -> ApiResult<Response> {
     let current_user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+
+    let expected_version = require_if_match_version(&headers)?;
 
     // Allow users to update their own profile, or admins to update any
     let is_admin = check_admin_permission(&state, current_user.id).await?;
@@ -330,6 +349,12 @@ pub(crate) async fn update_user(
         .map_err(AppError::from)?;
     if target_user.tenant_id != current_user.tenant_id {
         return Err(AppError::not_found("User not found"));
+    }
+
+    if target_user.version != expected_version {
+        return Err(AppError::precondition_failed(
+            "User was updated by someone else (refresh the page and retry)",
+        ));
     }
 
     let display_name = match req.display_name {
@@ -386,11 +411,20 @@ pub(crate) async fn update_user(
 
     let user = state
         .user_service
-        .update(id, update)
+        .update_with_version(current_user.tenant_id, id, expected_version, update)
         .await
-        .map_err(AppError::from)?;
+        .map_err(|e| match e {
+            Error::Conflict(_) => AppError::precondition_failed(
+                "User was updated by someone else (refresh the page and retry)",
+            ),
+            other => AppError::from(other),
+        })?;
 
-    Ok(Json(UserProfileResponse::from(user)))
+    let body = UserProfileResponse::from(user);
+    let etag = etag_for_version(body.version)?;
+    let mut response = Json(body).into_response();
+    response.headers_mut().insert(header::ETAG, etag);
+    Ok(response)
 }
 
 /// 上传用户头像（对象存储：S3/MinIO）
@@ -418,10 +452,12 @@ pub(crate) async fn upload_user_avatar(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
     mut multipart: Multipart,
-) -> ApiResult<Json<UserProfileResponse>> {
+) -> ApiResult<Response> {
     let current_user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+
+    let expected_version = require_if_match_version(&headers)?;
 
     let is_admin = check_admin_permission(&state, current_user.id).await?;
     if current_user.id != id && !is_admin {
@@ -435,6 +471,12 @@ pub(crate) async fn upload_user_avatar(
         .map_err(AppError::from)?;
     if target_user.tenant_id != current_user.tenant_id {
         return Err(AppError::not_found("User not found"));
+    }
+
+    if target_user.version != expected_version {
+        return Err(AppError::precondition_failed(
+            "User was updated by someone else (refresh the page and retry)",
+        ));
     }
 
     let object_service = state
@@ -478,6 +520,7 @@ pub(crate) async fn upload_user_avatar(
         tenant_id: current_user.tenant_id,
         actor_user_id: current_user.id,
         target_user_id: id,
+        expected_version,
         previous_avatar_url,
         content_type,
         bytes,
@@ -488,9 +531,18 @@ pub(crate) async fn upload_user_avatar(
     let (user, _object) = object_service
         .upload_user_avatar(upload_input, state.audit_service.as_ref())
         .await
-        .map_err(AppError::from)?;
+        .map_err(|e| match e {
+            Error::Conflict(_) => AppError::precondition_failed(
+                "User was updated by someone else (refresh the page and retry)",
+            ),
+            other => AppError::from(other),
+        })?;
 
-    Ok(Json(UserProfileResponse::from(user)))
+    let body = UserProfileResponse::from(user);
+    let etag = etag_for_version(body.version)?;
+    let mut response = Json(body).into_response();
+    response.headers_mut().insert(header::ETAG, etag);
+    Ok(response)
 }
 
 /// 更新用户角色 (需要管理员权限)
@@ -518,7 +570,7 @@ pub(crate) async fn update_user_roles(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
     ApiJson(req): ApiJson<UpdateRolesRequest>,
-) -> ApiResult<Json<SuccessResponse>> {
+) -> ApiResult<Response> {
     fn normalize_role_names(input: Option<Vec<String>>) -> Result<Vec<String>, String> {
         use std::collections::BTreeSet;
 
@@ -537,6 +589,8 @@ pub(crate) async fn update_user_roles(
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
+    let expected_version = require_if_match_version(&headers)?;
+
     let is_admin = check_admin_permission(&state, current_user.id).await?;
     if !is_admin {
         return Err(AppError::forbidden("Admin permission required"));
@@ -550,6 +604,12 @@ pub(crate) async fn update_user_roles(
         .map_err(AppError::from)?;
     if target_user.tenant_id != current_user.tenant_id {
         return Err(AppError::not_found("User not found"));
+    }
+
+    if target_user.version != expected_version {
+        return Err(AppError::precondition_failed(
+            "User was updated by someone else (refresh the page and retry)",
+        ));
     }
 
     let add_roles = normalize_role_names(req.add_roles).map_err(AppError::validation)?;
@@ -613,6 +673,29 @@ pub(crate) async fn update_user_roles(
     let before_role_names: Vec<String> = before_roles.into_iter().map(|r| r.name).collect();
     let after_role_names: Vec<String> = after_roles.into_iter().map(|r| r.name).collect();
 
+    let roles_changed = {
+        use std::collections::BTreeSet;
+        let before_set: BTreeSet<String> = before_role_names.iter().cloned().collect();
+        let after_set: BTreeSet<String> = after_role_names.iter().cloned().collect();
+        before_set != after_set
+    };
+
+    let user_version = if roles_changed {
+        state
+            .user_service
+            .touch_with_version_tx(current_user.tenant_id, &mut tx, id, expected_version)
+            .await
+            .map_err(|e| match e {
+                Error::Conflict(_) => AppError::precondition_failed(
+                    "User was updated by someone else (refresh the page and retry)",
+                ),
+                other => AppError::from(other),
+            })?
+            .version
+    } else {
+        target_user.version
+    };
+
     let ip_from_xff = headers
         .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok())
@@ -654,8 +737,14 @@ pub(crate) async fn update_user_roles(
         .await
         .map_err(|e| AppError::internal(e.to_string()))?;
 
-    Ok(Json(SuccessResponse {
+    let body = SuccessResponse {
         success: true,
         message: "Roles updated successfully".to_string(),
-    }))
+        version: user_version,
+    };
+
+    let etag = etag_for_version(body.version)?;
+    let mut response = Json(body).into_response();
+    response.headers_mut().insert(header::ETAG, etag);
+    Ok(response)
 }

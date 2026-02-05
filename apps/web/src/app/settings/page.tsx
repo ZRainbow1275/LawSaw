@@ -15,9 +15,10 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
-import { apiClient } from "@/lib/api";
+import { apiClient, ifMatchFromVersion } from "@/lib/api";
 import {
 	type ApiKey,
+	type UserDetailResponse,
 	assertApiKeyListResponse,
 	assertArticleStats,
 	assertCreateApiKeyResponse,
@@ -442,6 +443,17 @@ function SettingsContent() {
 				throw new Error(t("Missing user info"));
 			}
 
+			const version = userDetailQuery.data?.user.version;
+			if (
+				typeof version !== "number" ||
+				!Number.isFinite(version) ||
+				version < 1
+			) {
+				throw new Error(
+					t("Missing version info. Please refresh the page and retry."),
+				);
+			}
+
 			const payload = {
 				display_name: profile.displayName.trim() || null,
 				preferences: {
@@ -454,6 +466,7 @@ function SettingsContent() {
 				`/api/v1/users/${userId}`,
 				payload,
 				assertUserProfile,
+				{ headers: { "If-Match": ifMatchFromVersion(version) } },
 			);
 		},
 		onSuccess: (updated) => {
@@ -463,8 +476,13 @@ function SettingsContent() {
 					...user,
 					display_name: updated.display_name,
 					avatar_url: updated.avatar_url,
+					version: updated.version,
 				});
 			}
+			queryClient.setQueryData<UserDetailResponse | undefined>(
+				["users", userId],
+				(prev) => (prev ? { ...prev, user: updated } : prev),
+			);
 			queryClient.invalidateQueries({ queryKey: ["users", userId] });
 		},
 		onError: (err) => {
@@ -484,6 +502,17 @@ function SettingsContent() {
 				throw new Error(t("Please select an avatar file"));
 			}
 
+			const version = userDetailQuery.data?.user.version;
+			if (
+				typeof version !== "number" ||
+				!Number.isFinite(version) ||
+				version < 1
+			) {
+				throw new Error(
+					t("Missing version info. Please refresh the page and retry."),
+				);
+			}
+
 			const form = new FormData();
 			form.append("file", avatarFile, avatarFile.name);
 
@@ -491,6 +520,7 @@ function SettingsContent() {
 				`/api/v1/users/${userId}/avatar`,
 				form,
 				assertUserProfile,
+				{ headers: { "If-Match": ifMatchFromVersion(version) } },
 			);
 		},
 		onSuccess: (updated) => {
@@ -500,10 +530,15 @@ function SettingsContent() {
 					...user,
 					display_name: updated.display_name,
 					avatar_url: updated.avatar_url,
+					version: updated.version,
 				});
 			}
 			setAvatarFile(null);
 			setAvatarPreviewUrl(null);
+			queryClient.setQueryData<UserDetailResponse | undefined>(
+				["users", userId],
+				(prev) => (prev ? { ...prev, user: updated } : prev),
+			);
 			queryClient.invalidateQueries({ queryKey: ["users", userId] });
 		},
 		onError: (err) => {

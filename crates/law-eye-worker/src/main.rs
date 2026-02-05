@@ -8,7 +8,9 @@ use law_eye_crawler::{RssFetcher, SpiderConfig, WebSpider};
 use law_eye_db::{
     create_pool_with_session_role, create_pool_with_session_role_retry, CreateArticle,
 };
-use law_eye_queue::{AiTask, AiTaskType, IngestTask, PushTask, ReservedTask, RetryableTask, TaskQueue};
+use law_eye_queue::{
+    AiTask, AiTaskType, IngestTask, PushTask, ReservedTask, RetryableTask, TaskQueue,
+};
 use serde_json::json;
 use sqlx::{types::Json as DbJson, PgPool, Postgres, QueryBuilder};
 use std::collections::HashSet;
@@ -332,9 +334,10 @@ impl Worker {
             return Ok(());
         };
 
-        let tenant_ids = sqlx::query_scalar::<_, uuid::Uuid>("SELECT id FROM tenants ORDER BY created_at")
-            .fetch_all(&self.pool)
-            .await?;
+        let tenant_ids =
+            sqlx::query_scalar::<_, uuid::Uuid>("SELECT id FROM tenants ORDER BY created_at")
+                .fetch_all(&self.pool)
+                .await?;
 
         for tenant_id in tenant_ids {
             match self
@@ -367,7 +370,9 @@ impl Worker {
                     info!(%tenant_id, deleted, "Deleted orphan storage objects without DB records");
                 }
                 Ok(_) => {}
-                Err(err) => error!(%tenant_id, error = %err, "Cleanup orphan storage objects failed"),
+                Err(err) => {
+                    error!(%tenant_id, error = %err, "Cleanup orphan storage objects failed")
+                }
             }
         }
 
@@ -562,7 +567,9 @@ impl Worker {
                     }
                     match object_service.delete_object_key(&key).await {
                         Ok(()) => deleted += 1,
-                        Err(err) => warn!(%tenant_id, object_key = %key, error = %err, "Delete orphan storage object failed"),
+                        Err(err) => {
+                            warn!(%tenant_id, object_key = %key, error = %err, "Delete orphan storage object failed")
+                        }
                     }
                 }
             }
@@ -656,9 +663,10 @@ impl Worker {
     }
 
     async fn flush_queue_outbox_all_tenants(&self) -> anyhow::Result<()> {
-        let tenant_ids = sqlx::query_scalar::<_, uuid::Uuid>("SELECT id FROM tenants ORDER BY created_at")
-            .fetch_all(&self.pool)
-            .await?;
+        let tenant_ids =
+            sqlx::query_scalar::<_, uuid::Uuid>("SELECT id FROM tenants ORDER BY created_at")
+                .fetch_all(&self.pool)
+                .await?;
 
         for tenant_id in tenant_ids {
             if let Err(e) = self.flush_queue_outbox_for_tenant(tenant_id).await {
@@ -705,7 +713,8 @@ impl Worker {
             return Ok(());
         }
 
-        let mut results: Vec<(uuid::Uuid, Result<(), String>, i32)> = Vec::with_capacity(rows.len());
+        let mut results: Vec<(uuid::Uuid, Result<(), String>, i32)> =
+            Vec::with_capacity(rows.len());
         for row in rows {
             let outcome = self
                 .task_queue

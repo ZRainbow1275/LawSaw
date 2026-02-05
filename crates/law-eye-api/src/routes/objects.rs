@@ -4,8 +4,7 @@ use axum::{
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
-    Json,
-    Router,
+    Json, Router,
 };
 use law_eye_db::CreateAuditLog;
 use serde_json::json;
@@ -97,10 +96,9 @@ fn range_not_satisfiable_response(size: u64, message: &str) -> Response {
     )
         .into_response();
 
-    response.headers_mut().insert(
-        header::ACCEPT_RANGES,
-        HeaderValue::from_static("bytes"),
-    );
+    response
+        .headers_mut()
+        .insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
 
     let header_value = HeaderValue::from_str(&format!("bytes */{size}"))
         .unwrap_or_else(|_| HeaderValue::from_static("bytes */0"));
@@ -191,10 +189,9 @@ pub(crate) async fn get_object(
     let content_type = HeaderValue::from_str(&object.content_type)
         .map_err(|_| AppError::internal("Invalid object content-type"))?;
 
-    let mut response = if let (Some(range_header), Ok(size)) = (
-        range_header.as_deref(),
-        u64::try_from(object.byte_size),
-    ) {
+    let mut response = if let (Some(range_header), Ok(size)) =
+        (range_header.as_deref(), u64::try_from(object.byte_size))
+    {
         let byte_range = match parse_single_byte_range(range_header, size) {
             Ok(value) => value,
             Err(_) => {
@@ -215,10 +212,9 @@ pub(crate) async fn get_object(
         response
             .headers_mut()
             .insert(header::CONTENT_TYPE, content_type);
-        response.headers_mut().insert(
-            header::ACCEPT_RANGES,
-            HeaderValue::from_static("bytes"),
-        );
+        response
+            .headers_mut()
+            .insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
 
         let content_length = byte_range.end.saturating_sub(byte_range.start) + 1;
         let content_length = HeaderValue::from_str(&content_length.to_string())
@@ -248,10 +244,9 @@ pub(crate) async fn get_object(
         response
             .headers_mut()
             .insert(header::CONTENT_TYPE, content_type);
-        response.headers_mut().insert(
-            header::ACCEPT_RANGES,
-            HeaderValue::from_static("bytes"),
-        );
+        response
+            .headers_mut()
+            .insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
         if object.byte_size >= 0 {
             let content_length = HeaderValue::from_str(&object.byte_size.to_string())
                 .map_err(|_| AppError::internal("Invalid object byte_size"))?;

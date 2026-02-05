@@ -89,6 +89,7 @@ export interface User {
 	display_name: string | null;
 	avatar_url: string | null;
 	is_active: boolean;
+	version?: number;
 	// Returned by some endpoints (e.g. `/api/v1/users/*`). `/api/v1/auth/*` may omit it.
 	last_login?: string | null;
 	created_at?: string;
@@ -208,6 +209,7 @@ export interface UserProfile {
 	avatar_url: string | null;
 	is_active: boolean;
 	last_login: string | null;
+	version: number;
 	created_at: string;
 	preferences: Record<string, unknown>;
 }
@@ -293,6 +295,7 @@ export interface Feedback {
 	contact_email: string | null;
 	status: "pending" | "reviewing" | "resolved" | "rejected";
 	admin_response: string | null;
+	version: number;
 	created_at: string;
 	updated_at: string;
 }
@@ -547,6 +550,7 @@ export function assertUserProfile(
 		`${path}.last_login`,
 		assertString,
 	);
+	assertNumber(getRequired(value, "version", path), `${path}.version`);
 	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
 
 	const preferences = getRequired(value, "preferences", path);
@@ -1109,6 +1113,7 @@ export function assertFeedback(
 		`${path}.admin_response`,
 		assertString,
 	);
+	assertNumber(getRequired(value, "version", path), `${path}.version`);
 	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
 	assertString(getRequired(value, "updated_at", path), `${path}.updated_at`);
 }

@@ -207,6 +207,64 @@ impl UserService {
         Ok(user)
     }
 
+    pub async fn update_with_version(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        expected_version: i64,
+        input: UpdateUser,
+    ) -> Result<User> {
+        let user = sqlx::query_as::<_, User>(
+            r#"
+            UPDATE users SET
+                display_name = COALESCE($4, display_name),
+                avatar_url = COALESCE($5, avatar_url),
+                preferences = COALESCE($6, preferences),
+                updated_at = NOW()
+            WHERE id = $1 AND tenant_id = $2 AND version = $3
+            RETURNING *
+            "#,
+        )
+        .bind(id)
+        .bind(tenant_id)
+        .bind(expected_version)
+        .bind(&input.display_name)
+        .bind(&input.avatar_url)
+        .bind(&input.preferences)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?
+        .ok_or_else(|| Error::Conflict("User version conflict".to_string()))?;
+
+        Ok(user)
+    }
+
+    pub async fn touch_with_version_tx(
+        &self,
+        tenant_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+        id: Uuid,
+        expected_version: i64,
+    ) -> Result<User> {
+        let user = sqlx::query_as::<_, User>(
+            r#"
+            UPDATE users
+            SET updated_at = NOW()
+            WHERE id = $1 AND tenant_id = $2 AND version = $3
+            RETURNING *
+            "#,
+        )
+        .bind(id)
+        .bind(tenant_id)
+        .bind(expected_version)
+        .fetch_optional(tx.as_mut())
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?
+        .ok_or_else(|| Error::Conflict("User version conflict".to_string()))?;
+
+        Ok(user)
+    }
+
     pub async fn update_password(&self, id: Uuid, new_password: &str) -> Result<()> {
         let password_hash = hash_password(new_password)?;
 

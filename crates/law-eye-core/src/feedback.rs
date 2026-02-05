@@ -340,11 +340,14 @@ impl FeedbackService {
         &self,
         tenant_id: Uuid,
         id: Uuid,
+        expected_version: i64,
         input: UpdateFeedback,
     ) -> Result<Feedback> {
         let cipher = self.cipher.clone();
         with_tenant_tx(&self.pool, tenant_id, |tx| {
-            Box::pin(async move { Self::update_tx_inner(tenant_id, tx, &cipher, id, input).await })
+            Box::pin(async move {
+                Self::update_tx_inner(tenant_id, tx, &cipher, id, expected_version, input).await
+            })
         })
         .await
     }
@@ -354,6 +357,7 @@ impl FeedbackService {
         tenant_id: Uuid,
         tx: &mut Transaction<'_, Postgres>,
         id: Uuid,
+        expected_version: i64,
         input: UpdateFeedback,
     ) -> Result<Feedback> {
         sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
@@ -363,7 +367,7 @@ impl FeedbackService {
             .map_err(|e| Error::Database(e.to_string()))?;
 
         let cipher = self.cipher.clone();
-        Self::update_tx_inner(tenant_id, tx, &cipher, id, input).await
+        Self::update_tx_inner(tenant_id, tx, &cipher, id, expected_version, input).await
     }
 
     async fn update_tx_inner(
@@ -371,6 +375,7 @@ impl FeedbackService {
         tx: &mut Transaction<'_, Postgres>,
         cipher: &Arc<dyn SensitiveStringCipher>,
         id: Uuid,
+        expected_version: i64,
         input: UpdateFeedback,
     ) -> Result<Feedback> {
         let _ = tenant_id;
@@ -381,17 +386,18 @@ impl FeedbackService {
                 status = COALESCE($2, status),
                 admin_response = COALESCE($3, admin_response),
                 updated_at = NOW()
-            WHERE id = $1
+            WHERE id = $1 AND version = $4
             RETURNING *
             "#,
         )
         .bind(id)
         .bind(&input.status)
         .bind(&input.admin_response)
+        .bind(expected_version)
         .fetch_optional(tx.as_mut())
         .await
         .map_err(|e| Error::Database(e.to_string()))?
-        .ok_or_else(|| Error::NotFound(format!("Feedback {} not found", id)))?;
+        .ok_or_else(|| Error::Conflict("Feedback version conflict".to_string()))?;
 
         decrypt_or_backfill_feedback(tx, cipher, row).await
     }
@@ -411,7 +417,7 @@ async fn decrypt_or_backfill_feedback(
                     None => None,
                 };
 
-                sqlx::query(
+                let version: i64 = sqlx::query_scalar(
                     r#"
                     UPDATE feedbacks
                     SET content = $2,
@@ -419,15 +425,18 @@ async fn decrypt_or_backfill_feedback(
                         encryption_version = $4,
                         updated_at = NOW()
                     WHERE id = $1
+                    RETURNING version
                     "#,
                 )
                 .bind(row.id)
                 .bind(&ciphertext_content)
                 .bind(&ciphertext_email)
                 .bind(FEEDBACK_ENCRYPTION_VERSION_VAULT_TRANSIT)
-                .execute(tx.as_mut())
+                .fetch_one(tx.as_mut())
                 .await
                 .map_err(|e| Error::Database(e.to_string()))?;
+
+                row.version = version;
 
                 row.encryption_version = FEEDBACK_ENCRYPTION_VERSION_VAULT_TRANSIT;
             }
@@ -538,6 +547,7 @@ mod tests {
             source_name: None,
             status: "pending".to_string(),
             admin_response: None,
+            version: 1,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

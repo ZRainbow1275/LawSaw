@@ -67,9 +67,9 @@ fn idempotency_key(req: &Request<Body>) -> Result<Option<String>, AppError> {
         return Ok(None);
     };
 
-    let raw = header_value
-        .to_str()
-        .map_err(|_| AppError::bad_request_with_code("INVALID_IDEMPOTENCY_KEY", "Invalid Idempotency-Key header"))?;
+    let raw = header_value.to_str().map_err(|_| {
+        AppError::bad_request_with_code("INVALID_IDEMPOTENCY_KEY", "Invalid Idempotency-Key header")
+    })?;
 
     let key = raw.trim();
     if key.is_empty() {
@@ -307,8 +307,10 @@ pub async fn idempotency_middleware(
             return AppError::conflict("Idempotency-Key already used for a different endpoint")
                 .into_response();
         } else if row.request_hash != request_hash {
-            return AppError::conflict("Idempotency-Key already used with a different request body")
-                .into_response();
+            return AppError::conflict(
+                "Idempotency-Key already used with a different request body",
+            )
+            .into_response();
         } else if row.response_status.is_some() {
             return response_from_row(&key, row);
         } else {
@@ -414,9 +416,10 @@ pub async fn idempotency_middleware(
             .insert(HeaderName::from_static(IDEMPOTENCY_KEY_HEADER), value);
     }
 
-    response
-        .headers_mut()
-        .insert(HeaderName::from_static(IDEMPOTENCY_REPLAYED_HEADER), HeaderValue::from_static("false"));
+    response.headers_mut().insert(
+        HeaderName::from_static(IDEMPOTENCY_REPLAYED_HEADER),
+        HeaderValue::from_static("false"),
+    );
 
     response
 }

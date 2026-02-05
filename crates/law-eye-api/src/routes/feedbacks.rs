@@ -1,18 +1,19 @@
 use axum::{
     extract::ConnectInfo,
     extract::{Path, State},
-    http::StatusCode,
-    http::{HeaderMap, HeaderValue},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
     Json, Router,
 };
 use chrono::{DateTime, Utc};
+use law_eye_common::Error;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::auth::AuthSession;
+use crate::routes::{etag_for_version, require_if_match_version};
 use crate::state::AppState;
 use crate::{ApiError, ApiJson, ApiQuery, ApiResult, AppError};
 use law_eye_db::{CreateAuditLog, CreateFeedback, UpdateFeedback};
@@ -49,6 +50,7 @@ pub struct FeedbackResponse {
     pub source_name: Option<String>,
     pub status: String,
     pub admin_response: Option<String>,
+    pub version: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -66,6 +68,7 @@ impl From<law_eye_db::Feedback> for FeedbackResponse {
             source_name: f.source_name,
             status: f.status,
             admin_response: f.admin_response,
+            version: f.version,
             created_at: f.created_at,
             updated_at: f.updated_at,
         }
@@ -405,7 +408,7 @@ pub(crate) async fn get_feedback(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
-) -> ApiResult<Json<FeedbackResponse>> {
+) -> ApiResult<Response> {
     let user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
@@ -426,7 +429,11 @@ pub(crate) async fn get_feedback(
         return Err(AppError::forbidden("Access denied"));
     }
 
-    Ok(Json(FeedbackResponse::from(row)))
+    let body = FeedbackResponse::from(row);
+    let etag = etag_for_version(body.version)?;
+    let mut response = Json(body).into_response();
+    response.headers_mut().insert(header::ETAG, etag);
+    Ok(response)
 }
 
 /// Admin: update a feedback status / response
@@ -454,10 +461,12 @@ pub(crate) async fn update_feedback(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(id): Path<Uuid>,
     ApiJson(req): ApiJson<UpdateFeedbackRequest>,
-) -> ApiResult<Json<FeedbackResponse>> {
+) -> ApiResult<Response> {
     let user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+
+    let expected_version = require_if_match_version(&headers)?;
 
     let is_admin = state
         .user_service
@@ -492,7 +501,9 @@ pub(crate) async fn update_feedback(
 
         Box::pin(async move {
             let before = feedback_service.get_by_id_tx(tenant_id, tx, id).await?;
-            let after = feedback_service.update_tx(tenant_id, tx, id, input).await?;
+            let after = feedback_service
+                .update_tx(tenant_id, tx, id, expected_version, input)
+                .await?;
 
             audit_service
                 .log_tx(
@@ -521,9 +532,18 @@ pub(crate) async fn update_feedback(
         })
     })
     .await
-    .map_err(AppError::from)?;
+    .map_err(|e| match e {
+        Error::Conflict(_) => AppError::precondition_failed(
+            "Feedback was updated by someone else (refresh the page and retry)",
+        ),
+        other => AppError::from(other),
+    })?;
 
-    Ok(Json(FeedbackResponse::from(row)))
+    let body = FeedbackResponse::from(row);
+    let etag = etag_for_version(body.version)?;
+    let mut response = Json(body).into_response();
+    response.headers_mut().insert(header::ETAG, etag);
+    Ok(response)
 }
 
 fn preview_text(text: &str, max_chars: usize) -> String {

@@ -1,6 +1,6 @@
 use axum::{
     extract::{ConnectInfo, Path, State},
-    http::{header, HeaderMap, HeaderValue},
+    http::{header, HeaderMap},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
@@ -13,6 +13,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::auth::AuthSession;
+use crate::routes::{etag_for_version, require_if_match_version};
 use crate::state::AppState;
 use crate::{ApiError, ApiJson, ApiQuery, ApiResult, AppError};
 use std::net::SocketAddr;
@@ -218,53 +219,6 @@ fn is_valid_status(status: &str) -> bool {
         status,
         "pending" | "processing" | "published" | "archived" | "rejected"
     )
-}
-
-fn etag_for_version(version: i64) -> ApiResult<HeaderValue> {
-    HeaderValue::from_str(&format!("\"v{version}\""))
-        .map_err(|_| AppError::internal("Failed to format ETag"))
-}
-
-fn parse_if_match_version(headers: &HeaderMap) -> ApiResult<Option<i64>> {
-    let raw = match headers.get(header::IF_MATCH) {
-        Some(value) => value,
-        None => return Ok(None),
-    };
-
-    let raw = raw
-        .to_str()
-        .map_err(|_| AppError::validation("Invalid If-Match header"))?;
-
-    let token = raw.split(',').next().unwrap_or("").trim();
-    if token.is_empty() {
-        return Err(AppError::validation("Invalid If-Match header"));
-    }
-    if token == "*" {
-        return Err(AppError::validation("If-Match '*' is not supported"));
-    }
-
-    let token = token.strip_prefix("W/").unwrap_or(token).trim();
-    let token = token
-        .strip_prefix('"')
-        .and_then(|v| v.strip_suffix('"'))
-        .unwrap_or(token);
-
-    let token = token.strip_prefix('v').unwrap_or(token);
-    let version = token
-        .parse::<i64>()
-        .map_err(|_| AppError::validation("Invalid If-Match version"))?;
-
-    if version < 1 {
-        return Err(AppError::validation("Invalid If-Match version"));
-    }
-
-    Ok(Some(version))
-}
-
-fn require_if_match_version(headers: &HeaderMap) -> ApiResult<i64> {
-    parse_if_match_version(headers)?.ok_or_else(|| {
-        AppError::precondition_required("Missing If-Match header (refresh the resource and retry)")
-    })
 }
 
 pub(crate) mod query {

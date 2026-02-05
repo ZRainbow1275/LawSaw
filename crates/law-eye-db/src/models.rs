@@ -125,6 +125,7 @@ pub struct User {
     pub is_active: bool,
     pub last_login: Option<DateTime<Utc>>,
     pub email_verified_at: Option<DateTime<Utc>>,
+    pub version: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -297,6 +298,7 @@ pub struct Feedback {
     pub source_name: Option<String>,
     pub status: String,
     pub admin_response: Option<String>,
+    pub version: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

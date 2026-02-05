@@ -1237,6 +1237,8 @@ export interface components {
             updated_at: string;
             /** Format: uuid */
             user_id?: string | null;
+            /** Format: int64 */
+            version: number;
         };
         HealthResponse: {
             postgres: components["schemas"]["DependencyHealth"];
@@ -1447,6 +1449,8 @@ export interface components {
             /** Format: date-time */
             last_login?: string | null;
             preferences: unknown;
+            /** Format: int64 */
+            version: number;
         };
         UserResponse: {
             avatar_url?: string | null;
@@ -1459,6 +1463,8 @@ export interface components {
             is_active: boolean;
             /** Format: date-time */
             last_login?: string | null;
+            /** Format: int64 */
+            version: number;
         };
         UsersListResponse: {
             /** Format: int64 */
