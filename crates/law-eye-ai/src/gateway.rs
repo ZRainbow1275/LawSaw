@@ -209,11 +209,15 @@ impl LlmGateway {
 }
 
 fn env_u32(name: &str) -> Option<u32> {
-    std::env::var(name).ok().and_then(|raw| raw.trim().parse().ok())
+    std::env::var(name)
+        .ok()
+        .and_then(|raw| raw.trim().parse().ok())
 }
 
 fn env_u64(name: &str) -> Option<u64> {
-    std::env::var(name).ok().and_then(|raw| raw.trim().parse().ok())
+    std::env::var(name)
+        .ok()
+        .and_then(|raw| raw.trim().parse().ok())
 }
 
 fn is_rate_limited_api_error(err: &async_openai::error::ApiError) -> bool {
@@ -240,7 +244,10 @@ fn extract_retry_after_seconds_from_message(message: &str) -> Option<u64> {
     for marker in ["try again in ", "retry after ", "in ", "after "] {
         if let Some(pos) = lower.find(marker) {
             let start = pos + marker.len();
-            let digits: String = lower[start..].chars().take_while(|c| c.is_ascii_digit()).collect();
+            let digits: String = lower[start..]
+                .chars()
+                .take_while(|c| c.is_ascii_digit())
+                .collect();
             if digits.is_empty() {
                 continue;
             }
@@ -275,9 +282,7 @@ fn map_openai_error(err: OpenAIError) -> Error {
         }
         OpenAIError::Reqwest(req_err) => {
             if req_err.status().map(|s| s.as_u16()) == Some(429) {
-                return Error::Http(
-                    "AI_RATE_LIMITED retry_after_seconds=60: HTTP 429".to_string(),
-                );
+                return Error::Http("AI_RATE_LIMITED retry_after_seconds=60: HTTP 429".to_string());
             }
             Error::Http(format!("LLM HTTP error: {}", req_err))
         }

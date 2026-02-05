@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useArticleStats } from "@/hooks/use-articles";
 import { useSourceStats } from "@/hooks/use-sources";
+import { useT } from "@/lib/i18n-client";
 import {
 	cardHoverEffect,
 	fadeVariants,
@@ -21,7 +22,7 @@ import {
 } from "lucide-react";
 
 // ============================================
-// 类型定义
+// Type definitions
 // ============================================
 
 interface StatConfig {
@@ -34,7 +35,7 @@ interface StatConfig {
 }
 
 // ============================================
-// 颜色配置
+// Colors
 // ============================================
 
 const colorConfig = {
@@ -61,12 +62,13 @@ const colorConfig = {
 };
 
 // ============================================
-// StatCard 子组件
+// StatCard
 // ============================================
 
 function StatCard({ stat, index }: { stat: StatConfig; index: number }) {
 	const colors = colorConfig[stat.color];
 	const Icon = stat.icon;
+	const t = useT();
 
 	return (
 		<motion.div
@@ -75,7 +77,7 @@ function StatCard({ stat, index }: { stat: StatConfig; index: number }) {
 			className="h-full"
 		>
 			<Card className="relative overflow-hidden h-full group">
-				{/* 顶部渐变条 */}
+				{/* Top gradient bar */}
 				<div
 					className={cn(
 						"absolute inset-x-0 top-0 h-1 bg-gradient-to-r opacity-0 group-hover:opacity-100 transition-opacity",
@@ -87,7 +89,7 @@ function StatCard({ stat, index }: { stat: StatConfig; index: number }) {
 					<div className="flex items-center justify-between">
 						<div>
 							<p className="text-sm font-medium text-neutral-500">
-								{stat.title}
+								{t(stat.title)}
 							</p>
 							<div className="mt-2">
 								{stat.isLoading ? (
@@ -105,7 +107,7 @@ function StatCard({ stat, index }: { stat: StatConfig; index: number }) {
 							</div>
 						</div>
 
-						{/* 图标容器 - 带动画 */}
+						{/* Icon container */}
 						<motion.div
 							initial={{ scale: 0.8, opacity: 0 }}
 							animate={{ scale: 1, opacity: 1 }}
@@ -126,12 +128,13 @@ function StatCard({ stat, index }: { stat: StatConfig; index: number }) {
 }
 
 // ============================================
-// StatsCards 主组件
+// StatsCards
 // ============================================
 
 export function StatsCards() {
 	const statsQuery = useArticleStats();
 	const sourceStatsQuery = useSourceStats();
+	const t = useT();
 
 	const activeSources =
 		sourceStatsQuery.isError || !sourceStatsQuery.data
@@ -147,7 +150,7 @@ export function StatsCards() {
 
 	const stats: StatConfig[] = [
 		{
-			title: "今日资讯",
+			title: "Today's articles",
 			value:
 				statsQuery.isError || !statsQuery.data
 					? null
@@ -158,7 +161,7 @@ export function StatsCards() {
 			isError: statsQuery.isError,
 		},
 		{
-			title: "活跃信息源",
+			title: "Active sources",
 			value: activeSources,
 			icon: Rss,
 			color: "success",
@@ -166,7 +169,7 @@ export function StatsCards() {
 			isError: sourceStatsQuery.isError,
 		},
 		{
-			title: "待处理",
+			title: "Pending",
 			value:
 				statsQuery.isError || !statsQuery.data
 					? null
@@ -177,7 +180,7 @@ export function StatsCards() {
 			isError: statsQuery.isError,
 		},
 		{
-			title: "风险预警",
+			title: "Risk alerts",
 			value:
 				statsQuery.isError || !statsQuery.data
 					? null
@@ -205,10 +208,10 @@ export function StatsCards() {
 			{hasError ? (
 				<div className="mt-3 flex items-center justify-between rounded-lg border border-red-100 bg-red-50 px-3 py-2">
 					<p className="text-xs text-red-700">
-						部分统计数据加载失败，已隐藏不可靠数值
+						{t("Some stats failed to load; unreliable values are hidden.")}
 					</p>
 					<Button variant="outline" size="sm" onClick={handleRetry}>
-						重试
+						{t("Retry")}
 					</Button>
 				</div>
 			) : null}

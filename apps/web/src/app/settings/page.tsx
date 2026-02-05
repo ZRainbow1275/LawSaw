@@ -29,6 +29,7 @@ import {
 	assertUserProfile,
 	assertVapidPublicKeyResponse,
 } from "@/lib/api/types";
+import { useT } from "@/lib/i18n-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { useToast } from "@/stores/toast-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -118,6 +119,7 @@ function SettingsContent() {
 	const setUser = useAuthStore((s) => s.setUser);
 	const queryClient = useQueryClient();
 	const { success: toastSuccess, error: toastError } = useToast();
+	const t = useT();
 	const searchParams = useSearchParams();
 
 	const [activeTab, setActiveTab] = useState("profile");
@@ -179,8 +181,8 @@ function SettingsContent() {
 		busy: false,
 	}));
 
-	const getServiceWorkerRegistration = useCallback(
-		async (): Promise<ServiceWorkerRegistration | null> => {
+	const getServiceWorkerRegistration =
+		useCallback(async (): Promise<ServiceWorkerRegistration | null> => {
 			if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
 				return null;
 			}
@@ -193,9 +195,7 @@ function SettingsContent() {
 			} catch {
 				return null;
 			}
-		},
-		[],
-	);
+		}, []);
 
 	const refreshWebPushStatus = useCallback(async (): Promise<void> => {
 		if (typeof window === "undefined") return;
@@ -247,7 +247,7 @@ function SettingsContent() {
 
 		try {
 			if (!webPush.supported) {
-				throw new Error("当前浏览器不支持 Web Push");
+				throw new Error(t("Web Push is not supported by this browser"));
 			}
 
 			const permission =
@@ -257,12 +257,12 @@ function SettingsContent() {
 
 			if (permission !== "granted") {
 				setWebPush((prev) => ({ ...prev, permission }));
-				throw new Error("未获得通知权限");
+				throw new Error(t("Notification permission was not granted"));
 			}
 
 			const registration = await getServiceWorkerRegistration();
 			if (!registration) {
-				throw new Error("Service Worker 未就绪");
+				throw new Error(t("Service Worker is not ready"));
 			}
 
 			const { public_key } = await apiClient.get(
@@ -271,7 +271,7 @@ function SettingsContent() {
 			);
 			const applicationServerKey = base64UrlToUint8Array(public_key);
 			if (applicationServerKey.length === 0) {
-				throw new Error("VAPID 公钥为空");
+				throw new Error(t("VAPID public key is empty"));
 			}
 
 			const subscription = await registration.pushManager.subscribe({
@@ -285,10 +285,16 @@ function SettingsContent() {
 				assertPushSubscribeResponse,
 			);
 
-			toastSuccess("已开启 Web Push", "可在下方发送测试通知验证");
+			toastSuccess(
+				t("Web Push enabled"),
+				t("Send a test notification below to verify"),
+			);
 			await refreshWebPushStatus();
 		} catch (err) {
-			toastError("开启 Web Push 失败", err instanceof Error ? err.message : "未知错误");
+			toastError(
+				t("Failed to enable Web Push"),
+				err instanceof Error ? err.message : t("Unknown error"),
+			);
 			await refreshWebPushStatus();
 		} finally {
 			setWebPush((prev) => ({ ...prev, busy: false }));
@@ -312,10 +318,13 @@ function SettingsContent() {
 				await subscription.unsubscribe();
 			}
 
-			toastSuccess("已关闭 Web Push");
+			toastSuccess(t("Web Push disabled"));
 			await refreshWebPushStatus();
 		} catch (err) {
-			toastError("关闭 Web Push 失败", err instanceof Error ? err.message : "未知错误");
+			toastError(
+				t("Failed to disable Web Push"),
+				err instanceof Error ? err.message : t("Unknown error"),
+			);
 			await refreshWebPushStatus();
 		} finally {
 			setWebPush((prev) => ({ ...prev, busy: false }));
@@ -333,13 +342,17 @@ function SettingsContent() {
 				assertPushTestResponse,
 			);
 			toastSuccess(
-				"已发送测试通知",
-				`投递 ${result.delivered}/${result.total}（失败 ${result.failed}）`,
+				t("Test notification sent"),
+				t("Delivered {delivered}/{total} (failed {failed})", {
+					delivered: result.delivered,
+					total: result.total,
+					failed: result.failed,
+				}),
 			);
 		} catch (err) {
 			toastError(
-				"发送测试通知失败",
-				err instanceof Error ? err.message : "未知错误",
+				t("Failed to send test notification"),
+				err instanceof Error ? err.message : t("Unknown error"),
 			);
 		} finally {
 			setWebPush((prev) => ({ ...prev, busy: false }));
@@ -353,7 +366,7 @@ function SettingsContent() {
 		enabled: Boolean(userId),
 		queryFn: async () => {
 			if (!userId) {
-				throw new Error("缺少用户信息");
+				throw new Error(t("Missing user info"));
 			}
 			return apiClient.get(`/api/v1/users/${userId}`, assertUserDetailResponse);
 		},
@@ -426,7 +439,7 @@ function SettingsContent() {
 	const updateUserMutation = useMutation({
 		mutationFn: async () => {
 			if (!userId) {
-				throw new Error("缺少用户信息");
+				throw new Error(t("Missing user info"));
 			}
 
 			const payload = {
@@ -444,7 +457,7 @@ function SettingsContent() {
 			);
 		},
 		onSuccess: (updated) => {
-			toastSuccess("保存成功");
+			toastSuccess(t("Saved successfully"));
 			if (user) {
 				setUser({
 					...user,
@@ -455,8 +468,8 @@ function SettingsContent() {
 			queryClient.invalidateQueries({ queryKey: ["users", userId] });
 		},
 		onError: (err) => {
-			const message = err instanceof Error ? err.message : "未知错误";
-			toastError("保存失败", message);
+			const message = err instanceof Error ? err.message : t("Unknown error");
+			toastError(t("Save failed"), message);
 		},
 	});
 
@@ -465,10 +478,10 @@ function SettingsContent() {
 	const uploadAvatarMutation = useMutation({
 		mutationFn: async () => {
 			if (!userId) {
-				throw new Error("缺少用户信息");
+				throw new Error(t("Missing user info"));
 			}
 			if (!avatarFile) {
-				throw new Error("请选择头像文件");
+				throw new Error(t("Please select an avatar file"));
 			}
 
 			const form = new FormData();
@@ -481,7 +494,7 @@ function SettingsContent() {
 			);
 		},
 		onSuccess: (updated) => {
-			toastSuccess("头像已更新");
+			toastSuccess(t("Avatar updated"));
 			if (user) {
 				setUser({
 					...user,
@@ -494,8 +507,8 @@ function SettingsContent() {
 			queryClient.invalidateQueries({ queryKey: ["users", userId] });
 		},
 		onError: (err) => {
-			const message = err instanceof Error ? err.message : "未知错误";
-			toastError("头像上传失败", message);
+			const message = err instanceof Error ? err.message : t("Unknown error");
+			toastError(t("Avatar upload failed"), message);
 		},
 	});
 
@@ -516,7 +529,7 @@ function SettingsContent() {
 		mutationFn: async () => {
 			const name = apiKeyName.trim();
 			if (!name) {
-				throw new Error("请输入密钥名称");
+				throw new Error(t("Please enter a key name"));
 			}
 
 			const permissions = parseCsv(apiKeyPermissions);
@@ -525,7 +538,7 @@ function SettingsContent() {
 			if (rateLimitRaw) {
 				const parsed = Number(rateLimitRaw);
 				if (!Number.isFinite(parsed) || parsed <= 0) {
-					throw new Error("rate_limit 需为正数");
+					throw new Error(t("rate_limit must be a positive number"));
 				}
 				rateLimit = Math.floor(parsed);
 			}
@@ -541,7 +554,10 @@ function SettingsContent() {
 			);
 		},
 		onSuccess: (res) => {
-			toastSuccess("API 密钥已创建", `前缀：${res.key.key_prefix}`);
+			toastSuccess(
+				t("API key created"),
+				t("Prefix: {prefix}", { prefix: res.key.key_prefix }),
+			);
 			setCreatedRawKey(res.raw_key);
 			setApiKeyName("");
 			setApiKeyPermissions("");
@@ -549,8 +565,8 @@ function SettingsContent() {
 			queryClient.invalidateQueries({ queryKey: ["apikeys"] });
 		},
 		onError: (err) => {
-			const message = err instanceof Error ? err.message : "未知错误";
-			toastError("创建失败", message);
+			const message = err instanceof Error ? err.message : t("Unknown error");
+			toastError(t("Create failed"), message);
 		},
 	});
 
@@ -562,12 +578,12 @@ function SettingsContent() {
 				assertDeleteResponse,
 			),
 		onSuccess: () => {
-			toastSuccess("已撤销 API 密钥");
+			toastSuccess(t("API key revoked"));
 			queryClient.invalidateQueries({ queryKey: ["apikeys"] });
 		},
 		onError: (err) => {
-			const message = err instanceof Error ? err.message : "未知错误";
-			toastError("撤销失败", message);
+			const message = err instanceof Error ? err.message : t("Unknown error");
+			toastError(t("Revoke failed"), message);
 		},
 	});
 
@@ -575,12 +591,12 @@ function SettingsContent() {
 		mutationFn: async (id: string) =>
 			apiClient.delete(`/api/v1/apikeys/${id}`, assertDeleteResponse),
 		onSuccess: () => {
-			toastSuccess("已删除 API 密钥");
+			toastSuccess(t("API key deleted"));
 			queryClient.invalidateQueries({ queryKey: ["apikeys"] });
 		},
 		onError: (err) => {
-			const message = err instanceof Error ? err.message : "未知错误";
-			toastError("删除失败", message);
+			const message = err instanceof Error ? err.message : t("Unknown error");
+			toastError(t("Delete failed"), message);
 		},
 	});
 
@@ -607,7 +623,7 @@ function SettingsContent() {
 	const isPreviewAvatar =
 		typeof avatarSrc === "string" &&
 		(avatarSrc.startsWith("blob:") || avatarSrc.startsWith("data:"));
-	const avatarInitial = (profile.displayName || profile.email || "用户")
+	const avatarInitial = (profile.displayName || profile.email || t("User"))
 		.trim()
 		.charAt(0)
 		.toUpperCase();
@@ -620,14 +636,19 @@ function SettingsContent() {
 		}
 
 		if (!allowedAvatarTypes.has(file.type)) {
-			toastError("不支持的图片格式", "仅支持 PNG / JPEG / WEBP");
+			toastError(
+				t("Unsupported image format"),
+				t("Only PNG / JPEG / WEBP are supported"),
+			);
 			return;
 		}
 
 		if (file.size > AVATAR_MAX_BYTES) {
 			toastError(
-				"头像文件过大",
-				`最大 ${Math.floor(AVATAR_MAX_BYTES / 1024)}KB`,
+				t("Avatar file too large"),
+				t("Max {size}KB", {
+					size: Math.floor(AVATAR_MAX_BYTES / 1024),
+				}),
 			);
 			return;
 		}
@@ -637,12 +658,12 @@ function SettingsContent() {
 	};
 
 	const tabs = [
-		{ id: "profile", label: "个人资料", icon: User },
-		{ id: "notifications", label: "通知设置", icon: Bell },
-		{ id: "appearance", label: "外观设置", icon: Moon },
-		{ id: "security", label: "安全设置", icon: Shield },
-		{ id: "api", label: "API 密钥", icon: Key },
-		{ id: "system", label: "系统信息", icon: Database },
+		{ id: "profile", labelKey: "Profile", icon: User },
+		{ id: "notifications", labelKey: "Notifications", icon: Bell },
+		{ id: "appearance", labelKey: "Appearance", icon: Moon },
+		{ id: "security", labelKey: "Security", icon: Shield },
+		{ id: "api", labelKey: "API keys", icon: Key },
+		{ id: "system", labelKey: "System info", icon: Database },
 	];
 
 	return (
@@ -656,8 +677,12 @@ function SettingsContent() {
 					<div className="p-6">
 						{/* Page Title */}
 						<div className="mb-6">
-							<h1 className="text-2xl font-bold text-neutral-900">系统设置</h1>
-							<p className="text-sm text-neutral-500">管理您的账户和系统配置</p>
+							<h1 className="text-2xl font-bold text-neutral-900">
+								{t("Settings")}
+							</h1>
+							<p className="text-sm text-neutral-500">
+								{t("Manage your account and system configuration")}
+							</p>
 						</div>
 
 						<div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
@@ -677,7 +702,7 @@ function SettingsContent() {
 												}`}
 											>
 												<tab.icon className="h-4 w-4" />
-												{tab.label}
+												{t(tab.labelKey)}
 											</button>
 										))}
 									</nav>
@@ -690,8 +715,10 @@ function SettingsContent() {
 								{activeTab === "profile" && (
 									<Card>
 										<CardHeader>
-											<CardTitle>个人资料</CardTitle>
-											<CardDescription>管理您的账户信息</CardDescription>
+											<CardTitle>{t("Profile")}</CardTitle>
+											<CardDescription>
+												{t("Manage your account information")}
+											</CardDescription>
 										</CardHeader>
 										<CardContent className="space-y-4">
 											<div>
@@ -699,14 +726,14 @@ function SettingsContent() {
 													htmlFor="profile-avatar"
 													className="mb-1 block text-sm font-medium"
 												>
-													头像
+													{t("Avatar")}
 												</label>
 												<div className="flex flex-col gap-4 sm:flex-row sm:items-center">
 													<div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-neutral-100 bg-neutral-50">
 														{avatarSrc ? (
 															<Image
 																src={avatarSrc}
-																alt="头像"
+																alt={t("Avatar")}
 																width={64}
 																height={64}
 																sizes="64px"
@@ -741,7 +768,7 @@ function SettingsContent() {
 																onClick={() => avatarInputRef.current?.click()}
 																disabled={uploadingAvatar}
 															>
-																选择文件
+																{t("Choose file")}
 															</Button>
 															<Button
 																type="button"
@@ -751,13 +778,17 @@ function SettingsContent() {
 																{uploadingAvatar ? (
 																	<RefreshCw className="mr-2 h-4 w-4 animate-spin" />
 																) : null}
-																上传头像
+																{t("Upload avatar")}
 															</Button>
 														</div>
 
 														<p className="text-xs text-neutral-500">
-															支持 PNG / JPEG / WEBP，最大{" "}
-															{Math.floor(AVATAR_MAX_BYTES / 1024)}KB
+															{t(
+																"Supported formats: PNG / JPEG / WEBP. Max {size}KB",
+																{
+																	size: Math.floor(AVATAR_MAX_BYTES / 1024),
+																},
+															)}
 														</p>
 													</div>
 												</div>
@@ -768,7 +799,7 @@ function SettingsContent() {
 													htmlFor="profile-display-name"
 													className="mb-1 block text-sm font-medium"
 												>
-													显示名称
+													{t("Display name")}
 												</label>
 												<Input
 													id="profile-display-name"
@@ -779,7 +810,7 @@ function SettingsContent() {
 															displayName: e.target.value,
 														}))
 													}
-													placeholder="您的名称"
+													placeholder={t("Your name")}
 												/>
 											</div>
 
@@ -788,7 +819,7 @@ function SettingsContent() {
 													htmlFor="profile-email"
 													className="mb-1 block text-sm font-medium"
 												>
-													邮箱地址
+													{t("Email address")}
 												</label>
 												<Input
 													id="profile-email"
@@ -798,7 +829,9 @@ function SettingsContent() {
 													readOnly
 												/>
 												<p className="mt-1 text-xs text-neutral-500">
-													邮箱作为登录账号，当前不支持在线修改。
+													{t(
+														"Email is used as the login account and cannot be changed online yet.",
+													)}
 												</p>
 											</div>
 
@@ -809,7 +842,7 @@ function SettingsContent() {
 													) : (
 														<Save className="mr-2 h-4 w-4" />
 													)}
-													保存更改
+													{t("Save changes")}
 												</Button>
 											</div>
 										</CardContent>
@@ -820,41 +853,45 @@ function SettingsContent() {
 								{activeTab === "notifications" && (
 									<Card>
 										<CardHeader>
-											<CardTitle>通知设置</CardTitle>
+											<CardTitle>{t("Notifications")}</CardTitle>
 											<CardDescription>
-												配置您希望接收的通知类型
+												{t("Configure the notifications you want to receive")}
 											</CardDescription>
 										</CardHeader>
 										<CardContent className="space-y-4">
 											{[
 												{
 													key: "emailAlerts",
-													label: "邮件提醒",
-													desc: "接收重要更新的邮件通知",
+													labelKey: "Email alerts",
+													descKey:
+														"Receive email notifications for important updates",
 												},
 												{
 													key: "riskAlerts",
-													label: "风险预警",
-													desc: "当检测到高风险资讯时通知",
+													labelKey: "Risk alerts",
+													descKey:
+														"Notify when high-risk articles are detected",
 												},
 												{
 													key: "weeklyDigest",
-													label: "周报摘要",
-													desc: "每周发送资讯摘要",
+													labelKey: "Weekly digest",
+													descKey: "Send a weekly digest of articles",
 												},
 												{
 													key: "newArticles",
-													label: "新资讯通知",
-													desc: "有新资讯入库时通知",
+													labelKey: "New articles",
+													descKey: "Notify when new articles are ingested",
 												},
-											].map(({ key, label, desc }) => (
+											].map(({ key, labelKey, descKey }) => (
 												<div
 													key={key}
 													className="flex items-center justify-between rounded-lg border border-neutral-100 p-4"
 												>
 													<div>
-														<p className="font-medium">{label}</p>
-														<p className="text-sm text-neutral-500">{desc}</p>
+														<p className="font-medium">{t(labelKey)}</p>
+														<p className="text-sm text-neutral-500">
+															{t(descKey)}
+														</p>
 													</div>
 													<label className="relative inline-flex cursor-pointer items-center">
 														<input
@@ -878,17 +915,23 @@ function SettingsContent() {
 											<div className="rounded-lg border border-neutral-100 p-4">
 												<div className="flex items-start justify-between gap-4">
 													<div>
-														<p className="font-medium">浏览器推送（Web Push）</p>
+														<p className="font-medium">
+															{t("Browser push (Web Push)")}
+														</p>
 														<p className="text-sm text-neutral-500">
-															在后台接收通知（需要浏览器授权与 Service Worker）
+															{t(
+																"Receive notifications in the background (requires browser permission and Service Worker)",
+															)}
 														</p>
 													</div>
 
 													{!webPush.supported ? (
-														<Badge variant="outline">不支持</Badge>
+														<Badge variant="outline">
+															{t("Not supported")}
+														</Badge>
 													) : webPush.enabled ? (
 														<div className="flex items-center gap-2">
-															<Badge variant="outline">已开启</Badge>
+															<Badge variant="outline">{t("Enabled")}</Badge>
 															<Button
 																type="button"
 																variant="outline"
@@ -896,7 +939,7 @@ function SettingsContent() {
 																disabled={webPush.busy}
 																onClick={disableWebPush}
 															>
-																关闭
+																{t("Disable")}
 															</Button>
 														</div>
 													) : (
@@ -908,14 +951,17 @@ function SettingsContent() {
 															}
 															onClick={enableWebPush}
 														>
-															开启
+															{t("Enable")}
 														</Button>
 													)}
 												</div>
 
-												{webPush.supported && webPush.permission === "denied" ? (
+												{webPush.supported &&
+												webPush.permission === "denied" ? (
 													<p className="mt-2 text-xs text-neutral-500">
-														浏览器已拒绝通知权限，请在浏览器设置中允许本站通知后重试。
+														{t(
+															"The browser has denied notification permission. Please allow notifications for this site in browser settings and try again.",
+														)}
 													</p>
 												) : null}
 
@@ -928,7 +974,7 @@ function SettingsContent() {
 															disabled={webPush.busy}
 															onClick={sendTestWebPush}
 														>
-															发送测试通知
+															{t("Send test notification")}
 														</Button>
 													</div>
 												) : null}
@@ -940,7 +986,7 @@ function SettingsContent() {
 													) : (
 														<Save className="mr-2 h-4 w-4" />
 													)}
-													保存设置
+													{t("Save settings")}
 												</Button>
 											</div>
 										</CardContent>
@@ -951,8 +997,10 @@ function SettingsContent() {
 								{activeTab === "appearance" && (
 									<Card>
 										<CardHeader>
-											<CardTitle>外观设置</CardTitle>
-											<CardDescription>自定义界面外观</CardDescription>
+											<CardTitle>{t("Appearance")}</CardTitle>
+											<CardDescription>
+												{t("Customize the app appearance")}
+											</CardDescription>
 										</CardHeader>
 										<CardContent className="space-y-4">
 											<div>
@@ -960,7 +1008,7 @@ function SettingsContent() {
 													id="appearance-theme-label"
 													className="mb-2 block text-sm font-medium"
 												>
-													主题
+													{t("Theme")}
 												</p>
 												<div
 													className="flex gap-3"
@@ -968,10 +1016,14 @@ function SettingsContent() {
 													aria-labelledby="appearance-theme-label"
 												>
 													{[
-														{ value: "light", label: "浅色", icon: Sun },
-														{ value: "dark", label: "深色", icon: Moon },
-														{ value: "system", label: "跟随系统", icon: Globe },
-													].map(({ value, label, icon: Icon }) => (
+														{ value: "light", labelKey: "Light", icon: Sun },
+														{ value: "dark", labelKey: "Dark", icon: Moon },
+														{
+															value: "system",
+															labelKey: "System",
+															icon: Globe,
+														},
+													].map(({ value, labelKey, icon: Icon }) => (
 														<button
 															key={value}
 															type="button"
@@ -988,16 +1040,16 @@ function SettingsContent() {
 															}`}
 														>
 															<Icon className="h-5 w-5" />
-															<span className="text-sm">{label}</span>
+															<span className="text-sm">{t(labelKey)}</span>
 														</button>
 													))}
 												</div>
 											</div>
 											<div className="flex items-center justify-between rounded-lg border border-neutral-100 p-4">
 												<div>
-													<p className="font-medium">紧凑模式</p>
+													<p className="font-medium">{t("Compact mode")}</p>
 													<p className="text-sm text-neutral-500">
-														减小间距，显示更多内容
+														{t("Reduce spacing to show more content")}
 													</p>
 												</div>
 												<label className="relative inline-flex cursor-pointer items-center">
@@ -1023,44 +1075,57 @@ function SettingsContent() {
 								{activeTab === "security" && (
 									<Card>
 										<CardHeader>
-											<CardTitle>安全设置</CardTitle>
-											<CardDescription>管理账户安全选项</CardDescription>
+											<CardTitle>{t("Security")}</CardTitle>
+											<CardDescription>
+												{t("Manage your account security options")}
+											</CardDescription>
 										</CardHeader>
 										<CardContent className="space-y-4">
 											<div className="rounded-lg bg-neutral-50 p-4">
 												<p className="text-sm text-neutral-600">
-													安全相关能力（修改密码 / 两步验证 /
-													登录记录）需要补齐后端闭环（旧密码校验、审计留痕、通知等）后开放，避免出现“看起来能点但实际无效”的假实现。
+													{t(
+														"Security features (change password / 2FA / login activity) will be enabled only after backend workflows are completed to avoid misleading UI.",
+													)}
 												</p>
 											</div>
 											<div className="rounded-lg border border-neutral-100 p-4 opacity-70">
 												<div className="flex items-center justify-between">
 													<div>
-														<p className="font-medium">修改密码</p>
-														<p className="text-sm text-neutral-500">尚未开放</p>
+														<p className="font-medium">
+															{t("Change password")}
+														</p>
+														<p className="text-sm text-neutral-500">
+															{t("Not available")}
+														</p>
 													</div>
 													<Button variant="outline" disabled>
-														修改
+														{t("Change")}
 													</Button>
 												</div>
 											</div>
 											<div className="rounded-lg border border-neutral-100 p-4 opacity-70">
 												<div className="flex items-center justify-between">
 													<div>
-														<p className="font-medium">两步验证</p>
-														<p className="text-sm text-neutral-500">尚未开放</p>
+														<p className="font-medium">
+															{t("Two-factor authentication")}
+														</p>
+														<p className="text-sm text-neutral-500">
+															{t("Not available")}
+														</p>
 													</div>
-													<Badge variant="outline">未启用</Badge>
+													<Badge variant="outline">{t("Not enabled")}</Badge>
 												</div>
 											</div>
 											<div className="rounded-lg border border-neutral-100 p-4 opacity-70">
 												<div className="flex items-center justify-between">
 													<div>
-														<p className="font-medium">登录记录</p>
-														<p className="text-sm text-neutral-500">尚未开放</p>
+														<p className="font-medium">{t("Login activity")}</p>
+														<p className="text-sm text-neutral-500">
+															{t("Not available")}
+														</p>
 													</div>
 													<Button variant="outline" disabled>
-														查看
+														{t("View")}
 													</Button>
 												</div>
 											</div>
@@ -1072,21 +1137,26 @@ function SettingsContent() {
 								{activeTab === "api" && (
 									<Card>
 										<CardHeader>
-											<CardTitle>API 密钥</CardTitle>
-											<CardDescription>管理您的 API 访问密钥</CardDescription>
+											<CardTitle>{t("API keys")}</CardTitle>
+											<CardDescription>
+												{t("Manage your API access keys")}
+											</CardDescription>
 										</CardHeader>
 										<CardContent className="space-y-4">
 											<div className="rounded-lg bg-neutral-50 p-4">
 												<p className="text-sm text-neutral-600">
-													API
-													密钥用于程序化访问法眼系统。请妥善保管密钥，不要分享给他人。
+													{t(
+														"API keys are used for programmatic access. Keep them secret and do not share with others.",
+													)}
 												</p>
 											</div>
 
 											{createdRawKey && (
 												<div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
 													<p className="text-sm font-medium text-amber-900">
-														新密钥（仅显示一次，请立即复制保存）
+														{t(
+															"New key (shown only once). Copy and store it now.",
+														)}
 													</p>
 													<div className="mt-3 flex flex-col gap-2 sm:flex-row">
 														<Input value={createdRawKey} readOnly />
@@ -1097,44 +1167,46 @@ function SettingsContent() {
 																	await navigator.clipboard.writeText(
 																		createdRawKey,
 																	);
-																	toastSuccess("已复制到剪贴板");
+																	toastSuccess(t("Copied to clipboard"));
 																} catch (err) {
 																	const message =
 																		err instanceof Error
 																			? err.message
-																			: "复制失败";
-																	toastError("复制失败", message);
+																			: t("Copy failed");
+																	toastError(t("Copy failed"), message);
 																}
 															}}
 														>
 															<Copy className="mr-2 h-4 w-4" />
-															复制
+															{t("Copy")}
 														</Button>
 														<Button
 															variant="outline"
 															onClick={() => setCreatedRawKey(null)}
 														>
-															关闭
+															{t("Close")}
 														</Button>
 													</div>
 												</div>
 											)}
 
 											<div className="rounded-lg border border-neutral-100 p-4">
-												<p className="text-sm font-medium">创建新密钥</p>
+												<p className="text-sm font-medium">
+													{t("Create new key")}
+												</p>
 												<div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
 													<div className="sm:col-span-1">
 														<label
 															htmlFor="apikey-name"
 															className="mb-1 block text-xs font-medium text-neutral-600"
 														>
-															名称
+															{t("Name")}
 														</label>
 														<Input
 															id="apikey-name"
 															value={apiKeyName}
 															onChange={(e) => setApiKeyName(e.target.value)}
-															placeholder="例如：CI / 集成服务"
+															placeholder={t("e.g. CI / integration service")}
 														/>
 													</div>
 													<div className="sm:col-span-1">
@@ -1142,7 +1214,7 @@ function SettingsContent() {
 															htmlFor="apikey-permissions"
 															className="mb-1 block text-xs font-medium text-neutral-600"
 														>
-															权限（可选，逗号分隔）
+															{t("Permissions (optional, comma-separated)")}
 														</label>
 														<Input
 															id="apikey-permissions"
@@ -1150,7 +1222,7 @@ function SettingsContent() {
 															onChange={(e) =>
 																setApiKeyPermissions(e.target.value)
 															}
-															placeholder="例如：read, articles:read"
+															placeholder={t("e.g. read, articles:read")}
 														/>
 													</div>
 													<div className="sm:col-span-1">
@@ -1158,7 +1230,7 @@ function SettingsContent() {
 															htmlFor="apikey-rate-limit"
 															className="mb-1 block text-xs font-medium text-neutral-600"
 														>
-															限流（可选）
+															{t("Rate limit (optional)")}
 														</label>
 														<Input
 															id="apikey-rate-limit"
@@ -1166,7 +1238,7 @@ function SettingsContent() {
 															onChange={(e) =>
 																setApiKeyRateLimit(e.target.value)
 															}
-															placeholder="例如：100"
+															placeholder={t("e.g. 100")}
 															inputMode="numeric"
 														/>
 													</div>
@@ -1181,14 +1253,16 @@ function SettingsContent() {
 														) : (
 															<Key className="mr-2 h-4 w-4" />
 														)}
-														创建
+														{t("Create")}
 													</Button>
 												</div>
 											</div>
 
 											<div className="space-y-2">
 												<div className="flex items-center justify-between">
-													<p className="text-sm font-medium">已创建的密钥</p>
+													<p className="text-sm font-medium">
+														{t("Existing keys")}
+													</p>
 													<Button
 														variant="outline"
 														onClick={() => apiKeysQuery.refetch()}
@@ -1199,29 +1273,29 @@ function SettingsContent() {
 																apiKeysQuery.isFetching ? "animate-spin" : ""
 															}`}
 														/>
-														刷新
+														{t("Refresh")}
 													</Button>
 												</div>
 
 												{apiKeysQuery.isLoading && (
 													<p className="py-6 text-center text-sm text-neutral-500">
-														加载中...
+														{t("Loading...")}
 													</p>
 												)}
 
 												{apiKeysQuery.isError && (
 													<p className="py-6 text-center text-sm text-neutral-500">
-														加载失败：
+														{t("Load failed:")}
 														{apiKeysQuery.error instanceof Error
 															? apiKeysQuery.error.message
-															: "未知错误"}
+															: t("Unknown error")}
 													</p>
 												)}
 
 												{apiKeysQuery.data &&
 													apiKeysQuery.data.keys.length === 0 && (
 														<p className="py-6 text-center text-sm text-neutral-500">
-															暂无 API 密钥
+															{t("No API keys")}
 														</p>
 													)}
 
@@ -1237,17 +1311,20 @@ function SettingsContent() {
 																		{k.name}
 																	</p>
 																	<Badge variant="outline">
-																		{k.is_active ? "启用" : "已撤销"}
+																		{k.is_active ? t("Active") : t("Revoked")}
 																	</Badge>
 																</div>
 																<p className="mt-1 text-xs text-neutral-500">
-																	前缀：{k.key_prefix} · 限流：{k.rate_limit}
+																	{t("Prefix: {prefix} · Rate limit: {limit}", {
+																		prefix: k.key_prefix,
+																		limit: k.rate_limit,
+																	})}
 																</p>
 																<p className="mt-1 text-xs text-neutral-500">
-																	权限：
+																	{t("Permissions:")}
 																	{k.permissions.length > 0
 																		? k.permissions.join(", ")
-																		: "（默认）"}
+																		: t("(default)")}
 																</p>
 															</div>
 
@@ -1261,7 +1338,9 @@ function SettingsContent() {
 																	onClick={() => {
 																		if (
 																			!window.confirm(
-																				"确认撤销该 API 密钥？撤销后将立即失效。",
+																				t(
+																					"Confirm revoke this API key? It will be invalid immediately.",
+																				),
 																			)
 																		) {
 																			return;
@@ -1269,7 +1348,7 @@ function SettingsContent() {
 																		revokeApiKeyMutation.mutate(k.id);
 																	}}
 																>
-																	撤销
+																	{t("Revoke")}
 																</Button>
 																<Button
 																	variant="outline"
@@ -1277,7 +1356,9 @@ function SettingsContent() {
 																	onClick={() => {
 																		if (
 																			!window.confirm(
-																				"确认删除该 API 密钥？此操作不可恢复。",
+																				t(
+																					"Confirm delete this API key? This action cannot be undone.",
+																				),
 																			)
 																		) {
 																			return;
@@ -1286,7 +1367,7 @@ function SettingsContent() {
 																	}}
 																>
 																	<Trash2 className="mr-2 h-4 w-4" />
-																	删除
+																	{t("Delete")}
 																</Button>
 															</div>
 														</div>
@@ -1301,28 +1382,28 @@ function SettingsContent() {
 								{activeTab === "system" && (
 									<Card>
 										<CardHeader>
-											<CardTitle>系统信息</CardTitle>
+											<CardTitle>{t("System info")}</CardTitle>
 											<CardDescription>
-												查看系统运行状态和版本信息
+												{t("View system status and version information")}
 											</CardDescription>
 										</CardHeader>
 										<CardContent>
 											<div className="space-y-3">
 												<div className="flex items-center justify-between border-b border-neutral-50 py-2">
 													<span className="text-sm text-neutral-500">
-														API 状态
+														{t("API status")}
 													</span>
 													<span className="text-sm font-medium">
 														{healthQuery.isLoading
-															? "检测中"
+															? t("Checking")
 															: healthQuery.isError
-																? "异常"
-																: (healthQuery.data?.status ?? "未知")}
+																? t("Error")
+																: (healthQuery.data?.status ?? t("Unknown"))}
 													</span>
 												</div>
 												<div className="flex items-center justify-between border-b border-neutral-50 py-2">
 													<span className="text-sm text-neutral-500">
-														后端版本
+														{t("Backend version")}
 													</span>
 													<span className="text-sm font-medium">
 														{healthQuery.data?.version ?? "-"}
@@ -1330,19 +1411,19 @@ function SettingsContent() {
 												</div>
 												<div className="flex items-center justify-between border-b border-neutral-50 py-2">
 													<span className="text-sm text-neutral-500">
-														数据库
+														{t("Database")}
 													</span>
 													<span className="text-sm font-medium">
 														{statsQuery.isLoading
-															? "检测中"
+															? t("Checking")
 															: statsQuery.isError
-																? "异常"
-																: "可用"}
+																? t("Error")
+																: t("Available")}
 													</span>
 												</div>
 												<div className="flex items-center justify-between border-b border-neutral-50 py-2">
 													<span className="text-sm text-neutral-500">
-														文章总数
+														{t("Total articles")}
 													</span>
 													<span className="text-sm font-medium">
 														{statsQuery.data?.total_articles ?? "-"}
@@ -1350,7 +1431,7 @@ function SettingsContent() {
 												</div>
 												<div className="flex items-center justify-between py-2">
 													<span className="text-sm text-neutral-500">
-														今日新增
+														{t("Added today")}
 													</span>
 													<span className="text-sm font-medium">
 														{statsQuery.data?.today_count ?? "-"}

@@ -137,7 +137,9 @@ function resolvedRetryOptions(value: ApiRetryOptions | false | undefined): {
 			? DEFAULT_API_RETRY_MAX_DELAY_MS
 			: value.maxDelayMs;
 	const jitterMs =
-		value?.jitterMs === undefined ? DEFAULT_API_RETRY_JITTER_MS : value.jitterMs;
+		value?.jitterMs === undefined
+			? DEFAULT_API_RETRY_JITTER_MS
+			: value.jitterMs;
 
 	return {
 		retries,
@@ -157,7 +159,8 @@ function computeRetryDelayMs(
 ): number {
 	const base = options.baseDelayMs * 2 ** attemptIndex;
 	const capped = Math.min(base, options.maxDelayMs);
-	const jitter = options.jitterMs > 0 ? Math.floor(Math.random() * options.jitterMs) : 0;
+	const jitter =
+		options.jitterMs > 0 ? Math.floor(Math.random() * options.jitterMs) : 0;
 	return capped + jitter;
 }
 
@@ -369,7 +372,8 @@ export class ApiClient {
 			} = await readErrorInfo(response);
 			const requestId = requestIdFromHeader ?? requestIdFromBody;
 			const hydratedDetails =
-				Number.isFinite(retryAfterSecondsFromHeader) && retryAfterSecondsFromHeader > 0
+				Number.isFinite(retryAfterSecondsFromHeader) &&
+				retryAfterSecondsFromHeader > 0
 					? isRecord(details)
 						? { ...details, retry_after_seconds: retryAfterSecondsFromHeader }
 						: { retry_after_seconds: retryAfterSecondsFromHeader, details }
@@ -419,8 +423,8 @@ export class ApiClient {
 				const locale = localeFromDocument();
 				throw new ApiClientError(
 					requestId
-						? `${t(locale, "API 契约校验失败：{detail}", { detail })} (request_id=${requestId})`
-						: t(locale, "API 契约校验失败：{detail}", { detail }),
+						? `${t(locale, "API contract validation failed: {detail}", { detail })} (request_id=${requestId})`
+						: t(locale, "API contract validation failed: {detail}", { detail }),
 					{
 						status: response.status,
 						code: null,

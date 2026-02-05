@@ -1,6 +1,8 @@
 "use client";
 
 import { useCategories } from "@/hooks/use-categories";
+import { stripLocalePrefix, withLocalePath } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
 import { useSidebarStore } from "@/stores/sidebar-store";
 import { AnimatePresence, motion } from "framer-motion";
@@ -62,14 +64,14 @@ function getCategoryBadgeStyle(
 }
 
 const navigation = [
-	{ name: "数据看板", href: "/", icon: LayoutDashboard },
-	{ name: "全部资讯", href: "/articles", icon: FileText },
-	{ name: "信息源", href: "/sources", icon: Rss },
-	{ name: "统计分析", href: "/analytics", icon: TrendingUp },
-	{ name: "知识图谱", href: "/knowledge", icon: Share2 },
-	{ name: "数据管理", href: "/data", icon: Database },
-	{ name: "留言反馈", href: "/feedback", icon: MessageSquarePlus },
-	{ name: "系统设置", href: "/settings", icon: Settings },
+	{ name: "Dashboard", href: "/", icon: LayoutDashboard },
+	{ name: "All articles", href: "/articles", icon: FileText },
+	{ name: "Sources", href: "/sources", icon: Rss },
+	{ name: "Analytics", href: "/analytics", icon: TrendingUp },
+	{ name: "Knowledge Graph", href: "/knowledge", icon: Share2 },
+	{ name: "Data", href: "/data", icon: Database },
+	{ name: "Feedback", href: "/feedback", icon: MessageSquarePlus },
+	{ name: "Settings", href: "/settings", icon: Settings },
 ];
 
 type CategoriesQuery = ReturnType<typeof useCategories>;
@@ -102,9 +104,12 @@ function SidebarPanel({
 	showCloseButton,
 	onRequestClose,
 }: SidebarPanelProps) {
+	const locale = useLocale();
+	const t = useT();
+
 	return (
 		<>
-			{/* Logo - 带呼吸动画 */}
+			{/* Logo - breathing animation */}
 			<div className="flex h-16 items-center gap-3 border-b border-neutral-100 px-4">
 				<motion.div
 					className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 text-white shadow-brand"
@@ -133,7 +138,9 @@ function SidebarPanel({
 							exit={{ opacity: 0, width: 0 }}
 							transition={{ duration: 0.2 }}
 						>
-							<span className="text-lg font-bold text-neutral-900">法眼</span>
+							<span className="text-lg font-bold text-neutral-900">
+								{locale === "zh" ? t("Law Eye (short)") : "Law Eye"}
+							</span>
 							<span className="text-xs text-neutral-500">Law Eye</span>
 						</motion.div>
 					)}
@@ -146,7 +153,7 @@ function SidebarPanel({
 							"text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900",
 							"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40",
 						)}
-						aria-label="关闭导航菜单"
+						aria-label={t("Close navigation")}
 						onClick={() => onRequestClose?.()}
 					>
 						<X className="h-5 w-5" aria-hidden="true" />
@@ -165,7 +172,7 @@ function SidebarPanel({
 								animate={{ opacity: 1, x: 0 }}
 								exit={{ opacity: 0, x: -10 }}
 							>
-								导航
+								{t("Navigation")}
 							</motion.p>
 						)}
 					</AnimatePresence>
@@ -179,7 +186,7 @@ function SidebarPanel({
 								transition={{ delay: index * 0.05 }}
 							>
 								<Link
-									href={item.href}
+									href={withLocalePath(locale, item.href)}
 									onClick={onNavigate}
 									className={cn(
 										"group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium",
@@ -190,7 +197,7 @@ function SidebarPanel({
 										collapsed && "justify-center",
 									)}
 								>
-									{/* 活跃状态背景 */}
+									{/* Active state background */}
 									{isActive && (
 										<motion.div
 											layoutId={`${layoutIdPrefix}-activeNav`}
@@ -226,7 +233,7 @@ function SidebarPanel({
 												animate={{ opacity: 1, x: 0 }}
 												exit={{ opacity: 0, x: -10 }}
 											>
-												{item.name}
+												{t(item.name)}
 											</motion.span>
 										)}
 									</AnimatePresence>
@@ -252,10 +259,10 @@ function SidebarPanel({
 								transition={{ delay: 0.1 }}
 							>
 								{categoriesQuery.isLoading
-									? "板块加载中"
+									? t("Loading categories")
 									: categoriesQuery.isError
-										? "板块加载失败"
-										: `${categoryCount} 板块`}
+										? t("Failed to load categories")
+										: t("{count} categories", { count: categoryCount })}
 							</motion.p>
 							{categoriesQuery.isLoading ? (
 								<div className="space-y-1 px-3">
@@ -270,13 +277,15 @@ function SidebarPanel({
 								</div>
 							) : categoriesQuery.isError ? (
 								<div className="px-3 py-2 text-xs text-neutral-500">
-									<p>无法加载板块数据（请检查 API / 登录状态）。</p>
+									<p>
+										{t("Unable to load categories (check API / login status).")}
+									</p>
 									<button
 										type="button"
 										onClick={() => categoriesQuery.refetch()}
 										className="mt-2 inline-flex items-center justify-center rounded-lg border border-neutral-200 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700"
 									>
-										重试
+										{t("Retry")}
 									</button>
 								</div>
 							) : (
@@ -297,7 +306,10 @@ function SidebarPanel({
 												transition={{ delay: 0.15 + index * 0.03 }}
 											>
 												<Link
-													href={`/category/${category.slug}`}
+													href={withLocalePath(
+														locale,
+														`/category/${category.slug}`,
+													)}
 													onClick={onNavigate}
 													className={cn(
 														"group flex items-center gap-3 rounded-xl px-3 py-2 text-sm",
@@ -360,7 +372,7 @@ function SidebarPanel({
 									animate={{ opacity: 1, width: "auto" }}
 									exit={{ opacity: 0, width: 0 }}
 								>
-									收起菜单
+									{t("Collapse menu")}
 								</motion.span>
 							)}
 						</AnimatePresence>
@@ -373,6 +385,8 @@ function SidebarPanel({
 
 export function Sidebar() {
 	const pathname = usePathname();
+	const activePathname = stripLocalePrefix(pathname);
+	const t = useT();
 	const { collapsed, toggle, mobileOpen, closeMobile } = useSidebarStore();
 	const categoriesQuery = useCategories();
 	const categories = categoriesQuery.data ?? [];
@@ -421,11 +435,11 @@ export function Sidebar() {
 				animate={{ width: collapsed ? 64 : 280 }}
 				transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
 				className={cn(baseAsideClassName, "z-30 hidden md:flex")}
-				aria-label="主导航"
+				aria-label={t("Primary navigation")}
 			>
 				<SidebarPanel
 					collapsed={collapsed}
-					pathname={pathname}
+					pathname={activePathname}
 					categoriesQuery={categoriesQuery}
 					categories={categories}
 					categoryCount={categoryCount}
@@ -454,11 +468,11 @@ export function Sidebar() {
 							exit={{ x: -320 }}
 							transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
 							className={cn(baseAsideClassName, "z-50 w-[280px] md:hidden")}
-							aria-label="主导航"
+							aria-label={t("Primary navigation")}
 						>
 							<SidebarPanel
 								collapsed={false}
-								pathname={pathname}
+								pathname={activePathname}
 								categoriesQuery={categoriesQuery}
 								categories={categories}
 								categoryCount={categoryCount}

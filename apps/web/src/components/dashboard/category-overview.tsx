@@ -12,6 +12,7 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { useArticleCategoryCounts } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
+import { useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
 import {
 	BarChart3,
@@ -42,6 +43,7 @@ const categoryIconMap: Record<string, { Icon: LucideIcon; style: string }> = {
 };
 
 export function CategoryOverview() {
+	const t = useT();
 	const categoriesQuery = useCategories();
 	const countsQuery = useArticleCategoryCounts();
 
@@ -68,7 +70,7 @@ export function CategoryOverview() {
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
 						<BarChart3 className="h-5 w-5 text-primary-500" />
-						板块概览
+						{t("Category overview")}
 					</CardTitle>
 				</CardHeader>
 				<CardContent>
@@ -89,24 +91,24 @@ export function CategoryOverview() {
 		const message =
 			categoriesQuery.error instanceof Error
 				? categoriesQuery.error.message
-				: "未知错误";
+				: t("Unknown error");
 
 		return (
 			<Card className="lg:col-span-1">
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
 						<BarChart3 className="h-5 w-5 text-primary-500" />
-						板块概览
+						{t("Category overview")}
 					</CardTitle>
-					<CardDescription>数据加载失败</CardDescription>
+					<CardDescription>{t("Load failed")}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<EmptyState
 						variant="error"
-						title="板块数据加载失败"
+						title={t("Failed to load categories")}
 						description={message}
 						action={{
-							label: "重试",
+							label: t("Retry"),
 							onClick: () => {
 								categoriesQuery.refetch();
 								countsQuery.refetch();
@@ -124,24 +126,32 @@ export function CategoryOverview() {
 			<CardHeader>
 				<CardTitle className="flex items-center gap-2">
 					<BarChart3 className="h-5 w-5 text-primary-500" />
-					板块概览
+					{t("Category overview")}
 				</CardTitle>
 				<CardDescription>
 					{countsError
-						? "资讯分布统计暂不可用"
-						: `按采集总量统计：${totalCount} 条（含未分类 ${uncategorizedCount} 条）`}
+						? t("Article distribution stats are currently unavailable.")
+						: t(
+								"Total collected: {total} (including {uncategorized} uncategorized)",
+								{
+									total: totalCount,
+									uncategorized: uncategorizedCount,
+								},
+							)}
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
 				{countsError ? (
 					<div className="mb-3 flex items-center justify-between rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
-						<p className="text-xs text-amber-800">资讯分布统计加载失败</p>
+						<p className="text-xs text-amber-800">
+							{t("Failed to load distribution stats")}
+						</p>
 						<Button
 							variant="outline"
 							size="sm"
 							onClick={() => countsQuery.refetch()}
 						>
-							重试
+							{t("Retry")}
 						</Button>
 					</div>
 				) : null}
@@ -158,7 +168,7 @@ export function CategoryOverview() {
 									<FileText className="h-4 w-4" />
 								</div>
 								<span className="text-sm font-medium text-neutral-700">
-									未分类
+									{t("Uncategorized")}
 								</span>
 							</div>
 							<Badge variant="outline">

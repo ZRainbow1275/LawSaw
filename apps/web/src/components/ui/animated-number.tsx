@@ -1,28 +1,30 @@
 "use client";
 
+import { type Locale, formatNumber } from "@/lib/i18n";
+import { useLocale } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
 import { motion, useInView, useSpring, useTransform } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 
 // ============================================
-// 类型定义
+// Type definitions
 // ============================================
 
 interface AnimatedNumberProps {
 	value: number;
-	/** 动画持续时间（毫秒） */
+	/** Animation duration (ms) */
 	duration?: number;
-	/** 数字格式化函数 */
+	/** Number formatter */
 	formatter?: (value: number) => string;
-	/** 是否在视口内才开始动画 */
+	/** Start animation only when in viewport */
 	animateOnView?: boolean;
-	/** 前缀文本 */
+	/** Prefix */
 	prefix?: string;
-	/** 后缀文本 */
+	/** Suffix */
 	suffix?: string;
-	/** 自定义类名 */
+	/** Custom class name */
 	className?: string;
-	/** 数字类名 */
+	/** Number class name */
 	numberClassName?: string;
 }
 
@@ -36,51 +38,61 @@ interface AnimatedCounterProps {
 }
 
 // ============================================
-// 默认格式化器
+// Default formatter
 // ============================================
 
-const defaultFormatter = (value: number): string => {
+const defaultFormatter = (locale: Locale, value: number): string => {
 	if (value >= 1000000) {
-		return `${(value / 1000000).toFixed(1)}M`;
+		return `${formatNumber(locale, value / 1000000, {
+			minimumFractionDigits: 1,
+			maximumFractionDigits: 1,
+		})}M`;
 	}
 	if (value >= 1000) {
-		return `${(value / 1000).toFixed(1)}K`;
+		return `${formatNumber(locale, value / 1000, {
+			minimumFractionDigits: 1,
+			maximumFractionDigits: 1,
+		})}K`;
 	}
-	return Math.round(value).toLocaleString();
+	return formatNumber(locale, Math.round(value));
 };
 
 // ============================================
-// AnimatedNumber 组件
+// AnimatedNumber component
 // ============================================
 
 export function AnimatedNumber({
 	value,
 	duration = 1000,
-	formatter = defaultFormatter,
+	formatter,
 	animateOnView = true,
 	prefix,
 	suffix,
 	className,
 	numberClassName,
 }: AnimatedNumberProps) {
+	const locale = useLocale();
+	const effectiveFormatter =
+		formatter ?? ((nextValue: number) => defaultFormatter(locale, nextValue));
+
 	const ref = useRef<HTMLSpanElement>(null);
 	const isInView = useInView(ref, { once: true, margin: "-50px" });
 	const [displayValue, setDisplayValue] = useState(animateOnView ? 0 : value);
 
-	// Spring 动画配置
+	// Spring config
 	const springValue = useSpring(0, {
 		duration: duration,
 		bounce: 0,
 	});
 
-	// 监听值变化
+	// Watch value changes
 	useEffect(() => {
 		if (!animateOnView || isInView) {
 			springValue.set(value);
 		}
 	}, [value, isInView, animateOnView, springValue]);
 
-	// 订阅 spring 值变化
+	// Subscribe to spring updates
 	useEffect(() => {
 		const unsubscribe = springValue.on("change", (latest) => {
 			setDisplayValue(latest);
@@ -101,7 +113,7 @@ export function AnimatedNumber({
 				}
 				transition={{ duration: 0.3 }}
 			>
-				{formatter(displayValue)}
+				{effectiveFormatter(displayValue)}
 			</motion.span>
 			{suffix && <span className="text-neutral-500 ml-0.5">{suffix}</span>}
 		</span>
@@ -109,7 +121,7 @@ export function AnimatedNumber({
 }
 
 // ============================================
-// AnimatedCounter 组件（简化版）
+// AnimatedCounter component (simple)
 // ============================================
 
 export function AnimatedCounter({
@@ -118,8 +130,12 @@ export function AnimatedCounter({
 	duration = 1000,
 	delay = 0,
 	className,
-	formatter = defaultFormatter,
+	formatter,
 }: AnimatedCounterProps) {
+	const locale = useLocale();
+	const effectiveFormatter =
+		formatter ?? ((nextValue: number) => defaultFormatter(locale, nextValue));
+
 	const ref = useRef<HTMLSpanElement>(null);
 	const isInView = useInView(ref, { once: true, margin: "-20px" });
 
@@ -128,7 +144,9 @@ export function AnimatedCounter({
 		bounce: 0,
 	});
 
-	const displayValue = useTransform(springValue, (latest) => formatter(latest));
+	const displayValue = useTransform(springValue, (latest) =>
+		effectiveFormatter(latest),
+	);
 
 	useEffect(() => {
 		if (isInView) {
@@ -153,7 +171,7 @@ export function AnimatedCounter({
 }
 
 // ============================================
-// AnimatedPercentage 组件
+// AnimatedPercentage component
 // ============================================
 
 interface AnimatedPercentageProps {
@@ -169,6 +187,7 @@ export function AnimatedPercentage({
 	className,
 	showSign = true,
 }: AnimatedPercentageProps) {
+	const locale = useLocale();
 	const ref = useRef<HTMLSpanElement>(null);
 	const isInView = useInView(ref, { once: true });
 	const [displayValue, setDisplayValue] = useState(0);
@@ -206,13 +225,17 @@ export function AnimatedPercentage({
 			transition={{ duration: 0.3 }}
 		>
 			{showSign && isPositive && "+"}
-			{displayValue.toFixed(1)}%
+			{formatNumber(locale, displayValue, {
+				minimumFractionDigits: 1,
+				maximumFractionDigits: 1,
+			})}
+			%
 		</motion.span>
 	);
 }
 
 // ============================================
-// 导出
+// Exports
 // ============================================
 
 export default AnimatedNumber;

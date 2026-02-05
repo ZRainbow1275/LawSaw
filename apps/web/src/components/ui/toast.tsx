@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * Toast 通知组件
- * 全局通知系统 UI 实现
+ * Toast notifications.
+ * UI implementation for the global notification system.
  */
 
 import { toastVariants } from "@/lib/motion";
@@ -16,7 +16,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from "lucide-react";
 
 // ============================================
-// 图标映射
+// Icon mapping
 // ============================================
 
 const iconMap: Record<
@@ -56,7 +56,7 @@ const styleMap: Record<
 };
 
 // ============================================
-// 单个 Toast 组件
+// Single toast item
 // ============================================
 
 interface ToastItemProps {
@@ -104,10 +104,10 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
 		>
 			<div className="p-4">
 				<div className="flex items-start gap-3">
-					{/* 图标 */}
+					{/* Icon */}
 					<Icon className={cn("h-5 w-5 shrink-0 mt-0.5", styles.iconColor)} />
 
-					{/* 内容 */}
+					{/* Content */}
 					<div className="flex-1 min-w-0">
 						<p className="text-sm font-semibold text-neutral-900">
 							{toast.title}
@@ -128,14 +128,14 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
 						)}
 					</div>
 
-					{/* 关闭按钮 */}
+					{/* Dismiss */}
 					<button
 						type="button"
 						onClick={() => onDismiss(toast.id)}
 						className="shrink-0 rounded-lg p-1 text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 transition-colors"
 					>
 						<X className="h-4 w-4" />
-						<span className="sr-only">关闭</span>
+						<span className="sr-only">Close</span>
 					</button>
 				</div>
 			</div>
@@ -144,7 +144,7 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
 }
 
 // ============================================
-// Toast 容器组件
+// Toast container
 // ============================================
 
 export function ToastContainer() {
@@ -167,7 +167,7 @@ export function ToastContainer() {
 }
 
 // ============================================
-// Toast Provider（包装器）
+// Toast provider
 // ============================================
 
 interface ToastProviderProps {

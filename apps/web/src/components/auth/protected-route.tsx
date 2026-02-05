@@ -1,5 +1,7 @@
 "use client";
 
+import { withLocalePath } from "@/lib/i18n";
+import { useLocale } from "@/lib/i18n-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -11,6 +13,7 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
 	const router = useRouter();
+	const locale = useLocale();
 	const { isAuthenticated, isLoading } = useAuthStore();
 
 	useEffect(() => {
@@ -18,9 +21,14 @@ export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
 			const pathname = window.location.pathname || "/";
 			const search = window.location.search || "";
 			const returnTo = `${pathname}${search}`;
-			router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`);
+			router.replace(
+				withLocalePath(
+					locale,
+					`/login?returnTo=${encodeURIComponent(returnTo)}`,
+				),
+			);
 		}
-	}, [isLoading, isAuthenticated, router]);
+	}, [isLoading, isAuthenticated, locale, router]);
 
 	if (isLoading) {
 		return (

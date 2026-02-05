@@ -240,11 +240,19 @@ where
 }
 
 fn map_json_rejection(rejection: axum::extract::rejection::JsonRejection) -> AppError {
-    bad_request_rejection("INVALID_JSON", "Invalid request body", rejection.body_text())
+    bad_request_rejection(
+        "INVALID_JSON",
+        "Invalid request body",
+        rejection.body_text(),
+    )
 }
 
 fn map_query_rejection(rejection: axum::extract::rejection::QueryRejection) -> AppError {
-    bad_request_rejection("INVALID_QUERY", "Invalid query parameters", rejection.body_text())
+    bad_request_rejection(
+        "INVALID_QUERY",
+        "Invalid query parameters",
+        rejection.body_text(),
+    )
 }
 
 fn bad_request_rejection(code: &str, message: &str, reason: String) -> AppError {

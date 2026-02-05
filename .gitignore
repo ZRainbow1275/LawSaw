@@ -39,6 +39,7 @@ temp/
 *.tmp
 tmpclaude-*
 .ace-tool/
+.trellis/
 
 # Agent / Tooling (do not commit)
 .claude/
@@ -48,6 +49,10 @@ test-results/
 
 # Build artifacts
 *.tsbuildinfo
+
+# Coverage
+coverage/
+.nyc_output/
 
 # Backups
 *.bak

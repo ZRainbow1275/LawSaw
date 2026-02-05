@@ -13,10 +13,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 use web_push_native::{
-    jwt_simple::algorithms::ES256KeyPair,
-    p256::PublicKey,
-    Auth,
-    WebPushBuilder,
+    jwt_simple::algorithms::ES256KeyPair, p256::PublicKey, Auth, WebPushBuilder,
 };
 
 use crate::auth::AuthSession;
@@ -74,9 +71,7 @@ pub struct TestPushResponse {
 
 fn env_required(name: &str) -> Result<String, AppError> {
     let value = std::env::var(name).map_err(|_| {
-        AppError::service_unavailable(format!(
-            "{name} is not configured (required for Web Push)"
-        ))
+        AppError::service_unavailable(format!("{name} is not configured (required for Web Push)"))
     })?;
     let trimmed = value.trim().to_string();
     if trimmed.is_empty() {
@@ -90,7 +85,7 @@ fn env_required(name: &str) -> Result<String, AppError> {
 fn decode_base64_any(value: &str, field: &str) -> Result<Vec<u8>, AppError> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
-        return Err(AppError::validation(&format!("{field} is required")));
+        return Err(AppError::validation(format!("{field} is required")));
     }
 
     // Accept both base64url and standard base64, with or without padding.
@@ -101,7 +96,7 @@ fn decode_base64_any(value: &str, field: &str) -> Result<Vec<u8>, AppError> {
         }
     }
 
-    Err(AppError::validation(&format!(
+    Err(AppError::validation(format!(
         "Invalid base64 for {field} (expect base64url/base64)"
     )))
 }
@@ -122,10 +117,12 @@ fn vapid_public_key() -> Result<String, AppError> {
 
 async fn validate_push_url(raw: &str) -> Result<url::Url, AppError> {
     let policy = OutboundUrlPolicy::https_only(false).with_max_len(4096);
-    validate_outbound_url(raw, &policy).await.map_err(|err| match err {
-        UrlPolicyError::InvalidUrl { message } => AppError::validation(&message),
-        UrlPolicyError::SsrfBlocked { message } => AppError::validation(&message),
-    })
+    validate_outbound_url(raw, &policy)
+        .await
+        .map_err(|err| match err {
+            UrlPolicyError::InvalidUrl { message } => AppError::validation(&message),
+            UrlPolicyError::SsrfBlocked { message } => AppError::validation(&message),
+        })
 }
 
 async fn validate_push_endpoint(raw: &str) -> Result<Uri, AppError> {
@@ -146,7 +143,9 @@ async fn validate_push_endpoint(raw: &str) -> Result<Uri, AppError> {
         (status = 503, description = "Not configured", body = ApiError)
     )
 )]
-pub(crate) async fn get_vapid_public_key(auth_session: AuthSession) -> ApiResult<Json<VapidPublicKeyResponse>> {
+pub(crate) async fn get_vapid_public_key(
+    auth_session: AuthSession,
+) -> ApiResult<Json<VapidPublicKeyResponse>> {
     let _ = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
@@ -191,8 +190,7 @@ pub(crate) async fn subscribe(
         .map_err(|_| AppError::validation("Invalid subscription p256dh"))?;
     let _ = decode_base64_any(&req.keys.auth, "auth")?;
 
-    let expiration_time =
-        law_eye_core::parse_expiration_time_millis(req.expiration_time);
+    let expiration_time = law_eye_core::parse_expiration_time_millis(req.expiration_time);
     let user_agent = headers
         .get(axum::http::header::USER_AGENT)
         .and_then(|v| v.to_str().ok())
@@ -221,24 +219,25 @@ pub(crate) async fn subscribe(
         Box::pin(async move {
             let row = service.upsert_tx(tenant_id, tx, input.clone()).await?;
 
-            audit.log_tx(
-                tenant_id,
-                tx,
-                CreateAuditLog {
-                    user_id: Some(user_id),
-                    action: "push.subscribe".to_string(),
-                    resource: "web_push_subscriptions".to_string(),
-                    resource_id: Some(row.id),
-                    old_value: None,
-                    new_value: Some(serde_json::json!({
-                        "endpoint": row.endpoint,
-                        "expiration_time": row.expiration_time,
-                    })),
-                    ip_address,
-                    user_agent: user_agent_audit,
-                },
-            )
-            .await?;
+            audit
+                .log_tx(
+                    tenant_id,
+                    tx,
+                    CreateAuditLog {
+                        user_id: Some(user_id),
+                        action: "push.subscribe".to_string(),
+                        resource: "web_push_subscriptions".to_string(),
+                        resource_id: Some(row.id),
+                        old_value: None,
+                        new_value: Some(serde_json::json!({
+                            "endpoint": row.endpoint,
+                            "expiration_time": row.expiration_time,
+                        })),
+                        ip_address,
+                        user_agent: user_agent_audit,
+                    },
+                )
+                .await?;
 
             Ok(row)
         })
@@ -289,21 +288,22 @@ pub(crate) async fn unsubscribe(
                 .soft_delete_by_endpoint_tx(tenant_id, tx, user_id, &endpoint)
                 .await?;
 
-            audit.log_tx(
-                tenant_id,
-                tx,
-                CreateAuditLog {
-                    user_id: Some(user_id),
-                    action: "push.unsubscribe".to_string(),
-                    resource: "web_push_subscriptions".to_string(),
-                    resource_id: None,
-                    old_value: Some(serde_json::json!({ "endpoint": endpoint })),
-                    new_value: None,
-                    ip_address,
-                    user_agent,
-                },
-            )
-            .await?;
+            audit
+                .log_tx(
+                    tenant_id,
+                    tx,
+                    CreateAuditLog {
+                        user_id: Some(user_id),
+                        action: "push.unsubscribe".to_string(),
+                        resource: "web_push_subscriptions".to_string(),
+                        resource_id: None,
+                        old_value: Some(serde_json::json!({ "endpoint": endpoint })),
+                        new_value: None,
+                        ip_address,
+                        user_agent,
+                    },
+                )
+                .await?;
 
             Ok(())
         })
@@ -360,7 +360,7 @@ async fn send_web_push(
         .body(request.body().clone())
         .send()
         .await
-        .map_err(|e| AppError::service_unavailable(&format!("Web Push request failed: {e}")))
+        .map_err(|e| AppError::service_unavailable(format!("Web Push request failed: {e}")))
 }
 
 /// Send a test notification to the current user's active subscriptions.
@@ -389,7 +389,7 @@ pub(crate) async fn test_push(
         .user_agent("law-eye-api/web-push")
         .redirect(reqwest::redirect::Policy::none())
         .build()
-        .map_err(|e| AppError::internal(&format!("Failed to build http client: {e}")))?;
+        .map_err(|e| AppError::internal(format!("Failed to build http client: {e}")))?;
 
     let tenant_id = user.tenant_id;
     let subs = state

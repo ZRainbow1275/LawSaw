@@ -10,6 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useArticles } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
 import { type ArticleRiskLevel, getArticleRiskLevel } from "@/lib/api/types";
+import { type Locale, formatDateTime } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n-client";
 import {
 	ArrowLeft,
 	ArrowUpRight,
@@ -33,17 +35,21 @@ const riskColors: Record<ArticleRiskLevel, RiskBadgeVariant> = {
 };
 
 const riskLabels: Record<ArticleRiskLevel, string> = {
-	unknown: "未评估",
-	low: "低风险",
-	medium: "中风险",
-	high: "高风险",
-	critical: "严重",
+	unknown: "Unrated",
+	low: "Low risk",
+	medium: "Medium risk",
+	high: "High risk",
+	critical: "Critical",
 };
 
-function formatTime(dateStr: string | null): string {
-	if (!dateStr) return "未知时间";
+function formatTime(
+	locale: Locale,
+	dateStr: string | null,
+	unknownLabel: string,
+): string {
+	if (!dateStr) return unknownLabel;
 	const date = new Date(dateStr);
-	return date.toLocaleDateString("zh-CN", {
+	return formatDateTime(locale, date, {
 		year: "numeric",
 		month: "long",
 		day: "numeric",
@@ -54,12 +60,14 @@ const PAGE_SIZE = 20;
 
 export default function CategoryPage() {
 	const params = useParams();
+	const locale = useLocale();
+	const t = useT();
 	const slug = params.slug as string;
 	const [page, setPage] = useState(0);
 
 	const { data: categories, isLoading: categoriesLoading } = useCategories();
 
-	// 根据 slug 查找分类
+	// Find category by slug.
 	const category = categories?.find((c) => c.slug === slug);
 
 	const { data: articlesData, isLoading: articlesLoading } = useArticles({
@@ -74,7 +82,7 @@ export default function CategoryPage() {
 
 	const isLoading = categoriesLoading || articlesLoading;
 
-	// 未找到分类
+	// Not found.
 	if (!categoriesLoading && !category) {
 		return (
 			<ProtectedRoute>
@@ -83,11 +91,13 @@ export default function CategoryPage() {
 					<MainContent>
 						<Header />
 						<div className="flex flex-col items-center justify-center p-12">
-							<p className="text-lg text-neutral-500">未找到该分类</p>
+							<p className="text-lg text-neutral-500">
+								{t("Category not found")}
+							</p>
 							<Link href="/articles" className="mt-4">
 								<Button variant="outline">
 									<ArrowLeft className="mr-2 h-4 w-4" />
-									返回资讯列表
+									{t("Back to articles")}
 								</Button>
 							</Link>
 						</div>
@@ -113,7 +123,7 @@ export default function CategoryPage() {
 								className="inline-flex items-center text-sm text-neutral-500 hover:text-neutral-900"
 							>
 								<ArrowLeft className="mr-1 h-4 w-4" />
-								返回全部资讯
+								{t("Back to all articles")}
 							</Link>
 						</div>
 
@@ -133,7 +143,7 @@ export default function CategoryPage() {
 										)}
 									</div>
 									<Badge variant="outline" className="ml-auto">
-										{total} 条资讯
+										{t("{count} articles", { count: total })}
 									</Badge>
 								</>
 							)}
@@ -144,7 +154,7 @@ export default function CategoryPage() {
 							<CardHeader>
 								<CardTitle className="flex items-center gap-2">
 									<FileText className="h-5 w-5 text-primary-500" />
-									{category?.name}资讯
+									{t("{name} articles", { name: category?.name ?? "" })}
 								</CardTitle>
 							</CardHeader>
 							<CardContent>
@@ -162,7 +172,7 @@ export default function CategoryPage() {
 									</div>
 								) : articles.length === 0 ? (
 									<p className="py-12 text-center text-neutral-500">
-										该分类暂无资讯
+										{t("No articles in this category")}
 									</p>
 								) : (
 									<div className="space-y-4">
@@ -177,7 +187,7 @@ export default function CategoryPage() {
 													<div className="flex-1">
 														<div className="mb-2 flex items-center gap-2">
 															<Badge variant={riskColors[riskLevel]}>
-																{riskLabels[riskLevel]}
+																{t(riskLabels[riskLevel])}
 															</Badge>
 															<Badge variant="outline">{article.status}</Badge>
 														</div>
@@ -191,11 +201,19 @@ export default function CategoryPage() {
 														)}
 														<div className="mt-2 flex items-center gap-4 text-xs text-neutral-500">
 															{article.author && (
-																<span>来源：{article.author}</span>
+																<span>
+																	{t("Source: {name}", {
+																		name: article.author,
+																	})}
+																</span>
 															)}
 															<span className="flex items-center gap-1">
 																<Clock className="h-3 w-3" />
-																{formatTime(article.published_at)}
+																{formatTime(
+																	locale,
+																	article.published_at,
+																	t("Unknown time"),
+																)}
 															</span>
 														</div>
 													</div>
@@ -221,7 +239,10 @@ export default function CategoryPage() {
 								{totalPages > 1 && (
 									<div className="mt-6 flex items-center justify-between">
 										<p className="text-sm text-neutral-500">
-											第 {page + 1} / {totalPages} 页
+											{t("Page {current} / {total}", {
+												current: page + 1,
+												total: totalPages,
+											})}
 										</p>
 										<div className="flex items-center gap-2">
 											<Button
@@ -231,7 +252,7 @@ export default function CategoryPage() {
 												disabled={page === 0}
 											>
 												<ChevronLeft className="h-4 w-4" />
-												上一页
+												{t("Previous")}
 											</Button>
 											<Button
 												variant="outline"
@@ -241,7 +262,7 @@ export default function CategoryPage() {
 												}
 												disabled={page >= totalPages - 1}
 											>
-												下一页
+												{t("Next")}
 												<ChevronRight className="h-4 w-4" />
 											</Button>
 										</div>

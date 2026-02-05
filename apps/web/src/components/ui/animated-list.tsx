@@ -6,38 +6,38 @@ import { AnimatePresence, type Variants, motion } from "framer-motion";
 import { Children, type ReactNode, isValidElement } from "react";
 
 // ============================================
-// 类型定义
+// Type definitions
 // ============================================
 
 interface AnimatedListProps {
 	children: ReactNode;
-	/** 自定义类名 */
+	/** Custom class name */
 	className?: string;
-	/** 列表项之间的间距类名 */
+	/** Gap class between items */
 	gap?: string;
-	/** 每个子项的延迟时间（秒） */
+	/** Delay between children (seconds) */
 	staggerDelay?: number;
-	/** 动画方向 */
+	/** Direction */
 	direction?: "up" | "down" | "left" | "right";
-	/** 是否启用动画 */
+	/** Enable animation */
 	animate?: boolean;
-	/** 初始延迟（秒） */
+	/** Initial delay (seconds) */
 	initialDelay?: number;
-	/** 使用 AnimatePresence 包裹（用于列表项增删动画） */
+	/** Wrap with AnimatePresence (for enter/exit animations) */
 	animatePresence?: boolean;
 }
 
 interface AnimatedListItemProps {
 	children: ReactNode;
 	className?: string;
-	/** 自定义动画变体 */
+	/** Custom variants */
 	variants?: Variants;
-	/** 点击处理 */
+	/** Click handler */
 	onClick?: () => void;
 }
 
 // ============================================
-// 动画变体工厂
+// Variants factory
 // ============================================
 
 const createItemVariants = (
@@ -73,7 +73,7 @@ const createItemVariants = (
 };
 
 // ============================================
-// AnimatedList 容器组件
+// AnimatedList container
 // ============================================
 
 export function AnimatedList({
@@ -134,7 +134,7 @@ export function AnimatedList({
 }
 
 // ============================================
-// AnimatedListItem 单独使用的列表项
+// AnimatedListItem (standalone)
 // ============================================
 
 export function AnimatedListItem({
@@ -171,13 +171,13 @@ export function AnimatedListItem({
 }
 
 // ============================================
-// AnimatedGrid 网格布局版本
+// AnimatedGrid (grid layout)
 // ============================================
 
 interface AnimatedGridProps {
 	children: ReactNode;
 	className?: string;
-	/** 列数配置 */
+	/** Column configuration */
 	columns?: {
 		default?: number;
 		sm?: number;
@@ -185,7 +185,7 @@ interface AnimatedGridProps {
 		lg?: number;
 		xl?: number;
 	};
-	/** 间距 */
+	/** Gap */
 	gap?: number;
 	staggerDelay?: number;
 	animate?: boolean;
@@ -261,26 +261,26 @@ export function AnimatedGrid({
 }
 
 // ============================================
-// 预设动画配置
+// Preset configs
 // ============================================
 
 export const listAnimationPresets = {
-	/** 快速淡入 */
+	/** Quick fade */
 	fadeIn: {
 		staggerDelay: 0.03,
 		direction: "up" as const,
 	},
-	/** 慢速级联 */
+	/** Slow cascade */
 	cascade: {
 		staggerDelay: 0.1,
 		direction: "up" as const,
 	},
-	/** 从左滑入 */
+	/** Slide from left */
 	slideFromLeft: {
 		staggerDelay: 0.05,
 		direction: "left" as const,
 	},
-	/** 从右滑入 */
+	/** Slide from right */
 	slideFromRight: {
 		staggerDelay: 0.05,
 		direction: "right" as const,
@@ -288,7 +288,7 @@ export const listAnimationPresets = {
 };
 
 // ============================================
-// 导出
+// Exports
 // ============================================
 
 export default AnimatedList;

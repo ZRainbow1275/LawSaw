@@ -1,6 +1,6 @@
 /**
- * Toast 通知状态管理
- * 全局通知系统
+ * Toast state management.
+ * Global notification system.
  */
 
 "use client";
@@ -8,7 +8,7 @@
 import { create } from "zustand";
 
 // ============================================
-// 类型定义
+// Type definitions
 // ============================================
 
 export type ToastType = "success" | "error" | "warning" | "info";
@@ -19,19 +19,19 @@ export interface ToastAction {
 }
 
 export interface Toast {
-	/** 唯一 ID */
+	/** Unique ID */
 	id: string;
-	/** 通知类型 */
+	/** Toast type */
 	type: ToastType;
-	/** 标题 */
+	/** Title */
 	title: string;
-	/** 描述（可选） */
+	/** Description (optional) */
 	description?: string;
-	/** 持续时间（毫秒），0 表示不自动关闭 */
+	/** Duration in ms. 0 means no auto-dismiss. */
 	duration: number;
-	/** 操作按钮（可选） */
+	/** Action button (optional) */
 	action?: ToastAction;
-	/** 创建时间 */
+	/** Created at (epoch ms) */
 	createdAt: number;
 }
 
@@ -40,9 +40,9 @@ export type ToastInput = Omit<Toast, "id" | "createdAt" | "duration"> & {
 };
 
 interface ToastState {
-	/** 当前显示的 Toast 列表 */
+	/** Current visible toasts */
 	toasts: Toast[];
-	/** 最大同时显示数量 */
+	/** Max number of visible toasts */
 	maxToasts: number;
 
 	// Actions
@@ -54,7 +54,7 @@ interface ToastState {
 }
 
 // ============================================
-// 工具函数
+// Utilities
 // ============================================
 
 let toastIdCounter = 0;
@@ -120,12 +120,12 @@ function resumeToastTimer(id: string, onExpire: () => void) {
 	toastTimers.set(id, { timeoutId, startedAt, remaining: timer.remaining });
 }
 
-// 默认持续时间（毫秒）
+// Default duration (ms)
 const DEFAULT_DURATION = 5000;
 const MAX_TOASTS = 5;
 
 // ============================================
-// Store 实现
+// Store implementation
 // ============================================
 
 function createToastStore() {
@@ -144,7 +144,7 @@ function createToastStore() {
 
 			const evictedIds: string[] = [];
 			set((state) => {
-				// 如果超过最大数量，移除最旧的
+				// Evict oldest when exceeding max.
 				const newToasts = [...state.toasts, toast];
 				while (newToasts.length > state.maxToasts) {
 					const removed = newToasts.shift();
@@ -159,7 +159,7 @@ function createToastStore() {
 				clearToastTimer(removedId);
 			}
 
-			// 自动关闭
+			// Auto-dismiss
 			if (toast.duration > 0) {
 				startToastTimer(id, toast.duration, () => {
 					get().removeToast(id);
@@ -210,11 +210,11 @@ export const useToastStore: ToastStore = (() => {
 })();
 
 // ============================================
-// 便捷 Hooks
+// Convenience hooks
 // ============================================
 
 /**
- * Toast 操作 Hook
+ * Toast actions hook.
  */
 export function useToast() {
 	const addToast = useToastStore((s) => s.addToast);
@@ -224,7 +224,7 @@ export function useToast() {
 		toast: addToast,
 		dismiss: removeToast,
 
-		// 快捷方法
+		// Convenience shortcuts
 		success: (title: string, description?: string) =>
 			addToast({ type: "success", title, description }),
 
@@ -240,7 +240,7 @@ export function useToast() {
 }
 
 // ============================================
-// 类型颜色映射
+// Type style mapping
 // ============================================
 
 export const toastTypeStyles: Record<

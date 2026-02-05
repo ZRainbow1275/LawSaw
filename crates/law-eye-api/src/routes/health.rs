@@ -62,9 +62,7 @@ pub(crate) async fn ready_check(
     readiness_check(State(state)).await
 }
 
-async fn readiness_check(
-    State(state): State<AppState>,
-) -> (StatusCode, Json<HealthResponse>) {
+async fn readiness_check(State(state): State<AppState>) -> (StatusCode, Json<HealthResponse>) {
     let check_timeout = Duration::from_secs(2);
 
     let postgres_ok =

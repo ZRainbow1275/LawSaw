@@ -1,13 +1,16 @@
 "use client";
 
 import { LoginForm } from "@/components/auth/login-form";
+import { useT } from "@/lib/i18n-client";
 import { motion } from "framer-motion";
 import { Eye, Sparkles } from "lucide-react";
 
 export default function LoginPage() {
+	const t = useT();
+
 	return (
 		<div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-neutral-50 via-primary-50/30 to-neutral-50 px-4">
-			{/* 背景装饰 - 灵动浮动元素 */}
+			{/* Background decoration - floating accents */}
 			<div className="pointer-events-none absolute inset-0 overflow-hidden">
 				<motion.div
 					className="absolute -left-20 -top-20 h-72 w-72 rounded-full bg-primary-200/30 blur-3xl"
@@ -86,7 +89,7 @@ export default function LoginPage() {
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.2 }}
 					>
-						欢迎回来
+						{t("Welcome back")}
 					</motion.h1>
 					<motion.p
 						className="mt-2 text-neutral-500"
@@ -94,11 +97,11 @@ export default function LoginPage() {
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.3 }}
 					>
-						登录您的法眼账户
+						{t("Sign in to your Law Eye account")}
 					</motion.p>
 				</motion.div>
 
-				{/* Form Card - 毛玻璃效果 */}
+				{/* Form Card - glassmorphism */}
 				<motion.div
 					className="rounded-2xl border border-white/60 bg-white/80 p-8 shadow-xl backdrop-blur-xl"
 					initial={{ opacity: 0, y: 20 }}
@@ -118,7 +121,9 @@ export default function LoginPage() {
 					animate={{ opacity: 1 }}
 					transition={{ delay: 0.5 }}
 				>
-					登录即表示您同意我们的服务条款和隐私政策
+					{t(
+						"By signing in, you agree to our Terms of Service and Privacy Policy.",
+					)}
 				</motion.p>
 			</motion.div>
 		</div>

@@ -70,8 +70,7 @@ fn run_healthcheck() -> anyhow::Result<()> {
     let port = healthcheck_port();
     let addr = format!("127.0.0.1:{port}");
 
-    let mut stream = TcpStream::connect(&addr)
-        .with_context(|| format!("connect to {addr}"))?;
+    let mut stream = TcpStream::connect(&addr).with_context(|| format!("connect to {addr}"))?;
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .context("set read timeout")?;
@@ -222,7 +221,10 @@ async fn apply_security_headers(req: Request<Body>, next: Next) -> Response {
 
     let header_referrer_policy = HeaderName::from_static("referrer-policy");
     if !headers.contains_key(&header_referrer_policy) {
-        headers.insert(header_referrer_policy, HeaderValue::from_static("no-referrer"));
+        headers.insert(
+            header_referrer_policy,
+            HeaderValue::from_static("no-referrer"),
+        );
     }
 
     let header_permissions_policy = HeaderName::from_static("permissions-policy");
@@ -306,9 +308,12 @@ async fn main() -> anyhow::Result<()> {
     info!("Server Port: {}", config.server.port);
 
     info!("Running database migrations...");
-    let admin_pool =
-        create_pool_retry(&config.database.url, config.database.max_connections, DB_CONNECT_MAX_ATTEMPTS)
-            .await?;
+    let admin_pool = create_pool_retry(
+        &config.database.url,
+        config.database.max_connections,
+        DB_CONNECT_MAX_ATTEMPTS,
+    )
+    .await?;
     law_eye_db::run_migrations(&admin_pool).await?;
 
     let pool = create_pool_with_session_role_retry(

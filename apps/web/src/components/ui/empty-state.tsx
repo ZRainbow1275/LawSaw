@@ -1,40 +1,41 @@
 "use client";
 
 /**
- * 空状态组件
- * 用于展示无数据、无搜索结果等场景
+ * Empty state component.
+ * Used for no-data / empty search results, etc.
  */
 
+import { useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
 import { AlertCircle, FileX, type LucideIcon, Search } from "lucide-react";
 import { Button } from "./button";
 
 // ============================================
-// 类型定义
+// Type definitions
 // ============================================
 
 export type EmptyStateVariant = "default" | "search" | "error";
 
 interface EmptyStateProps {
-	/** 自定义图标 */
+	/** Custom icon */
 	icon?: LucideIcon;
-	/** 标题 */
+	/** Title */
 	title: string;
-	/** 描述文字 */
+	/** Description */
 	description?: string;
-	/** 操作按钮 */
+	/** Action button */
 	action?: {
 		label: string;
 		onClick: () => void;
 	};
-	/** 变体类型 */
+	/** Variant */
 	variant?: EmptyStateVariant;
-	/** 自定义类名 */
+	/** Custom class name */
 	className?: string;
 }
 
 // ============================================
-// 变体配置
+// Variants
 // ============================================
 
 const variantConfig: Record<
@@ -59,7 +60,7 @@ const variantConfig: Record<
 };
 
 // ============================================
-// 组件实现
+// Component
 // ============================================
 
 export function EmptyState({
@@ -80,7 +81,7 @@ export function EmptyState({
 				className,
 			)}
 		>
-			{/* 图标容器 */}
+			{/* Icon */}
 			<div
 				className={cn(
 					"flex h-16 w-16 items-center justify-center rounded-full mb-4",
@@ -90,15 +91,15 @@ export function EmptyState({
 				<Icon className={cn("h-8 w-8", config.iconColor)} />
 			</div>
 
-			{/* 标题 */}
+			{/* Title */}
 			<h3 className="text-lg font-semibold text-neutral-900 mb-2">{title}</h3>
 
-			{/* 描述 */}
+			{/* Description */}
 			{description && (
 				<p className="text-sm text-neutral-500 max-w-sm mb-6">{description}</p>
 			)}
 
-			{/* 操作按钮 */}
+			{/* Action */}
 			{action && (
 				<Button variant="outline" onClick={action.onClick}>
 					{action.label}
@@ -109,19 +110,19 @@ export function EmptyState({
 }
 
 // ============================================
-// 预设变体
+// Presets
 // ============================================
 
 interface PresetEmptyStateProps {
-	/** 自定义标题 */
+	/** Custom title */
 	title?: string;
-	/** 自定义描述 */
+	/** Custom description */
 	description?: string;
-	/** 操作按钮标签（简化用法） */
+	/** Action label (shortcut) */
 	actionLabel?: string;
-	/** 操作按钮回调（简化用法） */
+	/** Action callback (shortcut) */
 	onAction?: () => void;
-	/** 操作按钮（完整用法） */
+	/** Action (full) */
 	action?: {
 		label: string;
 		onClick: () => void;
@@ -129,15 +130,20 @@ interface PresetEmptyStateProps {
 	className?: string;
 }
 
-/** 无数据状态 */
+/** No data preset. */
 export function NoDataState({
-	title = "暂无数据",
-	description = "当前没有可显示的内容",
+	title,
+	description,
 	action,
 	actionLabel,
 	onAction,
 	className,
 }: PresetEmptyStateProps) {
+	const t = useT();
+
+	const resolvedTitle = title ?? t("No data");
+	const resolvedDescription = description ?? t("There is nothing to show yet.");
+
 	const finalAction =
 		action ||
 		(actionLabel && onAction
@@ -146,23 +152,29 @@ export function NoDataState({
 	return (
 		<EmptyState
 			variant="default"
-			title={title}
-			description={description}
+			title={resolvedTitle}
+			description={resolvedDescription}
 			action={finalAction}
 			className={className}
 		/>
 	);
 }
 
-/** 无搜索结果状态 */
+/** Empty search preset. */
 export function NoSearchResultState({
-	title = "未找到结果",
-	description = "尝试调整搜索关键词或筛选条件",
+	title,
+	description,
 	action,
 	actionLabel,
 	onAction,
 	className,
 }: PresetEmptyStateProps) {
+	const t = useT();
+
+	const resolvedTitle = title ?? t("No results found");
+	const resolvedDescription =
+		description ?? t("Try adjusting your keywords or filters.");
+
 	const finalAction =
 		action ||
 		(actionLabel && onAction
@@ -171,23 +183,27 @@ export function NoSearchResultState({
 	return (
 		<EmptyState
 			variant="search"
-			title={title}
-			description={description}
+			title={resolvedTitle}
+			description={resolvedDescription}
 			action={finalAction}
 			className={className}
 		/>
 	);
 }
 
-/** 加载错误状态 */
+/** Load error preset. */
 export function ErrorState({ action, className }: PresetEmptyStateProps) {
+	const t = useT();
+
 	return (
 		<EmptyState
 			variant="error"
-			title="加载失败"
-			description="数据加载时发生错误，请稍后重试"
+			title={t("Load failed")}
+			description={t(
+				"An error occurred while loading. Please try again later.",
+			)}
 			action={
-				action || { label: "重试", onClick: () => window.location.reload() }
+				action || { label: t("Retry"), onClick: () => window.location.reload() }
 			}
 			className={className}
 		/>

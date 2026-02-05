@@ -1,10 +1,12 @@
 "use client";
 
 /**
- * 安全状态指示器组件
- * 展示数据加密和安全状态
+ * Security indicator component.
+ * Displays encryption and integrity status.
  */
 
+import { type Locale, formatDateTime, formatTimeAgo } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import {
@@ -17,29 +19,29 @@ import {
 } from "lucide-react";
 
 // ============================================
-// 类型定义
+// Type definitions
 // ============================================
 
 export type EncryptionStatus = "active" | "inactive" | "unknown";
 export type DataIntegrity = "verified" | "pending" | "failed";
 
 interface SecurityIndicatorProps {
-	/** 加密状态 */
+	/** Encryption status */
 	encryptionStatus: EncryptionStatus;
-	/** 最后同步时间 */
+	/** Last sync time */
 	lastSyncTime?: Date;
-	/** 数据完整性状态 */
+	/** Data integrity status */
 	dataIntegrity?: DataIntegrity;
-	/** 点击回调 */
+	/** Click handler */
 	onClick?: () => void;
-	/** 紧凑模式 */
+	/** Compact mode */
 	compact?: boolean;
-	/** 自定义类名 */
+	/** Custom class name */
 	className?: string;
 }
 
 // ============================================
-// 状态配置
+// Config
 // ============================================
 
 const statusConfig: Record<
@@ -56,8 +58,8 @@ const statusConfig: Record<
 > = {
 	active: {
 		icon: ShieldCheck,
-		label: "数据加密保护中",
-		description: "所有数据已加密传输",
+		label: "Encryption enabled",
+		description: "All data is transmitted securely",
 		bgColor: "bg-green-50",
 		borderColor: "border-green-200",
 		iconColor: "text-green-600",
@@ -65,8 +67,8 @@ const statusConfig: Record<
 	},
 	inactive: {
 		icon: ShieldAlert,
-		label: "加密未启用",
-		description: "建议启用数据加密",
+		label: "Encryption disabled",
+		description: "Enable encryption for better security",
 		bgColor: "bg-amber-50",
 		borderColor: "border-amber-200",
 		iconColor: "text-amber-600",
@@ -74,8 +76,8 @@ const statusConfig: Record<
 	},
 	unknown: {
 		icon: ShieldX,
-		label: "状态未知",
-		description: "无法获取安全状态",
+		label: "Unknown status",
+		description: "Unable to retrieve security status",
 		bgColor: "bg-neutral-50",
 		borderColor: "border-neutral-200",
 		iconColor: "text-neutral-400",
@@ -89,40 +91,46 @@ const integrityConfig: Record<
 > = {
 	verified: {
 		icon: CheckCircle2,
-		label: "数据完整",
+		label: "Integrity verified",
 		color: "text-green-600",
 	},
 	pending: {
 		icon: Clock,
-		label: "验证中",
+		label: "Verifying",
 		color: "text-amber-600",
 	},
 	failed: {
 		icon: ShieldX,
-		label: "验证失败",
+		label: "Verification failed",
 		color: "text-red-600",
 	},
 };
 
 // ============================================
-// 时间格式化
+// Time formatting
 // ============================================
 
-function formatTime(date?: Date): string {
-	if (!date) return "未知";
+function formatSyncTime(locale: Locale, date?: Date): string {
+	if (!date) return "";
 	const now = new Date();
-	const diff = now.getTime() - date.getTime();
-	const minutes = Math.floor(diff / 60000);
+	const diffMs = now.getTime() - date.getTime();
+	if (!Number.isFinite(diffMs)) return "";
+	if (diffMs < 0) return formatDateTime(locale, date);
 
-	if (minutes < 1) return "刚刚";
-	if (minutes < 60) return `${minutes} 分钟前`;
-	const hours = Math.floor(minutes / 60);
-	if (hours < 24) return `${hours} 小时前`;
-	return date.toLocaleDateString("zh-CN");
+	const diffDays = Math.floor(diffMs / 86400000);
+	if (diffDays >= 7) {
+		return formatDateTime(locale, date, {
+			year: "numeric",
+			month: "short",
+			day: "numeric",
+		});
+	}
+
+	return formatTimeAgo(locale, date);
 }
 
 // ============================================
-// 组件实现
+// Component
 // ============================================
 
 export function SecurityIndicator({
@@ -133,6 +141,8 @@ export function SecurityIndicator({
 	compact = false,
 	className,
 }: SecurityIndicatorProps) {
+	const locale = useLocale();
+	const t = useT();
 	const config = statusConfig[encryptionStatus];
 	const integrity = integrityConfig[dataIntegrity];
 	const Icon = config.icon;
@@ -166,7 +176,7 @@ export function SecurityIndicator({
 					)}
 				</div>
 				<span className="text-xs font-medium text-neutral-700">
-					{config.label}
+					{t(config.label)}
 				</span>
 			</button>
 		);
@@ -185,7 +195,7 @@ export function SecurityIndicator({
 				className,
 			)}
 		>
-			{/* 图标 */}
+			{/* Icon */}
 			<div className="relative shrink-0">
 				<Icon className={cn("h-6 w-6", config.iconColor)} />
 				{encryptionStatus === "active" && (
@@ -200,29 +210,33 @@ export function SecurityIndicator({
 				)}
 			</div>
 
-			{/* 内容 */}
+			{/* Content */}
 			<div className="flex-1 min-w-0 text-left">
-				<p className="text-sm font-semibold text-neutral-900">{config.label}</p>
+				<p className="text-sm font-semibold text-neutral-900">
+					{t(config.label)}
+				</p>
 				<p className="text-xs text-neutral-500 truncate">
-					{config.description}
+					{t(config.description)}
 				</p>
 				{lastSyncTime && (
 					<p className="text-xs text-neutral-400 mt-1">
-						上次同步：{formatTime(lastSyncTime)}
+						{t("Last sync: ")}
+						{formatSyncTime(locale, lastSyncTime)}
 					</p>
 				)}
 			</div>
 
-			{/* 完整性状态 */}
+			{/* Integrity */}
 			<div className="shrink-0 flex items-center gap-1">
 				<IntegrityIcon className={cn("h-4 w-4", integrity.color)} />
+				<span className="sr-only">{t(integrity.label)}</span>
 			</div>
 		</button>
 	);
 }
 
 // ============================================
-// 简化版本 - Dashboard 用
+// Compact badge (Dashboard)
 // ============================================
 
 export function SecurityBadge({
@@ -232,6 +246,7 @@ export function SecurityBadge({
 	status?: EncryptionStatus;
 	className?: string;
 }) {
+	const t = useT();
 	const config = statusConfig[status];
 	const Icon = config.icon;
 
@@ -246,7 +261,7 @@ export function SecurityBadge({
 			)}
 		>
 			<Icon className={cn("h-3.5 w-3.5", config.iconColor)} />
-			<span className="text-neutral-700">{config.label}</span>
+			<span className="text-neutral-700">{t(config.label)}</span>
 		</div>
 	);
 }

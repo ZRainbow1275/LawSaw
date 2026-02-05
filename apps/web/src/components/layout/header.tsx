@@ -3,15 +3,21 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
+import { stripLocalePrefix, withLocalePath } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { useSidebarStore } from "@/stores/sidebar-store";
-import { Bell, LogOut, Menu, Search, Settings } from "lucide-react";
+import { Bell, Globe, LogOut, Menu, Search, Settings } from "lucide-react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 export function Header() {
 	const router = useRouter();
+	const locale = useLocale();
+	const t = useT();
+	const pathname = usePathname();
+	const searchParams = useSearchParams();
 	const { user } = useAuthStore();
 	const { logout } = useAuth();
 	const { toggleMobile } = useSidebarStore();
@@ -21,19 +27,32 @@ export function Header() {
 	const handleSearch = (e: React.FormEvent) => {
 		e.preventDefault();
 		if (searchQuery.trim()) {
-			router.push(`/search?q=${encodeURIComponent(searchQuery)}`);
+			router.push(
+				withLocalePath(locale, `/search?q=${encodeURIComponent(searchQuery)}`),
+			);
 		}
 	};
 
 	const handleLogout = async () => {
 		await logout();
-		router.push("/login");
+		router.push(withLocalePath(locale, "/login"));
 	};
 
 	const displayName =
-		user?.display_name || user?.email?.split("@")[0] || "用户";
+		user?.display_name || user?.email?.split("@")[0] || t("User");
 	const initials = displayName.charAt(0).toUpperCase();
 	const avatarSrc = user?.avatar_url ?? null;
+
+	const handleToggleLocale = () => {
+		const nextLocale = locale === "zh" ? "en" : "zh";
+		const query = searchParams.toString();
+		const withoutLocale = stripLocalePrefix(pathname || "/");
+		const target = withLocalePath(
+			nextLocale,
+			query ? `${withoutLocale}?${query}` : withoutLocale,
+		);
+		router.push(target);
+	};
 
 	return (
 		<header className="sticky top-0 z-20 flex h-16 items-center gap-4 px-4 md:px-6 glass border-b border-neutral-100/50">
@@ -43,7 +62,7 @@ export function Header() {
 					variant="ghost"
 					size="icon"
 					className="md:hidden"
-					aria-label="打开导航菜单"
+					aria-label={t("Open navigation")}
 					onClick={() => toggleMobile()}
 				>
 					<Menu className="h-5 w-5" />
@@ -57,8 +76,8 @@ export function Header() {
 					<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
 					<Input
 						type="search"
-						aria-label="全局搜索关键词"
-						placeholder="搜索资讯、法规、关键词..."
+						aria-label={t("Global search keywords")}
+						placeholder={t("Search news, regulations, keywords...")}
 						className="pl-10 pr-10"
 						value={searchQuery}
 						onChange={(e) => setSearchQuery(e.target.value)}
@@ -68,7 +87,7 @@ export function Header() {
 						variant="ghost"
 						size="icon"
 						className="absolute right-1 top-1/2 -translate-y-1/2"
-						aria-label="执行全局搜索"
+						aria-label={t("Run search")}
 						disabled={!searchQuery.trim()}
 					>
 						<Search className="h-4 w-4" />
@@ -78,13 +97,26 @@ export function Header() {
 
 			{/* Right Actions */}
 			<div className="flex items-center gap-2 md:gap-4">
+				{/* Locale */}
+				<Button
+					variant="ghost"
+					size="icon"
+					className="relative"
+					aria-label={t("Switch language")}
+					onClick={handleToggleLocale}
+				>
+					<Globe className="h-5 w-5" />
+				</Button>
+
 				{/* Notifications */}
 				<Button
 					variant="ghost"
 					size="icon"
 					className="relative"
-					aria-label="通知设置"
-					onClick={() => router.push("/settings?tab=notifications")}
+					aria-label={t("Notifications")}
+					onClick={() =>
+						router.push(withLocalePath(locale, "/settings?tab=notifications"))
+					}
 				>
 					<Bell className="h-5 w-5" />
 				</Button>
@@ -123,11 +155,11 @@ export function Header() {
 								className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50/80 transition-colors"
 								onClick={() => {
 									setShowMenu(false);
-									router.push("/settings");
+									router.push(withLocalePath(locale, "/settings"));
 								}}
 							>
 								<Settings className="h-4 w-4" />
-								设置
+								{t("Settings")}
 							</button>
 							<button
 								type="button"
@@ -138,7 +170,7 @@ export function Header() {
 								}}
 							>
 								<LogOut className="h-4 w-4" />
-								退出登录
+								{t("Sign out")}
 							</button>
 						</div>
 					)}

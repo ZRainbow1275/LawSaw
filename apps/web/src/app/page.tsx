@@ -15,6 +15,7 @@ import {
 	assertArticleStats,
 	assertHealthResponse,
 } from "@/lib/api/types";
+import { useT } from "@/lib/i18n-client";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -40,6 +41,8 @@ const itemVariants = {
 };
 
 export default function Dashboard() {
+	const t = useT();
+
 	const healthQuery = useQuery({
 		queryKey: ["health"],
 		queryFn: () => apiClient.get("/health", assertHealthResponse),
@@ -106,48 +109,52 @@ export default function Dashboard() {
 		status: ServiceStatus;
 	}> = [
 		{
-			name: "API 服务",
+			name: t("API service"),
 			desc:
 				apiStatus === "ok"
-					? `在线（v${healthQuery.data?.version ?? "-"})`
+					? t("Online (v{version})", {
+							version: healthQuery.data?.version ?? "-",
+						})
 					: apiStatus === "loading"
-						? "检测中"
-						: "异常",
+						? t("Checking")
+						: t("Error"),
 			icon: Server,
 			status: apiStatus,
 		},
 		{
-			name: "采集服务",
+			name: t("Ingestion service"),
 			desc:
 				sourcesStatus === "ok"
-					? `信息源 ${sourceStatsQuery.data?.total ?? 0} 个可用`
+					? t("{count} sources available", {
+							count: sourceStatsQuery.data?.total ?? 0,
+						})
 					: sourcesStatus === "loading"
-						? "检测中"
-						: "异常",
+						? t("Checking")
+						: t("Error"),
 			icon: Activity,
 			status: sourcesStatus,
 		},
 		{
-			name: "AI 服务",
+			name: t("AI service"),
 			desc:
 				aiStatus === "ok"
-					? "已启用"
+					? t("Enabled")
 					: aiStatus === "warn"
-						? "未配置（需设置 AI API Key）"
+						? t("Not configured (set AI API key)")
 						: aiStatus === "loading"
-							? "检测中"
-							: "异常",
+							? t("Checking")
+							: t("Error"),
 			icon: Zap,
 			status: aiStatus,
 		},
 		{
-			name: "数据库",
+			name: t("Database"),
 			desc:
 				dbStatus === "ok"
-					? "可用（articles/stats OK）"
+					? t("Available (articles/stats OK)")
 					: dbStatus === "loading"
-						? "检测中"
-						: "异常",
+						? t("Checking")
+						: t("Error"),
 			icon: Database,
 			status: dbStatus,
 		},
@@ -155,12 +162,18 @@ export default function Dashboard() {
 
 	const overallBadge =
 		overallStatus === "ok"
-			? { label: "全部正常", className: "bg-green-100 text-green-700" }
+			? { label: t("All good"), className: "bg-green-100 text-green-700" }
 			: overallStatus === "warn"
-				? { label: "部分未配置", className: "bg-amber-100 text-amber-800" }
+				? {
+						label: t("Partially configured"),
+						className: "bg-amber-100 text-amber-800",
+					}
 				: overallStatus === "loading"
-					? { label: "检测中", className: "bg-neutral-100 text-neutral-700" }
-					: { label: "部分异常", className: "bg-red-100 text-red-700" };
+					? {
+							label: t("Checking"),
+							className: "bg-neutral-100 text-neutral-700",
+						}
+					: { label: t("Degraded"), className: "bg-red-100 text-red-700" };
 
 	const overallHeaderClass =
 		overallStatus === "ok"
@@ -209,12 +222,14 @@ export default function Dashboard() {
 						initial="hidden"
 						animate="visible"
 					>
-						{/* Page Title - 带渐变装饰 */}
+						{/* Page Title */}
 						<motion.div className="mb-8 relative" variants={itemVariants}>
 							<div className="absolute -left-3 top-0 h-full w-1 rounded-full bg-gradient-to-b from-primary-500 to-primary-300" />
-							<h1 className="text-2xl font-bold text-neutral-900">数据看板</h1>
+							<h1 className="text-2xl font-bold text-neutral-900">
+								{t("Dashboard")}
+							</h1>
 							<p className="mt-1 text-sm text-neutral-500">
-								实时监控法律资讯动态与系统运行状态
+								{t("Monitor legal updates and system health in real time")}
 							</p>
 						</motion.div>
 
@@ -234,7 +249,7 @@ export default function Dashboard() {
 							<RecentArticles />
 						</motion.div>
 
-						{/* System Status - 增强版 */}
+						{/* System Status */}
 						<motion.div variants={itemVariants}>
 							<Card className="mt-6 overflow-hidden">
 								<CardHeader
@@ -254,7 +269,7 @@ export default function Dashboard() {
 												<CheckCircle2 className="h-5 w-5 text-green-500" />
 											</motion.div>
 										)}
-										系统状态
+										{t("System status")}
 										<span
 											className={`ml-2 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${overallBadge.className}`}
 										>
@@ -273,7 +288,7 @@ export default function Dashboard() {
 												transition={{ delay: 0.5 + index * 0.1 }}
 												whileHover={{ scale: 1.02, y: -2 }}
 											>
-												{/* 背景装饰 */}
+												{/* Background */}
 												<div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-green-200/30 blur-xl transition-all group-hover:scale-150" />
 
 												<div className="relative flex items-center gap-3">

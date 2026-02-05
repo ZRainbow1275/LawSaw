@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * 文章详情页 - 沉浸式阅读器
- * 集成：进度条、目录导航、操作栏、阅读设置
+ * Article detail page - immersive reader.
+ * Includes: progress bar, TOC navigation, actions, reading settings.
  */
 
 import {
@@ -22,6 +22,8 @@ import { Badge } from "@/components/ui/badge";
 import { ErrorState } from "@/components/ui/empty-state";
 import { ArticleContentSkeleton } from "@/components/ui/skeleton";
 import { useArticle } from "@/hooks/use-articles";
+import { type Locale, formatDateTime, t as translate } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
 import { useReadingStore, useReadingStyles } from "@/stores/reading-store";
 import { motion } from "framer-motion";
@@ -31,21 +33,21 @@ import { useParams, useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
 // ============================================
-// 工具函数
+// Helpers
 // ============================================
 
-function formatDate(dateString: string | null) {
+function formatDate(locale: Locale, dateString: string | null) {
 	if (!dateString) return "";
 	const date = new Date(dateString);
 	const now = new Date();
 	const diff = now.getTime() - date.getTime();
 	const days = Math.floor(diff / (1000 * 60 * 60 * 24));
 
-	if (days === 0) return "今天";
-	if (days === 1) return "昨天";
-	if (days < 7) return `${days}天前`;
+	if (days === 0) return translate(locale, "Today");
+	if (days === 1) return translate(locale, "Yesterday");
+	if (days < 7) return translate(locale, "{count} days ago", { count: days });
 
-	return date.toLocaleDateString("zh-CN", {
+	return formatDateTime(locale, date, {
 		month: "short",
 		day: "numeric",
 		year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
@@ -54,43 +56,45 @@ function formatDate(dateString: string | null) {
 
 function estimateReadingTime(content: string | null): number {
 	if (!content) return 0;
-	const wordsPerMinute = 400; // 中文阅读速度
+	const wordsPerMinute = 400; // Reading speed heuristic
 	const textLength = content.replace(/<[^>]*>/g, "").length;
 	return Math.max(1, Math.ceil(textLength / wordsPerMinute));
 }
 
 // ============================================
-// 主组件
+// Main
 // ============================================
 
 export default function ArticleDetailPage() {
 	const params = useParams();
 	const router = useRouter();
+	const locale = useLocale();
+	const t = useT();
 	const articleId = params.id as string;
 	const contentRef = useRef<HTMLDivElement>(null);
 
-	// 状态
+	// State
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [tocDrawerOpen, setTocDrawerOpen] = useState(false);
 
-	// 数据
+	// Data
 	const { data: article, isLoading, error } = useArticle(articleId);
 
-	// 目录提取
+	// TOC
 	const { items: tocItems, activeId } = useTableOfContents(contentRef);
 
-	// 阅读设置
+	// Reading settings
 	const readingStyles = useReadingStyles();
 	const theme = useReadingStore((s) => s.settings.theme);
 
-	// 主题样式
+	// Theme styles
 	const themeStyles = {
 		light: "bg-white text-neutral-900",
 		dark: "bg-[#1A1A1A] text-neutral-100",
 		sepia: "bg-[#F4ECD8] text-[#5C4B37]",
 	};
 
-	// 加载状态
+	// Loading state
 	if (isLoading) {
 		return (
 			<ReaderLayout>
@@ -103,14 +107,14 @@ export default function ArticleDetailPage() {
 		);
 	}
 
-	// 错误状态
+	// Error state
 	if (error || !article) {
 		return (
 			<ReaderLayout>
 				<div className="flex min-h-screen items-center justify-center">
 					<ErrorState
 						action={{
-							label: "返回上一页",
+							label: t("Go back"),
 							onClick: () => router.back(),
 						}}
 					/>
@@ -123,17 +127,17 @@ export default function ArticleDetailPage() {
 
 	return (
 		<ReaderLayout>
-			{/* 阅读进度条 */}
+			{/* Reading progress */}
 			<ReadingProgress />
 
-			{/* 主容器 */}
+			{/* Container */}
 			<div
 				className={cn(
 					"min-h-screen transition-colors duration-300",
 					themeStyles[theme],
 				)}
 			>
-				{/* 顶部导航栏 */}
+				{/* Top nav */}
 				<nav
 					className={cn(
 						"sticky top-0 z-40 backdrop-blur-sm border-b",
@@ -145,7 +149,7 @@ export default function ArticleDetailPage() {
 					)}
 				>
 					<div className="mx-auto flex h-14 max-w-4xl items-center justify-between px-5">
-						{/* 返回按钮 */}
+						{/* Back */}
 						<button
 							type="button"
 							onClick={() => router.back()}
@@ -157,10 +161,10 @@ export default function ArticleDetailPage() {
 							)}
 						>
 							<ArrowLeft className="h-4 w-4" />
-							<span>返回</span>
+							<span>{t("Back")}</span>
 						</button>
 
-						{/* 阅读时间 + 原文链接 */}
+						{/* Reading time + source link */}
 						<div className="flex items-center gap-4">
 							<span
 								className={cn(
@@ -168,7 +172,7 @@ export default function ArticleDetailPage() {
 									theme === "dark" ? "text-neutral-500" : "text-neutral-400",
 								)}
 							>
-								约 {readingTime} 分钟
+								{t("About {minutes} minutes", { minutes: readingTime })}
 							</span>
 
 							{article.link && (
@@ -183,7 +187,7 @@ export default function ArticleDetailPage() {
 											: "text-neutral-500 hover:text-neutral-900",
 									)}
 								>
-									<span>原文</span>
+									<span>{t("Original")}</span>
 									<ExternalLink className="h-3.5 w-3.5" />
 								</Link>
 							)}
@@ -191,16 +195,16 @@ export default function ArticleDetailPage() {
 					</div>
 				</nav>
 
-				{/* 主内容区域 */}
+				{/* Main */}
 				<div className="relative mx-auto max-w-4xl">
-					{/* 桌面端：左侧目录 */}
+					{/* Desktop: TOC */}
 					{tocItems.length > 0 && (
 						<div className="hidden xl:block fixed left-8 top-1/2 -translate-y-1/2 z-20">
 							<TableOfContents items={tocItems} activeId={activeId} />
 						</div>
 					)}
 
-					{/* 桌面端：右侧操作栏 */}
+					{/* Desktop: actions */}
 					<ArticleActions
 						articleId={articleId}
 						articleTitle={article.title}
@@ -208,28 +212,28 @@ export default function ArticleDetailPage() {
 						onOpenSettings={() => setSettingsOpen(true)}
 					/>
 
-					{/* 文章内容 */}
+					{/* Content */}
 					<article
 						className="mx-auto max-w-2xl px-5 pb-24 lg:pb-20"
 						style={readingStyles}
 					>
-						{/* 文章头部 */}
+						{/* Header */}
 						<header className="pt-10 pb-8 border-b border-current/10">
 							<motion.div
 								initial={{ opacity: 0, y: 12 }}
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ duration: 0.5 }}
 							>
-								{/* 分类标签 */}
+								{/* Category */}
 								{article.category_id && (
 									<div className="mb-4">
 										<Badge variant="outline" className="text-xs">
-											资讯
+											{t("Article")}
 										</Badge>
 									</div>
 								)}
 
-								{/* 元信息 */}
+								{/* Meta */}
 								<div
 									className={cn(
 										"flex items-center gap-2 text-sm mb-4",
@@ -250,10 +254,10 @@ export default function ArticleDetailPage() {
 											<span>·</span>
 										</>
 									)}
-									<time>{formatDate(article.published_at)}</time>
+									<time>{formatDate(locale, article.published_at)}</time>
 								</div>
 
-								{/* 标题 */}
+								{/* Title */}
 								<h1
 									className="text-3xl md:text-4xl font-bold leading-tight tracking-tight"
 									style={{ lineHeight: 1.3 }}
@@ -261,7 +265,7 @@ export default function ArticleDetailPage() {
 									{article.title}
 								</h1>
 
-								{/* 摘要 */}
+								{/* Summary */}
 								{article.summary && (
 									<p
 										className={cn(
@@ -277,7 +281,7 @@ export default function ArticleDetailPage() {
 							</motion.div>
 						</header>
 
-						{/* 正文内容 */}
+						{/* Body */}
 						<motion.div
 							ref={contentRef}
 							initial={{ opacity: 0 }}
@@ -295,7 +299,7 @@ export default function ArticleDetailPage() {
 							/>
 						</motion.div>
 
-						{/* 文章底部 */}
+						{/* Footer */}
 						<footer className="mt-16 pt-8 border-t border-current/10">
 							<div className="flex items-center justify-between text-sm">
 								<button
@@ -308,7 +312,7 @@ export default function ArticleDetailPage() {
 											: "text-neutral-500 hover:text-neutral-900",
 									)}
 								>
-									← 返回列表
+									← {t("Back to list")}
 								</button>
 								{article.link && (
 									<Link
@@ -317,7 +321,7 @@ export default function ArticleDetailPage() {
 										rel="noopener noreferrer"
 										className="text-primary-600 hover:text-primary-700 transition-colors"
 									>
-										阅读原文 →
+										{t("Read original")} →
 									</Link>
 								)}
 							</div>
@@ -325,7 +329,7 @@ export default function ArticleDetailPage() {
 					</article>
 				</div>
 
-				{/* 移动端底部操作栏 */}
+				{/* Mobile: bottom actions */}
 				<MobileArticleActions
 					articleId={articleId}
 					onOpenToc={() => setTocDrawerOpen(true)}
@@ -333,7 +337,7 @@ export default function ArticleDetailPage() {
 					tocItemCount={tocItems.length}
 				/>
 
-				{/* 目录抽屉（移动端） */}
+				{/* Mobile: TOC drawer */}
 				<TOCDrawer
 					items={tocItems}
 					activeId={activeId}
@@ -341,7 +345,7 @@ export default function ArticleDetailPage() {
 					onOpenChange={setTocDrawerOpen}
 				/>
 
-				{/* 阅读设置面板 */}
+				{/* Reading settings */}
 				<ReadingSettings
 					open={settingsOpen}
 					onClose={() => setSettingsOpen(false)}

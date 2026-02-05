@@ -139,10 +139,18 @@ impl RateLimitLayer {
 
     pub fn password_reset() -> Self {
         // Password reset requests per client IP (default: 3 per hour).
-        let max_requests =
-            env_u32("LAW_EYE__RATE_LIMIT__PASSWORD_RESET_MAX_REQUESTS").unwrap_or(3);
+        let max_requests = env_u32("LAW_EYE__RATE_LIMIT__PASSWORD_RESET_MAX_REQUESTS").unwrap_or(3);
         let window_seconds =
             env_u64("LAW_EYE__RATE_LIMIT__PASSWORD_RESET_WINDOW_SECONDS").unwrap_or(3600);
+        Self::new(max_requests, window_seconds)
+    }
+
+    pub fn email_verification() -> Self {
+        // Email verification requests per client IP (default: 5 per hour).
+        let max_requests =
+            env_u32("LAW_EYE__RATE_LIMIT__EMAIL_VERIFICATION_MAX_REQUESTS").unwrap_or(5);
+        let window_seconds =
+            env_u64("LAW_EYE__RATE_LIMIT__EMAIL_VERIFICATION_WINDOW_SECONDS").unwrap_or(3600);
         Self::new(max_requests, window_seconds)
     }
 

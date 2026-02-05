@@ -12,10 +12,12 @@ import {
 	useKnowledgeSearchEntities,
 	useKnowledgeTopEntities,
 } from "@/hooks/use-knowledge";
+import { useT } from "@/lib/i18n-client";
 import { useToast } from "@/stores/toast-store";
 import { useCallback, useState } from "react";
 
 export default function KnowledgePage() {
+	const t = useT();
 	const [searchTerm, setSearchTerm] = useState("");
 	const [seedEntityId, setSeedEntityId] = useState<string | null>(null);
 	const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
@@ -45,17 +47,21 @@ export default function KnowledgePage() {
 			{
 				onSuccess: (data) => {
 					toastSuccess(
-						"初始化完成",
-						`已处理 ${data.articles_considered} 篇资讯，写入 ${data.article_entities_inserted} 条关联`,
+						t("Initialization completed"),
+						t("Processed {articles} articles and wrote {links} relations", {
+							articles: data.articles_considered,
+							links: data.article_entities_inserted,
+						}),
 					);
 				},
 				onError: (cause) => {
-					const message = cause instanceof Error ? cause.message : "初始化失败";
-					toastError("初始化知识图谱失败", message);
+					const message =
+						cause instanceof Error ? cause.message : t("Initialization failed");
+					toastError(t("Initialize knowledge graph failed"), message);
 				},
 			},
 		);
-	}, [backfillMutation, toastError, toastSuccess]);
+	}, [backfillMutation, t, toastError, toastSuccess]);
 
 	const onBackfill = mode === "top" ? handleBackfill : null;
 
@@ -69,9 +75,13 @@ export default function KnowledgePage() {
 
 					<div className="flex min-h-0 flex-1 flex-col p-6">
 						<div className="mb-6">
-							<h1 className="text-2xl font-bold text-neutral-900">知识图谱</h1>
+							<h1 className="text-2xl font-bold text-neutral-900">
+								{t("Knowledge Graph")}
+							</h1>
 							<p className="text-sm text-neutral-500">
-								在无限画布中探索实体关系（支持节点拖拽、画布平移/缩放）。
+								{t(
+									"Explore entity relationships on an infinite canvas (drag nodes, pan and zoom).",
+								)}
 							</p>
 						</div>
 

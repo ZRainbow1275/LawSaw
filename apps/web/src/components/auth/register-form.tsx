@@ -3,6 +3,8 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
+import { withLocalePath } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n-client";
 import { safeReturnTo } from "@/lib/utils";
 import { useToastStore } from "@/stores/toast-store";
 import { useRouter } from "next/navigation";
@@ -12,9 +14,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function validateEmail(value: string): string | null {
 	const trimmed = value.trim();
-	if (!trimmed) return "请输入邮箱";
-	if (trimmed.length > 254) return "邮箱过长";
-	if (!EMAIL_RE.test(trimmed)) return "邮箱格式不正确";
+	if (!trimmed) return "Please enter an email";
+	if (trimmed.length > 254) return "Email is too long";
+	if (!EMAIL_RE.test(trimmed)) return "Invalid email format";
 	return null;
 }
 
@@ -23,41 +25,44 @@ type PasswordCheck = { label: string; ok: boolean };
 function passwordChecks(password: string): PasswordCheck[] {
 	const value = password;
 	return [
-		{ label: "至少 12 个字符", ok: value.length >= 12 },
-		{ label: "不超过 128 个字符", ok: value.length <= 128 },
-		{ label: "包含大写字母", ok: /[A-Z]/.test(value) },
-		{ label: "包含小写字母", ok: /[a-z]/.test(value) },
-		{ label: "包含数字", ok: /\d/.test(value) },
-		{ label: "包含符号", ok: /[^A-Za-z0-9]/.test(value) },
-		{ label: "不包含空白字符", ok: !/\s/.test(value) },
+		{ label: "At least 12 characters", ok: value.length >= 12 },
+		{ label: "No more than 128 characters", ok: value.length <= 128 },
+		{ label: "Includes uppercase letter", ok: /[A-Z]/.test(value) },
+		{ label: "Includes lowercase letter", ok: /[a-z]/.test(value) },
+		{ label: "Includes number", ok: /\d/.test(value) },
+		{ label: "Includes symbol", ok: /[^A-Za-z0-9]/.test(value) },
+		{ label: "No whitespace characters", ok: !/\s/.test(value) },
 	];
 }
 
-function passwordStrengthLabel(password: string): "弱" | "中" | "强" {
+function passwordStrengthLabel(password: string): "Weak" | "Medium" | "Strong" {
 	const checks = passwordChecks(password);
 	const score = checks.filter((c) => c.ok).length;
-	if (score >= 7) return "强";
-	if (score >= 5) return "中";
-	return "弱";
+	if (score >= 7) return "Strong";
+	if (score >= 5) return "Medium";
+	return "Weak";
 }
 
 function validatePasswordPolicy(password: string): string | null {
-	if (!password) return "请输入密码";
-	if (password.length < 12) return "密码至少需要 12 个字符";
-	if (password.length > 128) return "密码不能超过 128 个字符";
-	if (/\s/.test(password)) return "密码不能包含空白字符";
+	if (!password) return "Please enter a password";
+	if (password.length < 12) return "Password must be at least 12 characters";
+	if (password.length > 128)
+		return "Password must be no more than 128 characters";
+	if (/\s/.test(password)) return "Password must not contain whitespace";
 	const hasLower = /[a-z]/.test(password);
 	const hasUpper = /[A-Z]/.test(password);
 	const hasDigit = /\d/.test(password);
 	const hasSymbol = /[^A-Za-z0-9]/.test(password);
 	if (!(hasLower && hasUpper && hasDigit && hasSymbol)) {
-		return "密码需包含大写/小写字母、数字和符号";
+		return "Password must include uppercase, lowercase, number, and symbol";
 	}
 	return null;
 }
 
 export function RegisterForm() {
 	const router = useRouter();
+	const locale = useLocale();
+	const t = useT();
 	const { register } = useAuth();
 	const [returnTo, setReturnTo] = useState<string | null>(null);
 	const [tenantSlug, setTenantSlug] = useState("");
@@ -89,12 +94,12 @@ export function RegisterForm() {
 		const emailError = validateEmail(email);
 		const passwordError = validatePasswordPolicy(password);
 		if (emailError || passwordError) {
-			setError(emailError || passwordError || "请检查输入内容");
+			setError(emailError || passwordError || "Please check your input");
 			return;
 		}
 
 		if (password !== confirmPassword) {
-			setError("两次输入的密码不一致");
+			setError("Passwords do not match");
 			return;
 		}
 
@@ -103,13 +108,15 @@ export function RegisterForm() {
 			normalizedTenantSlug &&
 			!/^[a-z][a-z0-9-]{2,31}$/.test(normalizedTenantSlug)
 		) {
-			setError("租户标识格式无效：需小写字母开头，长度 3-32，仅允许 a-z0-9-");
+			setError(
+				"Invalid tenant slug: start with a lowercase letter, length 3-32, only a-z0-9- allowed",
+			);
 			return;
 		}
 
 		const normalizedTenantName = tenantName.trim();
 		if (normalizedTenantName.length > 100) {
-			setError("租户名称过长：最多 100 个字符");
+			setError("Tenant name is too long (max 100 characters)");
 			return;
 		}
 
@@ -134,12 +141,12 @@ export function RegisterForm() {
 					);
 				useToastStore.getState().addToast({
 					type: "success",
-					title: "注册成功",
-					description: "已自动登录",
+					title: t("Signed up"),
+					description: t("Signed in automatically"),
 				});
-				router.replace(nextReturnTo || "/");
+				router.replace(withLocalePath(locale, nextReturnTo || "/"));
 			} else {
-				setError(result.error || "注册失败，请重试");
+				setError(result.error || "Sign up failed. Please try again.");
 			}
 		} finally {
 			setIsSubmitting(false);
@@ -150,7 +157,7 @@ export function RegisterForm() {
 		<form onSubmit={handleSubmit} className="space-y-4">
 			{error && (
 				<div className="rounded-lg bg-error-light p-3 text-sm text-error">
-					{error}
+					{t(error)}
 				</div>
 			)}
 
@@ -159,14 +166,15 @@ export function RegisterForm() {
 					htmlFor="displayName"
 					className="text-sm font-medium text-neutral-700"
 				>
-					显示名称 <span className="text-neutral-400">(可选)</span>
+					{t("Display name")}{" "}
+					<span className="text-neutral-400">({t("Optional")})</span>
 				</label>
 				<Input
 					id="displayName"
 					type="text"
 					value={displayName}
 					onChange={(e) => setDisplayName(e.target.value)}
-					placeholder="您的名称"
+					placeholder={t("Your name")}
 					autoComplete="name"
 				/>
 			</div>
@@ -176,7 +184,8 @@ export function RegisterForm() {
 					htmlFor="tenantSlug"
 					className="text-sm font-medium text-neutral-700"
 				>
-					租户标识 <span className="text-neutral-400">(可选)</span>
+					{t("Tenant slug")}{" "}
+					<span className="text-neutral-400">({t("Optional")})</span>
 				</label>
 				<Input
 					id="tenantSlug"
@@ -187,8 +196,8 @@ export function RegisterForm() {
 					autoComplete="organization"
 				/>
 				<p className="text-xs text-neutral-500">
-					不填则默认使用 <span className="font-mono">default</span>
-					。规则：小写字母开头， 长度 3-32，仅允许{" "}
+					{t("Leave blank to use")} <span className="font-mono">default</span>
+					{t(". Rules: start with a lowercase letter, length 3-32, allowed")}{" "}
 					<span className="font-mono">a-z0-9-</span>
 				</p>
 			</div>
@@ -198,7 +207,8 @@ export function RegisterForm() {
 					htmlFor="tenantName"
 					className="text-sm font-medium text-neutral-700"
 				>
-					租户名称 <span className="text-neutral-400">(可选)</span>
+					{t("Tenant name")}{" "}
+					<span className="text-neutral-400">({t("Optional")})</span>
 				</label>
 				<Input
 					id="tenantName"
@@ -210,13 +220,15 @@ export function RegisterForm() {
 					disabled={!tenantSlug.trim()}
 				/>
 				<p className="text-xs text-neutral-500">
-					仅在你指定租户标识时生效；不填则默认使用租户标识作为名称。
+					{t(
+						"Only used when you set a tenant slug; if empty, the slug will be used as the name.",
+					)}
 				</p>
 			</div>
 
 			<div className="space-y-2">
 				<label htmlFor="email" className="text-sm font-medium text-neutral-700">
-					邮箱
+					{t("Email")}
 				</label>
 				<Input
 					id="email"
@@ -228,11 +240,13 @@ export function RegisterForm() {
 					required
 					autoComplete="email"
 					aria-invalid={touched.email && !!validateEmail(email)}
-					aria-describedby={touched.email && validateEmail(email) ? "email-error" : undefined}
+					aria-describedby={
+						touched.email && validateEmail(email) ? "email-error" : undefined
+					}
 				/>
 				{touched.email && validateEmail(email) && (
 					<p id="email-error" className="text-xs text-error">
-						{validateEmail(email)}
+						{t(validateEmail(email) ?? "")}
 					</p>
 				)}
 			</div>
@@ -242,7 +256,7 @@ export function RegisterForm() {
 					htmlFor="password"
 					className="text-sm font-medium text-neutral-700"
 				>
-					密码
+					{t("Password")}
 				</label>
 				<Input
 					id="password"
@@ -250,7 +264,7 @@ export function RegisterForm() {
 					value={password}
 					onChange={(e) => setPassword(e.target.value)}
 					onBlur={() => setTouched((v) => ({ ...v, password: true }))}
-					placeholder="至少12个字符"
+					placeholder={t("At least 12 characters")}
 					required
 					autoComplete="new-password"
 					aria-invalid={touched.password && !!validatePasswordPolicy(password)}
@@ -262,7 +276,8 @@ export function RegisterForm() {
 				/>
 				<div className="space-y-1">
 					<p className="text-xs text-neutral-500">
-						强度：{password ? passwordStrengthLabel(password) : "—"}
+						{t("Strength: ")}
+						{password ? t(passwordStrengthLabel(password)) : "—"}
 					</p>
 					<ul className="space-y-0.5 text-xs">
 						{passwordChecks(password).map((c) => (
@@ -270,14 +285,14 @@ export function RegisterForm() {
 								key={c.label}
 								className={c.ok ? "text-emerald-700" : "text-neutral-500"}
 							>
-								{c.label}
+								{t(c.label)}
 							</li>
 						))}
 					</ul>
 				</div>
 				{touched.password && validatePasswordPolicy(password) && (
 					<p id="password-error" className="text-xs text-error">
-						{validatePasswordPolicy(password)}
+						{t(validatePasswordPolicy(password) ?? "")}
 					</p>
 				)}
 			</div>
@@ -287,7 +302,7 @@ export function RegisterForm() {
 					htmlFor="confirmPassword"
 					className="text-sm font-medium text-neutral-700"
 				>
-					确认密码
+					{t("Confirm password")}
 				</label>
 				<Input
 					id="confirmPassword"
@@ -295,7 +310,7 @@ export function RegisterForm() {
 					value={confirmPassword}
 					onChange={(e) => setConfirmPassword(e.target.value)}
 					onBlur={() => setTouched((v) => ({ ...v, confirmPassword: true }))}
-					placeholder="再次输入密码"
+					placeholder={t("Re-enter password")}
 					required
 					autoComplete="new-password"
 					aria-invalid={
@@ -315,7 +330,7 @@ export function RegisterForm() {
 					!!confirmPassword &&
 					password !== confirmPassword && (
 						<p id="confirm-password-error" className="text-xs text-error">
-							两次输入的密码不一致
+							{t("Passwords do not match")}
 						</p>
 					)}
 			</div>
@@ -331,16 +346,21 @@ export function RegisterForm() {
 					password !== confirmPassword
 				}
 			>
-				{isSubmitting ? "注册中..." : "创建账户"}
+				{isSubmitting ? t("Signing up...") : t("Create account")}
 			</Button>
 
 			<p className="text-center text-sm text-neutral-500">
-				已有账号？{" "}
+				{t("Already have an account?")}{" "}
 				<a
-					href={returnTo ? `/login?returnTo=${encodeURIComponent(returnTo)}` : "/login"}
+					href={withLocalePath(
+						locale,
+						returnTo
+							? `/login?returnTo=${encodeURIComponent(returnTo)}`
+							: "/login",
+					)}
 					className="text-primary-600 hover:underline"
 				>
-					立即登录
+					{t("Sign in now")}
 				</a>
 			</p>
 		</form>

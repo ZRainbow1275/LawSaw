@@ -53,6 +53,19 @@ jobs:
       - name: Test
         run: cargo test --workspace --all-features --locked
 
+      - name: Install coverage tool (cargo-tarpaulin)
+        run: cargo install cargo-tarpaulin --locked
+
+      - name: Coverage (tarpaulin)
+        run: cargo tarpaulin --workspace --all-features --locked --out Lcov --output-dir target/tarpaulin --root .
+
+      - name: Upload Rust coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-coverage
+          path: target/tarpaulin
+          if-no-files-found: ignore
+
       - name: Security audit (RustSec)
         uses: actions-rust-lang/audit@v1
         with:
@@ -86,6 +99,16 @@ jobs:
 
       - name: Lint + format check (Biome)
         run: pnpm exec biome check src
+
+      - name: Coverage (Istanbul)
+        run: pnpm coverage
+
+      - name: Upload Web coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-coverage
+          path: apps/web/coverage
+          if-no-files-found: ignore
 
       - name: Security audit (pnpm audit)
         run: pnpm audit --audit-level high

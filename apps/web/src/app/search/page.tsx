@@ -13,6 +13,7 @@ import {
 	useAskQuestion,
 	useSearch,
 } from "@/hooks/use-search";
+import { useT } from "@/lib/i18n-client";
 import { useToast } from "@/stores/toast-store";
 import {
 	ArrowUpRight,
@@ -52,6 +53,7 @@ function normalizeExcerpt(excerpt: string): string {
 function SearchContent() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
+	const t = useT();
 	const initialQuery = searchParams.get("q") || "";
 	const initialPageParam = searchParams.get("page");
 	const initialPageParsed = initialPageParam
@@ -174,8 +176,9 @@ function SearchContent() {
 			{ question, top_k: 5 },
 			{
 				onError: (err) => {
-					const message = err instanceof Error ? err.message : "未知错误";
-					toastError("AI 问答失败", message);
+					const message =
+						err instanceof Error ? err.message : t("Unknown error");
+					toastError(t("AI Q&A failed"), message);
 				},
 			},
 		);
@@ -204,8 +207,10 @@ function SearchContent() {
 		<div className="p-6">
 			{/* Page Title */}
 			<div className="mb-6">
-				<h1 className="text-2xl font-bold text-neutral-900">搜索</h1>
-				<p className="text-sm text-neutral-500">搜索法律资讯或向 AI 提问</p>
+				<h1 className="text-2xl font-bold text-neutral-900">{t("Search")}</h1>
+				<p className="text-sm text-neutral-500">
+					{t("Search legal updates or ask AI")}
+				</p>
 			</div>
 
 			{/* Search Form */}
@@ -214,7 +219,7 @@ function SearchContent() {
 					<Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-neutral-400" />
 					<Input
 						type="search"
-						placeholder="输入关键词搜索..."
+						placeholder={t("Type keywords to search...")}
 						className="h-12 pl-12 pr-24 text-lg"
 						value={query}
 						onChange={(e) => setQuery(e.target.value)}
@@ -224,7 +229,7 @@ function SearchContent() {
 						className="absolute right-2 top-1/2 -translate-y-1/2"
 						disabled={searching}
 					>
-						搜索
+						{t("Search")}
 					</Button>
 				</div>
 			</form>
@@ -237,7 +242,7 @@ function SearchContent() {
 					onClick={() => setShowAI(false)}
 				>
 					<Search className="mr-2 h-4 w-4" />
-					关键词搜索
+					{t("Keyword search")}
 				</Button>
 				<Button
 					variant={showAI ? "default" : "outline"}
@@ -246,21 +251,26 @@ function SearchContent() {
 					onClick={() => setShowAI(true)}
 				>
 					<Sparkles className="mr-2 h-4 w-4" />
-					AI 问答
+					{t("AI Q&A")}
 				</Button>
 			</div>
 
 			{aiAvailabilityQuery.isLoading ? (
-				<p className="mb-6 text-xs text-neutral-500">AI 服务检测中...</p>
+				<p className="mb-6 text-xs text-neutral-500">
+					{t("Checking AI service...")}
+				</p>
 			) : aiAvailabilityQuery.isError ? (
 				<p className="mb-6 text-xs text-neutral-500">
-					AI 服务检测失败：{aiAvailabilityError ?? "未知错误"}
-					。请稍后重试或联系管理员。
+					{t("AI service check failed: {message}.", {
+						message: aiAvailabilityError ?? t("Unknown error"),
+					})}{" "}
+					{t("Please try again later or contact an administrator.")}
 				</p>
 			) : !aiAvailable ? (
 				<p className="mb-6 text-xs text-neutral-500">
-					AI 服务未启用：当前环境未配置 AI 服务，AI
-					问答已禁用。如需启用，请联系管理员配置后端 AI API Key。
+					{t(
+						"AI service is disabled: configure the backend AI API key to enable Q&A.",
+					)}
 				</p>
 			) : null}
 
@@ -270,14 +280,14 @@ function SearchContent() {
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2">
 							<MessageCircle className="h-5 w-5 text-primary-500" />
-							AI 智能问答
+							{t("AI Q&A")}
 						</CardTitle>
 					</CardHeader>
 					<CardContent>
 						<form onSubmit={handleAsk} className="mb-6">
 							<div className="flex gap-2">
 								<Input
-									placeholder="输入您的法律问题..."
+									placeholder={t("Type your legal question...")}
 									value={question}
 									onChange={(e) => setQuestion(e.target.value)}
 									className="flex-1"
@@ -301,14 +311,16 @@ function SearchContent() {
 										{askMutation.data.answer}
 									</p>
 									<p className="mt-2 text-xs text-neutral-500">
-										置信度: {(askMutation.data.confidence * 100).toFixed(0)}%
+										{t("Confidence: {value}%", {
+											value: (askMutation.data.confidence * 100).toFixed(0),
+										})}
 									</p>
 								</div>
 
 								{askMutation.data.sources.length > 0 && (
 									<div>
 										<h4 className="mb-2 text-sm font-medium text-neutral-700">
-											参考来源:
+											{t("Sources:")}
 										</h4>
 										<div className="space-y-2">
 											{askMutation.data.sources.map((source) => (
@@ -335,20 +347,22 @@ function SearchContent() {
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2">
 							<Search className="h-5 w-5 text-primary-500" />
-							搜索结果
+							{t("Search results")}
 							{searchEnabled && searchData && !searchIsError && (
-								<Badge variant="outline">{searchData.total} 条结果</Badge>
+								<Badge variant="outline">
+									{t("{count} results", { count: searchData.total })}
+								</Badge>
 							)}
 						</CardTitle>
 					</CardHeader>
 					<CardContent>
 						{!trimmedSearchTerm ? (
 							<p className="py-12 text-center text-neutral-500">
-								输入关键词开始搜索
+								{t("Type keywords to start searching")}
 							</p>
 						) : trimmedSearchTerm.length < 3 ? (
 							<p className="py-12 text-center text-neutral-500">
-								请输入至少 3 个字符后再搜索
+								{t("Please enter at least {count} characters", { count: 3 })}
 							</p>
 						) : searching ? (
 							<div className="animate-pulse space-y-4">
@@ -362,10 +376,10 @@ function SearchContent() {
 						) : searchIsError ? (
 							<div className="py-12 text-center text-neutral-500">
 								<p>
-									搜索失败：
+									{t("Search failed")}:{" "}
 									{searchError instanceof Error
 										? searchError.message
-										: "未知错误"}
+										: t("Unknown error")}
 								</p>
 								<Button
 									variant="outline"
@@ -373,12 +387,12 @@ function SearchContent() {
 									className="mt-4"
 									onClick={() => refetchSearch()}
 								>
-									重试
+									{t("Retry")}
 								</Button>
 							</div>
 						) : !searchData || searchData.results.length === 0 ? (
 							<p className="py-12 text-center text-neutral-500">
-								未找到相关结果
+								{t("No results found")}
 							</p>
 						) : (
 							<div className="space-y-4">
@@ -398,12 +412,14 @@ function SearchContent() {
 												{normalizeExcerpt(result.excerpt)}
 											</p>
 											<p className="mt-2 text-xs text-neutral-400">
-												相关度: {(result.score * 100).toFixed(0)}%
+												{t("Relevance: {value}%", {
+													value: (result.score * 100).toFixed(0),
+												})}
 											</p>
 										</div>
 										<Link
 											href={`/articles/${result.article_id}`}
-											aria-label="查看详情"
+											aria-label={t("View details")}
 											className={buttonVariants({
 												variant: "ghost",
 												size: "icon",
@@ -417,8 +433,13 @@ function SearchContent() {
 								))}
 								<div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 									<p className="text-xs text-neutral-500">
-										显示 {resultFrom}-{resultTo} / {totalResults}（第 {page}/
-										{totalPages} 页）
+										{t("Showing {from}-{to} / {total} (page {page}/{pages})", {
+											from: resultFrom,
+											to: resultTo,
+											total: totalResults,
+											page,
+											pages: totalPages,
+										})}
 									</p>
 									{totalPages > 1 ? (
 										<div className="flex gap-2">
@@ -428,7 +449,7 @@ function SearchContent() {
 												disabled={!hasPrevPage || searching}
 												onClick={() => goToPage(page - 1)}
 											>
-												上一页
+												{t("Previous")}
 											</Button>
 											<Button
 												variant="outline"
@@ -436,7 +457,7 @@ function SearchContent() {
 												disabled={!hasNextPage || searching}
 												onClick={() => goToPage(page + 1)}
 											>
-												下一页
+												{t("Next")}
 											</Button>
 										</div>
 									) : null}

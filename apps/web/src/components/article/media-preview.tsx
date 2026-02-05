@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * 富媒体预览组件
- * 支持图片、PDF、视频、音频的预览展示
+ * Rich media preview.
+ * Supports previewing images, PDFs, videos, and audio files.
  */
 
 import { Modal } from "@/components/ui/modal";
+import { useT } from "@/lib/i18n-client";
 import { fadeVariants } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -16,12 +17,9 @@ import {
 	FileText,
 	Image as ImageIcon,
 	Maximize2,
-	Pause,
 	Play,
 	RotateCw,
 	Volume2,
-	VolumeX,
-	X,
 	ZoomIn,
 	ZoomOut,
 } from "lucide-react";
@@ -29,7 +27,7 @@ import Image from "next/image";
 import { useCallback, useState } from "react";
 
 // ============================================
-// 类型定义
+// Types
 // ============================================
 
 export type MediaType =
@@ -64,7 +62,7 @@ interface MediaPreviewTriggerProps {
 }
 
 // ============================================
-// 工具函数
+// Helpers
 // ============================================
 
 export function detectMediaType(url: string, mimeType?: string): MediaType {
@@ -108,17 +106,17 @@ const mediaTypeIcons: Record<
 	unknown: File,
 };
 
-const mediaTypeLabels: Record<MediaType, string> = {
-	image: "图片",
-	pdf: "PDF 文档",
-	video: "视频",
-	audio: "音频",
-	document: "文档",
-	unknown: "文件",
+const mediaTypeLabelKeys: Record<MediaType, string> = {
+	image: "Image",
+	pdf: "PDF document",
+	video: "Video",
+	audio: "Audio",
+	document: "Document",
+	unknown: "File",
 };
 
 // ============================================
-// 图片预览器
+// Image
 // ============================================
 
 interface ImagePreviewerProps {
@@ -127,6 +125,7 @@ interface ImagePreviewerProps {
 }
 
 function ImagePreviewer({ src, alt }: ImagePreviewerProps) {
+	const t = useT();
 	const [zoom, setZoom] = useState(1);
 	const [rotation, setRotation] = useState(0);
 
@@ -140,14 +139,14 @@ function ImagePreviewer({ src, alt }: ImagePreviewerProps) {
 
 	return (
 		<div className="relative flex flex-col h-full">
-			{/* 工具栏 */}
+			{/* Toolbar */}
 			<div className="flex items-center justify-center gap-2 p-3 border-b border-neutral-100">
 				<button
 					type="button"
 					onClick={handleZoomOut}
 					disabled={zoom <= 0.5}
 					className="p-2 rounded-lg hover:bg-neutral-100 disabled:opacity-40 transition-colors"
-					title="缩小"
+					title={t("Zoom out")}
 				>
 					<ZoomOut className="h-4 w-4" />
 				</button>
@@ -159,7 +158,7 @@ function ImagePreviewer({ src, alt }: ImagePreviewerProps) {
 					onClick={handleZoomIn}
 					disabled={zoom >= 3}
 					className="p-2 rounded-lg hover:bg-neutral-100 disabled:opacity-40 transition-colors"
-					title="放大"
+					title={t("Zoom in")}
 				>
 					<ZoomIn className="h-4 w-4" />
 				</button>
@@ -168,7 +167,7 @@ function ImagePreviewer({ src, alt }: ImagePreviewerProps) {
 					type="button"
 					onClick={handleRotate}
 					className="p-2 rounded-lg hover:bg-neutral-100 transition-colors"
-					title="旋转"
+					title={t("Rotate")}
 				>
 					<RotateCw className="h-4 w-4" />
 				</button>
@@ -177,15 +176,15 @@ function ImagePreviewer({ src, alt }: ImagePreviewerProps) {
 					onClick={handleReset}
 					className="px-3 py-1.5 text-xs text-neutral-600 rounded-lg hover:bg-neutral-100 transition-colors"
 				>
-					重置
+					{t("Reset")}
 				</button>
 			</div>
 
-			{/* 图片容器 */}
+			{/* Canvas */}
 			<div className="flex-1 overflow-auto flex items-center justify-center p-4 bg-neutral-50/50">
 				<motion.img
 					src={src}
-					alt={alt || "预览图片"}
+					alt={alt || t("Image preview")}
 					className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
 					style={{
 						transform: `scale(${zoom}) rotate(${rotation}deg)`,
@@ -201,7 +200,7 @@ function ImagePreviewer({ src, alt }: ImagePreviewerProps) {
 }
 
 // ============================================
-// PDF 预览器
+// PDF
 // ============================================
 
 interface PdfPreviewerProps {
@@ -210,12 +209,13 @@ interface PdfPreviewerProps {
 }
 
 function PdfPreviewer({ src, title }: PdfPreviewerProps) {
+	const t = useT();
 	return (
 		<div className="flex flex-col h-full">
-			{/* 工具栏 */}
+			{/* Toolbar */}
 			<div className="flex items-center justify-between p-3 border-b border-neutral-100">
 				<span className="text-sm font-medium text-neutral-700 truncate">
-					{title || "PDF 文档"}
+					{title || t("PDF document")}
 				</span>
 				<div className="flex items-center gap-2">
 					<a
@@ -223,7 +223,7 @@ function PdfPreviewer({ src, title }: PdfPreviewerProps) {
 						target="_blank"
 						rel="noopener noreferrer"
 						className="p-2 rounded-lg hover:bg-neutral-100 transition-colors"
-						title="在新窗口打开"
+						title={t("Open in new window")}
 					>
 						<ExternalLink className="h-4 w-4" />
 					</a>
@@ -231,19 +231,19 @@ function PdfPreviewer({ src, title }: PdfPreviewerProps) {
 						href={src}
 						download
 						className="p-2 rounded-lg hover:bg-neutral-100 transition-colors"
-						title="下载"
+						title={t("Download")}
 					>
 						<Download className="h-4 w-4" />
 					</a>
 				</div>
 			</div>
 
-			{/* PDF 嵌入 */}
+			{/* Embed */}
 			<div className="flex-1 bg-neutral-100">
 				<iframe
 					src={`${src}#toolbar=0&navpanes=0`}
 					className="w-full h-full border-0"
-					title={title || "PDF 预览"}
+					title={title || t("PDF preview")}
 				/>
 			</div>
 		</div>
@@ -251,7 +251,7 @@ function PdfPreviewer({ src, title }: PdfPreviewerProps) {
 }
 
 // ============================================
-// 视频预览器
+// Video
 // ============================================
 
 interface VideoPreviewerProps {
@@ -260,38 +260,35 @@ interface VideoPreviewerProps {
 }
 
 function VideoPreviewer({ src, title }: VideoPreviewerProps) {
-	const [isPlaying, setIsPlaying] = useState(false);
-	const [isMuted, setIsMuted] = useState(false);
+	const t = useT();
 
 	return (
 		<div className="flex flex-col h-full">
-			{/* 标题栏 */}
+			{/* Header */}
 			<div className="flex items-center justify-between p-3 border-b border-neutral-100">
 				<span className="text-sm font-medium text-neutral-700 truncate">
-					{title || "视频"}
+					{title || t("Video")}
 				</span>
 				<a
 					href={src}
 					download
 					className="p-2 rounded-lg hover:bg-neutral-100 transition-colors"
-					title="下载"
+					title={t("Download")}
 				>
 					<Download className="h-4 w-4" />
 				</a>
 			</div>
 
-			{/* 视频播放器 */}
+			{/* Player */}
 			<div className="flex-1 flex items-center justify-center bg-black p-4">
-				{/* biome-ignore lint/a11y/useMediaCaption: 外部媒体通常不携带字幕轨道，预览器仅提供播放/下载能力 */}
+				{/* biome-ignore lint/a11y/useMediaCaption: External media usually has no captions; preview only provides playback/download. */}
 				<video
 					src={src}
 					className="max-w-full max-h-full rounded-lg"
 					controls
 					playsInline
-					onPlay={() => setIsPlaying(true)}
-					onPause={() => setIsPlaying(false)}
 				>
-					您的浏览器不支持视频播放
+					{t("Your browser does not support video playback.")}
 				</video>
 			</div>
 		</div>
@@ -299,7 +296,7 @@ function VideoPreviewer({ src, title }: VideoPreviewerProps) {
 }
 
 // ============================================
-// 音频预览器
+// Audio
 // ============================================
 
 interface AudioPreviewerProps {
@@ -308,17 +305,18 @@ interface AudioPreviewerProps {
 }
 
 function AudioPreviewer({ src, title }: AudioPreviewerProps) {
+	const t = useT();
 	return (
 		<div className="flex flex-col items-center justify-center p-8 gap-6">
 			<div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary-100 to-primary-200 flex items-center justify-center">
 				<Volume2 className="w-12 h-12 text-primary-600" />
 			</div>
 			<span className="text-sm font-medium text-neutral-700">
-				{title || "音频文件"}
+				{title || t("Audio file")}
 			</span>
-			{/* biome-ignore lint/a11y/useMediaCaption: 外部音频通常不携带字幕/转写轨道，预览器仅提供播放/下载能力 */}
+			{/* biome-ignore lint/a11y/useMediaCaption: External audio usually has no captions/transcripts; preview only provides playback/download. */}
 			<audio src={src} controls className="w-full max-w-md">
-				您的浏览器不支持音频播放
+				{t("Your browser does not support audio playback.")}
 			</audio>
 			<a
 				href={src}
@@ -326,14 +324,14 @@ function AudioPreviewer({ src, title }: AudioPreviewerProps) {
 				className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-600 rounded-lg hover:bg-neutral-100 transition-colors"
 			>
 				<Download className="h-4 w-4" />
-				下载音频
+				{t("Download audio")}
 			</a>
 		</div>
 	);
 }
 
 // ============================================
-// 文档预览器（不可预览）
+// Document (no preview)
 // ============================================
 
 interface DocumentPreviewerProps {
@@ -343,6 +341,7 @@ interface DocumentPreviewerProps {
 }
 
 function DocumentPreviewer({ src, title, type }: DocumentPreviewerProps) {
+	const t = useT();
 	const Icon = mediaTypeIcons[type];
 
 	return (
@@ -352,10 +351,11 @@ function DocumentPreviewer({ src, title, type }: DocumentPreviewerProps) {
 			</div>
 			<div className="text-center">
 				<p className="text-sm font-medium text-neutral-700">
-					{title || "文档"}
+					{title || t("Document")}
 				</p>
 				<p className="text-xs text-neutral-500 mt-1">
-					{mediaTypeLabels[type]} - 暂不支持在线预览
+					{t(mediaTypeLabelKeys[type])} ·{" "}
+					{t("Online preview is not supported yet.")}
 				</p>
 			</div>
 			<div className="flex items-center gap-3">
@@ -365,7 +365,7 @@ function DocumentPreviewer({ src, title, type }: DocumentPreviewerProps) {
 					className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white text-sm font-medium rounded-lg hover:bg-primary-600 transition-colors"
 				>
 					<Download className="h-4 w-4" />
-					下载文件
+					{t("Download file")}
 				</a>
 				<a
 					href={src}
@@ -374,7 +374,7 @@ function DocumentPreviewer({ src, title, type }: DocumentPreviewerProps) {
 					className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-600 rounded-lg border border-neutral-200 hover:bg-neutral-50 transition-colors"
 				>
 					<ExternalLink className="h-4 w-4" />
-					新窗口打开
+					{t("Open in new window")}
 				</a>
 			</div>
 		</div>
@@ -382,7 +382,7 @@ function DocumentPreviewer({ src, title, type }: DocumentPreviewerProps) {
 }
 
 // ============================================
-// 主预览组件
+// Preview
 // ============================================
 
 export function MediaPreview({
@@ -425,7 +425,7 @@ export function MediaPreview({
 }
 
 // ============================================
-// 触发器组件（用于文章内容中的媒体缩略图）
+// Trigger (for inline thumbnails)
 // ============================================
 
 export function MediaPreviewTrigger({
@@ -434,9 +434,10 @@ export function MediaPreviewTrigger({
 	className,
 	children,
 }: MediaPreviewTriggerProps) {
+	const t = useT();
 	const Icon = mediaTypeIcons[media.type];
 	const thumbnailSrc = media.thumbnail || media.url;
-	const thumbnailAlt = media.alt || media.title || "预览";
+	const thumbnailAlt = media.alt || media.title || t("Preview");
 	const isPreviewUrl =
 		thumbnailSrc.startsWith("blob:") || thumbnailSrc.startsWith("data:");
 	const isRemoteHttp =
@@ -463,8 +464,8 @@ export function MediaPreviewTrigger({
 				"hover:border-primary-300 hover:shadow-md transition-all",
 				className,
 			)}
-	>
-			{/* 缩略图或图标 */}
+		>
+			{/* Thumbnail or icon */}
 			{media.thumbnail || media.type === "image" ? (
 				<Image
 					src={thumbnailSrc}
@@ -481,15 +482,15 @@ export function MediaPreviewTrigger({
 				</div>
 			)}
 
-			{/* 悬停遮罩 */}
+			{/* Hover overlay */}
 			<div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
 				<Maximize2 className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
 			</div>
 
-			{/* 类型标签 */}
+			{/* Type label */}
 			{media.type !== "image" && (
 				<div className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/60 text-white text-xs rounded">
-					{mediaTypeLabels[media.type]}
+					{t(mediaTypeLabelKeys[media.type])}
 				</div>
 			)}
 		</button>
@@ -497,7 +498,7 @@ export function MediaPreviewTrigger({
 }
 
 // ============================================
-// Hook: 使用媒体预览
+// Hook: media preview
 // ============================================
 
 export function useMediaPreview() {

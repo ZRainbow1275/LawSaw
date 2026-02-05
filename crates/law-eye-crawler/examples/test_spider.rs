@@ -60,7 +60,11 @@ async fn main() -> anyhow::Result<()> {
     };
 
     match spider
-        .fetch("https://github.com/trending/rust?since=daily", &gh_config, false)
+        .fetch(
+            "https://github.com/trending/rust?since=daily",
+            &gh_config,
+            false,
+        )
         .await
     {
         Ok(articles) => {

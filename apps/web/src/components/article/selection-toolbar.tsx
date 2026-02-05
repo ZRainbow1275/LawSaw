@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * 文字选中工具栏组件
- * 选中文字后弹出操作菜单：高亮、AI 解释、复制引用
+ * Selection toolbar.
+ * A contextual menu shown after selecting text: highlight, AI explain, copy quote.
  */
 
+import { useT } from "@/lib/i18n-client";
 import { popVariants } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/stores/toast-store";
@@ -13,7 +14,7 @@ import { Copy, Highlighter, Quote, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 // ============================================
-// 类型定义
+// Types
 // ============================================
 
 interface SelectionToolbarProps {
@@ -30,7 +31,7 @@ interface ToolbarPosition {
 }
 
 // ============================================
-// 工具栏按钮
+// Button
 // ============================================
 
 interface ToolbarButtonProps {
@@ -69,7 +70,7 @@ function ToolbarButton({
 }
 
 // ============================================
-// 主组件
+// Main
 // ============================================
 
 export function SelectionToolbar({
@@ -79,6 +80,7 @@ export function SelectionToolbar({
 	onCopyQuote,
 	className,
 }: SelectionToolbarProps) {
+	const t = useT();
 	const [isVisible, setIsVisible] = useState(false);
 	const [position, setPosition] = useState<ToolbarPosition>({
 		top: 0,
@@ -89,7 +91,7 @@ export function SelectionToolbar({
 	const toolbarRef = useRef<HTMLDivElement>(null);
 	const { success } = useToast();
 
-	// 计算工具栏位置
+	// Compute toolbar position.
 	const calculatePosition = useCallback((rect: DOMRect): ToolbarPosition => {
 		const toolbarHeight = 44;
 		const toolbarWidth = 280;
@@ -98,7 +100,7 @@ export function SelectionToolbar({
 		let top = rect.top - toolbarHeight - offset + window.scrollY;
 		let left = rect.left + rect.width / 2 - toolbarWidth / 2 + window.scrollX;
 
-		// 边界检查
+		// Boundary checks.
 		if (top < window.scrollY + 10) {
 			top = rect.bottom + offset + window.scrollY;
 		}
@@ -112,7 +114,7 @@ export function SelectionToolbar({
 		return { top, left };
 	}, []);
 
-	// 处理文字选中
+	// Handle selection changes.
 	const handleSelectionChange = useCallback(() => {
 		const selection = window.getSelection();
 
@@ -126,7 +128,7 @@ export function SelectionToolbar({
 		const range = selection.getRangeAt(0);
 		const text = selection.toString().trim();
 
-		// 检查选中是否在容器内
+		// Ensure selection is inside the container.
 		if (
 			containerRef.current &&
 			!containerRef.current.contains(range.commonAncestorContainer)
@@ -135,7 +137,7 @@ export function SelectionToolbar({
 			return;
 		}
 
-		// 至少选中 2 个字符
+		// Require at least 2 characters.
 		if (text.length < 2) {
 			setIsVisible(false);
 			return;
@@ -150,10 +152,10 @@ export function SelectionToolbar({
 		setIsVisible(true);
 	}, [containerRef, calculatePosition]);
 
-	// 监听选中变化
+	// Listen to selection changes.
 	useEffect(() => {
 		const handleMouseUp = () => {
-			// 延迟检查，确保选中已完成
+			// Delay a tick to ensure selection is finalized.
 			setTimeout(handleSelectionChange, 10);
 		};
 
@@ -173,14 +175,14 @@ export function SelectionToolbar({
 		};
 	}, [handleSelectionChange]);
 
-	// 点击外部关闭
+	// Close on outside click.
 	useEffect(() => {
 		const handleClickOutside = (e: MouseEvent) => {
 			if (
 				toolbarRef.current &&
 				!toolbarRef.current.contains(e.target as Node)
 			) {
-				// 延迟关闭，允许点击按钮
+				// Delay close to allow button clicks.
 				setTimeout(() => {
 					const selection = window.getSelection();
 					if (!selection || selection.isCollapsed) {
@@ -194,11 +196,11 @@ export function SelectionToolbar({
 		return () => document.removeEventListener("mousedown", handleClickOutside);
 	}, []);
 
-	// 操作处理
+	// Actions.
 	const handleHighlight = () => {
 		if (selectionRange) {
 			onHighlight?.(selectedText, selectionRange);
-			success("已添加高亮");
+			success(t("Highlight added"));
 		}
 		setIsVisible(false);
 	};
@@ -212,7 +214,7 @@ export function SelectionToolbar({
 		const quote = `"${selectedText}"`;
 		try {
 			await navigator.clipboard.writeText(quote);
-			success("引用已复制");
+			success(t("Quote copied"));
 		} catch {
 			// Fallback
 			const textArea = document.createElement("textarea");
@@ -221,7 +223,7 @@ export function SelectionToolbar({
 			textArea.select();
 			document.execCommand("copy");
 			document.body.removeChild(textArea);
-			success("引用已复制");
+			success(t("Quote copied"));
 		}
 		onCopyQuote?.(selectedText);
 		setIsVisible(false);
@@ -230,7 +232,7 @@ export function SelectionToolbar({
 	const handleCopy = async () => {
 		try {
 			await navigator.clipboard.writeText(selectedText);
-			success("已复制到剪贴板");
+			success(t("Copied to clipboard"));
 		} catch {
 			const textArea = document.createElement("textarea");
 			textArea.value = selectedText;
@@ -238,7 +240,7 @@ export function SelectionToolbar({
 			textArea.select();
 			document.execCommand("copy");
 			document.body.removeChild(textArea);
-			success("已复制到剪贴板");
+			success(t("Copied to clipboard"));
 		}
 		setIsVisible(false);
 	};
@@ -263,41 +265,45 @@ export function SelectionToolbar({
 						left: position.left,
 					}}
 				>
-					{/* 高亮 */}
+					{/* Highlight */}
 					{onHighlight && (
 						<ToolbarButton
 							icon={Highlighter}
-							label="高亮"
+							label={t("Highlight")}
 							onClick={handleHighlight}
 							variant="primary"
 						/>
 					)}
 
-					{/* AI 解释 */}
+					{/* AI explain */}
 					{onAiExplain && (
 						<ToolbarButton
 							icon={Sparkles}
-							label="AI 解释"
+							label={t("AI explain")}
 							onClick={handleAiExplain}
 							variant="ai"
 						/>
 					)}
 
-					{/* 复制引用 */}
-					<ToolbarButton icon={Quote} label="引用" onClick={handleCopyQuote} />
+					{/* Quote */}
+					<ToolbarButton
+						icon={Quote}
+						label={t("Quote")}
+						onClick={handleCopyQuote}
+					/>
 
-					{/* 复制 */}
-					<ToolbarButton icon={Copy} label="复制" onClick={handleCopy} />
+					{/* Copy */}
+					<ToolbarButton icon={Copy} label={t("Copy")} onClick={handleCopy} />
 
-					{/* 分隔线 */}
+					{/* Divider */}
 					<div className="w-px h-6 bg-neutral-700 mx-1" />
 
-					{/* 关闭 */}
+					{/* Close */}
 					<button
 						type="button"
 						onClick={() => setIsVisible(false)}
 						className="p-1.5 text-neutral-400 hover:text-white transition-colors rounded-md hover:bg-neutral-700"
-						title="关闭"
+						title={t("Close")}
 					>
 						<X className="h-4 w-4" />
 					</button>
@@ -308,7 +314,7 @@ export function SelectionToolbar({
 }
 
 // ============================================
-// Hook: 使用选中工具栏
+// Hook
 // ============================================
 
 export function useSelectionToolbar() {
@@ -318,7 +324,7 @@ export function useSelectionToolbar() {
 	const handleAiExplain = useCallback(async (text: string) => {
 		setSelectedText(text);
 		setIsExplaining(true);
-		// 实际 AI 解释逻辑由父组件处理
+		// Actual AI explain logic is handled by the parent.
 	}, []);
 
 	const closeExplain = useCallback(() => {

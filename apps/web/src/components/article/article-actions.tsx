@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * 文章操作栏组件
- * 收藏、分享、阅读设置
+ * Article actions toolbar.
+ * Bookmark, share, and reading settings.
  */
 
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
 import { useBookmark } from "@/stores/reading-store";
 import { useToast } from "@/stores/toast-store";
@@ -22,51 +23,52 @@ import {
 import * as React from "react";
 
 // ============================================
-// 类型定义
+// Types
 // ============================================
 
 interface ArticleActionsProps {
-	/** 文章 ID */
+	/** Article ID */
 	articleId: string;
-	/** 文章标题 */
+	/** Article title */
 	articleTitle: string;
-	/** 文章 URL */
+	/** Article URL */
 	articleUrl?: string;
-	/** 打开设置面板 */
+	/** Open settings panel */
 	onOpenSettings?: () => void;
-	/** 自定义类名 */
+	/** Custom class name */
 	className?: string;
 }
 
 // ============================================
-// 主组件
+// Desktop
 // ============================================
 
 export function ArticleActions({
 	articleId,
-	articleTitle,
+	articleTitle: _articleTitle,
 	articleUrl,
 	onOpenSettings,
 	className,
 }: ArticleActionsProps) {
+	const t = useT();
 	const { isBookmarked, toggle: toggleBookmark } = useBookmark(articleId);
 	const { success } = useToast();
 	const [showShareMenu, setShowShareMenu] = React.useState(false);
 	const [copied, setCopied] = React.useState(false);
 
-	// 收藏操作
+	// Bookmark
 	const handleBookmark = () => {
 		const newState = toggleBookmark();
-		success(newState ? "已添加收藏" : "已取消收藏");
+		success(newState ? t("Added to bookmarks") : t("Removed from bookmarks"));
 	};
 
-	// 复制链接
+	// Copy link
 	const handleCopyLink = async () => {
 		const url = articleUrl || window.location.href;
 		try {
 			await navigator.clipboard.writeText(url);
 			setCopied(true);
-			success("链接已复制");
+			success(t("Link copied"));
 			setTimeout(() => setCopied(false), 2000);
 		} catch {
 			// Fallback
@@ -77,13 +79,13 @@ export function ArticleActions({
 			document.execCommand("copy");
 			document.body.removeChild(textarea);
 			setCopied(true);
-			success("链接已复制");
+			success(t("Link copied"));
 			setTimeout(() => setCopied(false), 2000);
 		}
 		setShowShareMenu(false);
 	};
 
-	// 回到顶部
+	// Scroll to top
 	const handleScrollToTop = () => {
 		window.scrollTo({ top: 0, behavior: "smooth" });
 	};
@@ -96,19 +98,19 @@ export function ArticleActions({
 				className,
 			)}
 		>
-			{/* 收藏 */}
+			{/* Bookmark */}
 			<ActionButton
 				icon={Bookmark}
-				label={isBookmarked ? "取消收藏" : "收藏"}
+				label={isBookmarked ? t("Remove bookmark") : t("Bookmark")}
 				active={isBookmarked}
 				onClick={handleBookmark}
 			/>
 
-			{/* 分享 */}
+			{/* Share */}
 			<div className="relative">
 				<ActionButton
 					icon={Share2}
-					label="分享"
+					label={t("Share")}
 					onClick={() => setShowShareMenu(!showShareMenu)}
 				/>
 				<AnimatePresence>
@@ -122,20 +124,20 @@ export function ArticleActions({
 				</AnimatePresence>
 			</div>
 
-			{/* 设置 */}
+			{/* Settings */}
 			<ActionButton
 				icon={Settings2}
-				label="阅读设置"
+				label={t("Reading settings")}
 				onClick={onOpenSettings}
 			/>
 
-			{/* 分隔线 */}
+			{/* Divider */}
 			<div className="h-px bg-neutral-200 my-1" />
 
-			{/* 回到顶部 */}
+			{/* Scroll to top */}
 			<ActionButton
 				icon={ChevronUp}
-				label="回到顶部"
+				label={t("Scroll to top")}
 				onClick={handleScrollToTop}
 			/>
 		</div>
@@ -143,7 +145,7 @@ export function ArticleActions({
 }
 
 // ============================================
-// 操作按钮组件
+// Button
 // ============================================
 
 interface ActionButtonProps {
@@ -187,7 +189,7 @@ function ActionButton({
 }
 
 // ============================================
-// 分享菜单
+// Share menu
 // ============================================
 
 interface ShareMenuProps {
@@ -197,6 +199,7 @@ interface ShareMenuProps {
 }
 
 function ShareMenu({ onCopyLink, copied, onClose }: ShareMenuProps) {
+	const t = useT();
 	return (
 		<motion.div
 			initial={{ opacity: 0, x: 10, scale: 0.95 }}
@@ -216,7 +219,7 @@ function ShareMenu({ onCopyLink, copied, onClose }: ShareMenuProps) {
 					) : (
 						<Link2 className="h-4 w-4" />
 					)}
-					<span>{copied ? "已复制" : "复制链接"}</span>
+					<span>{copied ? t("Copied") : t("Copy link")}</span>
 				</button>
 			</div>
 		</motion.div>
@@ -224,7 +227,7 @@ function ShareMenu({ onCopyLink, copied, onClose }: ShareMenuProps) {
 }
 
 // ============================================
-// 移动端底部操作栏
+// Mobile
 // ============================================
 
 interface MobileArticleActionsProps {
@@ -242,27 +245,28 @@ export function MobileArticleActions({
 	onShare,
 	tocItemCount = 0,
 }: MobileArticleActionsProps) {
+	const t = useT();
 	const { isBookmarked, toggle: toggleBookmark } = useBookmark(articleId);
 	const { success } = useToast();
 
 	const handleBookmark = () => {
 		const newState = toggleBookmark();
-		success(newState ? "已添加收藏" : "已取消收藏");
+		success(newState ? t("Added to bookmarks") : t("Removed from bookmarks"));
 	};
 
 	return (
 		<div className="fixed bottom-0 left-0 right-0 z-40 lg:hidden">
 			<div className="flex items-center justify-around bg-white/95 backdrop-blur-md border-t border-neutral-100 px-4 py-3 safe-area-pb">
-				{/* 目录 */}
+				{/* Contents */}
 				{tocItemCount > 0 && (
 					<MobileActionButton
 						icon={<MessageCircle className="h-5 w-5" />}
-						label="目录"
+						label={t("Contents")}
 						onClick={onOpenToc}
 					/>
 				)}
 
-				{/* 收藏 */}
+				{/* Bookmark */}
 				<MobileActionButton
 					icon={
 						<Bookmark
@@ -272,22 +276,22 @@ export function MobileArticleActions({
 							)}
 						/>
 					}
-					label="收藏"
+					label={t("Bookmark")}
 					active={isBookmarked}
 					onClick={handleBookmark}
 				/>
 
-				{/* 设置 */}
+				{/* Settings */}
 				<MobileActionButton
 					icon={<Settings2 className="h-5 w-5" />}
-					label="设置"
+					label={t("Reading settings")}
 					onClick={onOpenSettings}
 				/>
 
-				{/* 分享 */}
+				{/* Share */}
 				<MobileActionButton
 					icon={<Share2 className="h-5 w-5" />}
-					label="分享"
+					label={t("Share")}
 					onClick={onShare}
 				/>
 			</div>

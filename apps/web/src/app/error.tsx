@@ -2,6 +2,8 @@
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { withLocalePath } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n-client";
 import { AlertTriangle, Home, RefreshCcw } from "lucide-react";
 import Link from "next/link";
 import { useEffect } from "react";
@@ -13,6 +15,9 @@ export default function GlobalError({
 	error: Error & { digest?: string };
 	reset: () => void;
 }) {
+	const locale = useLocale();
+	const t = useT();
+
 	useEffect(() => {
 		console.error(error);
 	}, [error]);
@@ -26,17 +31,21 @@ export default function GlobalError({
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2">
 							<AlertTriangle className="h-5 w-5 text-destructive" />
-							出现错误
+							{t("Something went wrong")}
 						</CardTitle>
 					</CardHeader>
 					<CardContent className="space-y-4">
 						<p className="text-sm text-neutral-600">
-							页面渲染时发生错误，请重试；若持续发生，请联系管理员。
+							{t(
+								"An error occurred while rendering the page. Please try again. If it keeps happening, contact an administrator.",
+							)}
 						</p>
 
 						{showDetails ? (
 							<div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
-								<p className="text-xs font-medium text-neutral-700">错误详情</p>
+								<p className="text-xs font-medium text-neutral-700">
+									{t("Error details")}
+								</p>
 								<pre className="mt-2 whitespace-pre-wrap break-words text-xs text-neutral-600">
 									{error.message}
 								</pre>
@@ -48,24 +57,24 @@ export default function GlobalError({
 							</div>
 						) : error.digest ? (
 							<p className="text-xs text-neutral-500">
-								错误标识：{error.digest}
+								{t("Error ID")}: {error.digest}
 							</p>
 						) : null}
 
 						<div className="flex flex-col gap-2 sm:flex-row">
 							<Button onClick={() => reset()}>
 								<RefreshCcw className="h-4 w-4" />
-								重试
+								{t("Retry")}
 							</Button>
 							<Link
-								href="/"
+								href={withLocalePath(locale, "/")}
 								className={buttonVariants({
 									variant: "outline",
 									className: "w-full sm:w-auto",
 								})}
 							>
 								<Home className="h-4 w-4" />
-								返回首页
+								{t("Back to home")}
 							</Link>
 						</div>
 					</CardContent>

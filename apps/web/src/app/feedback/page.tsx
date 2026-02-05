@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { useCreateFeedback, useMyFeedbacks } from "@/hooks/use-feedback";
 import type { CreateFeedbackInput, Feedback } from "@/lib/api/types";
 import { type Locale, formatDateTime, formatTimeAgo } from "@/lib/i18n";
-import { useLocale } from "@/lib/i18n-client";
+import { useLocale, useT } from "@/lib/i18n-client";
 import { useToast } from "@/stores/toast-store";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -48,25 +48,25 @@ const itemVariants = {
 const feedbackTypes = [
 	{
 		value: "source_suggestion" as const,
-		label: "信息源建议",
+		labelKey: "Source suggestion",
 		icon: Rss,
 		color: "text-blue-500 bg-blue-50",
 	},
 	{
 		value: "bug_report" as const,
-		label: "问题反馈",
+		labelKey: "Bug report",
 		icon: Bug,
 		color: "text-red-500 bg-red-50",
 	},
 	{
 		value: "feature_request" as const,
-		label: "功能建议",
+		labelKey: "Feature request",
 		icon: Lightbulb,
 		color: "text-amber-500 bg-amber-50",
 	},
 	{
 		value: "other" as const,
-		label: "其他",
+		labelKey: "Other",
 		icon: HelpCircle,
 		color: "text-neutral-500 bg-neutral-50",
 	},
@@ -74,25 +74,25 @@ const feedbackTypes = [
 
 const statusConfig: Record<
 	Feedback["status"],
-	{ label: string; color: string; icon: typeof Clock }
+	{ labelKey: string; color: string; icon: typeof Clock }
 > = {
 	pending: {
-		label: "待处理",
+		labelKey: "Pending",
 		color: "bg-neutral-100 text-neutral-600",
 		icon: Clock,
 	},
 	reviewing: {
-		label: "处理中",
+		labelKey: "Reviewing",
 		color: "bg-blue-100 text-blue-600",
 		icon: Loader2,
 	},
 	resolved: {
-		label: "已解决",
+		labelKey: "Resolved",
 		color: "bg-green-100 text-green-600",
 		icon: CheckCircle2,
 	},
 	rejected: {
-		label: "已关闭",
+		labelKey: "Closed",
 		color: "bg-red-100 text-red-600",
 		icon: XCircle,
 	},
@@ -119,9 +119,18 @@ function formatTime(locale: Locale, dateStr: string): string {
 
 export default function FeedbackPage() {
 	const locale = useLocale();
-	const { data: myFeedbacks, isLoading: feedbacksLoading, refetch } = useMyFeedbacks();
+	const t = useT();
+	const {
+		data: myFeedbacks,
+		isLoading: feedbacksLoading,
+		refetch,
+	} = useMyFeedbacks();
 	const createFeedback = useCreateFeedback();
-	const { info: toastInfo, success: toastSuccess, error: toastError } = useToast();
+	const {
+		info: toastInfo,
+		success: toastSuccess,
+		error: toastError,
+	} = useToast();
 	const [selectedType, setSelectedType] = useState<
 		CreateFeedbackInput["type"] | null
 	>(null);
@@ -136,7 +145,8 @@ export default function FeedbackPage() {
 	const [queuedOffline, setQueuedOffline] = useState(false);
 
 	useEffect(() => {
-		if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+		if (typeof navigator === "undefined" || !("serviceWorker" in navigator))
+			return;
 
 		const onMessage = (event: MessageEvent) => {
 			const data: unknown = event.data;
@@ -145,23 +155,36 @@ export default function FeedbackPage() {
 			if (typeof record.type !== "string") return;
 
 			if (record.type === "OUTBOX_DELIVERED") {
-				toastSuccess("离线反馈已提交", "网络恢复后已自动发送");
+				toastSuccess(
+					t("Offline feedback submitted"),
+					t("Sent automatically after the network is restored"),
+				);
 				refetch();
 				return;
 			}
 
-			if (record.type === "OUTBOX_DROPPED" || record.type === "OUTBOX_GAVE_UP") {
-				toastError("离线反馈提交失败", "请重新提交或稍后再试");
+			if (
+				record.type === "OUTBOX_DROPPED" ||
+				record.type === "OUTBOX_GAVE_UP"
+			) {
+				toastError(
+					t("Offline feedback submission failed"),
+					t("Please resubmit or try again later"),
+				);
 				return;
 			}
 		};
 
 		navigator.serviceWorker.addEventListener("message", onMessage);
-		return () => navigator.serviceWorker.removeEventListener("message", onMessage);
-	}, [refetch, toastError, toastSuccess]);
+		return () =>
+			navigator.serviceWorker.removeEventListener("message", onMessage);
+	}, [refetch, toastError, toastSuccess, t]);
 
-	const enqueueFeedback = async (payload: CreateFeedbackInput): Promise<boolean> => {
-		if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return false;
+	const enqueueFeedback = async (
+		payload: CreateFeedbackInput,
+	): Promise<boolean> => {
+		if (typeof navigator === "undefined" || !("serviceWorker" in navigator))
+			return false;
 
 		try {
 			const registration = await navigator.serviceWorker.ready;
@@ -206,7 +229,12 @@ export default function FeedbackPage() {
 		if (typeof navigator !== "undefined" && navigator.onLine === false) {
 			const ok = await enqueueFeedback(payload);
 			if (!ok) {
-				toastError("离线提交不可用", "当前环境不支持离线队列，请恢复网络后再试");
+				toastError(
+					t("Offline submission unavailable"),
+					t(
+						"This environment does not support offline queue. Please restore network and try again.",
+					),
+				);
 				return;
 			}
 
@@ -220,7 +248,10 @@ export default function FeedbackPage() {
 				source_name: "",
 			});
 			setSelectedType(null);
-			toastInfo("已加入离线队列", "网络恢复后将自动提交");
+			toastInfo(
+				t("Added to offline queue"),
+				t("Will be submitted automatically after the network is restored"),
+			);
 			setTimeout(() => {
 				setSubmitted(false);
 				setQueuedOffline(false);
@@ -273,7 +304,7 @@ export default function FeedbackPage() {
 							<div className="absolute -left-3 top-0 h-full w-1 rounded-full bg-gradient-to-b from-primary-500 to-primary-300" />
 							<div className="flex items-center gap-3">
 								<h1 className="text-2xl font-bold text-neutral-900">
-									留言反馈
+									{t("Feedback")}
 								</h1>
 								<motion.div
 									animate={{ rotate: [0, 10, -10, 0] }}
@@ -283,7 +314,9 @@ export default function FeedbackPage() {
 								</motion.div>
 							</div>
 							<p className="mt-1 text-sm text-neutral-500">
-								向我们提交建议、反馈问题或推荐新的信息源
+								{t(
+									"Submit suggestions, report issues, or recommend new sources",
+								)}
 							</p>
 						</motion.div>
 
@@ -298,10 +331,10 @@ export default function FeedbackPage() {
 											>
 												<MessageSquarePlus className="h-4 w-4 text-primary-600" />
 											</motion.div>
-											提交反馈
+											{t("Submit feedback")}
 										</CardTitle>
 										<CardDescription>
-											选择反馈类型并填写详细信息
+											{t("Choose a feedback type and provide details")}
 										</CardDescription>
 									</CardHeader>
 									<CardContent className="pt-6">
@@ -334,7 +367,9 @@ export default function FeedbackPage() {
 														animate={{ opacity: 1, y: 0 }}
 														transition={{ delay: 0.4 }}
 													>
-														{queuedOffline ? "已加入离线队列" : "提交成功！"}
+														{queuedOffline
+															? t("Added to offline queue")
+															: t("Submitted successfully!")}
 													</motion.h3>
 													<motion.p
 														className="mt-2 text-sm text-neutral-500"
@@ -343,8 +378,12 @@ export default function FeedbackPage() {
 														transition={{ delay: 0.5 }}
 													>
 														{queuedOffline
-															? "网络恢复后将自动提交，并出现在「我的反馈」列表中"
-															: "感谢您的反馈，我们会尽快处理"}
+															? t(
+																	"It will be submitted automatically after the network is restored and appear in the My feedback list",
+																)
+															: t(
+																	"Thanks for your feedback. We'll review it as soon as possible.",
+																)}
 													</motion.p>
 													<motion.div
 														initial={{ opacity: 0, y: 10 }}
@@ -356,7 +395,7 @@ export default function FeedbackPage() {
 															className="mt-6"
 															onClick={() => setSubmitted(false)}
 														>
-															继续提交
+															{t("Submit another")}
 														</Button>
 													</motion.div>
 												</motion.div>
@@ -371,12 +410,12 @@ export default function FeedbackPage() {
 												>
 													<fieldset>
 														<legend className="mb-3 block text-sm font-medium text-neutral-700">
-															反馈类型
+															{t("Feedback type")}
 														</legend>
 														<div
 															className="grid grid-cols-2 gap-3 sm:grid-cols-4"
 															role="radiogroup"
-															aria-label="反馈类型"
+															aria-label={t("Feedback type")}
 														>
 															{feedbackTypes.map((type, index) => (
 																<motion.label
@@ -418,7 +457,7 @@ export default function FeedbackPage() {
 																		<type.icon className="h-5 w-5" />
 																	</motion.div>
 																	<span className="relative z-10 text-xs font-medium text-neutral-700">
-																		{type.label}
+																		{t(type.labelKey)}
 																	</span>
 																</motion.label>
 															))}
@@ -444,11 +483,11 @@ export default function FeedbackPage() {
 																				htmlFor="feedback-source-name"
 																				className="mb-1 block text-sm font-medium text-neutral-700"
 																			>
-																				信息源名称
+																				{t("Source name")}
 																			</label>
 																			<Input
 																				id="feedback-source-name"
-																				placeholder="例如：最高人民法院官网"
+																				placeholder={t("e.g. Official website")}
 																				value={formData.source_name}
 																				onChange={(e) =>
 																					setFormData({
@@ -463,7 +502,7 @@ export default function FeedbackPage() {
 																				htmlFor="feedback-source-url"
 																				className="mb-1 block text-sm font-medium text-neutral-700"
 																			>
-																				信息源地址
+																				{t("Source URL")}
 																			</label>
 																			<Input
 																				id="feedback-source-url"
@@ -489,11 +528,14 @@ export default function FeedbackPage() {
 																		htmlFor="feedback-title"
 																		className="mb-1 block text-sm font-medium text-neutral-700"
 																	>
-																		标题 <span className="text-red-500">*</span>
+																		{t("Title")}{" "}
+																		<span className="text-red-500">*</span>
 																	</label>
 																	<Input
 																		id="feedback-title"
-																		placeholder="简要描述您的反馈"
+																		placeholder={t(
+																			"Briefly describe your feedback",
+																		)}
 																		value={formData.title}
 																		onChange={(e) =>
 																			setFormData({
@@ -514,13 +556,15 @@ export default function FeedbackPage() {
 																		htmlFor="feedback-content"
 																		className="mb-1 block text-sm font-medium text-neutral-700"
 																	>
-																		详细描述{" "}
+																		{t("Details")}{" "}
 																		<span className="text-red-500">*</span>
 																	</label>
 																	<textarea
 																		id="feedback-content"
 																		className="min-h-[120px] w-full rounded-xl border-2 border-neutral-200 bg-neutral-50 px-4 py-3 text-sm transition-all focus:border-primary-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-																		placeholder="请详细描述您的反馈内容..."
+																		placeholder={t(
+																			"Please describe your feedback in detail...",
+																		)}
 																		value={formData.content}
 																		onChange={(e) =>
 																			setFormData({
@@ -541,12 +585,14 @@ export default function FeedbackPage() {
 																		htmlFor="feedback-contact-email"
 																		className="mb-1 block text-sm font-medium text-neutral-700"
 																	>
-																		联系邮箱（选填）
+																		{t("Contact email (optional)")}
 																	</label>
 																	<Input
 																		id="feedback-contact-email"
 																		type="email"
-																		placeholder="方便我们与您联系"
+																		placeholder={t(
+																			"So we can contact you if needed",
+																		)}
 																		value={formData.contact_email}
 																		onChange={(e) =>
 																			setFormData({
@@ -568,7 +614,7 @@ export default function FeedbackPage() {
 																		variant="outline"
 																		onClick={resetForm}
 																	>
-																		取消
+																		{t("Cancel")}
 																	</Button>
 																	<Button
 																		type="submit"
@@ -581,12 +627,12 @@ export default function FeedbackPage() {
 																		{createFeedback.isPending ? (
 																			<>
 																				<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-																				提交中...
+																				{t("Submitting...")}
 																			</>
 																		) : (
 																			<>
 																				<Send className="mr-2 h-4 w-4" />
-																				提交反馈
+																				{t("Submit feedback")}
 																			</>
 																		)}
 																	</Button>
@@ -604,8 +650,12 @@ export default function FeedbackPage() {
 							<motion.div className="lg:col-span-1" variants={itemVariants}>
 								<Card>
 									<CardHeader>
-										<CardTitle className="text-base">我的反馈</CardTitle>
-										<CardDescription>查看您提交的反馈状态</CardDescription>
+										<CardTitle className="text-base">
+											{t("My feedback")}
+										</CardTitle>
+										<CardDescription>
+											{t("View the status of your submitted feedback")}
+										</CardDescription>
 									</CardHeader>
 									<CardContent>
 										{feedbacksLoading ? (
@@ -639,10 +689,10 @@ export default function FeedbackPage() {
 													<MessageSquarePlus className="mx-auto h-12 w-12 text-neutral-200" />
 												</motion.div>
 												<p className="mt-3 text-sm text-neutral-500">
-													暂无反馈记录
+													{t("No feedback yet")}
 												</p>
 												<p className="mt-1 text-xs text-neutral-400">
-													提交您的第一条反馈吧
+													{t("Submit your first feedback")}
 												</p>
 											</motion.div>
 										) : (
@@ -667,7 +717,7 @@ export default function FeedbackPage() {
 																	className={`ml-2 shrink-0 ${status.color}`}
 																>
 																	<StatusIcon className="mr-1 h-3 w-3" />
-																	{status.label}
+																	{t(status.labelKey)}
 																</Badge>
 															</div>
 															<p className="text-xs text-neutral-500">
@@ -681,7 +731,7 @@ export default function FeedbackPage() {
 																>
 																	<p className="text-xs text-neutral-600">
 																		<span className="font-medium text-primary-600">
-																			回复：
+																			{t("Reply:")}
 																		</span>
 																		{feedback.admin_response}
 																	</p>

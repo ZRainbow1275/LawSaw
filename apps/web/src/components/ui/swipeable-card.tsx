@@ -1,5 +1,6 @@
 "use client";
 
+import { useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
 import {
 	type PanInfo,
@@ -12,7 +13,7 @@ import { Bookmark, MoreHorizontal, Share2, Trash2 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 // ============================================
-// 类型定义
+// Type definitions
 // ============================================
 
 interface SwipeAction {
@@ -26,26 +27,26 @@ interface SwipeAction {
 
 interface SwipeableCardProps {
 	children: ReactNode;
-	/** 左滑显示的操作 */
+	/** Actions revealed by swiping right */
 	leftActions?: SwipeAction[];
-	/** 右滑显示的操作 */
+	/** Actions revealed by swiping left */
 	rightActions?: SwipeAction[];
-	/** 滑动阈值（px） */
+	/** Swipe threshold (px) */
 	threshold?: number;
-	/** 最大滑动距离（px） */
+	/** Max swipe distance (px) */
 	maxSwipe?: number;
-	/** 自定义类名 */
+	/** Custom class name */
 	className?: string;
-	/** 是否禁用滑动 */
+	/** Disable swiping */
 	disabled?: boolean;
-	/** 滑动开始回调 */
+	/** Swipe start callback */
 	onSwipeStart?: () => void;
-	/** 滑动结束回调 */
+	/** Swipe end callback */
 	onSwipeEnd?: () => void;
 }
 
 // ============================================
-// 预设操作
+// Presets
 // ============================================
 
 export const swipeActionPresets = {
@@ -54,7 +55,7 @@ export const swipeActionPresets = {
 		icon: (
 			<Bookmark className={cn("h-5 w-5", isBookmarked && "fill-current")} />
 		),
-		label: isBookmarked ? "取消收藏" : "收藏",
+		label: isBookmarked ? "Remove bookmark" : "Bookmark",
 		color: "text-white",
 		bgColor: "bg-primary-500",
 		onClick,
@@ -62,7 +63,7 @@ export const swipeActionPresets = {
 	share: (onClick: () => void): SwipeAction => ({
 		id: "share",
 		icon: <Share2 className="h-5 w-5" />,
-		label: "分享",
+		label: "Share",
 		color: "text-white",
 		bgColor: "bg-blue-500",
 		onClick,
@@ -70,7 +71,7 @@ export const swipeActionPresets = {
 	delete: (onClick: () => void): SwipeAction => ({
 		id: "delete",
 		icon: <Trash2 className="h-5 w-5" />,
-		label: "删除",
+		label: "Delete",
 		color: "text-white",
 		bgColor: "bg-red-500",
 		onClick,
@@ -78,7 +79,7 @@ export const swipeActionPresets = {
 	more: (onClick: () => void): SwipeAction => ({
 		id: "more",
 		icon: <MoreHorizontal className="h-5 w-5" />,
-		label: "更多",
+		label: "More",
 		color: "text-white",
 		bgColor: "bg-neutral-500",
 		onClick,
@@ -86,7 +87,7 @@ export const swipeActionPresets = {
 };
 
 // ============================================
-// SwipeableCard 组件
+// SwipeableCard
 // ============================================
 
 export function SwipeableCard({
@@ -100,11 +101,12 @@ export function SwipeableCard({
 	onSwipeStart,
 	onSwipeEnd,
 }: SwipeableCardProps) {
+	const t = useT();
 	const [isOpen, setIsOpen] = useState<"left" | "right" | null>(null);
 	const x = useMotionValue(0);
 	const controls = useAnimation();
 
-	// 计算操作按钮的透明度和缩放
+	// Compute opacity/scale for action buttons.
 	const leftOpacity = useTransform(x, [0, threshold], [0, 1]);
 	const leftScale = useTransform(x, [0, threshold], [0.8, 1]);
 	const rightOpacity = useTransform(x, [-threshold, 0], [1, 0]);
@@ -124,9 +126,9 @@ export function SwipeableCard({
 		const velocity = info.velocity.x;
 		const offset = info.offset.x;
 
-		// 判断滑动方向和距离
+		// Determine direction and distance.
 		if (offset > threshold || velocity > 500) {
-			// 右滑（显示左侧操作）
+			// Swipe right (show left actions)
 			if (leftActions.length > 0) {
 				controls.start({ x: maxSwipe });
 				setIsOpen("left");
@@ -135,7 +137,7 @@ export function SwipeableCard({
 				setIsOpen(null);
 			}
 		} else if (offset < -threshold || velocity < -500) {
-			// 左滑（显示右侧操作）
+			// Swipe left (show right actions)
 			if (rightActions.length > 0) {
 				controls.start({ x: -maxSwipe });
 				setIsOpen("right");
@@ -144,7 +146,7 @@ export function SwipeableCard({
 				setIsOpen(null);
 			}
 		} else {
-			// 复位
+			// Reset
 			controls.start({ x: 0 });
 			setIsOpen(null);
 		}
@@ -167,7 +169,7 @@ export function SwipeableCard({
 
 	return (
 		<div className={cn("relative overflow-hidden rounded-xl", className)}>
-			{/* 背景色层（Tailwind class → 可渲染的背景，不写入 style.backgroundColor） */}
+			{/* Background layer (Tailwind class, not style.backgroundColor) */}
 			{rightActions.length > 0 && (
 				<motion.div
 					className={cn("absolute inset-0 rounded-xl", rightBgClass)}
@@ -181,7 +183,7 @@ export function SwipeableCard({
 				/>
 			)}
 
-			{/* 左侧操作按钮（右滑显示） */}
+			{/* Left actions (swipe right) */}
 			{leftActions.length > 0 && (
 				<motion.div
 					className="absolute left-0 top-0 bottom-0 flex items-center"
@@ -200,13 +202,15 @@ export function SwipeableCard({
 							style={{ width: actionButtonWidth }}
 						>
 							{action.icon}
-							<span className="text-xs mt-1 font-medium">{action.label}</span>
+							<span className="text-xs mt-1 font-medium">
+								{t(action.label)}
+							</span>
 						</button>
 					))}
 				</motion.div>
 			)}
 
-			{/* 右侧操作按钮（左滑显示） */}
+			{/* Right actions (swipe left) */}
 			{rightActions.length > 0 && (
 				<motion.div
 					className="absolute right-0 top-0 bottom-0 flex items-center"
@@ -225,13 +229,15 @@ export function SwipeableCard({
 							style={{ width: actionButtonWidth }}
 						>
 							{action.icon}
-							<span className="text-xs mt-1 font-medium">{action.label}</span>
+							<span className="text-xs mt-1 font-medium">
+								{t(action.label)}
+							</span>
 						</button>
 					))}
 				</motion.div>
 			)}
 
-			{/* 主内容（可滑动） */}
+			{/* Main content (draggable) */}
 			<motion.div
 				drag={disabled ? false : "x"}
 				dragConstraints={{ left: -maxSwipe, right: maxSwipe }}
@@ -246,13 +252,13 @@ export function SwipeableCard({
 				{children}
 			</motion.div>
 
-			{/* 点击遮罩（打开状态时点击关闭） */}
+			{/* Backdrop (click to close) */}
 			{isOpen && (
 				<button
 					type="button"
 					className="absolute inset-0 z-10 bg-transparent p-0"
 					onClick={handleClose}
-					aria-label="关闭"
+					aria-label={t("Close")}
 				/>
 			)}
 		</div>
@@ -260,7 +266,7 @@ export function SwipeableCard({
 }
 
 // ============================================
-// SwipeHint 滑动提示组件
+// SwipeHint
 // ============================================
 
 interface SwipeHintProps {
@@ -269,6 +275,8 @@ interface SwipeHintProps {
 }
 
 export function SwipeHint({ direction = "left", className }: SwipeHintProps) {
+	const t = useT();
+
 	return (
 		<motion.div
 			initial={{ opacity: 0 }}
@@ -287,13 +295,13 @@ export function SwipeHint({ direction = "left", className }: SwipeHintProps) {
 					>
 						←
 					</motion.span>
-					左滑操作
+					{t("Swipe left for actions")}
 				</span>
 			)}
 			{direction === "both" && <span className="text-neutral-300">|</span>}
 			{(direction === "right" || direction === "both") && (
 				<span className="flex items-center gap-1">
-					右滑收藏
+					{t("Swipe right to bookmark")}
 					<motion.span
 						animate={{ x: [2, -2, 2] }}
 						transition={{ repeat: Number.POSITIVE_INFINITY, duration: 1.5 }}
@@ -307,7 +315,7 @@ export function SwipeHint({ direction = "left", className }: SwipeHintProps) {
 }
 
 // ============================================
-// 导出
+// Exports
 // ============================================
 
 export default SwipeableCard;

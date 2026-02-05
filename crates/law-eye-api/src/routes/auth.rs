@@ -5,8 +5,8 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use law_eye_db::{CreateAuditLog, CreateUser};
 use law_eye_common::Error;
+use law_eye_db::{CreateAuditLog, CreateUser};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::net::SocketAddr;
@@ -32,6 +32,14 @@ pub fn router() -> Router<AppState> {
             post(register).layer(RateLimitLayer::register()),
         )
         .route("/login", post(login).layer(RateLimitLayer::login()))
+        .route(
+            "/email-verification/request",
+            post(request_email_verification).layer(RateLimitLayer::email_verification()),
+        )
+        .route(
+            "/email-verification/confirm",
+            post(confirm_email_verification).layer(RateLimitLayer::email_verification()),
+        )
         .route(
             "/password-reset/request",
             post(request_password_reset).layer(RateLimitLayer::password_reset()),
@@ -78,6 +86,33 @@ pub struct PasswordResetRequestResponse {
 
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
+pub struct EmailVerificationRequest {
+    pub email: String,
+    /// 租户标识（用于多租户隔离）。未提供时默认使用 `default`。
+    pub tenant_slug: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct EmailVerificationRequestResponse {
+    pub success: bool,
+    pub message: String,
+    /// Development-only: returns the raw token when `PRODUCTION` is not set.
+    pub debug_token: Option<String>,
+    /// Development-only: token expiry timestamp.
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EmailVerificationConfirmRequest {
+    pub email: String,
+    pub token: String,
+    /// 租户标识（用于多租户隔离）。未提供时默认使用 `default`。
+    pub tenant_slug: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct PasswordResetConfirmRequest {
     pub email: String,
     pub token: String,
@@ -92,6 +127,7 @@ pub struct UserResponse {
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
     pub is_active: bool,
+    pub email_verified_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl From<AuthenticatedUser> for UserResponse {
@@ -103,6 +139,7 @@ impl From<AuthenticatedUser> for UserResponse {
             display_name: user.display_name,
             avatar_url: user.avatar_url,
             is_active: user.is_active,
+            email_verified_at: user.email_verified_at,
         }
     }
 }
@@ -116,6 +153,7 @@ impl From<law_eye_db::User> for UserResponse {
             display_name: user.display_name,
             avatar_url: user.avatar_url,
             is_active: user.is_active,
+            email_verified_at: user.email_verified_at,
         }
     }
 }
@@ -390,7 +428,10 @@ fn validate_password_policy(password: &str) -> Result<(), AppError> {
     if password.len() > 128 {
         return Err(AppError::validation("Password is too long"));
     }
-    if password.chars().any(|c| c.is_whitespace() || c.is_control()) {
+    if password
+        .chars()
+        .any(|c| c.is_whitespace() || c.is_control())
+    {
         return Err(AppError::validation(
             "Password must not contain whitespace or control characters",
         ));
@@ -420,6 +461,253 @@ fn password_reset_ttl_seconds() -> u64 {
         .filter(|v| *v > 0)
         .unwrap_or(DEFAULT_TTL_SECS)
         .min(MAX_TTL_SECS)
+}
+
+fn email_verification_ttl_seconds() -> u64 {
+    const DEFAULT_TTL_SECS: u64 = 60 * 60 * 24; // 24h
+    const MAX_TTL_SECS: u64 = 60 * 60 * 24 * 7; // 7d cap
+
+    std::env::var("LAW_EYE__AUTH__EMAIL_VERIFICATION_TTL_SECONDS")
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(DEFAULT_TTL_SECS)
+        .min(MAX_TTL_SECS)
+}
+
+/// 请求邮箱验证（生产环境应通过邮件等渠道交付 token；本实现默认仅在非生产返回 debug_token）
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/email-verification/request",
+    request_body = EmailVerificationRequest,
+    responses(
+        (status = 200, description = "Request accepted", body = EmailVerificationRequestResponse),
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
+    )
+)]
+pub(crate) async fn request_email_verification(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    ApiJson(req): ApiJson<EmailVerificationRequest>,
+) -> ApiResult<Json<EmailVerificationRequestResponse>> {
+    let email_re = EMAIL_RE.as_ref().ok_or_else(|| {
+        AppError::internal_with_code("REGEX_INIT_FAILED", "Internal server error")
+    })?;
+
+    let tenant_slug_re = TENANT_SLUG_RE.as_ref().ok_or_else(|| {
+        AppError::internal_with_code("REGEX_INIT_FAILED", "Internal server error")
+    })?;
+
+    if req.email.is_empty() || !email_re.is_match(&req.email) {
+        return Err(AppError::validation("Invalid email address"));
+    }
+
+    let tenant_slug = req.tenant_slug.unwrap_or_else(|| "default".to_string());
+    let tenant_slug = tenant_slug.trim().to_ascii_lowercase();
+    if !tenant_slug_re.is_match(&tenant_slug) {
+        return Err(AppError::validation(
+            "Invalid tenant_slug (expected: ^[a-z][a-z0-9-]{2,31}$)",
+        ));
+    }
+
+    let tenant = state
+        .tenant_service
+        .get_by_slug(&tenant_slug)
+        .await
+        .map_err(AppError::from)?;
+
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    let is_production = std::env::var_os("PRODUCTION").is_some();
+
+    let mut debug_token: Option<String> = None;
+    let mut expires_at: Option<chrono::DateTime<chrono::Utc>> = None;
+
+    // Avoid account enumeration: return 200 even if user doesn't exist.
+    match state.user_service.get_by_email(&req.email).await {
+        Ok(user) => {
+            if user.tenant_id == tenant.id && user.email_verified_at.is_none() {
+                let ttl_seconds = email_verification_ttl_seconds();
+                let (token, raw_token) = state
+                    .email_verification_service
+                    .create_token(
+                        tenant.id,
+                        user.id,
+                        &user.email,
+                        ttl_seconds,
+                        ip_address.clone(),
+                        user_agent.clone(),
+                    )
+                    .await
+                    .map_err(AppError::from)?;
+
+                state
+                    .audit_service
+                    .log(
+                        tenant.id,
+                        CreateAuditLog {
+                            user_id: Some(user.id),
+                            action: "auth.email_verification.request".to_string(),
+                            resource: "auth".to_string(),
+                            resource_id: Some(user.id),
+                            old_value: None,
+                            new_value: Some(json!({
+                                "expires_at": token.expires_at,
+                            })),
+                            ip_address,
+                            user_agent,
+                        },
+                    )
+                    .await
+                    .map_err(AppError::from)?;
+
+                if !is_production {
+                    debug_token = Some(raw_token);
+                    expires_at = Some(token.expires_at);
+                }
+            }
+        }
+        Err(Error::NotFound(_)) => {}
+        Err(err) => return Err(AppError::from(err)),
+    }
+
+    Ok(Json(EmailVerificationRequestResponse {
+        success: true,
+        message: if is_production {
+            "If an account exists, verification instructions will be delivered out-of-band."
+        } else {
+            "Email verification token generated (development-only)."
+        }
+        .to_string(),
+        debug_token,
+        expires_at,
+    }))
+}
+
+/// 确认邮箱验证（使用 token；不需要登录）
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/email-verification/confirm",
+    request_body = EmailVerificationConfirmRequest,
+    responses(
+        (status = 200, description = "Email verified", body = AuthResponse),
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 401, description = "Invalid token", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
+    )
+)]
+pub(crate) async fn confirm_email_verification(
+    State(state): State<AppState>,
+    mut auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    ApiJson(req): ApiJson<EmailVerificationConfirmRequest>,
+) -> ApiResult<Json<AuthResponse>> {
+    let email_re = EMAIL_RE.as_ref().ok_or_else(|| {
+        AppError::internal_with_code("REGEX_INIT_FAILED", "Internal server error")
+    })?;
+
+    let tenant_slug_re = TENANT_SLUG_RE.as_ref().ok_or_else(|| {
+        AppError::internal_with_code("REGEX_INIT_FAILED", "Internal server error")
+    })?;
+
+    if req.email.is_empty() || !email_re.is_match(&req.email) {
+        return Err(AppError::validation("Invalid email address"));
+    }
+
+    if req.token.trim().is_empty() {
+        return Err(AppError::validation("Invalid token"));
+    }
+
+    let tenant_slug = req.tenant_slug.unwrap_or_else(|| "default".to_string());
+    let tenant_slug = tenant_slug.trim().to_ascii_lowercase();
+    if !tenant_slug_re.is_match(&tenant_slug) {
+        return Err(AppError::validation(
+            "Invalid tenant_slug (expected: ^[a-z][a-z0-9-]{2,31}$)",
+        ));
+    }
+
+    let tenant = state
+        .tenant_service
+        .get_by_slug(&tenant_slug)
+        .await
+        .map_err(AppError::from)?;
+
+    let user = state
+        .user_service
+        .get_by_email(&req.email)
+        .await
+        .map_err(|e| match e {
+            Error::NotFound(_) => AppError::unauthorized("Invalid token or email"),
+            other => AppError::from(other),
+        })?;
+
+    if user.tenant_id != tenant.id {
+        return Err(AppError::unauthorized("Invalid token or email"));
+    }
+
+    // Idempotency: already verified.
+    if user.email_verified_at.is_some() {
+        return Ok(Json(AuthResponse {
+            success: true,
+            message: "Email already verified".to_string(),
+            user: None,
+        }));
+    }
+
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+
+    state
+        .email_verification_service
+        .consume_and_verify(tenant.id, user.id, &user.email, &req.token)
+        .await
+        .map_err(|e| match e {
+            Error::Unauthorized(_) => AppError::unauthorized("Invalid token or email"),
+            other => AppError::from(other),
+        })?;
+
+    state
+        .audit_service
+        .log(
+            tenant.id,
+            CreateAuditLog {
+                user_id: Some(user.id),
+                action: "auth.email_verification.confirm".to_string(),
+                resource: "auth".to_string(),
+                resource_id: Some(user.id),
+                old_value: None,
+                new_value: None,
+                ip_address,
+                user_agent,
+            },
+        )
+        .await
+        .map_err(AppError::from)?;
+
+    // If the caller has an active session for the same user, refresh the session user snapshot.
+    if auth_session
+        .user
+        .as_ref()
+        .is_some_and(|session_user| session_user.id == user.id)
+    {
+        let refreshed = state
+            .user_service
+            .get_by_id(user.id)
+            .await
+            .map_err(AppError::from)?;
+        let auth_user = AuthenticatedUser::from_db_user(&refreshed);
+        auth_session
+            .login(&auth_user)
+            .await
+            .map_err(|e| AppError::internal(format!("Session error: {}", e)))?;
+    }
+
+    Ok(Json(AuthResponse {
+        success: true,
+        message: "Email verified".to_string(),
+        user: None,
+    }))
 }
 
 /// 请求密码重置（生产环境应通过邮件/短信等渠道交付 token；本实现默认仅在非生产返回 debug_token）

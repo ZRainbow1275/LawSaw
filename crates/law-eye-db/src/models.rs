@@ -124,6 +124,7 @@ pub struct User {
     pub preferences: serde_json::Value,
     pub is_active: bool,
     pub last_login: Option<DateTime<Utc>>,
+    pub email_verified_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -165,6 +166,21 @@ pub struct PasswordResetToken {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub user_id: Uuid,
+    pub token_hash: String,
+    pub token_prefix: String,
+    pub requested_ip: Option<String>,
+    pub requested_user_agent: Option<String>,
+    pub expires_at: DateTime<Utc>,
+    pub used_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct EmailVerificationToken {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+    pub email: String,
     pub token_hash: String,
     pub token_prefix: String,
     pub requested_ip: Option<String>,

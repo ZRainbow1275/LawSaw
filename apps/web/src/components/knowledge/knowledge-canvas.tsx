@@ -6,6 +6,7 @@ import {
 	useKnowledgeRelatedEntities,
 } from "@/hooks/use-knowledge";
 import type { KnowledgeEntity, KnowledgeRelatedEntity } from "@/lib/api/types";
+import { useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
 import {
 	Loader2,
@@ -131,6 +132,7 @@ export function KnowledgeCanvas({
 	onSelectEntity: (id: string) => void;
 	className?: string;
 }) {
+	const t = useT();
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const [containerSize, setContainerSize] = useState<{
 		width: number;
@@ -594,7 +596,7 @@ export function KnowledgeCanvas({
 	) => {
 		if (event.button !== 0) return;
 		if (isSpacePressed) {
-			// 空格模式下优先平移画布（允许事件冒泡到画布容器）
+			// In space mode, prefer panning the canvas (allow event bubbling to container).
 			event.preventDefault();
 			return;
 		}
@@ -735,11 +737,15 @@ export function KnowledgeCanvas({
 						<Move className="h-4 w-4" />
 					</span>
 					<div className="min-w-0">
-						<div className="font-medium text-neutral-900">知识图谱画布</div>
+						<div className="font-medium text-neutral-900">
+							{t("Knowledge graph canvas")}
+						</div>
 						<div className="text-xs text-neutral-500">
 							{showEmptySeed
-								? "先从左侧选择一个实体作为中心节点"
-								: "节点可拖拽；拖拽空白处平移；滚轮/触控板平移；Ctrl+滚轮缩放；触屏双指缩放"}
+								? t("Select a seed entity from the left to get started.")
+								: t(
+										"Nodes are draggable; drag empty space to pan; wheel/trackpad to pan; Ctrl+wheel to zoom; pinch to zoom.",
+									)}
 						</div>
 					</div>
 				</div>
@@ -751,7 +757,7 @@ export function KnowledgeCanvas({
 						size="sm"
 						onClick={() => zoomBy(-0.15)}
 						disabled={showEmptySeed}
-						title="缩小"
+						title={t("Zoom out")}
 					>
 						<Minus className="h-4 w-4" />
 					</Button>
@@ -761,7 +767,7 @@ export function KnowledgeCanvas({
 						size="sm"
 						onClick={() => zoomBy(0.15)}
 						disabled={showEmptySeed}
-						title="放大"
+						title={t("Zoom in")}
 					>
 						<Plus className="h-4 w-4" />
 					</Button>
@@ -771,7 +777,7 @@ export function KnowledgeCanvas({
 						size="sm"
 						onClick={resetView}
 						disabled={showEmptySeed}
-						title="重置视图"
+						title={t("Reset view")}
 					>
 						<RotateCcw className="h-4 w-4" />
 					</Button>
@@ -872,7 +878,11 @@ export function KnowledgeCanvas({
 										<div className="mt-0.5 flex items-center gap-2 text-xs text-neutral-500">
 											<span className="truncate">{node.entity_type}</span>
 											<span className="text-neutral-300">•</span>
-											<span>{node.mention_count} 次</span>
+											<span>
+												{t("Mentioned {count} times", {
+													count: node.mention_count,
+												})}
+											</span>
 										</div>
 									</div>
 									<span
@@ -880,7 +890,11 @@ export function KnowledgeCanvas({
 											"mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-lg border",
 											"border-neutral-200 bg-white/70 text-neutral-500",
 										)}
-										title={selected ? "已选中" : "点击选中，拖拽移动"}
+										title={
+											selected
+												? t("Selected")
+												: t("Click to select, drag to move")
+										}
 									>
 										<MousePointer2 className="h-3.5 w-3.5" />
 									</span>
@@ -894,7 +908,7 @@ export function KnowledgeCanvas({
 					<div className="absolute inset-0 flex items-center justify-center bg-white/40 backdrop-blur-sm">
 						<div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm text-neutral-700 shadow-sm">
 							<Loader2 className="h-4 w-4 animate-spin" />
-							<span>加载图谱数据中…</span>
+							<span>{t("Loading graph...")}</span>
 						</div>
 					</div>
 				)}
@@ -906,10 +920,12 @@ export function KnowledgeCanvas({
 								<Move className="h-5 w-5" />
 							</div>
 							<h3 className="mt-4 text-base font-semibold text-neutral-900">
-								还没有选中中心实体
+								{t("No seed entity selected")}
 							</h3>
 							<p className="mt-2 text-sm text-neutral-600">
-								从左侧列表选择一个实体，系统会加载它的关系并在画布中可视化。
+								{t(
+									"Select an entity from the left list, and the system will load its relations and visualize them here.",
+								)}
 							</p>
 						</div>
 					</div>
@@ -922,11 +938,12 @@ export function KnowledgeCanvas({
 								<Loader2 className="h-5 w-5" />
 							</div>
 							<h3 className="mt-4 text-base font-semibold text-neutral-900">
-								暂无可用的实体关系数据
+								{t("No relationship data available")}
 							</h3>
 							<p className="mt-2 text-sm text-neutral-600">
-								如果数据库中还没有实体/关系，请先运行
-								AI/采集流程或使用“初始化知识图谱”。
+								{t(
+									'If there are no entities/relations in the database yet, run the ingestion/AI pipeline or use "Initialize knowledge graph".',
+								)}
 							</p>
 						</div>
 					</div>

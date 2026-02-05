@@ -1,33 +1,33 @@
 "use client";
 
 /**
- * 骨架屏组件
- * 带渐变动画的加载占位符
+ * Skeleton components.
+ * Loading placeholders with shimmer animation.
  */
 
 import { cn } from "@/lib/utils";
 
 // ============================================
-// 类型定义
+// Type definitions
 // ============================================
 
 export type SkeletonVariant = "text" | "circular" | "rectangular" | "card";
 
 interface SkeletonProps {
-	/** 变体类型 */
+	/** Variant */
 	variant?: SkeletonVariant;
-	/** 宽度 */
+	/** Width */
 	width?: string | number;
-	/** 高度 */
+	/** Height */
 	height?: string | number;
-	/** 重复数量 */
+	/** Repeat count */
 	count?: number;
-	/** 自定义类名 */
+	/** Custom class name */
 	className?: string;
 }
 
 // ============================================
-// 基础骨架屏
+// Base skeleton
 // ============================================
 
 function createStableKeys(count: number, prefix: string): string[] {
@@ -71,22 +71,22 @@ export function Skeleton({
 }
 
 // ============================================
-// 预设骨架屏组件
+// Presets
 // ============================================
 
-/** 文章卡片骨架屏 */
+/** Article card skeleton. */
 export function ArticleCardSkeleton() {
 	return (
 		<div className="rounded-xl border border-neutral-100 bg-white p-4 space-y-3">
-			{/* 标签区域 */}
+			{/* Tags */}
 			<div className="flex gap-2">
 				<Skeleton variant="rectangular" width={60} height={24} />
 				<Skeleton variant="rectangular" width={48} height={24} />
 			</div>
-			{/* 标题 */}
+			{/* Title */}
 			<Skeleton variant="text" width="100%" height={24} />
 			<Skeleton variant="text" width="85%" height={20} />
-			{/* 元信息 */}
+			{/* Metadata */}
 			<div className="flex gap-4 pt-2">
 				<Skeleton variant="text" width={80} height={16} />
 				<Skeleton variant="text" width={60} height={16} />
@@ -95,7 +95,7 @@ export function ArticleCardSkeleton() {
 	);
 }
 
-/** 统计卡片骨架屏 */
+/** Stats card skeleton. */
 export function StatCardSkeleton() {
 	return (
 		<div className="rounded-xl border border-neutral-100 bg-white p-6">
@@ -110,21 +110,21 @@ export function StatCardSkeleton() {
 	);
 }
 
-/** 文章内容骨架屏 */
+/** Article content skeleton. */
 export function ArticleContentSkeleton() {
 	return (
 		<div className="space-y-6 max-w-2xl mx-auto">
-			{/* 标题 */}
+			{/* Title */}
 			<div className="space-y-3">
 				<Skeleton variant="text" width="90%" height={36} />
 				<Skeleton variant="text" width="60%" height={36} />
 			</div>
-			{/* 元信息 */}
+			{/* Metadata */}
 			<div className="flex gap-4">
 				<Skeleton variant="text" width={100} height={20} />
 				<Skeleton variant="text" width={80} height={20} />
 			</div>
-			{/* 正文 */}
+			{/* Body */}
 			<div className="space-y-4 pt-8">
 				<Skeleton variant="text" count={4} />
 				<Skeleton variant="text" width="70%" />
@@ -138,7 +138,7 @@ export function ArticleContentSkeleton() {
 	);
 }
 
-/** 侧边栏骨架屏 */
+/** Sidebar skeleton. */
 export function SidebarSkeleton() {
 	return (
 		<div className="space-y-4 p-4">
@@ -147,7 +147,7 @@ export function SidebarSkeleton() {
 				<Skeleton variant="circular" width={40} height={40} />
 				<Skeleton variant="text" width={100} height={24} />
 			</div>
-			{/* 导航项 */}
+			{/* Nav items */}
 			<div className="space-y-2">
 				{createStableKeys(6, "sidebar-skeleton-item").map((key) => (
 					<div key={key} className="flex items-center gap-3 px-3 py-2">
@@ -160,7 +160,7 @@ export function SidebarSkeleton() {
 	);
 }
 
-/** 列表骨架屏 */
+/** List skeleton. */
 export function ListSkeleton({ count = 5 }: { count?: number }) {
 	return (
 		<div className="space-y-4">

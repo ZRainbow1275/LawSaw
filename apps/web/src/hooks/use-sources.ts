@@ -27,8 +27,8 @@ export function useSourceStats() {
 		queryKey: ["sourceStats"],
 		queryFn: () =>
 			apiClient.get("/api/v1/sources/stats", assertSourceStatsResponse),
-		// 真实运行场景下，信息源状态可能被 worker 异步更新（last_fetch/last_error）。
-		// 轻量轮询可让 UI 更接近实时状态，而不依赖手动刷新。
+		// In real-world runs, source state may be updated asynchronously by the worker
+		// (e.g. last_fetch/last_error). Light polling keeps the UI closer to real-time.
 		refetchInterval: 30_000,
 	});
 }
@@ -44,8 +44,8 @@ export function useSources(params?: ListSourcesParams) {
 				`/api/v1/sources?limit=${limit}&offset=${offset}`,
 				assertSourceListResponse,
 			),
-		// 真实运行场景下，信息源状态可能被 worker 异步更新（last_fetch/last_error）。
-		// 轻量轮询可让 UI 更接近实时状态，而不依赖手动刷新。
+		// In real-world runs, source state may be updated asynchronously by the worker
+		// (e.g. last_fetch/last_error). Light polling keeps the UI closer to real-time.
 		refetchInterval: 30_000,
 	});
 }

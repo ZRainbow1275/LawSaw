@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/swipeable-card";
 import { useArticles } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
+import { useT } from "@/lib/i18n-client";
 import { fadeVariants, staggerContainerVariants } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useReadingStore } from "@/stores/reading-store";
@@ -49,23 +50,23 @@ import {
 import { useCallback, useState } from "react";
 
 // ============================================
-// 常量
+// Constants
 // ============================================
 
 const PAGE_SIZE = 20;
 
 const statusOptions = [
-	{ value: "all", label: "全部状态" },
-	{ value: "pending", label: "待处理" },
-	{ value: "processing", label: "处理中" },
-	{ value: "published", label: "已发布" },
-	{ value: "archived", label: "已归档" },
-	{ value: "rejected", label: "已驳回" },
+	{ value: "all", labelKey: "All statuses" },
+	{ value: "pending", labelKey: "Pending" },
+	{ value: "processing", labelKey: "Processing" },
+	{ value: "published", labelKey: "Published" },
+	{ value: "archived", labelKey: "Archived" },
+	{ value: "rejected", labelKey: "Rejected" },
 ] as const;
 
 type StatusFilter = (typeof statusOptions)[number]["value"];
 
-// 分类图标映射 (替代 emoji)
+// Category icon mapping (replaces emoji)
 const categoryIconMap: Record<string, { Icon: LucideIcon; color: string }> = {
 	legislation: { Icon: ScrollText, color: "text-blue-500" },
 	regulation: { Icon: Building2, color: "text-purple-500" },
@@ -80,16 +81,17 @@ const categoryIconMap: Record<string, { Icon: LucideIcon; color: string }> = {
 };
 
 // ============================================
-// 视图模式
+// View mode
 // ============================================
 
 type ViewMode = "list" | "grid";
 
 // ============================================
-// 主组件
+// Main
 // ============================================
 
 export default function ArticlesPage() {
+	const t = useT();
 	const [page, setPage] = useState(0);
 	const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 	const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -113,9 +115,9 @@ export default function ArticlesPage() {
 	const articles = articlesData?.data ?? [];
 	const total = articlesData?.total ?? 0;
 	const totalPages = Math.ceil(total / PAGE_SIZE);
-	const activeStatusLabel =
-		statusOptions.find((option) => option.value === statusFilter)?.label ??
-		"全部状态";
+	const activeStatusKey =
+		statusOptions.find((option) => option.value === statusFilter)?.labelKey ??
+		"All statuses";
 
 	const getCategoryInfo = useCallback(
 		(categoryId: string | null) => {
@@ -127,29 +129,31 @@ export default function ArticlesPage() {
 		[categories],
 	);
 
-	// 收藏处理
+	// Bookmark
 	const handleBookmark = useCallback(
 		(articleId: string) => {
 			const newState = toggleBookmark(articleId);
 			showSuccess(
-				newState ? "已添加收藏" : "已取消收藏",
-				newState ? "文章已添加到收藏夹" : "文章已从收藏夹移除",
+				newState ? t("Added to bookmarks") : t("Removed from bookmarks"),
+				newState
+					? t("Article added to bookmarks")
+					: t("Article removed from bookmarks"),
 			);
 		},
-		[toggleBookmark, showSuccess],
+		[t, toggleBookmark, showSuccess],
 	);
 
-	// 分享处理
+	// Share
 	const handleShare = useCallback(
 		(articleId: string) => {
 			const url = `${window.location.origin}/articles/${articleId}`;
 			navigator.clipboard.writeText(url);
-			showSuccess("链接已复制", "文章链接已复制到剪贴板");
+			showSuccess(t("Link copied"), t("Article link copied to clipboard"));
 		},
-		[showSuccess],
+		[t, showSuccess],
 	);
 
-	// 渲染文章卡片（带滑动操作，仅移动端）
+	// Render a card (swipe actions on mobile only)
 	const renderArticleCard = useCallback(
 		(article: (typeof articles)[0], index: number) => {
 			const { name, icon } = getCategoryInfo(article.category_id);
@@ -168,10 +172,10 @@ export default function ArticlesPage() {
 				/>
 			);
 
-			// 移动端显示滑动操作
+			// Mobile: swipe actions
 			return (
 				<div key={article.id} className="md:contents">
-					{/* 移动端：带滑动 */}
+					{/* Mobile */}
 					<div className="md:hidden">
 						<SwipeableCard
 							rightActions={[
@@ -186,7 +190,7 @@ export default function ArticlesPage() {
 							{card}
 						</SwipeableCard>
 					</div>
-					{/* 桌面端：直接显示 */}
+					{/* Desktop */}
 					<div className="hidden md:block">{card}</div>
 				</div>
 			);
@@ -208,24 +212,24 @@ export default function ArticlesPage() {
 						animate="visible"
 						className="p-6"
 					>
-						{/* 页面标题 */}
+						{/* Title */}
 						<div className="mb-6 flex items-center justify-between">
 							<div>
 								<h1 className="text-2xl font-bold text-neutral-900">
-									资讯列表
+									{t("Articles list")}
 								</h1>
 								<p className="text-sm text-neutral-500">
-									共{" "}
+									{t("Total")}{" "}
 									<AnimatedNumber
 										value={total}
 										duration={800}
 										numberClassName="font-semibold text-neutral-700"
 									/>{" "}
-									条资讯
+									{t("articles")}
 								</p>
 							</div>
 							<div className="flex items-center gap-2">
-								{/* 视图切换 */}
+								{/* View */}
 								<div className="hidden sm:flex items-center gap-1 rounded-lg border border-neutral-200 bg-white p-1">
 									<Button
 										variant={viewMode === "list" ? "secondary" : "ghost"}
@@ -252,12 +256,12 @@ export default function ArticlesPage() {
 									onClick={() => setFiltersOpen((open) => !open)}
 								>
 									<SlidersHorizontal className="mr-2 h-4 w-4" />
-									筛选
+									{t("Filter")}
 								</Button>
 							</div>
 						</div>
 
-						{/* 状态筛选（真实过滤：GET /api/v1/articles?status=...） */}
+						{/* Status filter */}
 						<AnimatePresence initial={false}>
 							{filtersOpen && (
 								<motion.div
@@ -272,7 +276,7 @@ export default function ArticlesPage() {
 										<CardContent className="p-4">
 											<div className="flex flex-wrap items-center gap-2">
 												<span className="text-sm font-medium text-neutral-700">
-													状态
+													{t("Status")}
 												</span>
 												{statusOptions.map((option) => (
 													<Badge
@@ -288,12 +292,14 @@ export default function ArticlesPage() {
 															setPage(0);
 														}}
 													>
-														{option.label}
+														{t(option.labelKey)}
 													</Badge>
 												))}
 												<div className="ml-auto flex items-center gap-2">
 													<span className="text-xs text-neutral-500">
-														当前：{activeStatusLabel}
+														{t("Current: {status}", {
+															status: t(activeStatusKey),
+														})}
 													</span>
 													<Button
 														variant="ghost"
@@ -303,7 +309,7 @@ export default function ArticlesPage() {
 															setPage(0);
 														}}
 													>
-														重置
+														{t("Reset")}
 													</Button>
 												</div>
 											</div>
@@ -313,7 +319,7 @@ export default function ArticlesPage() {
 							)}
 						</AnimatePresence>
 
-						{/* 分类筛选 */}
+						{/* Categories */}
 						<motion.div
 							variants={staggerContainerVariants}
 							initial="hidden"
@@ -329,7 +335,7 @@ export default function ArticlesPage() {
 										setPage(0);
 									}}
 								>
-									全部
+									{t("All")}
 								</Badge>
 							</motion.div>
 							{categories?.map((category, index) => {
@@ -359,7 +365,7 @@ export default function ArticlesPage() {
 							})}
 						</motion.div>
 
-						{/* 移动端滑动提示 */}
+						{/* Mobile swipe hint */}
 						<AnimatePresence>
 							{showMobileHint && articles.length > 0 && (
 								<motion.div
@@ -373,17 +379,17 @@ export default function ArticlesPage() {
 							)}
 						</AnimatePresence>
 
-						{/* 文章列表 */}
+						{/* List */}
 						<Card>
 							<CardHeader>
 								<CardTitle className="flex items-center gap-2">
 									<FileText className="h-5 w-5 text-primary-500" />
-									资讯列表
+									{t("Articles list")}
 								</CardTitle>
 							</CardHeader>
 							<CardContent>
 								{articlesLoading ? (
-									// 加载骨架屏
+									// Loading skeleton
 									<div
 										className={cn(
 											viewMode === "grid"
@@ -402,22 +408,24 @@ export default function ArticlesPage() {
 										))}
 									</div>
 								) : articles.length === 0 ? (
-									// 空状态
+									// Empty state
 									selectedCategory ? (
 										<NoSearchResultState
-											title="该分类暂无资讯"
-											description="尝试选择其他分类或查看全部资讯"
-											actionLabel="查看全部"
+											title={t("No articles in this category")}
+											description={t(
+												"Try selecting another category or view all articles.",
+											)}
+											actionLabel={t("View all")}
 											onAction={() => setSelectedCategory(null)}
 										/>
 									) : (
 										<NoDataState
-											title="暂无资讯"
-											description="系统尚未采集到任何资讯"
+											title={t("No articles")}
+											description={t("No articles have been ingested yet.")}
 										/>
 									)
 								) : (
-									// 文章列表
+									// Items
 									<div
 										className={cn(
 											viewMode === "grid"
@@ -442,7 +450,7 @@ export default function ArticlesPage() {
 									</div>
 								)}
 
-								{/* 分页 */}
+								{/* Pagination */}
 								{totalPages > 1 && (
 									<motion.div
 										initial={{ opacity: 0, y: 10 }}
@@ -451,15 +459,10 @@ export default function ArticlesPage() {
 										className="mt-6 flex items-center justify-between border-t border-neutral-100 pt-4"
 									>
 										<p className="text-sm text-neutral-500">
-											第{" "}
-											<span className="font-medium text-neutral-700">
-												{page + 1}
-											</span>{" "}
-											/{" "}
-											<span className="font-medium text-neutral-700">
-												{totalPages}
-											</span>{" "}
-											页
+											{t("Page {current} / {total}", {
+												current: page + 1,
+												total: totalPages,
+											})}
 										</p>
 										<div className="flex items-center gap-2">
 											<Button
@@ -469,7 +472,7 @@ export default function ArticlesPage() {
 												disabled={page === 0}
 											>
 												<ChevronLeft className="h-4 w-4" />
-												上一页
+												{t("Previous")}
 											</Button>
 											<Button
 												variant="outline"
@@ -479,7 +482,7 @@ export default function ArticlesPage() {
 												}
 												disabled={page >= totalPages - 1}
 											>
-												下一页
+												{t("Next")}
 												<ChevronRight className="h-4 w-4" />
 											</Button>
 										</div>

@@ -16,6 +16,8 @@ import {
 	useTriggerFetch,
 } from "@/hooks/use-sources";
 import type { Source } from "@/lib/api/types";
+import { type Locale, formatTimeAgo, t as translate } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { useToast } from "@/stores/toast-store";
 import {
@@ -38,27 +40,19 @@ const sourceTypeIcons: Record<Source["source_type"], React.ReactNode> = {
 };
 
 const sourceTypeLabels: Record<Source["source_type"], string> = {
-	rss: "RSS 订阅",
-	spider: "网页爬虫",
-	api: "API 接口",
+	rss: "RSS feed",
+	spider: "Web crawler",
+	api: "API endpoint",
 };
 
-function formatTime(dateStr: string | null): string {
-	if (!dateStr) return "从未";
-	const date = new Date(dateStr);
-	const now = new Date();
-	const diffMs = now.getTime() - date.getTime();
-	const diffMins = Math.floor(diffMs / 60000);
-	const diffHours = Math.floor(diffMs / 3600000);
-	const diffDays = Math.floor(diffMs / 86400000);
-
-	if (diffMins < 1) return "刚刚";
-	if (diffMins < 60) return `${diffMins} 分钟前`;
-	if (diffHours < 24) return `${diffHours} 小时前`;
-	return `${diffDays} 天前`;
+function formatTime(locale: Locale, dateStr: string | null): string {
+	if (!dateStr) return translate(locale, "Never");
+	return formatTimeAgo(locale, dateStr);
 }
 
 export default function SourcesPage() {
+	const locale = useLocale();
+	const t = useT();
 	const [page, setPage] = useState(0);
 	const limit = 50;
 	const offset = page * limit;
@@ -94,11 +88,12 @@ export default function SourcesPage() {
 		if (!isAdmin) return;
 		triggerFetch.mutate(id, {
 			onSuccess: () => {
-				toastSuccess("已触发抓取", "采集任务已加入队列");
+				toastSuccess(t("Fetch triggered"), t("Ingestion job queued"));
 			},
 			onError: (cause) => {
-				const message = cause instanceof Error ? cause.message : "触发抓取失败";
-				toastError("触发抓取失败", message);
+				const message =
+					cause instanceof Error ? cause.message : t("Failed to trigger fetch");
+				toastError(t("Failed to trigger fetch"), message);
 			},
 		});
 	};
@@ -106,7 +101,7 @@ export default function SourcesPage() {
 	const handleAddSource = (e: React.FormEvent) => {
 		e.preventDefault();
 		if (!isAdmin) {
-			toastError("权限不足", "仅管理员可添加信息源");
+			toastError(t("Permission denied"), t("Only admins can add sources"));
 			return;
 		}
 		if (!newSource.name || !newSource.url) return;
@@ -123,8 +118,8 @@ export default function SourcesPage() {
 
 			if (!list_selector || !title_selector || !link_selector) {
 				toastError(
-					"爬虫配置不完整",
-					"请填写 list_selector、title_selector、link_selector",
+					t("Crawler config is incomplete"),
+					t("Please fill list_selector, title_selector, and link_selector"),
 				);
 				return;
 			}
@@ -133,7 +128,10 @@ export default function SourcesPage() {
 			if (spiderConfig.delay_ms.trim()) {
 				const parsed = Number(spiderConfig.delay_ms);
 				if (!Number.isFinite(parsed) || parsed < 0) {
-					toastError("爬虫配置无效", "delay_ms 必须是非负数字");
+					toastError(
+						t("Crawler config is invalid"),
+						t("delay_ms must be a non-negative number"),
+					);
 					return;
 				}
 				delay_ms = parsed;
@@ -163,12 +161,14 @@ export default function SourcesPage() {
 						date_selector: "",
 						delay_ms: "",
 					});
-					toastSuccess("添加成功", "信息源已创建");
+					toastSuccess(t("Created"), t("Source created"));
 				},
 				onError: (cause) => {
 					const message =
-						cause instanceof Error ? cause.message : "添加信息源失败";
-					toastError("添加信息源失败", message);
+						cause instanceof Error
+							? cause.message
+							: t("Failed to create source");
+					toastError(t("Failed to create source"), message);
 				},
 			},
 		);
@@ -190,19 +190,19 @@ export default function SourcesPage() {
 						<div className="mb-6 flex items-center justify-between">
 							<div>
 								<h1 className="text-2xl font-bold text-neutral-900">
-									信息源管理
+									{t("Sources")}
 								</h1>
 								<p className="text-sm text-neutral-500">
-									管理和监控所有数据采集源
+									{t("Manage and monitor ingestion sources")}
 								</p>
 							</div>
 							<Button
 								onClick={() => setShowAddForm(true)}
 								disabled={!isAdmin}
-								title={!isAdmin ? "需要管理员权限" : undefined}
+								title={!isAdmin ? t("Admin permission required") : undefined}
 							>
 								<Plus className="mr-2 h-4 w-4" />
-								添加信息源
+								{t("Add source")}
 							</Button>
 						</div>
 
@@ -218,7 +218,9 @@ export default function SourcesPage() {
 											<p className="text-2xl font-bold">
 												{sources?.length ?? 0}
 											</p>
-											<p className="text-sm text-neutral-500">总信息源</p>
+											<p className="text-sm text-neutral-500">
+												{t("Total sources")}
+											</p>
 										</div>
 									</div>
 								</CardContent>
@@ -231,7 +233,9 @@ export default function SourcesPage() {
 										</div>
 										<div>
 											<p className="text-2xl font-bold">{activeCount}</p>
-											<p className="text-sm text-neutral-500">活跃源</p>
+											<p className="text-sm text-neutral-500">
+												{t("Active sources")}
+											</p>
 										</div>
 									</div>
 								</CardContent>
@@ -244,7 +248,9 @@ export default function SourcesPage() {
 										</div>
 										<div>
 											<p className="text-2xl font-bold">{errorCount}</p>
-											<p className="text-sm text-neutral-500">异常源</p>
+											<p className="text-sm text-neutral-500">
+												{t("Sources with errors")}
+											</p>
 										</div>
 									</div>
 								</CardContent>
@@ -256,7 +262,7 @@ export default function SourcesPage() {
 							<Card className="mb-6">
 								<CardHeader>
 									<CardTitle className="flex items-center justify-between">
-										<span>添加新信息源</span>
+										<span>{t("Add a new source")}</span>
 										<Button
 											variant="ghost"
 											size="icon"
@@ -274,11 +280,11 @@ export default function SourcesPage() {
 													htmlFor="new-source-name"
 													className="mb-1 block text-sm font-medium"
 												>
-													名称
+													{t("Name")}
 												</label>
 												<Input
 													id="new-source-name"
-													placeholder="例如：财新网"
+													placeholder={t("e.g., Example News")}
 													value={newSource.name}
 													onChange={(e) =>
 														setNewSource({ ...newSource, name: e.target.value })
@@ -290,7 +296,7 @@ export default function SourcesPage() {
 													htmlFor="new-source-type"
 													className="mb-1 block text-sm font-medium"
 												>
-													类型
+													{t("Type")}
 												</label>
 												<select
 													id="new-source-type"
@@ -303,8 +309,10 @@ export default function SourcesPage() {
 														})
 													}
 												>
-													<option value="rss">RSS 订阅</option>
-													<option value="spider">网页爬虫</option>
+													<option value="rss">{t(sourceTypeLabels.rss)}</option>
+													<option value="spider">
+														{t(sourceTypeLabels.spider)}
+													</option>
 												</select>
 											</div>
 										</div>
@@ -329,11 +337,12 @@ export default function SourcesPage() {
 											<div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 space-y-4">
 												<div>
 													<p className="text-sm font-medium text-neutral-700">
-														爬虫配置
+														{t("Crawler config")}
 													</p>
 													<p className="mt-1 text-xs text-neutral-500">
-														必填：list/title/link selector。可选：content/date
-														selector 与延迟（ms）。
+														{t(
+															"Required: list/title/link selectors. Optional: content/date selectors and delay (ms).",
+														)}
 													</p>
 												</div>
 												<div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -347,7 +356,7 @@ export default function SourcesPage() {
 														</label>
 														<Input
 															id="spider-list-selector"
-															placeholder="例如：.article-list a"
+															placeholder="e.g., .article-list a"
 															value={spiderConfig.list_selector}
 															onChange={(e) =>
 																setSpiderConfig({
@@ -368,7 +377,7 @@ export default function SourcesPage() {
 														</label>
 														<Input
 															id="spider-title-selector"
-															placeholder="例如：.title"
+															placeholder="e.g., .title"
 															value={spiderConfig.title_selector}
 															onChange={(e) =>
 																setSpiderConfig({
@@ -389,7 +398,7 @@ export default function SourcesPage() {
 														</label>
 														<Input
 															id="spider-link-selector"
-															placeholder="例如：a"
+															placeholder="e.g., a"
 															value={spiderConfig.link_selector}
 															onChange={(e) =>
 																setSpiderConfig({
@@ -407,11 +416,11 @@ export default function SourcesPage() {
 															htmlFor="spider-content-selector"
 															className="mb-1 block text-sm font-medium"
 														>
-															content_selector（选填）
+															content_selector (optional)
 														</label>
 														<Input
 															id="spider-content-selector"
-															placeholder="例如：article"
+															placeholder="e.g., article"
 															value={spiderConfig.content_selector}
 															onChange={(e) =>
 																setSpiderConfig({
@@ -426,11 +435,11 @@ export default function SourcesPage() {
 															htmlFor="spider-date-selector"
 															className="mb-1 block text-sm font-medium"
 														>
-															date_selector（选填）
+															date_selector (optional)
 														</label>
 														<Input
 															id="spider-date-selector"
-															placeholder="例如：time"
+															placeholder="e.g., time"
 															value={spiderConfig.date_selector}
 															onChange={(e) =>
 																setSpiderConfig({
@@ -445,13 +454,13 @@ export default function SourcesPage() {
 															htmlFor="spider-delay-ms"
 															className="mb-1 block text-sm font-medium"
 														>
-															delay_ms（选填）
+															delay_ms (optional)
 														</label>
 														<Input
 															id="spider-delay-ms"
 															type="number"
 															min={0}
-															placeholder="例如：500"
+															placeholder="e.g., 500"
 															value={spiderConfig.delay_ms}
 															onChange={(e) =>
 																setSpiderConfig({
@@ -471,10 +480,10 @@ export default function SourcesPage() {
 												variant="outline"
 												onClick={() => setShowAddForm(false)}
 											>
-												取消
+												{t("Cancel")}
 											</Button>
 											<Button type="submit" disabled={createSource.isPending}>
-												{createSource.isPending ? "添加中..." : "添加"}
+												{createSource.isPending ? t("Adding...") : t("Add")}
 											</Button>
 										</div>
 									</form>
@@ -487,7 +496,7 @@ export default function SourcesPage() {
 							<CardHeader>
 								<CardTitle className="flex items-center gap-2">
 									<Rss className="h-5 w-5 text-primary-500" />
-									信息源列表
+									{t("Sources list")}
 								</CardTitle>
 							</CardHeader>
 							<CardContent>
@@ -506,7 +515,7 @@ export default function SourcesPage() {
 								) : sourcesQuery.isError ? (
 									<ErrorState
 										action={{
-											label: "重试",
+											label: t("Retry"),
 											onClick: () => {
 												void sourcesQuery.refetch();
 												void sourceStatsQuery.refetch();
@@ -515,7 +524,7 @@ export default function SourcesPage() {
 									/>
 								) : sources.length === 0 ? (
 									<p className="py-12 text-center text-neutral-500">
-										暂无信息源，点击上方按钮添加
+										{t("No sources yet. Click the button above to add one.")}
 									</p>
 								) : (
 									<div className="space-y-4">
@@ -528,15 +537,15 @@ export default function SourcesPage() {
 													<div className="mb-2 flex items-center gap-2">
 														<Badge variant="outline" className="gap-1">
 															{sourceTypeIcons[source.source_type]}
-															{sourceTypeLabels[source.source_type]}
+															{t(sourceTypeLabels[source.source_type])}
 														</Badge>
 														{source.is_active ? (
-															<Badge variant="success">活跃</Badge>
+															<Badge variant="success">{t("Enabled")}</Badge>
 														) : (
-															<Badge variant="outline">已停用</Badge>
+															<Badge variant="outline">{t("Disabled")}</Badge>
 														)}
 														{source.last_error && (
-															<Badge variant="destructive">异常</Badge>
+															<Badge variant="destructive">{t("Error")}</Badge>
 														)}
 													</div>
 													<h4 className="text-sm font-semibold text-neutral-900">
@@ -548,15 +557,22 @@ export default function SourcesPage() {
 													<div className="mt-2 flex items-center gap-4 text-xs text-neutral-500">
 														<span className="flex items-center gap-1">
 															<Clock className="h-3 w-3" />
-															最后抓取: {formatTime(source.last_fetch)}
+															{t("Last fetch: ")}
+															{formatTime(locale, source.last_fetch)}
 														</span>
 														{source.schedule && (
-															<span>调度: {source.schedule}</span>
+															<span>
+																{t("Schedule: {value}", {
+																	value: source.schedule,
+																})}
+															</span>
 														)}
 													</div>
 													{source.last_error && (
 														<p className="mt-2 text-xs text-destructive">
-															错误: {source.last_error}
+															{t("Error: {message}", {
+																message: source.last_error,
+															})}
 														</p>
 													)}
 												</div>
@@ -566,14 +582,18 @@ export default function SourcesPage() {
 														size="sm"
 														onClick={() => handleTriggerFetch(source.id)}
 														disabled={!isAdmin || triggerFetch.isPending}
-														title={!isAdmin ? "需要管理员权限" : undefined}
+														title={
+															!isAdmin
+																? t("Admin permission required")
+																: undefined
+														}
 													>
 														<RefreshCw
 															className={`mr-1 h-3 w-3 ${
 																triggerFetch.isPending ? "animate-spin" : ""
 															}`}
 														/>
-														抓取
+														{t("Fetch")}
 													</Button>
 												</div>
 											</div>
@@ -581,8 +601,11 @@ export default function SourcesPage() {
 
 										<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 											<p className="text-xs text-neutral-500">
-												显示 {offset + 1}-
-												{Math.min(offset + sources.length, total)} / {total}
+												{t("Showing {from}-{to} / {total}", {
+													from: offset + 1,
+													to: Math.min(offset + sources.length, total),
+													total,
+												})}
 											</p>
 											<div className="flex items-center gap-2">
 												<Button
@@ -591,7 +614,7 @@ export default function SourcesPage() {
 													onClick={() => setPage((p) => Math.max(0, p - 1))}
 													disabled={!canPrev || sourcesQuery.isLoading}
 												>
-													上一页
+													{t("Previous")}
 												</Button>
 												<Button
 													variant="outline"
@@ -599,7 +622,7 @@ export default function SourcesPage() {
 													onClick={() => setPage((p) => p + 1)}
 													disabled={!canNext || sourcesQuery.isLoading}
 												>
-													下一页
+													{t("Next")}
 												</Button>
 											</div>
 										</div>

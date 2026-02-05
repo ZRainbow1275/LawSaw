@@ -1,44 +1,45 @@
 "use client";
 
 /**
- * 文章目录组件
- * 支持高亮当前章节、平滑滚动
+ * Table of contents.
+ * Highlights the active section and supports smooth scrolling.
  */
 
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronRight, List, X } from "lucide-react";
 import * as React from "react";
 
 // ============================================
-// 类型定义
+// Types
 // ============================================
 
 export interface TOCItem {
-	/** 唯一标识（对应标题的 id） */
+	/** Unique id (derived from heading id) */
 	id: string;
-	/** 标题文字 */
+	/** Heading text */
 	text: string;
-	/** 标题层级 (1-3) */
+	/** Heading level (1-3) */
 	level: 1 | 2 | 3;
 }
 
 interface TableOfContentsProps {
-	/** 目录项列表 */
+	/** TOC items */
 	items: TOCItem[];
-	/** 当前激活的章节 ID */
+	/** Active heading id */
 	activeId?: string;
-	/** 点击目录项回调 */
+	/** Item click handler */
 	onItemClick?: (id: string) => void;
-	/** 是否收起（移动端） */
+	/** Collapsed state (mobile) */
 	collapsed?: boolean;
-	/** 自定义类名 */
+	/** Custom class name */
 	className?: string;
 }
 
 // ============================================
-// 桌面端目录组件
+// Desktop
 // ============================================
 
 export function TableOfContents({
@@ -47,6 +48,7 @@ export function TableOfContents({
 	onItemClick,
 	className,
 }: TableOfContentsProps) {
+	const t = useT();
 	const handleClick = (id: string) => {
 		const element = document.getElementById(id);
 		if (element) {
@@ -58,9 +60,12 @@ export function TableOfContents({
 	if (items.length === 0) return null;
 
 	return (
-		<nav aria-label="文章目录" className={cn("w-48 text-sm", className)}>
+		<nav
+			aria-label={t("Table of contents")}
+			className={cn("w-48 text-sm", className)}
+		>
 			<h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-neutral-400">
-				目录
+				{t("Contents")}
 			</h4>
 			<ul className="space-y-1 border-l-2 border-neutral-100">
 				{items.map((item) => (
@@ -72,17 +77,17 @@ export function TableOfContents({
 							className={cn(
 								"block w-full text-left py-1.5 transition-all duration-200",
 								"hover:text-primary-600",
-								// 层级缩进
+								// Indentation by level
 								item.level === 1 && "pl-4 font-medium",
 								item.level === 2 && "pl-6 text-neutral-600",
 								item.level === 3 && "pl-8 text-neutral-500 text-xs",
-								// 激活状态
+								// Active state
 								activeId === item.id && [
 									"border-l-2 border-primary-500 -ml-[2px]",
 									"text-primary-600 font-medium",
 									"bg-primary-50/50",
 								],
-								// 非激活状态
+								// Inactive
 								activeId !== item.id && "text-neutral-500",
 							)}
 						>
@@ -96,7 +101,7 @@ export function TableOfContents({
 }
 
 // ============================================
-// 移动端目录抽屉
+// Mobile drawer
 // ============================================
 
 interface TOCDrawerProps extends TableOfContentsProps {
@@ -111,6 +116,7 @@ export function TOCDrawer({
 	open,
 	onOpenChange,
 }: TOCDrawerProps) {
+	const t = useT();
 	const handleClick = (id: string) => {
 		const element = document.getElementById(id);
 		if (element) {
@@ -124,7 +130,7 @@ export function TOCDrawer({
 		<AnimatePresence>
 			{open && (
 				<>
-					{/* 遮罩 */}
+					{/* Backdrop */}
 					<motion.div
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
@@ -133,7 +139,7 @@ export function TOCDrawer({
 						className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm lg:hidden"
 					/>
 
-					{/* 抽屉 */}
+					{/* Drawer */}
 					<motion.div
 						initial={{ x: "-100%" }}
 						animate={{ x: 0 }}
@@ -141,9 +147,11 @@ export function TOCDrawer({
 						transition={{ type: "spring", damping: 25, stiffness: 200 }}
 						className="fixed left-0 top-0 bottom-0 z-50 w-72 bg-white shadow-xl lg:hidden"
 					>
-						{/* 头部 */}
+						{/* Header */}
 						<div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
-							<h3 className="font-semibold text-neutral-900">文章目录</h3>
+							<h3 className="font-semibold text-neutral-900">
+								{t("Table of contents")}
+							</h3>
 							<Button
 								variant="ghost"
 								size="icon"
@@ -153,7 +161,7 @@ export function TOCDrawer({
 							</Button>
 						</div>
 
-						{/* 目录列表 */}
+						{/* List */}
 						<div
 							className="overflow-y-auto p-4"
 							style={{ maxHeight: "calc(100vh - 60px)" }}
@@ -196,7 +204,7 @@ export function TOCDrawer({
 }
 
 // ============================================
-// 目录触发按钮（移动端）
+// Trigger
 // ============================================
 
 interface TOCTriggerProps {
@@ -206,6 +214,7 @@ interface TOCTriggerProps {
 }
 
 export function TOCTrigger({ onClick, itemCount, className }: TOCTriggerProps) {
+	const t = useT();
 	if (itemCount === 0) return null;
 
 	return (
@@ -216,14 +225,14 @@ export function TOCTrigger({ onClick, itemCount, className }: TOCTriggerProps) {
 			className={cn("gap-2", className)}
 		>
 			<List className="h-4 w-4" />
-			<span>目录</span>
+			<span>{t("Contents")}</span>
 			<span className="text-xs text-neutral-400">({itemCount})</span>
 		</Button>
 	);
 }
 
 // ============================================
-// Hook: 从 HTML 内容提取目录
+// Hook: extract TOC from HTML
 // ============================================
 
 export function useTableOfContents(
@@ -232,7 +241,7 @@ export function useTableOfContents(
 	const [items, setItems] = React.useState<TOCItem[]>([]);
 	const [activeId, setActiveId] = React.useState<string>();
 
-	// 提取标题
+	// Extract headings.
 	React.useEffect(() => {
 		const container = contentRef.current;
 		if (!container) return;
@@ -244,7 +253,7 @@ export function useTableOfContents(
 			const level = Number.parseInt(heading.tagName[1]) as 1 | 2 | 3;
 			const id = heading.id || `heading-${index}`;
 
-			// 确保标题有 ID
+			// Ensure a stable id.
 			if (!heading.id) {
 				heading.id = id;
 			}
@@ -259,7 +268,7 @@ export function useTableOfContents(
 		setItems(tocItems);
 	}, [contentRef]);
 
-	// 监听滚动高亮
+	// Observe scroll to update active heading.
 	React.useEffect(() => {
 		if (items.length === 0) return;
 

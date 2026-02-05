@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * AI 智能摘要卡片组件
- * 展示文章的 AI 分析结果：摘要、关键实体、风险等级
+ * AI insights card.
+ * Displays AI analysis results for an article: summary, key entities and risk level.
  */
 
 import { Badge } from "@/components/ui/badge";
 import type { AiEntity, ArticleAiInsights } from "@/lib/api/types";
+import { useT } from "@/lib/i18n-client";
 import { scaleVariants } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
@@ -27,7 +28,7 @@ import {
 import { useState } from "react";
 
 // ============================================
-// 类型定义
+// Types
 // ============================================
 
 interface AiInsightsCardProps {
@@ -39,33 +40,33 @@ interface AiInsightsCardProps {
 }
 
 // ============================================
-// 风险等级配置
+// Risk level config
 // ============================================
 
 const riskLevelConfig: Record<
 	ArticleAiInsights["risk_level"],
-	{ label: string; color: string; bgColor: string; icon: string }
+	{ labelKey: string; color: string; bgColor: string; icon: string }
 > = {
 	low: {
-		label: "低风险",
+		labelKey: "Low risk",
 		color: "text-success",
 		bgColor: "bg-success/10",
 		icon: "🟢",
 	},
 	medium: {
-		label: "中等风险",
+		labelKey: "Medium risk",
 		color: "text-warning",
 		bgColor: "bg-warning/10",
 		icon: "🟡",
 	},
 	high: {
-		label: "高风险",
+		labelKey: "High risk",
 		color: "text-orange-500",
 		bgColor: "bg-orange-500/10",
 		icon: "🟠",
 	},
 	critical: {
-		label: "严重风险",
+		labelKey: "Critical",
 		color: "text-error",
 		bgColor: "bg-error/10",
 		icon: "🔴",
@@ -73,7 +74,7 @@ const riskLevelConfig: Record<
 };
 
 // ============================================
-// 实体类型图标映射
+// Entity type mapping
 // ============================================
 
 const entityIconMap: Record<
@@ -88,17 +89,17 @@ const entityIconMap: Record<
 	legal_term: BookOpen,
 };
 
-const entityTypeLabels: Record<AiEntity["entity_type"], string> = {
-	organization: "机构",
-	regulation: "法规",
-	person: "人物",
-	date: "日期",
-	location: "地点",
-	legal_term: "法律术语",
+const entityTypeLabelKeys: Record<AiEntity["entity_type"], string> = {
+	organization: "Organization",
+	regulation: "Regulation",
+	person: "Person",
+	date: "Date",
+	location: "Location",
+	legal_term: "Legal term",
 };
 
 // ============================================
-// 骨架屏组件
+// Skeleton
 // ============================================
 
 function AiInsightsSkeleton() {
@@ -122,7 +123,7 @@ function AiInsightsSkeleton() {
 }
 
 // ============================================
-// 主组件
+// Main
 // ============================================
 
 export function AiInsightsCard({
@@ -132,14 +133,15 @@ export function AiInsightsCard({
 	className,
 	defaultExpanded = true,
 }: AiInsightsCardProps) {
+	const t = useT();
 	const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
-	// 加载状态
+	// Loading state
 	if (isLoading) {
 		return <AiInsightsSkeleton />;
 	}
 
-	// 无数据状态
+	// No data
 	if (!insights) {
 		return null;
 	}
@@ -162,7 +164,7 @@ export function AiInsightsCard({
 			animate="visible"
 			className={cn("glass-card overflow-hidden", className)}
 		>
-			{/* 头部 - 始终显示 */}
+			{/* Header */}
 			<button
 				type="button"
 				onClick={() => setIsExpanded(!isExpanded)}
@@ -170,10 +172,12 @@ export function AiInsightsCard({
 			>
 				<div className="flex items-center gap-2">
 					<Sparkles className="h-5 w-5 text-primary-500" />
-					<span className="font-semibold text-neutral-900">AI 智能摘要</span>
+					<span className="font-semibold text-neutral-900">
+						{t("AI insights")}
+					</span>
 				</div>
 				<div className="flex items-center gap-3">
-					{/* 风险等级指示器 */}
+					{/* Risk */}
 					<div
 						className={cn(
 							"flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium",
@@ -182,7 +186,7 @@ export function AiInsightsCard({
 						)}
 					>
 						<span>{riskConfig.icon}</span>
-						<span>{riskConfig.label}</span>
+						<span>{t(riskConfig.labelKey)}</span>
 					</div>
 					{isExpanded ? (
 						<ChevronUp className="h-4 w-4 text-neutral-400" />
@@ -192,7 +196,7 @@ export function AiInsightsCard({
 				</div>
 			</button>
 
-			{/* 展开内容 */}
+			{/* Body */}
 			<AnimatePresence>
 				{isExpanded && (
 					<motion.div
@@ -203,7 +207,7 @@ export function AiInsightsCard({
 						className="overflow-hidden"
 					>
 						<div className="px-4 pb-4 space-y-5 border-t border-neutral-100">
-							{/* TL;DR 摘要 */}
+							{/* TL;DR */}
 							<div className="pt-4">
 								<h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2">
 									TL;DR
@@ -213,12 +217,12 @@ export function AiInsightsCard({
 								</p>
 							</div>
 
-							{/* 关键要点 */}
+							{/* Key points */}
 							{keyPoints.length > 0 && (
 								<div>
 									<h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
 										<Lightbulb className="h-3.5 w-3.5" />
-										关键要点
+										{t("Key points")}
 									</h4>
 									<ul className="space-y-1.5">
 										{keyPoints.map((point) => (
@@ -234,11 +238,11 @@ export function AiInsightsCard({
 								</div>
 							)}
 
-							{/* 关键实体 */}
+							{/* Entities */}
 							{insights.entities.length > 0 && (
 								<div>
 									<h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2">
-										关键实体
+										{t("Key entities")}
 									</h4>
 									<div className="flex flex-wrap gap-2">
 										{insights.entities.slice(0, 8).map((entity) => {
@@ -254,7 +258,7 @@ export function AiInsightsCard({
 														"bg-neutral-100 text-neutral-700 hover:bg-primary-50 hover:text-primary-700",
 														"transition-colors cursor-pointer",
 													)}
-													title={`${entityTypeLabels[entity.entity_type]}: ${entity.context || entity.name}`}
+													title={`${t(entityTypeLabelKeys[entity.entity_type])}: ${entity.context || entity.name}`}
 												>
 													<Icon className="h-3 w-3" />
 													<span>{entity.name}</span>
@@ -263,21 +267,23 @@ export function AiInsightsCard({
 										})}
 										{insights.entities.length > 8 && (
 											<span className="text-xs text-neutral-400 self-center">
-												+{insights.entities.length - 8} 更多
+												{t("{count} more", {
+													count: insights.entities.length - 8,
+												})}
 											</span>
 										)}
 									</div>
 								</div>
 							)}
 
-							{/* 风险维度（仅高风险时显示） */}
+							{/* Risk dimensions */}
 							{(insights.risk_level === "high" ||
 								insights.risk_level === "critical") &&
 								insights.risk_dimensions.length > 0 && (
 									<div>
 										<h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
 											<AlertTriangle className="h-3.5 w-3.5" />
-											风险维度
+											{t("Risk dimensions")}
 										</h4>
 										<div className="space-y-2">
 											{insights.risk_dimensions.map((dim) => (
@@ -312,12 +318,12 @@ export function AiInsightsCard({
 									</div>
 								)}
 
-							{/* 建议 */}
+							{/* Recommendations */}
 							{recommendations.length > 0 && (
 								<div>
 									<h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
 										<Shield className="h-3.5 w-3.5" />
-										合规建议
+										{t("Compliance recommendations")}
 									</h4>
 									<ul className="space-y-1.5">
 										{recommendations.map((rec) => (
@@ -333,7 +339,7 @@ export function AiInsightsCard({
 								</div>
 							)}
 
-							{/* 标签 */}
+							{/* Tags */}
 							{tags.length > 0 && (
 								<div className="flex flex-wrap gap-1.5 pt-2 border-t border-neutral-100">
 									{tags.map((tag) => (
@@ -352,7 +358,7 @@ export function AiInsightsCard({
 }
 
 // ============================================
-// 简洁版摘要（用于列表页）
+// Brief (for list pages)
 // ============================================
 
 interface AiInsightsBriefProps {
@@ -368,6 +374,7 @@ export function AiInsightsBrief({
 	riskScore,
 	className,
 }: AiInsightsBriefProps) {
+	const t = useT();
 	const riskConfig = riskLevelConfig[riskLevel];
 
 	return (
@@ -387,6 +394,7 @@ export function AiInsightsBrief({
 					riskConfig.bgColor,
 					riskConfig.color,
 				)}
+				aria-label={t(riskConfig.labelKey)}
 			>
 				<span>{riskConfig.icon}</span>
 				<span>{riskScore}</span>

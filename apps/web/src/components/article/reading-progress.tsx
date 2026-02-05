@@ -1,34 +1,35 @@
 "use client";
 
 /**
- * 阅读进度条组件
- * 顶部固定的阅读进度指示器，支持进度保存和恢复
+ * Reading progress bar.
+ * A fixed top progress indicator that can persist and restore progress.
  */
 
+import { useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
 import { useReadingStore } from "@/stores/reading-store";
 import { motion, useScroll, useSpring } from "framer-motion";
 import * as React from "react";
 
 // ============================================
-// 类型定义
+// Types
 // ============================================
 
 interface ReadingProgressProps {
-	/** 文章 ID，用于保存进度 */
+	/** Article ID used for persisting progress */
 	articleId?: string;
-	/** 容器元素的 ref，默认使用 document */
+	/** Container element ref (defaults to document scroll) */
 	containerRef?: React.RefObject<HTMLElement>;
-	/** 是否显示百分比文字 */
+	/** Whether to show percentage text */
 	showPercentage?: boolean;
-	/** 进度条高度 */
+	/** Progress bar height */
 	height?: number;
-	/** 自定义类名 */
+	/** Custom class name */
 	className?: string;
 }
 
 // ============================================
-// 组件实现
+// Component
 // ============================================
 
 export function ReadingProgress({
@@ -38,20 +39,21 @@ export function ReadingProgress({
 	height = 2,
 	className,
 }: ReadingProgressProps) {
+	const t = useT();
 	const { scrollYProgress } = useScroll({
 		container: containerRef,
 	});
 
 	const updateProgress = useReadingStore((s) => s.updateProgress);
 
-	// 使用弹性动画使进度条更流畅
+	// Use spring animation for smoother progress.
 	const scaleX = useSpring(scrollYProgress, {
 		stiffness: 100,
 		damping: 30,
 		restDelta: 0.001,
 	});
 
-	// 保存阅读进度
+	// Persist reading progress.
 	React.useEffect(() => {
 		if (!articleId) return;
 
@@ -69,12 +71,12 @@ export function ReadingProgress({
 
 	return (
 		<>
-			{/* 进度条 */}
+			{/* Bar */}
 			<motion.div
 				role="progressbar"
 				aria-valuemin={0}
 				aria-valuemax={100}
-				aria-label="阅读进度"
+				aria-label={t("Reading progress")}
 				className={cn(
 					"fixed top-0 left-0 right-0 z-50 origin-left",
 					"bg-gradient-to-r from-primary-500 to-primary-400",
@@ -86,7 +88,7 @@ export function ReadingProgress({
 				}}
 			/>
 
-			{/* 可选：百分比显示 */}
+			{/* Optional: percentage */}
 			{showPercentage && (
 				<ProgressPercentage scrollYProgress={scrollYProgress} />
 			)}
@@ -95,7 +97,7 @@ export function ReadingProgress({
 }
 
 // ============================================
-// 百分比显示组件
+// Percentage
 // ============================================
 
 function ProgressPercentage({
@@ -111,7 +113,7 @@ function ProgressPercentage({
 			transition={{ delay: 0.5 }}
 		>
 			<motion.span className="text-xs font-medium text-neutral-700">
-				{/* 使用 useMotionValue 订阅值变化 */}
+				{/* Subscribe to motion value updates */}
 				<ProgressValue scrollYProgress={scrollYProgress} />
 			</motion.span>
 		</motion.div>
@@ -123,7 +125,7 @@ function ProgressValue({
 }: {
 	scrollYProgress: ReturnType<typeof useScroll>["scrollYProgress"];
 }) {
-	// 需要在客户端渲染
+	// Client-rendered value.
 	const [percentage, setPercentage] = React.useState(0);
 
 	React.useEffect(() => {
@@ -137,7 +139,7 @@ function ProgressValue({
 }
 
 // ============================================
-// Hook: 获取阅读进度
+// Hook: progress state
 // ============================================
 
 export function useReadingProgress(

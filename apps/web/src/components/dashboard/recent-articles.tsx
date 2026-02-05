@@ -16,12 +16,17 @@ import {
 import { EmptyState, NoDataState } from "@/components/ui/empty-state";
 import { useArticles } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
+import { withLocalePath } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n-client";
 import { fadeVariants } from "@/lib/motion";
 import { motion } from "framer-motion";
 import { ArrowUpRight, TrendingUp } from "lucide-react";
 import Link from "next/link";
 
 export function RecentArticles() {
+	const locale = useLocale();
+	const t = useT();
+
 	const articlesQuery = useArticles({
 		limit: 5,
 		status: "published",
@@ -36,14 +41,14 @@ export function RecentArticles() {
 		return { name: cat?.name, icon: cat?.icon };
 	};
 
-	// 加载状态
+	// Loading state
 	if (articlesQuery.isLoading) {
 		return (
 			<Card className="lg:col-span-2">
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
 						<TrendingUp className="h-5 w-5 text-primary-500" />
-						最新资讯
+						{t("Latest articles")}
 					</CardTitle>
 				</CardHeader>
 				<CardContent>
@@ -63,23 +68,26 @@ export function RecentArticles() {
 		const message =
 			articlesQuery.error instanceof Error
 				? articlesQuery.error.message
-				: "未知错误";
+				: t("Unknown error");
 
 		return (
 			<Card className="lg:col-span-2">
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
 						<TrendingUp className="h-5 w-5 text-primary-500" />
-						最新资讯
+						{t("Latest articles")}
 					</CardTitle>
-					<CardDescription>数据加载失败</CardDescription>
+					<CardDescription>{t("Load failed")}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<EmptyState
 						variant="error"
-						title="最新资讯加载失败"
+						title={t("Failed to load latest articles")}
 						description={message}
-						action={{ label: "重试", onClick: () => articlesQuery.refetch() }}
+						action={{
+							label: t("Retry"),
+							onClick: () => articlesQuery.refetch(),
+						}}
 						className="py-10"
 					/>
 				</CardContent>
@@ -99,13 +107,15 @@ export function RecentArticles() {
 					<div>
 						<CardTitle className="flex items-center gap-2">
 							<TrendingUp className="h-5 w-5 text-primary-500" />
-							最新资讯
+							{t("Latest articles")}
 						</CardTitle>
-						<CardDescription>近期采集的重要法律资讯</CardDescription>
+						<CardDescription>
+							{t("Important legal updates collected recently.")}
+						</CardDescription>
 					</div>
-					<Link href="/articles">
+					<Link href={withLocalePath(locale, "/articles")}>
 						<Button variant="outline" size="sm">
-							查看全部
+							{t("View all")}
 							<ArrowUpRight className="ml-1 h-4 w-4" />
 						</Button>
 					</Link>
@@ -113,8 +123,8 @@ export function RecentArticles() {
 				<CardContent>
 					{articles.length === 0 ? (
 						<NoDataState
-							title="暂无资讯"
-							description="系统尚未采集到任何资讯"
+							title={t("No articles")}
+							description={t("No articles have been collected yet.")}
 						/>
 					) : (
 						<AnimatedList staggerDelay={0.06} direction="up">

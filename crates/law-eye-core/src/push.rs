@@ -139,7 +139,9 @@ impl WebPushSubscriptionService {
     ) -> Result<()> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             let endpoint = endpoint.to_string();
-            Box::pin(async move { Self::soft_delete_by_endpoint_tx_inner(tenant_id, tx, user_id, &endpoint).await })
+            Box::pin(async move {
+                Self::soft_delete_by_endpoint_tx_inner(tenant_id, tx, user_id, &endpoint).await
+            })
         })
         .await
     }

@@ -182,7 +182,10 @@ fn is_internal_host<S: AsRef<str>>(host: &Host<S>) -> bool {
     }
 }
 
-pub async fn validate_outbound_url(raw: &str, policy: &OutboundUrlPolicy) -> Result<Url, UrlPolicyError> {
+pub async fn validate_outbound_url(
+    raw: &str,
+    policy: &OutboundUrlPolicy,
+) -> Result<Url, UrlPolicyError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Err(UrlPolicyError::InvalidUrl {
@@ -200,14 +203,16 @@ pub async fn validate_outbound_url(raw: &str, policy: &OutboundUrlPolicy) -> Res
     })?;
 
     match policy.scheme {
-        UrlPolicyScheme::HttpAndHttps | UrlPolicyScheme::HttpsOrHttpInternal => match url.scheme() {
-            "http" | "https" => {}
-            _ => {
-                return Err(UrlPolicyError::InvalidUrl {
-                    message: "URL scheme must be http or https".to_string(),
-                })
+        UrlPolicyScheme::HttpAndHttps | UrlPolicyScheme::HttpsOrHttpInternal => {
+            match url.scheme() {
+                "http" | "https" => {}
+                _ => {
+                    return Err(UrlPolicyError::InvalidUrl {
+                        message: "URL scheme must be http or https".to_string(),
+                    })
+                }
             }
-        },
+        }
         UrlPolicyScheme::HttpsOnly => {
             if url.scheme() != "https" {
                 return Err(UrlPolicyError::InvalidUrl {

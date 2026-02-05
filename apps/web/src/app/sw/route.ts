@@ -1,61 +1,54 @@
+import { t } from "@/lib/i18n";
+
 export const dynamic = "force-dynamic";
 
 const CACHE_VERSION = "law-eye-pwa-v1";
 const STATIC_CACHE = `${CACHE_VERSION}:static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}:runtime`;
 
+function buildOfflineHtml(locale: "zh" | "en"): string {
+	const lang = locale === "en" ? "en-US" : "zh-CN";
+	return `<!doctype html>
+<html lang="${lang}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>${t(locale, "Offline - Law Eye")}</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; padding: 24px; background: #0b0f1a; color: #e5e7eb; }
+      .card { max-width: 720px; margin: 0 auto; padding: 20px 18px; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; background: rgba(255,255,255,.06); }
+      h1 { margin: 0 0 10px; font-size: 18px; }
+      p { margin: 0 0 8px; line-height: 1.6; opacity: .92; }
+      code { background: rgba(255,255,255,.08); padding: 2px 6px; border-radius: 6px; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>${t(locale, "You are offline")}</h1>
+      <p>${t(
+				locale,
+				"Network connection is unavailable, so we can't refresh the latest updates.",
+			)}</p>
+      <p>${t(
+				locale,
+				"You can still browse cached static assets; APIs related to accounts/sensitive data are never cached.",
+			)}</p>
+      <p>${t(locale, "Once the network is back, please refresh this page.")}</p>
+    </div>
+  </body>
+</html>`;
+}
+
+const offlineHtmlZh = buildOfflineHtml("zh");
+const offlineHtmlEn = buildOfflineHtml("en");
+
 const SW_SOURCE = `
 const CACHE_VERSION = ${JSON.stringify(CACHE_VERSION)};
 const STATIC_CACHE = ${JSON.stringify(STATIC_CACHE)};
 const RUNTIME_CACHE = ${JSON.stringify(RUNTIME_CACHE)};
 
-const OFFLINE_HTML_ZH = \`<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>离线模式 - 法眼</title>
-    <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; padding: 24px; background: #0b0f1a; color: #e5e7eb; }
-      .card { max-width: 720px; margin: 0 auto; padding: 20px 18px; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; background: rgba(255,255,255,.06); }
-      h1 { margin: 0 0 10px; font-size: 18px; }
-      p { margin: 0 0 8px; line-height: 1.6; opacity: .92; }
-      code { background: rgba(255,255,255,.08); padding: 2px 6px; border-radius: 6px; }
-    </style>
-  </head>
-  <body>
-    <div class="card">
-      <h1>当前处于离线模式</h1>
-      <p>网络连接不可用，无法刷新最新资讯。</p>
-      <p>你仍可浏览已缓存的静态资源；与账户/敏感数据相关的接口不会被缓存。</p>
-      <p>恢复网络后，请刷新页面。</p>
-    </div>
-  </body>
-</html>\`;
-
-const OFFLINE_HTML_EN = \`<!doctype html>
-<html lang="en-US">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Offline - Law Eye</title>
-    <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; padding: 24px; background: #0b0f1a; color: #e5e7eb; }
-      .card { max-width: 720px; margin: 0 auto; padding: 20px 18px; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; background: rgba(255,255,255,.06); }
-      h1 { margin: 0 0 10px; font-size: 18px; }
-      p { margin: 0 0 8px; line-height: 1.6; opacity: .92; }
-      code { background: rgba(255,255,255,.08); padding: 2px 6px; border-radius: 6px; }
-    </style>
-  </head>
-  <body>
-    <div class="card">
-      <h1>You are offline</h1>
-      <p>Network connection is unavailable, so we can't refresh the latest updates.</p>
-      <p>You can still browse cached static assets; APIs related to accounts/sensitive data are never cached.</p>
-      <p>Once the network is back, please refresh this page.</p>
-    </div>
-  </body>
-</html>\`;
+const OFFLINE_HTML_ZH = ${JSON.stringify(offlineHtmlZh)};
+const OFFLINE_HTML_EN = ${JSON.stringify(offlineHtmlEn)};
 
 function offlineHtmlForRequest(request) {
   try {

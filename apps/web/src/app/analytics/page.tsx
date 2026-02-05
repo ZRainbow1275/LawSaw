@@ -16,6 +16,8 @@ import {
 import { useCategories } from "@/hooks/use-categories";
 import { useSourceStats } from "@/hooks/use-sources";
 import type { ArticleRiskLevel, ArticleSentimentLabel } from "@/lib/api/types";
+import { type Locale, formatDateTime } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n-client";
 import {
 	Activity,
 	AlertTriangle,
@@ -37,7 +39,7 @@ import {
 	TrendingUp,
 } from "lucide-react";
 
-// 分类图标映射 (替代 emoji)
+// Category icon mapping (replaces emoji)
 const categoryIconMap: Record<string, { Icon: LucideIcon; color: string }> = {
 	legislation: { Icon: ScrollText, color: "text-blue-500" },
 	regulation: { Icon: Building2, color: "text-purple-500" },
@@ -52,6 +54,9 @@ const categoryIconMap: Record<string, { Icon: LucideIcon; color: string }> = {
 };
 
 export default function AnalyticsPage() {
+	const t = useT();
+	const locale = useLocale();
+
 	const {
 		data: analyticsSummary,
 		isLoading: analyticsSummaryLoading,
@@ -85,8 +90,8 @@ export default function AnalyticsPage() {
 	} = useArticleCategoryCounts();
 
 	const infraErrors: string[] = [];
-	if (sourceStatsError) infraErrors.push("信息源");
-	if (categoriesError) infraErrors.push("分类");
+	if (sourceStatsError) infraErrors.push("Source stats");
+	if (categoriesError) infraErrors.push("Categories");
 	const hasInfraError = infraErrors.length > 0;
 
 	const categoriesCount =
@@ -102,14 +107,14 @@ export default function AnalyticsPage() {
 	const riskTotalForChart = analyticsReady ? (analyticsSummary?.total ?? 0) : 0;
 	const riskRows: Array<{
 		key: ArticleRiskLevel;
-		label: string;
+		labelKey: string;
 		color: string;
 	}> = [
-		{ key: "unknown", label: "未评估", color: "bg-neutral-400" },
-		{ key: "low", label: "低风险", color: "bg-success" },
-		{ key: "medium", label: "中风险", color: "bg-warning" },
-		{ key: "high", label: "高风险", color: "bg-orange-500" },
-		{ key: "critical", label: "严重", color: "bg-destructive" },
+		{ key: "unknown", labelKey: "Not assessed", color: "bg-neutral-400" },
+		{ key: "low", labelKey: "Low risk", color: "bg-success" },
+		{ key: "medium", labelKey: "Medium risk", color: "bg-warning" },
+		{ key: "high", labelKey: "High risk", color: "bg-orange-500" },
+		{ key: "critical", labelKey: "Critical", color: "bg-destructive" },
 	];
 
 	const sentimentTotalForChart = analyticsReady
@@ -117,14 +122,14 @@ export default function AnalyticsPage() {
 		: 0;
 	const sentimentRows: Array<{
 		key: ArticleSentimentLabel;
-		label: string;
+		labelKey: string;
 		color: string;
 	}> = [
-		{ key: "unknown", label: "未分析", color: "bg-neutral-300" },
-		{ key: "positive", label: "正面", color: "bg-success" },
-		{ key: "neutral", label: "中性", color: "bg-neutral-400" },
-		{ key: "negative", label: "负面", color: "bg-destructive" },
-		{ key: "mixed", label: "混合", color: "bg-warning" },
+		{ key: "unknown", labelKey: "Not analyzed", color: "bg-neutral-300" },
+		{ key: "positive", labelKey: "Positive", color: "bg-success" },
+		{ key: "neutral", labelKey: "Neutral", color: "bg-neutral-400" },
+		{ key: "negative", labelKey: "Negative", color: "bg-destructive" },
+		{ key: "mixed", labelKey: "Mixed", color: "bg-warning" },
 	];
 
 	const categoryCountsById = new Map<string, number>();
@@ -148,7 +153,7 @@ export default function AnalyticsPage() {
 
 	const last7Days =
 		trendPoints?.map((point) => ({
-			date: formatZhMonthDay(point.date),
+			date: formatIsoMonthDay(locale, point.date),
 			count: point.count,
 		})) ?? [];
 	const maxTrendCount = Math.max(1, ...last7Days.map((day) => day.count));
@@ -156,27 +161,27 @@ export default function AnalyticsPage() {
 	const statusRows = [
 		{
 			key: "pending",
-			label: "待处理",
+			labelKey: "Pending",
 			variant: "outline" as const,
 		},
 		{
 			key: "processing",
-			label: "处理中",
+			labelKey: "Processing",
 			variant: "warning" as const,
 		},
 		{
 			key: "published",
-			label: "已发布",
+			labelKey: "Published",
 			variant: "success" as const,
 		},
 		{
 			key: "archived",
-			label: "已归档",
+			labelKey: "Archived",
 			variant: "outline" as const,
 		},
 		{
 			key: "rejected",
-			label: "已拒绝",
+			labelKey: "Rejected",
 			variant: "destructive" as const,
 		},
 	] as const;
@@ -192,8 +197,12 @@ export default function AnalyticsPage() {
 					<div className="p-6">
 						{/* Page Title */}
 						<div className="mb-6">
-							<h1 className="text-2xl font-bold text-neutral-900">统计分析</h1>
-							<p className="text-sm text-neutral-500">数据统计与趋势分析</p>
+							<h1 className="text-2xl font-bold text-neutral-900">
+								{t("Analytics")}
+							</h1>
+							<p className="text-sm text-neutral-500">
+								{t("Data statistics and trend analysis")}
+							</p>
 						</div>
 
 						{/* Overview Stats */}
@@ -208,7 +217,9 @@ export default function AnalyticsPage() {
 											<p className="text-2xl font-bold">
 												{totalArticles ?? "—"}
 											</p>
-											<p className="text-sm text-neutral-500">总资讯数</p>
+											<p className="text-sm text-neutral-500">
+												{t("Total articles")}
+											</p>
 										</div>
 									</div>
 								</CardContent>
@@ -223,7 +234,9 @@ export default function AnalyticsPage() {
 											<p className="text-2xl font-bold">
 												{activeSources ?? "—"}
 											</p>
-											<p className="text-sm text-neutral-500">活跃信息源</p>
+											<p className="text-sm text-neutral-500">
+												{t("Active sources")}
+											</p>
 										</div>
 									</div>
 								</CardContent>
@@ -238,7 +251,9 @@ export default function AnalyticsPage() {
 											<p className="text-2xl font-bold">
 												{categoriesCount ?? "—"}
 											</p>
-											<p className="text-sm text-neutral-500">分类板块</p>
+											<p className="text-sm text-neutral-500">
+												{t("Categories")}
+											</p>
 										</div>
 									</div>
 								</CardContent>
@@ -253,7 +268,9 @@ export default function AnalyticsPage() {
 											<p className="text-2xl font-bold">
 												{errorSources ?? "—"}
 											</p>
-											<p className="text-sm text-neutral-500">异常信息源</p>
+											<p className="text-sm text-neutral-500">
+												{t("Sources with errors")}
+											</p>
 										</div>
 									</div>
 								</CardContent>
@@ -263,8 +280,10 @@ export default function AnalyticsPage() {
 						{hasInfraError ? (
 							<div className="mb-6 flex items-center justify-between rounded-lg border border-red-100 bg-red-50 px-3 py-2">
 								<p className="text-xs text-red-700">
-									基础数据加载失败：{infraErrors.join(" / ")}
-									（已隐藏不可靠数值）
+									{t("Failed to load base data: {items}", {
+										items: infraErrors.map((key) => t(key)).join(" / "),
+									})}{" "}
+									{t("(Unreliable values are hidden.)")}
 								</p>
 								<Button
 									variant="outline"
@@ -274,30 +293,30 @@ export default function AnalyticsPage() {
 										refetchCategories();
 									}}
 								>
-									重试
+									{t("Retry")}
 								</Button>
 							</div>
 						) : null}
 
 						<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-							{/* 风险分布 */}
+							{/* Risk distribution */}
 							<Card>
 								<CardHeader>
 									<CardTitle className="flex items-center gap-2">
 										<PieChart className="h-5 w-5 text-primary-500" />
-										风险分布
+										{t("Risk distribution")}
 									</CardTitle>
 								</CardHeader>
 								<CardContent>
 									<div className="space-y-4">
-										{riskRows.map(({ key, label, color }) => (
+										{riskRows.map(({ key, labelKey, color }) => (
 											<div
 												key={key}
 												className="flex items-center justify-between"
 											>
 												<div className="flex items-center gap-2">
 													<div className={`h-3 w-3 rounded-full ${color}`} />
-													<span className="text-sm">{label}</span>
+													<span className="text-sm">{t(labelKey)}</span>
 												</div>
 												<div className="flex items-center gap-2">
 													<span className="text-sm font-medium">
@@ -320,24 +339,24 @@ export default function AnalyticsPage() {
 								</CardContent>
 							</Card>
 
-							{/* 情感分析 */}
+							{/* Sentiment analysis */}
 							<Card>
 								<CardHeader>
 									<CardTitle className="flex items-center gap-2">
 										<BarChart3 className="h-5 w-5 text-primary-500" />
-										情感分析
+										{t("Sentiment analysis")}
 									</CardTitle>
 								</CardHeader>
 								<CardContent>
 									<div className="space-y-4">
-										{sentimentRows.map(({ key, label, color }) => (
+										{sentimentRows.map(({ key, labelKey, color }) => (
 											<div
 												key={key}
 												className="flex items-center justify-between"
 											>
 												<div className="flex items-center gap-2">
 													<div className={`h-3 w-3 rounded-full ${color}`} />
-													<span className="text-sm">{label}</span>
+													<span className="text-sm">{t(labelKey)}</span>
 												</div>
 												<div className="flex items-center gap-2">
 													<span className="text-sm font-medium">
@@ -360,22 +379,22 @@ export default function AnalyticsPage() {
 								</CardContent>
 							</Card>
 
-							{/* 状态分布 */}
+							{/* Status distribution */}
 							<Card>
 								<CardHeader>
 									<CardTitle className="flex items-center gap-2">
 										<CheckCircle className="h-5 w-5 text-primary-500" />
-										资讯状态
+										{t("Article status")}
 									</CardTitle>
 								</CardHeader>
 								<CardContent>
 									<div className="grid grid-cols-2 gap-4">
-										{statusRows.map(({ key, label, variant }) => (
+										{statusRows.map(({ key, labelKey, variant }) => (
 											<div
 												key={key}
 												className="flex items-center justify-between rounded-lg border border-neutral-100 p-3"
 											>
-												<Badge variant={variant}>{label}</Badge>
+												<Badge variant={variant}>{t(labelKey)}</Badge>
 												<span className="text-lg font-semibold">
 													{analyticsReady
 														? (analyticsSummary?.status?.[key] ?? 0)
@@ -387,12 +406,12 @@ export default function AnalyticsPage() {
 								</CardContent>
 							</Card>
 
-							{/* 近7天趋势 */}
+							{/* Last 7 days trend */}
 							<Card>
 								<CardHeader>
 									<CardTitle className="flex items-center gap-2">
 										<TrendingUp className="h-5 w-5 text-primary-500" />
-										近7天趋势
+										{t("Last 7 days trend")}
 									</CardTitle>
 								</CardHeader>
 								<CardContent>
@@ -414,19 +433,22 @@ export default function AnalyticsPage() {
 									) : trendsError ? (
 										<EmptyState
 											variant="error"
-											title="趋势数据加载失败"
+											title={t("Failed to load trend data")}
 											description={
 												trendsErrorDetail instanceof Error
 													? trendsErrorDetail.message
-													: "未知错误"
+													: t("Unknown error")
 											}
-											action={{ label: "重试", onClick: () => refetchTrends() }}
+											action={{
+												label: t("Retry"),
+												onClick: () => refetchTrends(),
+											}}
 											className="py-10"
 										/>
 									) : last7Days.length === 0 ? (
 										<EmptyState
-											title="暂无趋势数据"
-											description="近 7 天没有可展示的数据"
+											title={t("No trend data")}
+											description={t("No data to display for the last 7 days")}
 											className="py-10"
 										/>
 									) : (
@@ -453,26 +475,26 @@ export default function AnalyticsPage() {
 							</Card>
 						</div>
 
-						{/* 分类统计 */}
+						{/* Category statistics */}
 						<Card className="mt-6">
 							<CardHeader>
 								<CardTitle className="flex items-center gap-2">
 									<BarChart3 className="h-5 w-5 text-primary-500" />
-									分类统计
+									{t("Category statistics")}
 								</CardTitle>
 							</CardHeader>
 							<CardContent>
 								{categoriesError ? (
 									<EmptyState
 										variant="error"
-										title="分类数据加载失败"
+										title={t("Failed to load category data")}
 										description={
 											categoriesErrorDetail instanceof Error
 												? categoriesErrorDetail.message
-												: "未知错误"
+												: t("Unknown error")
 										}
 										action={{
-											label: "重试",
+											label: t("Retry"),
 											onClick: () => {
 												refetchCategories();
 												refetchCategoryCounts();
@@ -497,21 +519,25 @@ export default function AnalyticsPage() {
 										{categoryCountsError ? (
 											<div className="col-span-2 flex items-center justify-between rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 sm:col-span-3 lg:col-span-5">
 												<p className="text-xs text-amber-800">
-													分类统计加载失败（已隐藏不可靠数值）
+													{t(
+														"Failed to load category stats (unreliable values are hidden.)",
+													)}
 												</p>
 												<Button
 													variant="outline"
 													size="sm"
 													onClick={() => refetchCategoryCounts()}
 												>
-													重试
+													{t("Retry")}
 												</Button>
 											</div>
 										) : null}
 										{uncategorizedCount > 0 && (
 											<div className="flex flex-col items-center rounded-lg border border-neutral-100 p-4 text-center">
 												<FileText className="h-6 w-6 text-neutral-500" />
-												<span className="mt-2 text-sm font-medium">未分类</span>
+												<span className="mt-2 text-sm font-medium">
+													{t("Uncategorized")}
+												</span>
 												<span className="mt-1 text-2xl font-bold text-primary-600">
 													{categoryCountsError ? "—" : uncategorizedCount}
 												</span>
@@ -553,12 +579,24 @@ export default function AnalyticsPage() {
 	);
 }
 
-function formatZhMonthDay(dateIso: string) {
+function formatIsoMonthDay(locale: Locale, dateIso: string) {
 	const parts = dateIso.split("-");
 	if (parts.length !== 3) return dateIso;
 
+	const year = Number(parts[0]);
 	const month = Number(parts[1]);
 	const day = Number(parts[2]);
-	if (!Number.isFinite(month) || !Number.isFinite(day)) return dateIso;
-	return `${month}月${day}日`;
+	if (
+		!Number.isFinite(year) ||
+		!Number.isFinite(month) ||
+		!Number.isFinite(day)
+	)
+		return dateIso;
+
+	const date = new Date(Date.UTC(year, month - 1, day));
+	return formatDateTime(locale, date, {
+		month: "short",
+		day: "numeric",
+		timeZone: "UTC",
+	});
 }

@@ -14,14 +14,16 @@ import {
 	ModalFooter,
 	ModalHeader,
 } from "@/components/ui/modal";
-	import { useArticles } from "@/hooks/use-articles";
-	import { useCategories } from "@/hooks/use-categories";
-	import { ApiClientError, apiClient, ifMatchFromVersion } from "@/lib/api";
-	import {
-		assertBatchStatusResponse,
-		assertDeleteResponse,
-		getArticleRiskLevel,
-	} from "@/lib/api/types";
+import { useArticles } from "@/hooks/use-articles";
+import { useCategories } from "@/hooks/use-categories";
+import { ApiClientError, apiClient, ifMatchFromVersion } from "@/lib/api";
+import {
+	assertBatchStatusResponse,
+	assertDeleteResponse,
+	getArticleRiskLevel,
+} from "@/lib/api/types";
+import { formatDateTime } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { useToast } from "@/stores/toast-store";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -51,30 +53,32 @@ type ArticleStatus =
 const statusConfig: Record<
 	ArticleStatus,
 	{
-		label: string;
+		labelKey: string;
 		variant: "default" | "outline" | "success" | "warning" | "destructive";
 	}
 > = {
-	pending: { label: "待处理", variant: "outline" },
-	processing: { label: "处理中", variant: "warning" },
-	published: { label: "已发布", variant: "success" },
-	archived: { label: "已归档", variant: "outline" },
-	rejected: { label: "已拒绝", variant: "destructive" },
+	pending: { labelKey: "Pending", variant: "outline" },
+	processing: { labelKey: "Processing", variant: "warning" },
+	published: { labelKey: "Published", variant: "success" },
+	archived: { labelKey: "Archived", variant: "outline" },
+	rejected: { labelKey: "Rejected", variant: "destructive" },
 };
 
 const PAGE_SIZE = 20;
 
 export default function DataPage() {
 	const router = useRouter();
+	const locale = useLocale();
+	const t = useT();
 	const [page, setPage] = useState(0);
-		const [searchTerm, setSearchTerm] = useState("");
-		const [statusFilter, setStatusFilter] = useState<ArticleStatus | "all">(
-			"all",
-		);
-		const [selectedArticles, setSelectedArticles] = useState<Map<string, number>>(
-			new Map(),
-		);
-		const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+	const [searchTerm, setSearchTerm] = useState("");
+	const [statusFilter, setStatusFilter] = useState<ArticleStatus | "all">(
+		"all",
+	);
+	const [selectedArticles, setSelectedArticles] = useState<Map<string, number>>(
+		new Map(),
+	);
+	const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
 	const queryClient = useQueryClient();
 	const { success: toastSuccess, error: toastError } = useToast();
@@ -92,13 +96,13 @@ export default function DataPage() {
 	const { data: categories } = useCategories();
 
 	const articles = articlesData?.data ?? [];
-		const total = articlesData?.total ?? 0;
-		const totalPages = Math.ceil(total / PAGE_SIZE);
+	const total = articlesData?.total ?? 0;
+	const totalPages = Math.ceil(total / PAGE_SIZE);
 
-		const selectedIdList = Array.from(selectedArticles.keys());
-		const selectedEntries = Array.from(selectedArticles.entries()).map(
-			([id, version]) => ({ id, version }),
-		);
+	const selectedIdList = Array.from(selectedArticles.keys());
+	const selectedEntries = Array.from(selectedArticles.entries()).map(
+		([id, version]) => ({ id, version }),
+	);
 
 	const batchStatusMutation = useMutation({
 		mutationFn: (input: { ids: string[]; status: ArticleStatus }) =>
@@ -107,70 +111,83 @@ export default function DataPage() {
 				input,
 				assertBatchStatusResponse,
 			),
-			onSuccess: (data, variables) => {
-				const actionLabel = variables.status === "published" ? "发布" : "归档";
-				toastSuccess(`已${actionLabel}`, `已更新 ${data.updated} 条资讯`);
-				setSelectedArticles(new Map());
-				queryClient.invalidateQueries({ queryKey: ["articles"] });
-				queryClient.invalidateQueries({ queryKey: ["articleStats"] });
-			},
+		onSuccess: (data, variables) => {
+			const statusLabelKey =
+				variables.status === "published" ? "Published" : "Archived";
+			toastSuccess(
+				t(statusLabelKey),
+				t("Updated {count} articles", { count: data.updated }),
+			);
+			setSelectedArticles(new Map());
+			queryClient.invalidateQueries({ queryKey: ["articles"] });
+			queryClient.invalidateQueries({ queryKey: ["articleStats"] });
+		},
 		onError: (cause) => {
-			const message = cause instanceof Error ? cause.message : "操作失败";
-			toastError("批量更新失败", message);
+			const message =
+				cause instanceof Error ? cause.message : t("Operation failed");
+			toastError(t("Batch update failed"), message);
 		},
 	});
 
-		const batchDeleteMutation = useMutation({
-			mutationFn: async (items: Array<{ id: string; version: number }>) => {
-				const results = await Promise.allSettled(
-					items.map(({ id, version }) =>
-						apiClient.delete(`/api/v1/articles/${id}`, assertDeleteResponse, {
-							headers: {
-								"If-Match": ifMatchFromVersion(version),
-							},
-						}),
-					),
+	const batchDeleteMutation = useMutation({
+		mutationFn: async (items: Array<{ id: string; version: number }>) => {
+			const results = await Promise.allSettled(
+				items.map(({ id, version }) =>
+					apiClient.delete(`/api/v1/articles/${id}`, assertDeleteResponse, {
+						headers: {
+							"If-Match": ifMatchFromVersion(version),
+						},
+					}),
+				),
+			);
+
+			const deleted = results.filter((r) => r.status === "fulfilled").length;
+			const failed = results.length - deleted;
+			const conflicts = results.filter(
+				(r) =>
+					r.status === "rejected" &&
+					r.reason instanceof ApiClientError &&
+					r.reason.status === 409,
+			).length;
+
+			return { deleted, failed, conflicts };
+		},
+		onSuccess: ({ deleted, failed, conflicts }) => {
+			if (deleted > 0) {
+				toastSuccess(
+					t("Delete completed"),
+					t("Deleted {count} articles", { count: deleted }),
 				);
+			}
+			if (failed > 0) {
+				toastError(
+					t("Partial delete failed"),
+					t("Failed {count} (maybe missing permissions or not found)", {
+						count: failed,
+					}),
+				);
+			}
+			if (conflicts > 0) {
+				toastError(
+					t("Concurrency conflict detected"),
+					t("{count} articles were updated. Please refresh and retry.", {
+						count: conflicts,
+					}),
+				);
+			}
 
-				const deleted = results.filter((r) => r.status === "fulfilled").length;
-				const failed = results.length - deleted;
-				const conflicts = results.filter(
-					(r) =>
-						r.status === "rejected" &&
-						r.reason instanceof ApiClientError &&
-						r.reason.status === 409,
-				).length;
-
-				return { deleted, failed, conflicts };
-			},
-			onSuccess: ({ deleted, failed, conflicts }) => {
-				if (deleted > 0) {
-					toastSuccess("删除完成", `已删除 ${deleted} 条资讯`);
-				}
-				if (failed > 0) {
-					toastError(
-						"部分删除失败",
-						`失败 ${failed} 条（可能是权限不足或不存在）`,
-					);
-				}
-				if (conflicts > 0) {
-					toastError(
-						"存在并发冲突",
-						`有 ${conflicts} 条资讯已被更新，请刷新后重试`,
-					);
-				}
-
-				setSelectedArticles(new Map());
-				queryClient.invalidateQueries({ queryKey: ["articles"] });
-				queryClient.invalidateQueries({ queryKey: ["articleStats"] });
-			},
-			onError: (cause) => {
-				const message = cause instanceof Error ? cause.message : "操作失败";
-				toastError("批量删除失败", message);
+			setSelectedArticles(new Map());
+			queryClient.invalidateQueries({ queryKey: ["articles"] });
+			queryClient.invalidateQueries({ queryKey: ["articleStats"] });
+		},
+		onError: (cause) => {
+			const message =
+				cause instanceof Error ? cause.message : t("Operation failed");
+			toastError(t("Batch delete failed"), message);
 		},
 	});
 
-	// 过滤文章
+	// Filter articles
 	const filteredArticles = articles.filter((article) => {
 		const matchesSearch =
 			!searchTerm ||
@@ -181,37 +198,41 @@ export default function DataPage() {
 		return matchesSearch && matchesStatus;
 	});
 
-		const getCategoryName = (categoryId: string | null) => {
-			if (!categoryId || !categories) return "未分类";
-			const cat = categories.find((c) => c.id === categoryId);
-			return cat ? `${cat.icon} ${cat.name}` : "未分类";
-		};
+	const getCategoryName = (categoryId: string | null) => {
+		if (!categoryId || !categories) return t("Uncategorized");
+		const cat = categories.find((c) => c.id === categoryId);
+		return cat ? `${cat.icon} ${cat.name}` : t("Uncategorized");
+	};
 
-		const toggleSelect = (id: string, version: number) => {
-			setSelectedArticles((prev) => {
-				const next = new Map(prev);
-				if (next.has(id)) {
-					next.delete(id);
-				} else {
-					next.set(id, version);
-				}
-				return next;
-			});
-		};
-
-		const selectAll = () => {
-			if (selectedArticles.size === filteredArticles.length) {
-				setSelectedArticles(new Map());
+	const toggleSelect = (id: string, version: number) => {
+		setSelectedArticles((prev) => {
+			const next = new Map(prev);
+			if (next.has(id)) {
+				next.delete(id);
 			} else {
-				setSelectedArticles(
-					new Map(filteredArticles.map((a) => [a.id, a.version])),
-				);
+				next.set(id, version);
 			}
-		};
+			return next;
+		});
+	};
+
+	const selectAll = () => {
+		if (selectedArticles.size === filteredArticles.length) {
+			setSelectedArticles(new Map());
+		} else {
+			setSelectedArticles(
+				new Map(filteredArticles.map((a) => [a.id, a.version])),
+			);
+		}
+	};
 
 	const formatDate = (dateStr: string | null) => {
 		if (!dateStr) return "-";
-		return new Date(dateStr).toLocaleDateString("zh-CN");
+		return formatDateTime(locale, dateStr, {
+			year: "numeric",
+			month: "short",
+			day: "numeric",
+		});
 	};
 
 	return (
@@ -225,8 +246,12 @@ export default function DataPage() {
 					<div className="p-6">
 						{/* Page Title */}
 						<div className="mb-6">
-							<h1 className="text-2xl font-bold text-neutral-900">数据管理</h1>
-							<p className="text-sm text-neutral-500">管理所有采集的资讯数据</p>
+							<h1 className="text-2xl font-bold text-neutral-900">
+								{t("Data")}
+							</h1>
+							<p className="text-sm text-neutral-500">
+								{t("Manage all ingested articles data")}
+							</p>
 						</div>
 
 						{/* Filters */}
@@ -237,7 +262,7 @@ export default function DataPage() {
 										<div className="relative flex-1 max-w-md">
 											<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
 											<Input
-												placeholder="搜索标题或摘要..."
+												placeholder={t("Search title or summary...")}
 												className="pl-10"
 												value={searchTerm}
 												onChange={(e) => setSearchTerm(e.target.value)}
@@ -250,25 +275,30 @@ export default function DataPage() {
 												setStatusFilter(e.target.value as ArticleStatus | "all")
 											}
 										>
-											<option value="all">全部状态</option>
-											<option value="pending">待处理</option>
-											<option value="processing">处理中</option>
-											<option value="published">已发布</option>
-											<option value="archived">已归档</option>
-											<option value="rejected">已拒绝</option>
+											<option value="all">{t("All statuses")}</option>
+											<option value="pending">{t("Pending")}</option>
+											<option value="processing">{t("Processing")}</option>
+											<option value="published">{t("Published")}</option>
+											<option value="archived">{t("Archived")}</option>
+											<option value="rejected">{t("Rejected")}</option>
 										</select>
 									</div>
-										{selectedArticles.size > 0 && (
-											<div className="flex items-center gap-2">
-												<span className="text-sm text-neutral-500">
-													已选 {selectedArticles.size} 项
-												</span>
+									{selectedArticles.size > 0 && (
+										<div className="flex items-center gap-2">
+											<span className="text-sm text-neutral-500">
+												{t("{count} selected", {
+													count: selectedArticles.size,
+												})}
+											</span>
 											<Button
 												variant="outline"
 												size="sm"
 												onClick={() => {
 													if (!canPublishArticles) {
-														toastError("权限不足", "需要文章发布权限");
+														toastError(
+															t("Insufficient permissions"),
+															t("Article publish permission required"),
+														);
 														return;
 													}
 													batchStatusMutation.mutate({
@@ -282,18 +312,23 @@ export default function DataPage() {
 													batchDeleteMutation.isPending
 												}
 												title={
-													!canPublishArticles ? "需要文章发布权限" : undefined
+													!canPublishArticles
+														? t("Article publish permission required")
+														: undefined
 												}
 											>
 												<Archive className="mr-1 h-3 w-3" />
-												归档
+												{t("Archive")}
 											</Button>
 											<Button
 												variant="outline"
 												size="sm"
 												onClick={() => {
 													if (!canPublishArticles) {
-														toastError("权限不足", "需要文章发布权限");
+														toastError(
+															t("Insufficient permissions"),
+															t("Article publish permission required"),
+														);
 														return;
 													}
 													batchStatusMutation.mutate({
@@ -307,11 +342,13 @@ export default function DataPage() {
 													batchDeleteMutation.isPending
 												}
 												title={
-													!canPublishArticles ? "需要文章发布权限" : undefined
+													!canPublishArticles
+														? t("Article publish permission required")
+														: undefined
 												}
 											>
 												<CheckCircle className="mr-1 h-3 w-3" />
-												发布
+												{t("Publish")}
 											</Button>
 											<Button
 												variant="outline"
@@ -319,7 +356,10 @@ export default function DataPage() {
 												className="text-destructive"
 												onClick={() => {
 													if (!canWriteArticles) {
-														toastError("权限不足", "需要文章写权限");
+														toastError(
+															t("Insufficient permissions"),
+															t("Article write permission required"),
+														);
 														return;
 													}
 													setDeleteConfirmOpen(true);
@@ -329,10 +369,14 @@ export default function DataPage() {
 													batchStatusMutation.isPending ||
 													batchDeleteMutation.isPending
 												}
-												title={!canWriteArticles ? "需要文章写权限" : undefined}
+												title={
+													!canWriteArticles
+														? t("Article write permission required")
+														: undefined
+												}
 											>
 												<Trash2 className="mr-1 h-3 w-3" />
-												删除
+												{t("Delete")}
 											</Button>
 										</div>
 									)}
@@ -345,8 +389,10 @@ export default function DataPage() {
 							<CardHeader>
 								<CardTitle className="flex items-center gap-2">
 									<Database className="h-5 w-5 text-primary-500" />
-									资讯数据
-									<Badge variant="outline">{total} 条</Badge>
+									{t("Articles data")}
+									<Badge variant="outline">
+										{t("{count} items", { count: total })}
+									</Badge>
 								</CardTitle>
 							</CardHeader>
 							<CardContent>
@@ -368,7 +414,8 @@ export default function DataPage() {
 														<input
 															type="checkbox"
 															checked={
-																selectedArticles.size === filteredArticles.length &&
+																selectedArticles.size ===
+																	filteredArticles.length &&
 																filteredArticles.length > 0
 															}
 															onChange={selectAll}
@@ -376,22 +423,22 @@ export default function DataPage() {
 														/>
 													</th>
 													<th className="px-3 py-3 text-left text-sm font-medium text-neutral-500">
-														标题
+														{t("Title")}
 													</th>
 													<th className="px-3 py-3 text-left text-sm font-medium text-neutral-500">
-														分类
+														{t("Category")}
 													</th>
 													<th className="px-3 py-3 text-left text-sm font-medium text-neutral-500">
-														状态
+														{t("Status")}
 													</th>
 													<th className="px-3 py-3 text-left text-sm font-medium text-neutral-500">
-														风险
+														{t("Risk")}
 													</th>
 													<th className="px-3 py-3 text-left text-sm font-medium text-neutral-500">
-														发布时间
+														{t("Published at")}
 													</th>
 													<th className="px-3 py-3 text-left text-sm font-medium text-neutral-500">
-														操作
+														{t("Actions")}
 													</th>
 												</tr>
 											</thead>
@@ -402,7 +449,7 @@ export default function DataPage() {
 															colSpan={7}
 															className="py-12 text-center text-neutral-500"
 														>
-															暂无数据
+															{t("No data")}
 														</td>
 													</tr>
 												) : (
@@ -411,7 +458,9 @@ export default function DataPage() {
 														const riskScore = article.risk_score;
 														const riskLevel = getArticleRiskLevel(riskScore);
 														const riskText =
-															riskScore == null ? "未评估" : `${riskScore}%`;
+															riskScore == null
+																? t("Not assessed")
+																: `${riskScore}%`;
 														let riskVariant:
 															| "outline"
 															| "success"
@@ -449,7 +498,7 @@ export default function DataPage() {
 																</td>
 																<td className="px-3 py-3">
 																	<Badge variant={status.variant}>
-																		{status.label}
+																		{t(status.labelKey)}
 																	</Badge>
 																</td>
 																<td className="px-3 py-3">
@@ -464,7 +513,7 @@ export default function DataPage() {
 																	<Button
 																		variant="ghost"
 																		size="icon"
-																		aria-label="查看详情"
+																		aria-label={t("View details")}
 																		onClick={() =>
 																			router.push(`/articles/${article.id}`)
 																		}
@@ -485,8 +534,11 @@ export default function DataPage() {
 								{totalPages > 1 && (
 									<div className="mt-4 flex items-center justify-between border-t border-neutral-100 pt-4">
 										<p className="text-sm text-neutral-500">
-											显示 {page * PAGE_SIZE + 1} -{" "}
-											{Math.min((page + 1) * PAGE_SIZE, total)} / {total} 条
+											{t("Showing {from} - {to} of {total}", {
+												from: page * PAGE_SIZE + 1,
+												to: Math.min((page + 1) * PAGE_SIZE, total),
+												total,
+											})}
 										</p>
 										<div className="flex items-center gap-2">
 											<Button
@@ -496,7 +548,7 @@ export default function DataPage() {
 												disabled={page === 0}
 											>
 												<ChevronLeft className="h-4 w-4" />
-												上一页
+												{t("Previous")}
 											</Button>
 											<span className="text-sm text-neutral-500">
 												{page + 1} / {totalPages}
@@ -509,7 +561,7 @@ export default function DataPage() {
 												}
 												disabled={page >= totalPages - 1}
 											>
-												下一页
+												{t("Next")}
 												<ChevronRight className="h-4 w-4" />
 											</Button>
 										</div>
@@ -521,21 +573,24 @@ export default function DataPage() {
 				</MainContent>
 			</div>
 
-			{/* 批量删除确认 */}
+			{/* Batch delete confirmation */}
 			<Modal
 				isOpen={deleteConfirmOpen}
 				onClose={() => setDeleteConfirmOpen(false)}
 				size="sm"
 			>
 				<ModalHeader>
-					<h2 className="text-lg font-semibold text-neutral-900">确认删除</h2>
+					<h2 className="text-lg font-semibold text-neutral-900">
+						{t("Confirm delete")}
+					</h2>
 				</ModalHeader>
 				<ModalBody>
-						<p className="text-sm text-neutral-600">
-							将删除已选择的{" "}
-							<span className="font-semibold">{selectedArticles.size}</span>{" "}
-							条资讯。该操作不可撤销。
-						</p>
+					<p className="text-sm text-neutral-600">
+						{t(
+							"You are about to delete {count} articles. This action cannot be undone.",
+							{ count: selectedArticles.size },
+						)}
+					</p>
 				</ModalBody>
 				<ModalFooter>
 					<Button
@@ -543,27 +598,30 @@ export default function DataPage() {
 						onClick={() => setDeleteConfirmOpen(false)}
 						disabled={batchDeleteMutation.isPending}
 					>
-						取消
+						{t("Cancel")}
 					</Button>
 					<Button
 						variant="destructive"
-							onClick={async () => {
-								if (!canWriteArticles) {
-									toastError("权限不足", "需要文章写权限");
-									return;
-								}
-								try {
-									await batchDeleteMutation.mutateAsync(selectedEntries);
-									setDeleteConfirmOpen(false);
-								} catch {
-									// 错误已由 mutation 统一 toast
-								}
+						onClick={async () => {
+							if (!canWriteArticles) {
+								toastError(
+									t("Insufficient permissions"),
+									t("Article write permission required"),
+								);
+								return;
+							}
+							try {
+								await batchDeleteMutation.mutateAsync(selectedEntries);
+								setDeleteConfirmOpen(false);
+							} catch {
+								// Errors are already handled by mutations with toasts
+							}
 						}}
 						disabled={
 							batchDeleteMutation.isPending || selectedIdList.length === 0
 						}
 					>
-						确认删除
+						{t("Confirm delete")}
 					</Button>
 				</ModalFooter>
 			</Modal>

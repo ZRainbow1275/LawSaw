@@ -94,6 +94,20 @@ cargo test --workspace
 pnpm -C apps/web test
 ```
 
+### 覆盖率（Coverage）
+
+```bash
+cargo tarpaulin --workspace --all-features --out Lcov --output-dir target/tarpaulin --root .
+```
+
+```bash
+pnpm -C apps/web coverage
+```
+
+产物输出：
+- Rust：`target/tarpaulin/`
+- Web：`apps/web/coverage/`
+
 ### E2E（Playwright）
 
 首次运行若缺少浏览器依赖：
@@ -133,12 +147,20 @@ bash scripts/no-dockerhub/e2e.sh --name law-eye-e2e-local --web-mode prod
   - `LAW_EYE__RATE_LIMIT__API_WINDOW_SECONDS`
   - `LAW_EYE__RATE_LIMIT__LOGIN_MAX_REQUESTS`
   - `LAW_EYE__RATE_LIMIT__REGISTER_MAX_REQUESTS`
+- 认证 token TTL（示例）：
+  - `LAW_EYE__AUTH__PASSWORD_RESET_TTL_SECONDS`
+  - `LAW_EYE__AUTH__EMAIL_VERIFICATION_TTL_SECONDS`
 
 ### 国际化（i18n）
 
 - Web 已支持 `zh/en` 两种 locale 路由（示例：`/zh/login`、`/en/login`）。
 - `apps/web/src/middleware.ts` 会将无前缀路径重定向到 `/{locale}/...`，并通过 cookie `LAW_EYE_LOCALE` 记忆选择。
-- 翻译资源在 `apps/web/src/lib/i18n.ts`（以中文文案作为 key，英文作为 value）；前端通过 `useT()` 渲染，日期/数字通过 `formatDateTime/formatNumber` 做 locale-aware 格式化。
+- 翻译资源在 `apps/web/src/messages/zh.json`（以英文文案作为 key）；前端通过 `useT()`/`t()` 渲染，日期/数字通过 `formatDateTime/formatNumber` 做 locale-aware 格式化。
+
+### 邮箱验证（Email Verification）
+
+- 请求：`POST /api/v1/auth/email-verification/request`（避免账号枚举：无论邮箱是否存在都返回 200；仅非生产返回 `debug_token`）。
+- 确认：`POST /api/v1/auth/email-verification/confirm`（token 单次使用；成功后写入 `users.email_verified_at`；已验证则幂等返回成功）。
 
 ### Web Push（浏览器推送）
 

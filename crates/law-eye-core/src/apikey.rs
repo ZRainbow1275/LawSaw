@@ -1,6 +1,7 @@
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use chrono::{DateTime, Utc};
 use law_eye_common::{Error, Result};
 use law_eye_db::{ApiKey, CreateApiKey};
 use rand::Rng;
@@ -76,7 +77,7 @@ impl ApiKeyService {
 
         // Check expiration
         if let Some(expires_at) = api_key.expires_at {
-            if expires_at < chrono::Utc::now() {
+            if expires_at < Utc::now() {
                 return Err(Error::Unauthorized("API key expired".to_string()));
             }
         }
@@ -111,7 +112,12 @@ impl ApiKeyService {
     }
 
     /// List API keys for a user (without hashes)
-    pub async fn list_by_user(&self, user_id: Uuid, limit: i64, offset: i64) -> Result<Vec<ApiKey>> {
+    pub async fn list_by_user(
+        &self,
+        user_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<ApiKey>> {
         if limit < 1 {
             return Err(Error::Validation("limit must be >= 1".to_string()));
         }
@@ -120,11 +126,36 @@ impl ApiKeyService {
         }
 
         let keys = sqlx::query_as::<_, ApiKey>(
-            "SELECT * FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+            "SELECT * FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3",
         )
         .bind(user_id)
         .bind(limit)
         .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        Ok(keys)
+    }
+
+    pub async fn list_by_user_cursor(
+        &self,
+        user_id: Uuid,
+        limit: i64,
+        cursor_created_at: DateTime<Utc>,
+        cursor_id: Uuid,
+    ) -> Result<Vec<ApiKey>> {
+        if limit < 1 {
+            return Err(Error::Validation("limit must be >= 1".to_string()));
+        }
+
+        let keys = sqlx::query_as::<_, ApiKey>(
+            "SELECT * FROM api_keys WHERE user_id = $1 AND (created_at, id) < ($2, $3) ORDER BY created_at DESC, id DESC LIMIT $4",
+        )
+        .bind(user_id)
+        .bind(cursor_created_at)
+        .bind(cursor_id)
+        .bind(limit)
         .fetch_all(&self.pool)
         .await
         .map_err(|e| Error::Database(e.to_string()))?;

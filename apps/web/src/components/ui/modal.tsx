@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * Modal 组件
- * 基于 Glassmorphism 设计的通用模态框
+ * Modal component.
+ * A reusable glassmorphism-styled dialog.
  */
 
 import { overlayVariants, scaleVariants } from "@/lib/motion";
@@ -116,7 +116,7 @@ export function Modal({
 									"hover:bg-neutral-200 hover:text-neutral-700",
 									"transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/20",
 								)}
-								aria-label="关闭"
+								aria-label="Close"
 							>
 								<X className="h-4 w-4" />
 							</button>
@@ -129,7 +129,7 @@ export function Modal({
 	);
 }
 
-// Header 子组件
+// Header subcomponent
 interface ModalHeaderProps {
 	children: React.ReactNode;
 	className?: string;
@@ -145,7 +145,7 @@ export function ModalHeader({ children, className }: ModalHeaderProps) {
 	);
 }
 
-// Body 子组件
+// Body subcomponent
 interface ModalBodyProps {
 	children: React.ReactNode;
 	className?: string;
@@ -157,7 +157,7 @@ export function ModalBody({ children, className }: ModalBodyProps) {
 	);
 }
 
-// Footer 子组件
+// Footer subcomponent
 interface ModalFooterProps {
 	children: React.ReactNode;
 	className?: string;

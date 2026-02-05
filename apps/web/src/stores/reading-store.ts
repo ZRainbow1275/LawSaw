@@ -1,13 +1,14 @@
 /**
- * 阅读偏好状态管理
- * 支持字体大小、行高、主题等个性化设置
+ * Reading preference state management.
+ * Supports font size, line height, theme and other personalization settings.
  */
 
+import type { CSSProperties } from "react";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 // ============================================
-// 类型定义
+// Types
 // ============================================
 
 export type FontSize = "sm" | "md" | "lg" | "xl";
@@ -17,41 +18,41 @@ export type ContentWidth = "narrow" | "normal" | "wide";
 export type FontFamily = "sans" | "serif";
 
 export interface ReadingSettings {
-	/** 字体大小 */
+	/** Font size */
 	fontSize: FontSize;
-	/** 行高 */
+	/** Line height */
 	lineHeight: LineHeight;
-	/** 阅读主题 */
+	/** Reading theme */
 	theme: ReadingTheme;
-	/** 阅读宽度 */
+	/** Content width */
 	contentWidth: ContentWidth;
-	/** 字体类型 */
+	/** Font family */
 	fontFamily: FontFamily;
-	/** 是否显示目录 */
+	/** Whether to show table of contents */
 	showToc: boolean;
-	/** 是否自动隐藏工具栏 */
+	/** Whether to auto-hide the toolbar */
 	autoHideToolbar: boolean;
 }
 
 export interface ReadingProgress {
-	/** 文章 ID */
+	/** Article ID */
 	articleId: string;
-	/** 阅读进度 (0-1) */
+	/** Reading progress (0-1) */
 	progress: number;
-	/** 最后阅读时间 */
+	/** Last read timestamp */
 	lastReadAt: number;
-	/** 滚动位置 */
+	/** Scroll position */
 	scrollPosition: number;
 }
 
 interface ReadingState {
-	// 阅读设置
+	// Settings
 	settings: ReadingSettings;
 
-	// 阅读进度记录（按文章 ID 索引）
+	// Progress entries (indexed by article ID)
 	progressMap: Record<string, ReadingProgress>;
 
-	// 收藏列表
+	// Bookmarks
 	bookmarks: string[];
 
 	// Actions
@@ -72,7 +73,7 @@ interface ReadingState {
 }
 
 // ============================================
-// 默认设置
+// Defaults
 // ============================================
 
 const defaultSettings: ReadingSettings = {
@@ -86,7 +87,7 @@ const defaultSettings: ReadingSettings = {
 };
 
 // ============================================
-// 字体大小映射（用于 CSS）
+// CSS mapping
 // ============================================
 
 export const fontSizeMap: Record<FontSize, string> = {
@@ -104,11 +105,11 @@ export const lineHeightMap: Record<LineHeight, string> = {
 
 export const themeMap: Record<
 	ReadingTheme,
-	{ bg: string; text: string; name: string }
+	{ bg: string; text: string; labelKey: string }
 > = {
-	light: { bg: "#FFFFFF", text: "#212529", name: "默认" },
-	dark: { bg: "#1A1A1A", text: "#E9ECEF", name: "暗色" },
-	sepia: { bg: "#F4ECD8", text: "#5C4B37", name: "护眼" },
+	light: { bg: "#FFFFFF", text: "#212529", labelKey: "Default" },
+	dark: { bg: "#1A1A1A", text: "#E9ECEF", labelKey: "Dark" },
+	sepia: { bg: "#F4ECD8", text: "#5C4B37", labelKey: "Sepia" },
 };
 
 export const contentWidthMap: Record<ContentWidth, string> = {
@@ -117,14 +118,16 @@ export const contentWidthMap: Record<ContentWidth, string> = {
 	wide: "800px",
 };
 
-export const fontFamilyMap: Record<FontFamily, { css: string; label: string }> =
-	{
-		sans: { css: "var(--font-sans)", label: "无衬线" },
-		serif: { css: "var(--font-serif)", label: "衬线体" },
-	};
+export const fontFamilyMap: Record<
+	FontFamily,
+	{ css: string; labelKey: string }
+> = {
+	sans: { css: "var(--font-sans)", labelKey: "Sans serif" },
+	serif: { css: "var(--font-serif)", labelKey: "Serif" },
+};
 
 // ============================================
-// Store 实现
+// Store
 // ============================================
 
 export const useReadingStore = create<ReadingState>()(
@@ -134,16 +137,16 @@ export const useReadingStore = create<ReadingState>()(
 			progressMap: {},
 			bookmarks: [],
 
-			// 更新设置
+			// Update settings
 			updateSettings: (newSettings) =>
 				set((state) => ({
 					settings: { ...state.settings, ...newSettings },
 				})),
 
-			// 重置设置
+			// Reset settings
 			resetSettings: () => set({ settings: defaultSettings }),
 
-			// 更新阅读进度
+			// Update progress
 			updateProgress: (articleId, progress) =>
 				set((state) => ({
 					progressMap: {
@@ -163,17 +166,17 @@ export const useReadingStore = create<ReadingState>()(
 					},
 				})),
 
-			// 获取阅读进度
+			// Get progress
 			getProgress: (articleId) => get().progressMap[articleId],
 
-			// 清除阅读进度
+			// Clear progress
 			clearProgress: (articleId) =>
 				set((state) => {
 					const { [articleId]: _, ...rest } = state.progressMap;
 					return { progressMap: rest };
 				}),
 
-			// 添加收藏
+			// Add bookmark
 			addBookmark: (articleId) =>
 				set((state) => ({
 					bookmarks: state.bookmarks.includes(articleId)
@@ -181,16 +184,16 @@ export const useReadingStore = create<ReadingState>()(
 						: [...state.bookmarks, articleId],
 				})),
 
-			// 移除收藏
+			// Remove bookmark
 			removeBookmark: (articleId) =>
 				set((state) => ({
 					bookmarks: state.bookmarks.filter((id) => id !== articleId),
 				})),
 
-			// 检查是否已收藏
+			// Check bookmark
 			isBookmarked: (articleId) => get().bookmarks.includes(articleId),
 
-			// 切换收藏状态，返回新状态
+			// Toggle bookmark and return the new state
 			toggleBookmark: (articleId) => {
 				const isCurrentlyBookmarked = get().isBookmarked(articleId);
 				if (isCurrentlyBookmarked) {
@@ -214,11 +217,11 @@ export const useReadingStore = create<ReadingState>()(
 );
 
 // ============================================
-// 便捷 Hooks
+// Hooks
 // ============================================
 
 /**
- * 获取当前阅读设置的 CSS 变量
+ * Get CSS variables derived from current reading settings.
  */
 export function useReadingStyles() {
 	const { fontSize, lineHeight, theme, contentWidth, fontFamily } =
@@ -231,11 +234,11 @@ export function useReadingStyles() {
 		"--reading-text": themeMap[theme].text,
 		"--reading-content-width": contentWidthMap[contentWidth],
 		"--reading-font-family": fontFamilyMap[fontFamily].css,
-	} as React.CSSProperties;
+	} as CSSProperties;
 }
 
 /**
- * 获取文章收藏状态和操作
+ * Get bookmark state and actions for an article.
  */
 export function useBookmark(articleId: string) {
 	const isBookmarked = useReadingStore((s) => s.bookmarks.includes(articleId));

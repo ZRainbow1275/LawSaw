@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * 阅读设置组件
- * 字体大小、行高、主题切换
+ * Reading settings UI.
+ * Font size, line height, theme, and typography preferences.
  */
 
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
 import {
 	type ContentWidth,
@@ -13,10 +14,8 @@ import {
 	type FontSize,
 	type LineHeight,
 	type ReadingTheme,
-	contentWidthMap,
 	fontFamilyMap,
 	fontSizeMap,
-	lineHeightMap,
 	themeMap,
 	useReadingStore,
 } from "@/stores/reading-store";
@@ -25,83 +24,88 @@ import { AlignJustify, Leaf, Moon, Sun, Type, X } from "lucide-react";
 import type * as React from "react";
 
 // ============================================
-// 类型定义
+// Types
 // ============================================
 
 interface ReadingSettingsProps {
-	/** 是否打开 */
+	/** Whether the panel is open */
 	open: boolean;
-	/** 关闭回调 */
+	/** Close callback */
 	onClose: () => void;
 }
 
 // ============================================
-// 配置
+// Options
 // ============================================
 
-const fontSizeOptions: { value: FontSize; label: string; preview: string }[] = [
-	{ value: "sm", label: "小", preview: "A" },
-	{ value: "md", label: "中", preview: "A" },
-	{ value: "lg", label: "大", preview: "A" },
-	{ value: "xl", label: "特大", preview: "A" },
+const fontSizeOptions: {
+	value: FontSize;
+	labelKey: string;
+	preview: string;
+}[] = [
+	{ value: "sm", labelKey: "Small", preview: "A" },
+	{ value: "md", labelKey: "Medium", preview: "A" },
+	{ value: "lg", labelKey: "Large", preview: "A" },
+	{ value: "xl", labelKey: "Extra large", preview: "A" },
 ];
 
-const lineHeightOptions: { value: LineHeight; label: string }[] = [
-	{ value: "compact", label: "紧凑" },
-	{ value: "normal", label: "标准" },
-	{ value: "relaxed", label: "宽松" },
+const lineHeightOptions: { value: LineHeight; labelKey: string }[] = [
+	{ value: "compact", labelKey: "Compact" },
+	{ value: "normal", labelKey: "Normal" },
+	{ value: "relaxed", labelKey: "Relaxed" },
 ];
 
 const themeOptions: {
 	value: ReadingTheme;
-	label: string;
+	labelKey: string;
 	icon: React.ComponentType<{ className?: string }>;
 	bg: string;
 	border: string;
 }[] = [
 	{
 		value: "light",
-		label: "默认",
+		labelKey: themeMap.light.labelKey,
 		icon: Sun,
 		bg: "bg-white",
 		border: "border-neutral-200",
 	},
 	{
 		value: "dark",
-		label: "暗色",
+		labelKey: themeMap.dark.labelKey,
 		icon: Moon,
 		bg: "bg-neutral-900",
 		border: "border-neutral-700",
 	},
 	{
 		value: "sepia",
-		label: "护眼",
+		labelKey: themeMap.sepia.labelKey,
 		icon: Leaf,
 		bg: "bg-amber-50",
 		border: "border-amber-200",
 	},
 ];
 
-const contentWidthOptions: { value: ContentWidth; label: string }[] = [
-	{ value: "narrow", label: "窄" },
-	{ value: "normal", label: "标准" },
-	{ value: "wide", label: "宽" },
+const contentWidthOptions: { value: ContentWidth; labelKey: string }[] = [
+	{ value: "narrow", labelKey: "Narrow" },
+	{ value: "normal", labelKey: "Normal" },
+	{ value: "wide", labelKey: "Wide" },
 ];
 
 const fontFamilyOptions: {
 	value: FontFamily;
-	label: string;
+	labelKey: string;
 	sample: string;
 }[] = [
-	{ value: "sans", label: "无衬线", sample: "Aa" },
-	{ value: "serif", label: "衬线体", sample: "Aa" },
+	{ value: "sans", labelKey: fontFamilyMap.sans.labelKey, sample: "Aa" },
+	{ value: "serif", labelKey: fontFamilyMap.serif.labelKey, sample: "Aa" },
 ];
 
 // ============================================
-// 主组件
+// Main
 // ============================================
 
 export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
+	const t = useT();
 	const settings = useReadingStore((s) => s.settings);
 	const updateSettings = useReadingStore((s) => s.updateSettings);
 	const resetSettings = useReadingStore((s) => s.resetSettings);
@@ -110,7 +114,7 @@ export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
 		<AnimatePresence>
 			{open && (
 				<>
-					{/* 遮罩 */}
+					{/* Backdrop */}
 					<motion.div
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
@@ -119,7 +123,7 @@ export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
 						className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm"
 					/>
 
-					{/* 设置面板 */}
+					{/* Panel */}
 					<motion.div
 						initial={{ opacity: 0, y: 20, scale: 0.95 }}
 						animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -127,24 +131,27 @@ export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
 						transition={{ type: "spring", damping: 25, stiffness: 300 }}
 						className="fixed right-4 bottom-4 lg:right-20 lg:top-1/2 lg:-translate-y-1/2 lg:bottom-auto z-50 w-72 bg-white rounded-2xl shadow-xl border border-neutral-200 overflow-hidden"
 					>
-						{/* 头部 */}
+						{/* Header */}
 						<div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
-							<h3 className="font-semibold text-neutral-900">阅读设置</h3>
+							<h3 className="font-semibold text-neutral-900">
+								{t("Reading settings")}
+							</h3>
 							<Button variant="ghost" size="icon" onClick={onClose}>
 								<X className="h-4 w-4" />
 							</Button>
 						</div>
 
-						{/* 内容 */}
+						{/* Content */}
 						<div className="p-4 space-y-6">
-							{/* 字体大小 */}
-							<SettingSection icon={Type} label="字体大小">
+							{/* Font size */}
+							<SettingSection icon={Type} label={t("Font size")}>
 								<div className="flex gap-2">
 									{fontSizeOptions.map((option) => (
 										<button
 											key={option.value}
 											type="button"
 											onClick={() => updateSettings({ fontSize: option.value })}
+											aria-label={t(option.labelKey)}
 											className={cn(
 												"flex-1 h-10 rounded-lg border text-center transition-all",
 												"hover:border-primary-200",
@@ -160,8 +167,8 @@ export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
 								</div>
 							</SettingSection>
 
-							{/* 行高 */}
-							<SettingSection icon={AlignJustify} label="行距">
+							{/* Line height */}
+							<SettingSection icon={AlignJustify} label={t("Line spacing")}>
 								<div className="flex gap-2">
 									{lineHeightOptions.map((option) => (
 										<button
@@ -178,14 +185,14 @@ export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
 													: "border-neutral-200 text-neutral-600",
 											)}
 										>
-											{option.label}
+											{t(option.labelKey)}
 										</button>
 									))}
 								</div>
 							</SettingSection>
 
-							{/* 主题 */}
-							<SettingSection icon={Sun} label="阅读主题">
+							{/* Theme */}
+							<SettingSection icon={Sun} label={t("Reading theme")}>
 								<div className="flex gap-2">
 									{themeOptions.map((option) => {
 										const Icon = option.icon;
@@ -220,7 +227,7 @@ export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
 													/>
 												</div>
 												<span className="text-xs text-neutral-600">
-													{option.label}
+													{t(option.labelKey)}
 												</span>
 											</button>
 										);
@@ -228,8 +235,8 @@ export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
 								</div>
 							</SettingSection>
 
-							{/* 阅读宽度 */}
-							<SettingSection icon={AlignJustify} label="阅读宽度">
+							{/* Width */}
+							<SettingSection icon={AlignJustify} label={t("Content width")}>
 								<div className="flex gap-2">
 									{contentWidthOptions.map((option) => (
 										<button
@@ -246,14 +253,14 @@ export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
 													: "border-neutral-200 text-neutral-600",
 											)}
 										>
-											{option.label}
+											{t(option.labelKey)}
 										</button>
 									))}
 								</div>
 							</SettingSection>
 
-							{/* 字体类型 */}
-							<SettingSection icon={Type} label="字体">
+							{/* Font family */}
+							<SettingSection icon={Type} label={t("Font")}>
 								<div className="flex gap-2">
 									{fontFamilyOptions.map((option) => (
 										<button
@@ -282,7 +289,7 @@ export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
 												{option.sample}
 											</span>
 											<span className="text-xs text-neutral-500">
-												{option.label}
+												{t(option.labelKey)}
 											</span>
 										</button>
 									))}
@@ -290,7 +297,7 @@ export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
 							</SettingSection>
 						</div>
 
-						{/* 底部 */}
+						{/* Footer */}
 						<div className="px-4 py-3 border-t border-neutral-100">
 							<Button
 								variant="ghost"
@@ -298,7 +305,7 @@ export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
 								onClick={resetSettings}
 								className="w-full text-neutral-500 hover:text-neutral-700"
 							>
-								重置为默认
+								{t("Reset to defaults")}
 							</Button>
 						</div>
 					</motion.div>
@@ -309,7 +316,7 @@ export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
 }
 
 // ============================================
-// 设置区块组件
+// Section
 // ============================================
 
 interface SettingSectionProps {
@@ -331,10 +338,11 @@ function SettingSection({ icon: Icon, label, children }: SettingSectionProps) {
 }
 
 // ============================================
-// 快捷设置条（内联版）
+// Inline bar
 // ============================================
 
 export function ReadingSettingsBar({ className }: { className?: string }) {
+	const t = useT();
 	const settings = useReadingStore((s) => s.settings);
 	const updateSettings = useReadingStore((s) => s.updateSettings);
 
@@ -345,14 +353,15 @@ export function ReadingSettingsBar({ className }: { className?: string }) {
 				className,
 			)}
 		>
-			{/* 字体大小快捷切换 */}
+			{/* Font size */}
 			<div className="flex items-center gap-1">
-				<span className="text-xs text-neutral-500 mr-1">字号</span>
+				<span className="text-xs text-neutral-500 mr-1">{t("Font size")}</span>
 				{fontSizeOptions.map((option) => (
 					<button
 						key={option.value}
 						type="button"
 						onClick={() => updateSettings({ fontSize: option.value })}
+						aria-label={t(option.labelKey)}
 						className={cn(
 							"w-7 h-7 rounded text-sm transition-all",
 							settings.fontSize === option.value
@@ -368,7 +377,7 @@ export function ReadingSettingsBar({ className }: { className?: string }) {
 
 			<div className="w-px h-5 bg-neutral-200" />
 
-			{/* 主题快捷切换 */}
+			{/* Theme */}
 			<div className="flex items-center gap-1">
 				{themeOptions.map((option) => {
 					const Icon = option.icon;
@@ -377,6 +386,7 @@ export function ReadingSettingsBar({ className }: { className?: string }) {
 							key={option.value}
 							type="button"
 							onClick={() => updateSettings({ theme: option.value })}
+							aria-label={t(option.labelKey)}
 							className={cn(
 								"w-7 h-7 rounded flex items-center justify-center transition-all",
 								settings.theme === option.value

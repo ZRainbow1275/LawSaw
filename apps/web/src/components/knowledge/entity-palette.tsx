@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { KnowledgeEntity } from "@/lib/api/types";
+import { useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
 import { Database, Search, Sparkles, TriangleAlert } from "lucide-react";
 
@@ -46,6 +47,7 @@ export function EntityPalette({
 	backfillPending: boolean;
 	className?: string;
 }) {
+	const t = useT();
 	const empty = !isLoading && !isError && items.length === 0;
 
 	return (
@@ -62,10 +64,12 @@ export function EntityPalette({
 					</div>
 					<div className="min-w-0">
 						<div className="text-sm font-semibold text-neutral-900">
-							实体列表
+							{t("Entity list")}
 						</div>
 						<div className="text-xs text-neutral-500">
-							{mode === "search" ? "搜索结果" : "按热度排序"}
+							{mode === "search"
+								? t("Search results")
+								: t("Sorted by popularity")}
 						</div>
 					</div>
 				</div>
@@ -75,7 +79,9 @@ export function EntityPalette({
 					<Input
 						value={searchTerm}
 						onChange={(e) => onSearchTermChange(e.target.value)}
-						placeholder="搜索实体（例：网信办 / 反垄断 / GDPR）"
+						placeholder={t(
+							"Search entities (e.g., regulator / antitrust / GDPR)",
+						)}
 						className="pl-10"
 					/>
 				</div>
@@ -100,9 +106,11 @@ export function EntityPalette({
 							<div className="flex items-start gap-2">
 								<TriangleAlert className="mt-0.5 h-4 w-4" />
 								<div>
-									<div className="font-medium">实体数据加载失败</div>
+									<div className="font-medium">
+										{t("Failed to load entities")}
+									</div>
 									<div className="mt-1 text-xs text-red-600">
-										请检查 API / 登录状态，或稍后重试。
+										{t("Check API / auth status, or try again later.")}
 									</div>
 								</div>
 							</div>
@@ -116,10 +124,13 @@ export function EntityPalette({
 									<Database className="h-5 w-5" />
 								</div>
 								<div className="min-w-0">
-									<div className="font-semibold text-neutral-900">暂无实体</div>
+									<div className="font-semibold text-neutral-900">
+										{t("No entities")}
+									</div>
 									<p className="mt-1 text-xs text-neutral-600">
-										知识图谱依赖实体/关系数据。你可以先运行采集/AI 流程，
-										或使用初始化按钮从现有资讯生成基础图谱。
+										{t(
+											"The knowledge graph depends on entity/relationship data. You can run the ingestion/AI pipeline first, or initialize it from existing articles.",
+										)}
 									</p>
 									{onBackfill && (
 										<Button
@@ -131,7 +142,9 @@ export function EntityPalette({
 											disabled={backfillPending}
 											data-testid="knowledge-backfill"
 										>
-											{backfillPending ? "初始化中…" : "初始化知识图谱"}
+											{backfillPending
+												? t("Initializing...")
+												: t("Initialize knowledge graph")}
 										</Button>
 									)}
 								</div>
@@ -160,7 +173,9 @@ export function EntityPalette({
 												{entity.name}
 											</div>
 											<div className="mt-0.5 text-xs text-neutral-500">
-												出现 {entity.mention_count} 次
+												{t("Mentioned {count} times", {
+													count: entity.mention_count,
+												})}
 											</div>
 										</div>
 										<span

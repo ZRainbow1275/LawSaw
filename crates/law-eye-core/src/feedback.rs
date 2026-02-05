@@ -1,4 +1,5 @@
 use crate::tenant::with_tenant_tx;
+use chrono::{DateTime, Utc};
 use law_eye_common::vault::SensitiveStringCipher;
 use law_eye_common::{Error, Result};
 use law_eye_db::{CreateFeedback, Feedback, UpdateFeedback};
@@ -106,13 +107,69 @@ impl FeedbackService {
                     r#"
                 SELECT * FROM feedbacks
                 WHERE user_id = $1
-                ORDER BY created_at DESC
+                ORDER BY created_at DESC, id DESC
                 LIMIT $2 OFFSET $3
                 "#,
                 )
                 .bind(user_id)
                 .bind(limit)
                 .bind(offset)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))
+            })
+        })
+        .await?;
+
+        let plaintext_count = if cipher.is_enabled() {
+            rows.iter()
+                .filter(|row| row.encryption_version == 0)
+                .count()
+        } else {
+            0
+        };
+        if plaintext_count > 0 {
+            warn!(
+                feedbacks_plaintext_count = plaintext_count,
+                "Feedback 列表包含未加密历史数据（encryption_version=0）。为保证可预测的读路径延迟，列表接口不再执行逐条回填加密；请通过离线迁移/后台任务完成数据加密回填。"
+            );
+        }
+
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            out.push(decrypt_feedback(&cipher, row).await?);
+        }
+        Ok(out)
+    }
+
+    pub async fn list_by_user_cursor(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        limit: i64,
+        cursor_created_at: DateTime<Utc>,
+        cursor_id: Uuid,
+    ) -> Result<Vec<Feedback>> {
+        if limit < 1 {
+            return Err(Error::Validation("limit must be >= 1".to_string()));
+        }
+
+        let cipher = self.cipher.clone();
+        let rows = with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query_as::<_, Feedback>(
+                    r#"
+                SELECT * FROM feedbacks
+                WHERE user_id = $1
+                  AND (created_at, id) < ($2, $3)
+                ORDER BY created_at DESC, id DESC
+                LIMIT $4
+                "#,
+                )
+                .bind(user_id)
+                .bind(cursor_created_at)
+                .bind(cursor_id)
+                .bind(limit)
                 .fetch_all(tx.as_mut())
                 .await
                 .map_err(|e| Error::Database(e.to_string()))
@@ -153,12 +210,65 @@ impl FeedbackService {
                 sqlx::query_as::<_, Feedback>(
                     r#"
                 SELECT * FROM feedbacks
-                ORDER BY created_at DESC
+                ORDER BY created_at DESC, id DESC
                 LIMIT $1 OFFSET $2
                 "#,
                 )
                 .bind(limit)
                 .bind(offset)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))
+            })
+        })
+        .await?;
+
+        let plaintext_count = if cipher.is_enabled() {
+            rows.iter()
+                .filter(|row| row.encryption_version == 0)
+                .count()
+        } else {
+            0
+        };
+        if plaintext_count > 0 {
+            warn!(
+                feedbacks_plaintext_count = plaintext_count,
+                "Feedback 列表包含未加密历史数据（encryption_version=0）。为保证可预测的读路径延迟，列表接口不再执行逐条回填加密；请通过离线迁移/后台任务完成数据加密回填。"
+            );
+        }
+
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            out.push(decrypt_feedback(&cipher, row).await?);
+        }
+        Ok(out)
+    }
+
+    pub async fn list_all_cursor(
+        &self,
+        tenant_id: Uuid,
+        limit: i64,
+        cursor_created_at: DateTime<Utc>,
+        cursor_id: Uuid,
+    ) -> Result<Vec<Feedback>> {
+        if limit < 1 {
+            return Err(Error::Validation("limit must be >= 1".to_string()));
+        }
+
+        let cipher = self.cipher.clone();
+        let rows = with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query_as::<_, Feedback>(
+                    r#"
+                SELECT * FROM feedbacks
+                WHERE (created_at, id) < ($1, $2)
+                ORDER BY created_at DESC, id DESC
+                LIMIT $3
+                "#,
+                )
+                .bind(cursor_created_at)
+                .bind(cursor_id)
+                .bind(limit)
                 .fetch_all(tx.as_mut())
                 .await
                 .map_err(|e| Error::Database(e.to_string()))
@@ -470,6 +580,9 @@ mod tests {
         let out = decrypt_feedback(&cipher, row).await.unwrap();
         assert_eq!(out.content, "secret");
         assert_eq!(out.contact_email.as_deref(), Some("a@b.com"));
-        assert_eq!(out.encryption_version, FEEDBACK_ENCRYPTION_VERSION_VAULT_TRANSIT);
+        assert_eq!(
+            out.encryption_version,
+            FEEDBACK_ENCRYPTION_VERSION_VAULT_TRANSIT
+        );
     }
 }

@@ -28,13 +28,13 @@ export type ArticleRiskLevel =
 	| "critical";
 
 /**
- * 统一的风险分级口径（与后端 AI 风险评估提示词一致）：
+ * Unified risk levels (aligned with backend AI risk scoring prompts):
  * - 0-25: low
  * - 26-50: medium
  * - 51-75: high
  * - 76-100: critical
  *
- * 注意：`null/undefined` 表示“未评估”，不得默认当作低风险。
+ * Note: `null/undefined` means "unknown" and must not be treated as low risk.
  */
 export function getArticleRiskLevel(
 	score: number | null | undefined,
@@ -89,7 +89,7 @@ export interface User {
 	display_name: string | null;
 	avatar_url: string | null;
 	is_active: boolean;
-	// 仅部分接口返回（如 `/api/v1/users/*`）。`/api/v1/auth/*` 目前不返回。
+	// Returned by some endpoints (e.g. `/api/v1/users/*`). `/api/v1/auth/*` may omit it.
 	last_login?: string | null;
 	created_at?: string;
 }
@@ -272,8 +272,16 @@ export interface ArticleAnalyticsSummary {
 	sentiment: ArticleSentimentCounts;
 }
 
+export interface BatchStatusConflict {
+	id: string;
+	expected_version: number;
+	current_version: number;
+}
+
 export interface BatchStatusResponse {
 	updated: number;
+	conflicts?: BatchStatusConflict[];
+	missing_ids?: string[];
 }
 
 export interface Feedback {
@@ -298,7 +306,7 @@ export interface CreateFeedbackInput {
 	source_name?: string;
 }
 
-// AI 相关类型
+// AI types
 export interface AiEntity {
 	name: string;
 	entity_type:
@@ -334,7 +342,7 @@ export interface AiAvailabilityResponse {
 	available: boolean;
 }
 
-// Knowledge Graph 相关类型
+// Knowledge Graph types
 export interface KnowledgeEntity {
 	id: string;
 	name: string;
@@ -409,25 +417,25 @@ function assertRecord(
 	path: string,
 ): asserts value is JsonRecord {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) {
-		throw new Error(`${path} 期望 object，实际 ${typeName(value)}`);
+		throw new Error(`${path}: expected object, got ${typeName(value)}`);
 	}
 }
 
 function assertString(value: unknown, path: string): asserts value is string {
 	if (typeof value !== "string") {
-		throw new Error(`${path} 期望 string，实际 ${typeName(value)}`);
+		throw new Error(`${path}: expected string, got ${typeName(value)}`);
 	}
 }
 
 function assertBoolean(value: unknown, path: string): asserts value is boolean {
 	if (typeof value !== "boolean") {
-		throw new Error(`${path} 期望 boolean，实际 ${typeName(value)}`);
+		throw new Error(`${path}: expected boolean, got ${typeName(value)}`);
 	}
 }
 
 function assertNumber(value: unknown, path: string): asserts value is number {
 	if (typeof value !== "number" || Number.isNaN(value)) {
-		throw new Error(`${path} 期望 number，实际 ${typeName(value)}`);
+		throw new Error(`${path}: expected number, got ${typeName(value)}`);
 	}
 }
 
@@ -437,7 +445,7 @@ function assertArray<T>(
 	assertItem: (value: unknown, path: string) => asserts value is T,
 ): asserts value is T[] {
 	if (!Array.isArray(value)) {
-		throw new Error(`${path} 期望 array，实际 ${typeName(value)}`);
+		throw new Error(`${path}: expected array, got ${typeName(value)}`);
 	}
 	for (const [index, item] of value.entries()) {
 		assertItem(item, `${path}[${index}]`);
@@ -469,14 +477,14 @@ function assertOneOf<T extends string>(
 ): asserts value is T {
 	assertString(value, path);
 	if (!allowed.includes(value as T)) {
-		throw new Error(`${path} 期望 ${allowed.join(" | ")}，实际 ${value}`);
+		throw new Error(`${path}: expected ${allowed.join(" | ")}, got ${value}`);
 	}
 }
 
 function getRequired(obj: JsonRecord, key: string, path: string): unknown {
 	const value = obj[key];
 	if (value === undefined) {
-		throw new Error(`${path}.${key} 缺失`);
+		throw new Error(`${path}.${key} is missing`);
 	}
 	return value;
 }
@@ -821,6 +829,27 @@ export function assertBatchStatusResponse(
 ): asserts value is BatchStatusResponse {
 	assertRecord(value, path);
 	assertNumber(getRequired(value, "updated", path), `${path}.updated`);
+
+	const conflicts = getOptional(value, "conflicts");
+	assertOptional(conflicts, `${path}.conflicts`, (v, p) =>
+		assertArray(v, p, (item, itemPath) => {
+			assertRecord(item, itemPath);
+			assertString(getRequired(item, "id", itemPath), `${itemPath}.id`);
+			assertNumber(
+				getRequired(item, "expected_version", itemPath),
+				`${itemPath}.expected_version`,
+			);
+			assertNumber(
+				getRequired(item, "current_version", itemPath),
+				`${itemPath}.current_version`,
+			);
+		}),
+	);
+
+	const missingIds = getOptional(value, "missing_ids");
+	assertOptional(missingIds, `${path}.missing_ids`, (v, p) =>
+		assertArray(v, p, assertString),
+	);
 }
 
 export function assertDeleteResponse(

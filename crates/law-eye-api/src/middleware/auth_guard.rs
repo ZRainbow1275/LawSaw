@@ -1,7 +1,7 @@
 use axum::{
     extract::FromRequestParts,
-    http::Method,
     http::request::Parts,
+    http::Method,
     response::{IntoResponse, Response},
 };
 
@@ -74,9 +74,9 @@ where
             .await
             .map_err(|e| e.into_response())?;
 
-        let user = auth_session.user.ok_or_else(|| {
-            AppError::unauthorized("Authentication required").into_response()
-        })?;
+        let user = auth_session
+            .user
+            .ok_or_else(|| AppError::unauthorized("Authentication required").into_response())?;
 
         let allowed = auth_session
             .backend

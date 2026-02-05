@@ -10,7 +10,9 @@
     "lint": "node ./node_modules/@biomejs/biome/bin/biome lint src",
     "format": "node ./node_modules/@biomejs/biome/bin/biome format --write src",
     "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit --incremental false",
-    "test": "pnpm typecheck && pnpm lint",
+    "test:unit": "vitest run",
+    "coverage": "vitest run --coverage",
+    "test": "pnpm typecheck && pnpm lint && pnpm test:unit",
     "e2e": "pnpm exec playwright test",
     "e2e:install": "pnpm exec playwright install chromium"
   },
@@ -39,8 +41,10 @@
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "@vitest/coverage-istanbul": "^4.0.18",
     "tailwindcss": "^4.0.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^4.0.18"
   },
   "pnpm": {
     "overrides": {

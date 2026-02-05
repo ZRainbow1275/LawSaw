@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use axum_login::{AuthUser, AuthnBackend, UserId};
+use chrono::{DateTime, Utc};
 use law_eye_core::UserService;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -16,6 +17,7 @@ pub struct AuthenticatedUser {
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
     pub is_active: bool,
+    pub email_verified_at: Option<DateTime<Utc>>,
     password_hash: String,
 }
 
@@ -28,6 +30,7 @@ impl AuthenticatedUser {
             display_name: user.display_name.clone(),
             avatar_url: user.avatar_url.clone(),
             is_active: user.is_active,
+            email_verified_at: user.email_verified_at,
             password_hash: user.password_hash.clone(),
         }
     }

@@ -1,24 +1,61 @@
 import { AuthProvider } from "@/components/providers/auth-provider";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { ToastProvider } from "@/components/ui/toast";
+import {
+	DEFAULT_LOCALE,
+	LOCALE_COOKIE_NAME,
+	bcp47,
+	isLocale,
+	t,
+} from "@/lib/i18n";
 import type { Metadata } from "next";
+import { cookies, headers } from "next/headers";
 import "./globals.css";
 
-export const metadata: Metadata = {
-	title: "法眼 | Law Eye",
-	description:
-		'数字时代法律赛道的"参考消息" - 聚合多渠道法律资讯，构建权威信息仓库',
-	keywords: ["法律", "法规", "资讯", "合规", "监管", "法眼", "Law Eye"],
-	manifest: "/manifest.webmanifest",
-};
+async function getRequestLocale() {
+	const headerStore = await headers();
+	const headerLocale = headerStore.get("x-law-eye-locale");
+	const cookieStore = await cookies();
+	const cookieLocale = cookieStore.get(LOCALE_COOKIE_NAME)?.value;
 
-export default function RootLayout({
+	return isLocale(headerLocale)
+		? headerLocale
+		: isLocale(cookieLocale)
+			? cookieLocale
+			: DEFAULT_LOCALE;
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+	const locale = await getRequestLocale();
+
+	return {
+		title: t(locale, "Law Eye"),
+		description: t(
+			locale,
+			"A legal intelligence platform that aggregates multi-source legal updates and builds an authoritative knowledge base.",
+		),
+		keywords: [
+			"law",
+			"regulation",
+			"news",
+			"compliance",
+			"supervision",
+			"legal intelligence",
+			"Law Eye",
+		],
+		manifest: "/manifest.webmanifest",
+	};
+}
+
+export default async function RootLayout({
 	children,
 }: {
 	children: React.ReactNode;
 }) {
+	const locale = await getRequestLocale();
+
 	return (
-		<html lang="zh-CN" suppressHydrationWarning>
+		<html lang={bcp47(locale)} suppressHydrationWarning>
 			<body className="min-h-screen bg-background antialiased">
 				<QueryProvider>
 					<AuthProvider>

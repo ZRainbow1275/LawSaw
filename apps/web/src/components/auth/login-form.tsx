@@ -3,6 +3,8 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
+import { withLocalePath } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n-client";
 import { safeReturnTo } from "@/lib/utils";
 import { useToastStore } from "@/stores/toast-store";
 import { useRouter } from "next/navigation";
@@ -12,20 +14,22 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function validateEmail(value: string): string | null {
 	const trimmed = value.trim();
-	if (!trimmed) return "请输入邮箱";
-	if (trimmed.length > 254) return "邮箱过长";
-	if (!EMAIL_RE.test(trimmed)) return "邮箱格式不正确";
+	if (!trimmed) return "Please enter an email";
+	if (trimmed.length > 254) return "Email is too long";
+	if (!EMAIL_RE.test(trimmed)) return "Invalid email format";
 	return null;
 }
 
 function validatePassword(value: string): string | null {
-	if (!value.trim()) return "请输入密码";
-	if (value.length > 1024) return "密码过长";
+	if (!value.trim()) return "Please enter a password";
+	if (value.length > 1024) return "Password is too long";
 	return null;
 }
 
 export function LoginForm() {
 	const router = useRouter();
+	const locale = useLocale();
+	const t = useT();
 	const { login } = useAuth();
 	const [returnTo, setReturnTo] = useState<string | null>(null);
 	const [error, setError] = useState("");
@@ -49,7 +53,7 @@ export function LoginForm() {
 		const emailError = validateEmail(email);
 		const passwordError = validatePassword(password);
 		if (emailError || passwordError) {
-			setError(emailError || passwordError || "请检查输入内容");
+			setError(emailError || passwordError || "Please check your input");
 			return;
 		}
 
@@ -65,12 +69,12 @@ export function LoginForm() {
 					);
 				useToastStore.getState().addToast({
 					type: "success",
-					title: "登录成功",
-					description: "欢迎回来",
+					title: t("Signed in"),
+					description: t("Welcome back"),
 				});
-				router.replace(nextReturnTo || "/");
+				router.replace(withLocalePath(locale, nextReturnTo || "/"));
 			} else {
-				setError(result.error || "登录失败，请重试");
+				setError(result.error || "Sign in failed. Please try again.");
 			}
 		} finally {
 			setIsSubmitting(false);
@@ -81,13 +85,13 @@ export function LoginForm() {
 		<form onSubmit={handleSubmit} className="space-y-4">
 			{error && (
 				<div className="rounded-lg bg-error-light p-3 text-sm text-error">
-					{error}
+					{t(error)}
 				</div>
 			)}
 
 			<div className="space-y-2">
 				<label htmlFor="email" className="text-sm font-medium text-neutral-700">
-					邮箱
+					{t("Email")}
 				</label>
 				<Input
 					id="email"
@@ -100,11 +104,13 @@ export function LoginForm() {
 					required
 					autoComplete="email"
 					aria-invalid={touched.email && !!validateEmail(email)}
-					aria-describedby={touched.email && validateEmail(email) ? "email-error" : undefined}
+					aria-describedby={
+						touched.email && validateEmail(email) ? "email-error" : undefined
+					}
 				/>
 				{touched.email && validateEmail(email) && (
 					<p id="email-error" className="text-xs text-error">
-						{validateEmail(email)}
+						{t(validateEmail(email) ?? "")}
 					</p>
 				)}
 			</div>
@@ -114,7 +120,7 @@ export function LoginForm() {
 					htmlFor="password"
 					className="text-sm font-medium text-neutral-700"
 				>
-					密码
+					{t("Password")}
 				</label>
 				<Input
 					id="password"
@@ -135,7 +141,7 @@ export function LoginForm() {
 				/>
 				{touched.password && validatePassword(password) && (
 					<p id="password-error" className="text-xs text-error">
-						{validatePassword(password)}
+						{t(validatePassword(password) ?? "")}
 					</p>
 				)}
 			</div>
@@ -143,22 +149,25 @@ export function LoginForm() {
 			<Button
 				type="submit"
 				className="w-full"
-				disabled={isSubmitting || !!validateEmail(email) || !!validatePassword(password)}
+				disabled={
+					isSubmitting || !!validateEmail(email) || !!validatePassword(password)
+				}
 			>
-				{isSubmitting ? "登录中..." : "登录"}
+				{isSubmitting ? t("Signing in...") : t("Sign in")}
 			</Button>
 
 			<p className="text-center text-sm text-neutral-500">
-				还没有账号？{" "}
+				{t("Don't have an account?")}{" "}
 				<a
-					href={
+					href={withLocalePath(
+						locale,
 						returnTo
 							? `/register?returnTo=${encodeURIComponent(returnTo)}`
-							: "/register"
-					}
+							: "/register",
+					)}
 					className="text-primary-600 hover:underline"
 				>
-					立即注册
+					{t("Sign up now")}
 				</a>
 			</p>
 		</form>

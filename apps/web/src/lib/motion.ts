@@ -1,48 +1,48 @@
 /**
- * 动效系统 - Framer Motion Variants 定义
- * 遵循 DESIGN_HANDBOOK.md 动效规范
+ * Motion system - Framer Motion variants.
+ * Follows the motion guidelines in DESIGN_HANDBOOK.md.
  */
 
 import type { Transition, Variants } from "framer-motion";
 
 // ============================================
-// 基础过渡曲线
+// Base transitions
 // ============================================
 
 export const transitions = {
-	/** 快速反馈 - 150ms */
+	/** Fast feedback - 150ms */
 	fast: {
 		duration: 0.15,
 		ease: [0, 0, 0.2, 1], // ease-out
 	} satisfies Transition,
 
-	/** 标准过渡 - 200ms */
+	/** Default transition - 200ms */
 	default: {
 		duration: 0.2,
 		ease: [0.4, 0, 0.2, 1], // ease-default
 	} satisfies Transition,
 
-	/** 进入动画 - 300ms */
+	/** Enter transition - 300ms */
 	enter: {
 		duration: 0.3,
 		ease: [0, 0, 0.2, 1], // ease-out
 	} satisfies Transition,
 
-	/** 弹性动画 - 适用于侧边栏、抽屉 */
+	/** Spring - for sidebar/drawer */
 	spring: {
 		type: "spring",
 		damping: 25,
 		stiffness: 200,
 	} satisfies Transition,
 
-	/** 轻弹性 - 适用于按钮、图标 */
+	/** Light spring - for buttons/icons */
 	springLight: {
 		type: "spring",
 		damping: 20,
 		stiffness: 300,
 	} satisfies Transition,
 
-	/** 缓慢动画 - 500ms */
+	/** Slow transition - 500ms */
 	slow: {
 		duration: 0.5,
 		ease: [0.4, 0, 0.2, 1],
@@ -50,7 +50,7 @@ export const transitions = {
 } as const;
 
 // ============================================
-// 页面过渡动画
+// Page transitions
 // ============================================
 
 export const pageVariants: Variants = {
@@ -71,7 +71,7 @@ export const pageVariants: Variants = {
 };
 
 // ============================================
-// 淡入动画
+// Fade in
 // ============================================
 
 export const fadeVariants: Variants = {
@@ -87,7 +87,7 @@ export const fadeVariants: Variants = {
 };
 
 // ============================================
-// 滑入动画
+// Slide in
 // ============================================
 
 export const slideUpVariants: Variants = {
@@ -144,7 +144,7 @@ export const slideRightVariants: Variants = {
 };
 
 // ============================================
-// 缩放动画
+// Scale
 // ============================================
 
 export const scaleVariants: Variants = {
@@ -182,7 +182,7 @@ export const popVariants: Variants = {
 };
 
 // ============================================
-// 侧边栏动画
+// Sidebar
 // ============================================
 
 export const sidebarVariants: Variants = {
@@ -203,7 +203,7 @@ export const sidebarVariants: Variants = {
 };
 
 // ============================================
-// 列表交错动画
+// Staggered list
 // ============================================
 
 export const staggerContainerVariants: Variants = {
@@ -230,7 +230,7 @@ export const staggerItemVariants: Variants = {
 };
 
 // ============================================
-// Toast 通知动画
+// Toast
 // ============================================
 
 export const toastVariants: Variants = {
@@ -253,7 +253,7 @@ export const toastVariants: Variants = {
 };
 
 // ============================================
-// 遮罩层动画
+// Overlay
 // ============================================
 
 export const overlayVariants: Variants = {
@@ -269,7 +269,7 @@ export const overlayVariants: Variants = {
 };
 
 // ============================================
-// 卡片悬停效果（用于 whileHover）
+// Card hover effect (for whileHover)
 // ============================================
 
 export const cardHoverEffect = {
@@ -287,7 +287,7 @@ export const buttonTapEffect = {
 };
 
 // ============================================
-// 图标动画
+// Icon
 // ============================================
 
 export const iconBounceVariants: Variants = {
@@ -314,7 +314,7 @@ export const rotateVariants: Variants = {
 };
 
 // ============================================
-// 骨架屏渐变（用于 CSS）
+// Skeleton shimmer (for CSS)
 // ============================================
 
 export const skeletonKeyframes = `
@@ -325,13 +325,13 @@ export const skeletonKeyframes = `
 `;
 
 // ============================================
-// 工具函数
+// Utilities
 // ============================================
 
 /**
- * 创建交错动画容器变体
- * @param staggerDelay 子元素间隔时间（秒）
- * @param initialDelay 首个子元素延迟（秒）
+ * Create a staggered container variant.
+ * @param staggerDelay Delay between children (seconds)
+ * @param initialDelay Initial delay before the first child (seconds)
  */
 export function createStaggerVariants(
 	staggerDelay = 0.05,
@@ -350,9 +350,9 @@ export function createStaggerVariants(
 }
 
 /**
- * 创建滑入变体
- * @param direction 滑入方向
- * @param distance 滑动距离（px）
+ * Create a slide-in variant.
+ * @param direction Slide direction
+ * @param distance Travel distance (px)
  */
 export function createSlideVariants(
 	direction: "up" | "down" | "left" | "right" = "up",

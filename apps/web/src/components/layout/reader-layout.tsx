@@ -32,14 +32,14 @@ export function ReaderLayout({ children }: ReaderLayoutProps) {
 
 	return (
 		<div className="min-h-screen bg-neutral-50">
-			{/* 左侧透明触发带 */}
+			{/* Left trigger area */}
 			<div
 				className="fixed left-0 top-0 z-40 h-full w-4 cursor-pointer"
 				onMouseEnter={handleTriggerEnter}
 				aria-hidden="true"
 			/>
 
-			{/* 侧边栏 */}
+			{/* Sidebar */}
 			<AnimatePresence>
 				{showSidebar && (
 					<motion.div
@@ -55,7 +55,7 @@ export function ReaderLayout({ children }: ReaderLayoutProps) {
 				)}
 			</AnimatePresence>
 
-			{/* 背景遮罩 */}
+			{/* Backdrop overlay */}
 			<AnimatePresence>
 				{readerMode && hovered && (
 					<motion.div
@@ -69,7 +69,7 @@ export function ReaderLayout({ children }: ReaderLayoutProps) {
 				)}
 			</AnimatePresence>
 
-			{/* 主内容区 */}
+			{/* Main content */}
 			<main className="min-h-screen transition-all duration-300">
 				{children}
 			</main>

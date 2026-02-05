@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * 段落锚点组件
- * 悬停显示 ¶ 符号，点击复制 Deep Link
+ * Paragraph anchor.
+ * Shows a ¶ anchor on hover and copies a deep link on click.
  */
 
+import { useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/stores/toast-store";
 import { Link2 } from "lucide-react";
@@ -23,13 +24,14 @@ export function ParagraphAnchor({
 }: ParagraphAnchorProps) {
 	const [isHovered, setIsHovered] = useState(false);
 	const { success } = useToast();
+	const t = useT();
 
 	const handleCopyLink = useCallback(async () => {
 		const url = `${window.location.origin}${window.location.pathname}#${id}`;
 
 		try {
 			await navigator.clipboard.writeText(url);
-			success("链接已复制", "段落链接已复制到剪贴板");
+			success(t("Link copied"), t("Paragraph link copied to clipboard."));
 		} catch {
 			// Fallback for older browsers
 			const textArea = document.createElement("textarea");
@@ -38,9 +40,9 @@ export function ParagraphAnchor({
 			textArea.select();
 			document.execCommand("copy");
 			document.body.removeChild(textArea);
-			success("链接已复制");
+			success(t("Link copied"));
 		}
-	}, [id, success]);
+	}, [id, success, t]);
 
 	return (
 		<div
@@ -49,7 +51,7 @@ export function ParagraphAnchor({
 			onMouseEnter={() => setIsHovered(true)}
 			onMouseLeave={() => setIsHovered(false)}
 		>
-			{/* 锚点按钮 */}
+			{/* Anchor button */}
 			<button
 				type="button"
 				onClick={handleCopyLink}
@@ -60,13 +62,13 @@ export function ParagraphAnchor({
 					"focus:outline-none focus:ring-2 focus:ring-primary-500/20",
 					isHovered ? "opacity-100" : "opacity-0",
 				)}
-				title="复制段落链接"
-				aria-label="复制段落链接"
+				title={t("Copy paragraph link")}
+				aria-label={t("Copy paragraph link")}
 			>
 				<Link2 className="h-3.5 w-3.5" />
 			</button>
 
-			{/* 段落内容 */}
+			{/* Content */}
 			{children}
 		</div>
 	);

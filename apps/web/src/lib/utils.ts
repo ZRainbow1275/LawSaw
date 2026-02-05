@@ -62,7 +62,11 @@ function sanitizeExtra(
 			continue;
 		}
 
-		if (typeof value === "number" || typeof value === "boolean" || value === null) {
+		if (
+			typeof value === "number" ||
+			typeof value === "boolean" ||
+			value === null
+		) {
 			result[key] = value;
 			continue;
 		}
@@ -88,7 +92,10 @@ function sanitizeExtra(
 
 const lastClientErrorReport: { key: string; at: number } = { key: "", at: 0 };
 
-export function reportClientError(error: unknown, context: ClientErrorContext): void {
+export function reportClientError(
+	error: unknown,
+	context: ClientErrorContext,
+): void {
 	const normalized = normalizeUnknownError(error);
 	const pathname =
 		typeof window !== "undefined" ? window.location.pathname : undefined;
@@ -102,7 +109,10 @@ export function reportClientError(error: unknown, context: ClientErrorContext): 
 
 	const key = `${payload.source}:${payload.name}:${payload.message}`;
 	const now = Date.now();
-	if (key === lastClientErrorReport.key && now - lastClientErrorReport.at < 3000) {
+	if (
+		key === lastClientErrorReport.key &&
+		now - lastClientErrorReport.at < 3000
+	) {
 		return;
 	}
 	lastClientErrorReport.key = key;

@@ -1,10 +1,10 @@
 /**
- * 客户端本地存储加密工具（localStorage）
+ * Client-side encrypted storage utilities (localStorage).
  *
- * 说明：
- * - 不使用硬编码密钥（前端代码无法安全持有“秘密”）。
- * - 使用每个浏览器本地生成的非导出 `CryptoKey`（IndexedDB 持久化）进行 AES-GCM 加密。
- * - 该机制用于降低“仅静态读取磁盘 localStorage”的风险，**不能**防御 XSS/恶意脚本。
+ * Notes:
+ * - No hardcoded key: frontend code cannot safely keep secrets.
+ * - Uses a per-browser non-extractable `CryptoKey` (persisted via IndexedDB) for AES-GCM.
+ * - Reduces the risk of offline disk scraping of localStorage, but **does not** protect against XSS.
  */
 
 const KEY_DB_NAME = "lawsaw_secure_storage";
@@ -128,7 +128,7 @@ async function getKey(): Promise<CryptoKey | null> {
 }
 
 /**
- * 加密数据
+ * Encrypt data.
  */
 export async function encryptData(data: unknown): Promise<string> {
 	const json = safeJsonStringify(data);
@@ -148,12 +148,12 @@ export async function encryptData(data: unknown): Promise<string> {
 			encoder.encode(json),
 		);
 
-		// 合并 IV 和加密数据
+		// Combine IV and ciphertext.
 		const combined = new Uint8Array(iv.length + encrypted.byteLength);
 		combined.set(iv);
 		combined.set(new Uint8Array(encrypted), iv.length);
 
-		// Base64 编码
+		// Base64 encoding.
 		return `${ENCRYPTED_PREFIX}${bytesToBase64(combined)}`;
 	} catch (error) {
 		warnPlaintextFallback(error instanceof Error ? error.message : "unknown");
@@ -162,7 +162,7 @@ export async function encryptData(data: unknown): Promise<string> {
 }
 
 /**
- * 解密数据
+ * Decrypt data.
  */
 export async function decryptData<T = unknown>(
 	encrypted: string,
@@ -176,11 +176,11 @@ export async function decryptData<T = unknown>(
 			? encrypted.slice(ENCRYPTED_PREFIX.length)
 			: encrypted;
 
-		// 兼容旧数据：可能是纯 JSON
+		// Backward compatibility: legacy payload may be raw JSON.
 		try {
 			return JSON.parse(payload) as T;
 		} catch {
-			// 继续尝试解密
+			// Continue with AES-GCM decryption.
 		}
 
 		const key = await getKey();
@@ -206,7 +206,7 @@ export async function decryptData<T = unknown>(
 }
 
 /**
- * 安全存储类
+ * Encrypted storage wrapper.
  */
 export class SecureStorage {
 	private prefix: string;
@@ -254,11 +254,11 @@ export class SecureStorage {
 	}
 }
 
-// 默认实例
+// Default instance
 export const secureStorage = new SecureStorage();
 
 /**
- * 简单的数据混淆（用于非敏感但需要保护的数据）
+ * Lightweight obfuscation (for non-sensitive data).
  */
 export function obfuscate(data: string): string {
 	return btoa(encodeURIComponent(data));
