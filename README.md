@@ -194,6 +194,7 @@ bash scripts/no-dockerhub/e2e.sh --name law-eye-e2e-local --web-mode prod
 ```bash
 # 推荐：放到用户目录（而不是仓库目录）下
 export LAW_EYE_ENTERPRISE_PKI_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/law-eye/enterprise/pki"
+export LAW_EYE_ENTERPRISE_SECRETS_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/law-eye/enterprise/secrets"
 
 ./scripts/enterprise/tls-gen.sh
 ./scripts/enterprise/vault-init-enterprise.sh

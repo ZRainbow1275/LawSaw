@@ -9,6 +9,9 @@ services:
       POSTGRES_DB: law_eye
       POSTGRES_USER: law_eye
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      ENABLE_PG_TDE: "1"
+      # Ensure SCRAM for both local/host connections (enterprise-grade defaults).
+      POSTGRES_INITDB_ARGS: "--auth=scram-sha-256 --auth-host=scram-sha-256 --auth-local=scram-sha-256"
     ports:
       - "127.0.0.1:${POSTGRES_HOST_PORT:-5435}:5432"
     volumes:

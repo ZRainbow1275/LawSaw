@@ -72,6 +72,7 @@ API_CLIENT_CERT="${PKI_DIR}/vault-api-client.crt"
 WORKER_CLIENT_CERT="${PKI_DIR}/vault-worker-client.crt"
 
 POSTGRES_PASSWORD_FILE="${SECRETS_DIR}/postgres_password"
+PG_TDE_TOKEN_FILE="${SECRETS_DIR}/vault_pg_tde_token"
 
 PYTHON_BIN=""
 
@@ -515,6 +516,14 @@ path "auth/cert/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
 }
 
+path "auth/token/create" {
+  capabilities = ["create", "update"]
+}
+
+path "auth/token/create/*" {
+  capabilities = ["create", "update"]
+}
+
 path "secret/data/law-eye/*" {
   capabilities = ["create", "read", "update"]
 }
@@ -555,6 +564,74 @@ EOF
   fi
 
   local admin_token="$VAULT_ADMIN_TOKEN"
+
+  # Keep the operator bootstrap policy in-sync: this is used by cert auth and by maintenance scripts.
+  docker_exec -i \
+    -e "VAULT_ADDR=${VAULT_ADDR}" \
+    -e "VAULT_TOKEN=${admin_token}" \
+    -e "VAULT_CACERT=/vault/tls/ca.crt" \
+    -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
+    -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
+    "$VAULT_CONTAINER" vault policy write law-eye-bootstrap - <<'EOF'
+path "sys/mounts" {
+  capabilities = ["read"]
+}
+
+path "sys/mounts/*" {
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+}
+
+path "sys/auth" {
+  capabilities = ["read"]
+}
+
+path "sys/auth/*" {
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+}
+
+path "sys/policies/acl" {
+  capabilities = ["list"]
+}
+
+path "sys/policies/acl/*" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
+
+path "auth/cert/*" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
+
+path "auth/token/create" {
+  capabilities = ["create", "update"]
+}
+
+path "auth/token/create/*" {
+  capabilities = ["create", "update"]
+}
+
+path "secret/data/law-eye/*" {
+  capabilities = ["create", "read", "update"]
+}
+
+path "secret/metadata/law-eye/*" {
+  capabilities = ["read", "list"]
+}
+
+path "transit/*" {
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+}
+EOF
+
+  docker_exec \
+    -e "VAULT_ADDR=${VAULT_ADDR}" \
+    -e "VAULT_TOKEN=${admin_token}" \
+    -e "VAULT_CACERT=/vault/tls/ca.crt" \
+    -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
+    -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
+    "$VAULT_CONTAINER" vault write auth/cert/certs/law-eye-bootstrap \
+    display_name="law-eye-bootstrap" \
+    policies="law-eye-bootstrap" \
+    certificate=@/vault/tls/vault-bootstrap-client.crt >/dev/null
 
   # Enable KV v2 at `secret/`
   docker_exec \
@@ -667,6 +744,107 @@ EOF
   rm -f "$LEGACY_ROOT_TOKEN_FILE" "$LEGACY_REPO_ROOT_TOKEN_FILE" || true
 }
 
+ensure_pg_tde_vault_token() {
+  if [[ -z "$VAULT_ADMIN_TOKEN" ]]; then
+    echo "[vault] ERROR: missing Vault admin token; did configure_vault run successfully?" >&2
+    exit 1
+  fi
+
+  local admin_token="$VAULT_ADMIN_TOKEN"
+
+  # Reuse a valid existing token if present.
+  if [[ -s "$PG_TDE_TOKEN_FILE" ]]; then
+    local existing_token
+    existing_token="$(tr -d '\r\n' < "$PG_TDE_TOKEN_FILE")"
+    if [[ -n "$existing_token" ]]; then
+      set +e
+      docker_exec \
+        -e "VAULT_ADDR=${VAULT_ADDR}" \
+        -e "VAULT_TOKEN=${existing_token}" \
+        -e "VAULT_CACERT=/vault/tls/ca.crt" \
+        -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
+        -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
+        "$VAULT_CONTAINER" vault token lookup >/dev/null 2>&1
+      local lookup_code=$?
+      set -e
+      if [[ $lookup_code -eq 0 ]]; then
+        chmod 600 "$PG_TDE_TOKEN_FILE" >/dev/null 2>&1 || true
+        return 0
+      fi
+    fi
+  fi
+
+  echo "[vault] preparing pg_tde Vault KV + policy + token..."
+
+  # Dedicated KV mount for pg_tde key material.
+  docker_exec \
+    -e "VAULT_ADDR=${VAULT_ADDR}" \
+    -e "VAULT_TOKEN=${admin_token}" \
+    -e "VAULT_CACERT=/vault/tls/ca.crt" \
+    -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
+    -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
+    "$VAULT_CONTAINER" vault secrets enable -path=tde kv-v2 >/dev/null 2>&1 || true
+
+  docker_exec -i \
+    -e "VAULT_ADDR=${VAULT_ADDR}" \
+    -e "VAULT_TOKEN=${admin_token}" \
+    -e "VAULT_CACERT=/vault/tls/ca.crt" \
+    -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
+    -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
+    "$VAULT_CONTAINER" vault policy write law-eye-pg-tde - <<'EOF'
+path "tde/data/*" {
+  capabilities = ["create", "read", "update"]
+}
+
+path "tde/metadata/*" {
+  capabilities = ["read", "list"]
+}
+EOF
+
+  set +e
+  local token_json
+  token_json="$(
+    docker_exec \
+      -e "VAULT_ADDR=${VAULT_ADDR}" \
+      -e "VAULT_TOKEN=${admin_token}" \
+      -e "VAULT_CACERT=/vault/tls/ca.crt" \
+      -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
+      -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
+      "$VAULT_CONTAINER" vault token create -policy=law-eye-pg-tde -ttl=8760h -orphan -format=json 2>/dev/null
+  )"
+  local token_code=$?
+  set -e
+  if [[ $token_code -ne 0 || -z "$token_json" ]]; then
+    echo "[vault] ERROR: failed to create pg_tde token (policy=law-eye-pg-tde)" >&2
+    exit 1
+  fi
+
+  resolve_python
+  local token
+  token="$(
+    printf '%s' "$token_json" | "$PYTHON_BIN" - <<'PY'
+import json
+import sys
+
+try:
+    data = json.load(sys.stdin)
+    auth = data.get("auth") or {}
+    sys.stdout.write(str(auth.get("client_token", "")).strip())
+except Exception:
+    sys.stdout.write("")
+PY
+  )"
+
+  token="$(printf '%s' "$token" | tr -d '\r\n')"
+  if [[ -z "$token" ]]; then
+    echo "[vault] ERROR: failed to extract client_token from token create output" >&2
+    exit 1
+  fi
+
+  echo "$token" > "$PG_TDE_TOKEN_FILE"
+  chmod 600 "$PG_TDE_TOKEN_FILE" >/dev/null 2>&1 || true
+}
+
 seed_secrets() {
   echo "[vault] seeding secrets into kv..."
   local postgres_password
@@ -773,6 +951,7 @@ main() {
   init_and_unseal
   configure_vault
   seed_secrets
+  ensure_pg_tde_vault_token
 
   echo "[vault] ok:"
   echo "  state:       ${VAULT_STATE_DIR}"

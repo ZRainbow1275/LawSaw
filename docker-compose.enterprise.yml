@@ -1,4 +1,20 @@
 services:
+  postgres:
+    # Enterprise: enable pg_tde and use Vault as the KMS provider.
+    environment:
+      LAW_EYE_PG_TDE_PROVIDER: "vault"
+      LAW_EYE_PG_TDE_VAULT_ADDR: "https://vault:8200"
+      LAW_EYE_PG_TDE_VAULT_MOUNT: "tde/data/global-key"
+      LAW_EYE_PG_TDE_VAULT_TOKEN_FILE: "/etc/law-eye/pg_tde_token"
+      LAW_EYE_PG_TDE_VAULT_CA: "/etc/vault/ca.crt"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ${LAW_EYE_ENTERPRISE_SECRETS_DIR:?missing LAW_EYE_ENTERPRISE_SECRETS_DIR}/vault_pg_tde_token:/etc/law-eye/pg_tde_token:ro
+      - ${LAW_EYE_ENTERPRISE_PKI_DIR:?missing LAW_EYE_ENTERPRISE_PKI_DIR}/ca.crt:/etc/vault/ca.crt:ro
+    depends_on:
+      vault:
+        condition: service_started
+
   vault:
     image: ${VAULT_IMAGE:-hashicorp/vault:1.15.6@sha256:0450896c43b13879b19442b204ce29dd19b5a10fce43d5cf38af17da20f56f4d}
     container_name: law-eye-vault

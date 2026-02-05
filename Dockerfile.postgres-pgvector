@@ -1,18 +1,6 @@
-FROM mcr.microsoft.com/devcontainers/base:ubuntu@sha256:3dcb059253b2ebb44de3936620e1cff3dadcd2c1c982d579081ca8128c1eb319
+FROM percona/percona-distribution-postgresql:17.7@sha256:b48abfa1f83026a1beea75da27e49e01cff33e344ecdd8d69c4b4cb674b04285
 
-ARG DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get update \
-  && apt-get install -y ca-certificates curl gnupg \
-  && rm -rf /var/lib/apt/lists/*
-
-# Install PostgreSQL 16 + pgvector from PGDG.
-RUN set -eux; \
-  echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt noble-pgdg main" > /etc/apt/sources.list.d/pgdg.list; \
-  curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql.gpg; \
-  apt-get update; \
-  apt-get install -y postgresql-16 postgresql-16-pgvector; \
-  rm -rf /var/lib/apt/lists/*
+USER root
 
 ENV PGDATA=/var/lib/postgresql/data
 
@@ -24,10 +12,22 @@ RUN cat > /usr/local/bin/docker-entrypoint.sh <<'EOS'
 #!/usr/bin/env bash
 set -euo pipefail
 
+export PATH="$PATH:/usr/pgsql-17/bin"
+
 PGDATA="${PGDATA:-/var/lib/postgresql/data}"
 POSTGRES_USER="${POSTGRES_USER:-postgres}"
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
 POSTGRES_DB="${POSTGRES_DB:-postgres}"
+
+ENABLE_PG_TDE="${ENABLE_PG_TDE:-0}"
+LAW_EYE_PG_TDE_PROVIDER="${LAW_EYE_PG_TDE_PROVIDER:-file}"
+LAW_EYE_PG_TDE_PROVIDER_NAME="${LAW_EYE_PG_TDE_PROVIDER_NAME:-law-eye-tde-provider}"
+LAW_EYE_PG_TDE_PRINCIPAL_KEY="${LAW_EYE_PG_TDE_PRINCIPAL_KEY:-law-eye-principal-key}"
+LAW_EYE_PG_TDE_KEYRING_FILE="${LAW_EYE_PG_TDE_KEYRING_FILE:-${PGDATA}/pg_tde/keyring.file}"
+LAW_EYE_PG_TDE_VAULT_ADDR="${LAW_EYE_PG_TDE_VAULT_ADDR:-}"
+LAW_EYE_PG_TDE_VAULT_MOUNT="${LAW_EYE_PG_TDE_VAULT_MOUNT:-tde/data/global-key}"
+LAW_EYE_PG_TDE_VAULT_TOKEN_FILE="${LAW_EYE_PG_TDE_VAULT_TOKEN_FILE:-}"
+LAW_EYE_PG_TDE_VAULT_CA="${LAW_EYE_PG_TDE_VAULT_CA:-}"
 
 if [[ -z "${POSTGRES_PASSWORD}" ]]; then
   echo "ERROR: POSTGRES_PASSWORD is required" >&2
@@ -46,7 +46,20 @@ if [[ -z "${POSTGRES_DB}" ]]; then
   exit 1
 fi
 
-BIN="/usr/lib/postgresql/16/bin"
+BIN=""
+if command -v pg_config >/dev/null 2>&1; then
+  BIN="$(pg_config --bindir 2>/dev/null || true)"
+fi
+if [[ -z "$BIN" ]]; then
+  initdb_path="$(command -v initdb || true)"
+  if [[ -n "$initdb_path" ]]; then
+    BIN="$(dirname "$initdb_path")"
+  fi
+fi
+if [[ -z "$BIN" ]]; then
+  echo "ERROR: could not locate Postgres binaries (initdb/postgres)" >&2
+  exit 1
+fi
 
 if [ ! -s "${PGDATA}/PG_VERSION" ]; then
   mkdir -p "${PGDATA}"
@@ -58,43 +71,86 @@ if [ ! -s "${PGDATA}/PG_VERSION" ]; then
   echo "host all all 0.0.0.0/0 scram-sha-256" >> "${PGDATA}/pg_hba.conf"
   echo "host all all ::/0 scram-sha-256" >> "${PGDATA}/pg_hba.conf"
 
+  if [[ "${ENABLE_PG_TDE}" == "1" ]]; then
+    echo "shared_preload_libraries='pg_tde'" >> "${PGDATA}/postgresql.conf"
+    echo "default_table_access_method='tde_heap'" >> "${PGDATA}/postgresql.conf"
+    echo "pg_tde.enforce_encryption='on'" >> "${PGDATA}/postgresql.conf"
+  fi
+
   "${BIN}/pg_ctl" -D "${PGDATA}" -o "-c listen_addresses='*'" -w start
 
   psql -v ON_ERROR_STOP=1 --username=postgres -v app_user="${POSTGRES_USER}" -v app_pass="${POSTGRES_PASSWORD}" <<'SQL'
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_user') THEN
-    EXECUTE format(
-      'ALTER ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION',
-      :'app_user',
-      :'app_pass'
-    );
-  ELSE
-    EXECUTE format(
-      'CREATE ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION',
-      :'app_user',
-      :'app_pass'
-    );
-  END IF;
-END $$;
+SELECT format(
+  'CREATE ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION',
+  :'app_user',
+  :'app_pass'
+) WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_user');
+\gexec
+
+SELECT format(
+  'ALTER ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION',
+  :'app_user',
+  :'app_pass'
+) WHERE EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_user');
+\gexec
 SQL
 
   psql -v ON_ERROR_STOP=1 --username=postgres -v db_name="${POSTGRES_DB}" -v db_owner="${POSTGRES_USER}" <<'SQL'
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'db_name') THEN
-    EXECUTE format('CREATE DATABASE %I OWNER %I', :'db_name', :'db_owner');
-  ELSE
-    EXECUTE format('ALTER DATABASE %I OWNER TO %I', :'db_name', :'db_owner');
-  END IF;
-END $$;
+SELECT format('CREATE DATABASE %I OWNER %I', :'db_name', :'db_owner')
+WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'db_name');
+\gexec
+
+SELECT format('ALTER DATABASE %I OWNER TO %I', :'db_name', :'db_owner')
+WHERE EXISTS (SELECT 1 FROM pg_database WHERE datname = :'db_name');
+\gexec
 SQL
 
-  # Provision required extensions using the local superuser. This avoids running application
-  # migrations with elevated privileges.
   psql -v ON_ERROR_STOP=1 --username=postgres --dbname="${POSTGRES_DB}" -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'
   psql -v ON_ERROR_STOP=1 --username=postgres --dbname="${POSTGRES_DB}" -c 'CREATE EXTENSION IF NOT EXISTS pgcrypto;'
   psql -v ON_ERROR_STOP=1 --username=postgres --dbname="${POSTGRES_DB}" -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+
+  if [[ "${ENABLE_PG_TDE}" == "1" ]]; then
+    psql -v ON_ERROR_STOP=1 --username=postgres --dbname="${POSTGRES_DB}" -c 'CREATE EXTENSION IF NOT EXISTS pg_tde;'
+
+    if [[ "${LAW_EYE_PG_TDE_PROVIDER}" == "vault" ]]; then
+      if [[ -z "$LAW_EYE_PG_TDE_VAULT_ADDR" || -z "$LAW_EYE_PG_TDE_VAULT_TOKEN_FILE" || -z "$LAW_EYE_PG_TDE_VAULT_CA" ]]; then
+        echo "ERROR: LAW_EYE_PG_TDE_PROVIDER=vault requires LAW_EYE_PG_TDE_VAULT_ADDR/LAW_EYE_PG_TDE_VAULT_TOKEN_FILE/LAW_EYE_PG_TDE_VAULT_CA" >&2
+        exit 1
+      fi
+      if [[ ! -s "$LAW_EYE_PG_TDE_VAULT_TOKEN_FILE" ]]; then
+        echo "ERROR: Vault token file not found or empty: $LAW_EYE_PG_TDE_VAULT_TOKEN_FILE" >&2
+        exit 1
+      fi
+      if [[ ! -f "$LAW_EYE_PG_TDE_VAULT_CA" ]]; then
+        echo "ERROR: Vault CA cert not found: $LAW_EYE_PG_TDE_VAULT_CA" >&2
+        exit 1
+      fi
+
+      attempts=60
+      while true; do
+        set +e
+        psql -v ON_ERROR_STOP=1 --username=postgres --dbname="${POSTGRES_DB}" -c "SELECT pg_tde_add_global_key_provider_vault_v2('${LAW_EYE_PG_TDE_PROVIDER_NAME}', '${LAW_EYE_PG_TDE_VAULT_ADDR}', '${LAW_EYE_PG_TDE_VAULT_MOUNT}', '${LAW_EYE_PG_TDE_VAULT_TOKEN_FILE}', '${LAW_EYE_PG_TDE_VAULT_CA}');" >/dev/null 2>&1
+        code=$?
+        set -e
+        if [[ $code -eq 0 ]]; then
+          break
+        fi
+        attempts=$((attempts - 1))
+        if [[ $attempts -le 0 ]]; then
+          echo "ERROR: failed to register Vault key provider for pg_tde (addr=${LAW_EYE_PG_TDE_VAULT_ADDR} mount=${LAW_EYE_PG_TDE_VAULT_MOUNT})" >&2
+          exit 1
+        fi
+        sleep 1
+      done
+    else
+      mkdir -p "$(dirname "$LAW_EYE_PG_TDE_KEYRING_FILE")"
+      chmod 700 "$(dirname "$LAW_EYE_PG_TDE_KEYRING_FILE")" || true
+      psql -v ON_ERROR_STOP=1 --username=postgres --dbname="${POSTGRES_DB}" -c "SELECT pg_tde_add_global_key_provider_file('${LAW_EYE_PG_TDE_PROVIDER_NAME}', '${LAW_EYE_PG_TDE_KEYRING_FILE}');" >/dev/null
+    fi
+
+    psql -v ON_ERROR_STOP=1 --username=postgres --dbname="${POSTGRES_DB}" -c "SELECT pg_tde_create_key_using_global_key_provider('${LAW_EYE_PG_TDE_PRINCIPAL_KEY}', '${LAW_EYE_PG_TDE_PROVIDER_NAME}');" >/dev/null 2>&1 || true
+    psql -v ON_ERROR_STOP=1 --username=postgres --dbname="${POSTGRES_DB}" -c "SELECT pg_tde_set_default_key_using_global_key_provider('${LAW_EYE_PG_TDE_PRINCIPAL_KEY}', '${LAW_EYE_PG_TDE_PROVIDER_NAME}');" >/dev/null
+  fi
 
   "${BIN}/pg_ctl" -D "${PGDATA}" -m fast -w stop
 fi
@@ -103,10 +159,6 @@ exec "${BIN}/postgres" -D "${PGDATA}" -c listen_addresses='*'
 EOS
 
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-
-VOLUME ["/var/lib/postgresql/data"]
-
-EXPOSE 5432
 
 USER postgres
 
