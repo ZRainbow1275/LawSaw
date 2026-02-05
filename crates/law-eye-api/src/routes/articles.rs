@@ -148,16 +148,37 @@ pub struct UpdateArticleRequest {
     pub category_id: Option<Uuid>,
 }
 
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BatchStatusItem {
+    pub id: Uuid,
+    pub version: i64,
+}
+
 #[derive(Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct BatchStatusRequest {
+    #[serde(default)]
     pub ids: Vec<Uuid>,
+    #[serde(default)]
+    pub items: Vec<BatchStatusItem>,
     pub status: String,
 }
 
 #[derive(Serialize, ToSchema)]
 pub struct BatchStatusResponse {
     pub updated: i64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub conflicts: Vec<BatchStatusItemConflict>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub missing_ids: Vec<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct BatchStatusItemConflict {
+    pub id: Uuid,
+    pub expected_version: i64,
+    pub current_version: i64,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -185,6 +206,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/{id}/publish", post(publish_article))
         .route("/{id}/archive", post(archive_article))
+        .route("/{id}/restore", post(restore_article))
 }
 
 fn is_valid_status(status: &str) -> bool {
@@ -241,7 +263,10 @@ fn require_if_match_version(headers: &HeaderMap) -> ApiResult<i64> {
     })
 }
 
-#[utoipa::path(
+pub(crate) mod query {
+    use super::*;
+
+    #[utoipa::path(
     get,
     path = "/api/v1/articles",
     params(
@@ -261,61 +286,61 @@ fn require_if_match_version(headers: &HeaderMap) -> ApiResult<i64> {
         (status = 500, description = "Server error", body = ApiError)
     )
 )]
-pub(crate) async fn list_articles(
-    State(state): State<AppState>,
-    auth_session: AuthSession,
-    ApiQuery(params): ApiQuery<ListParams>,
-) -> ApiResult<Json<ArticleListResponse>> {
-    let user = auth_session
-        .user
-        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+    pub(crate) async fn list_articles(
+        State(state): State<AppState>,
+        auth_session: AuthSession,
+        ApiQuery(params): ApiQuery<ListParams>,
+    ) -> ApiResult<Json<ArticleListResponse>> {
+        let user = auth_session
+            .user
+            .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_read = state
-        .user_service
-        .has_permission(user.id, "articles:read")
-        .await
-        .map_err(AppError::from)?;
-    if !can_read {
-        return Err(AppError::forbidden("Permission denied"));
-    }
-
-    let limit = params.limit.unwrap_or(20).min(100);
-    let offset = params.offset.unwrap_or(0);
-
-    if let Some(status) = params.status.as_deref() {
-        if !is_valid_status(status) {
-            return Err(AppError::validation("Invalid status"));
+        let can_read = state
+            .user_service
+            .has_permission(user.id, "articles:read")
+            .await
+            .map_err(AppError::from)?;
+        if !can_read {
+            return Err(AppError::forbidden("Permission denied"));
         }
-    }
 
-    let articles = state
-        .article_service
-        .list_filtered(
-            user.tenant_id,
+        let limit = params.limit.unwrap_or(20).min(100);
+        let offset = params.offset.unwrap_or(0);
+
+        if let Some(status) = params.status.as_deref() {
+            if !is_valid_status(status) {
+                return Err(AppError::validation("Invalid status"));
+            }
+        }
+
+        let articles = state
+            .article_service
+            .list_filtered(
+                user.tenant_id,
+                limit,
+                offset,
+                params.category_id,
+                params.status.as_deref(),
+            )
+            .await
+            .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?;
+
+        let total = state
+            .article_service
+            .count_filtered(user.tenant_id, params.category_id, params.status.as_deref())
+            .await
+            .map_err(|e| AppError::internal_with_code("COUNT_ERROR", e.to_string()))?;
+        let data: Vec<ArticleResponse> = articles.into_iter().map(|a| a.into()).collect();
+
+        Ok(Json(ArticleListResponse {
+            data,
+            total,
             limit,
             offset,
-            params.category_id,
-            params.status.as_deref(),
-        )
-        .await
-        .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?;
+        }))
+    }
 
-    let total = state
-        .article_service
-        .count_filtered(user.tenant_id, params.category_id, params.status.as_deref())
-        .await
-        .map_err(|e| AppError::internal_with_code("COUNT_ERROR", e.to_string()))?;
-    let data: Vec<ArticleResponse> = articles.into_iter().map(|a| a.into()).collect();
-
-    Ok(Json(ArticleListResponse {
-        data,
-        total,
-        limit,
-        offset,
-    }))
-}
-
-#[utoipa::path(
+    #[utoipa::path(
     get,
     path = "/api/v1/articles/stats",
     security(
@@ -328,38 +353,38 @@ pub(crate) async fn list_articles(
         (status = 500, description = "Server error", body = ApiError)
     )
 )]
-pub(crate) async fn get_stats(
-    State(state): State<AppState>,
-    auth_session: AuthSession,
-) -> ApiResult<Json<ArticleStatsResponse>> {
-    let user = auth_session
-        .user
-        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+    pub(crate) async fn get_stats(
+        State(state): State<AppState>,
+        auth_session: AuthSession,
+    ) -> ApiResult<Json<ArticleStatsResponse>> {
+        let user = auth_session
+            .user
+            .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_read = state
-        .user_service
-        .has_permission(user.id, "articles:read")
-        .await
-        .map_err(AppError::from)?;
-    if !can_read {
-        return Err(AppError::forbidden("Permission denied"));
+        let can_read = state
+            .user_service
+            .has_permission(user.id, "articles:read")
+            .await
+            .map_err(AppError::from)?;
+        if !can_read {
+            return Err(AppError::forbidden("Permission denied"));
+        }
+
+        let stats = state
+            .article_service
+            .get_stats(user.tenant_id)
+            .await
+            .map_err(|e| AppError::internal_with_code("STATS_ERROR", e.to_string()))?;
+        Ok(Json(ArticleStatsResponse {
+            total_articles: stats.total,
+            pending_count: stats.pending,
+            published_count: stats.published,
+            high_risk_count: stats.high_risk,
+            today_count: stats.today,
+        }))
     }
 
-    let stats = state
-        .article_service
-        .get_stats(user.tenant_id)
-        .await
-        .map_err(|e| AppError::internal_with_code("STATS_ERROR", e.to_string()))?;
-    Ok(Json(ArticleStatsResponse {
-        total_articles: stats.total,
-        pending_count: stats.pending,
-        published_count: stats.published,
-        high_risk_count: stats.high_risk,
-        today_count: stats.today,
-    }))
-}
-
-#[utoipa::path(
+    #[utoipa::path(
     get,
     path = "/api/v1/articles/analytics-summary",
     security(
@@ -372,56 +397,56 @@ pub(crate) async fn get_stats(
         (status = 500, description = "Server error", body = ApiError)
     )
 )]
-pub(crate) async fn get_analytics_summary(
-    State(state): State<AppState>,
-    auth_session: AuthSession,
-) -> ApiResult<Json<ArticleAnalyticsSummaryResponse>> {
-    let user = auth_session
-        .user
-        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+    pub(crate) async fn get_analytics_summary(
+        State(state): State<AppState>,
+        auth_session: AuthSession,
+    ) -> ApiResult<Json<ArticleAnalyticsSummaryResponse>> {
+        let user = auth_session
+            .user
+            .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_read = state
-        .user_service
-        .has_permission(user.id, "articles:read")
-        .await
-        .map_err(AppError::from)?;
-    if !can_read {
-        return Err(AppError::forbidden("Permission denied"));
+        let can_read = state
+            .user_service
+            .has_permission(user.id, "articles:read")
+            .await
+            .map_err(AppError::from)?;
+        if !can_read {
+            return Err(AppError::forbidden("Permission denied"));
+        }
+
+        let summary = state
+            .article_service
+            .get_analytics_summary(user.tenant_id)
+            .await
+            .map_err(|e| AppError::internal_with_code("STATS_ERROR", e.to_string()))?;
+
+        Ok(Json(ArticleAnalyticsSummaryResponse {
+            total: summary.total,
+            status: ArticleStatusCountsResponse {
+                pending: summary.status.pending,
+                processing: summary.status.processing,
+                published: summary.status.published,
+                archived: summary.status.archived,
+                rejected: summary.status.rejected,
+            },
+            risk: ArticleRiskCountsResponse {
+                unknown: summary.risk.unknown,
+                low: summary.risk.low,
+                medium: summary.risk.medium,
+                high: summary.risk.high,
+                critical: summary.risk.critical,
+            },
+            sentiment: ArticleSentimentCountsResponse {
+                unknown: summary.sentiment.unknown,
+                positive: summary.sentiment.positive,
+                neutral: summary.sentiment.neutral,
+                negative: summary.sentiment.negative,
+                mixed: summary.sentiment.mixed,
+            },
+        }))
     }
 
-    let summary = state
-        .article_service
-        .get_analytics_summary(user.tenant_id)
-        .await
-        .map_err(|e| AppError::internal_with_code("STATS_ERROR", e.to_string()))?;
-
-    Ok(Json(ArticleAnalyticsSummaryResponse {
-        total: summary.total,
-        status: ArticleStatusCountsResponse {
-            pending: summary.status.pending,
-            processing: summary.status.processing,
-            published: summary.status.published,
-            archived: summary.status.archived,
-            rejected: summary.status.rejected,
-        },
-        risk: ArticleRiskCountsResponse {
-            unknown: summary.risk.unknown,
-            low: summary.risk.low,
-            medium: summary.risk.medium,
-            high: summary.risk.high,
-            critical: summary.risk.critical,
-        },
-        sentiment: ArticleSentimentCountsResponse {
-            unknown: summary.sentiment.unknown,
-            positive: summary.sentiment.positive,
-            neutral: summary.sentiment.neutral,
-            negative: summary.sentiment.negative,
-            mixed: summary.sentiment.mixed,
-        },
-    }))
-}
-
-#[utoipa::path(
+    #[utoipa::path(
     get,
     path = "/api/v1/articles/category-counts",
     security(
@@ -434,40 +459,40 @@ pub(crate) async fn get_analytics_summary(
         (status = 500, description = "Server error", body = ApiError)
     )
 )]
-pub(crate) async fn get_category_counts(
-    State(state): State<AppState>,
-    auth_session: AuthSession,
-) -> ApiResult<Json<Vec<ArticleCategoryCountResponse>>> {
-    let user = auth_session
-        .user
-        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+    pub(crate) async fn get_category_counts(
+        State(state): State<AppState>,
+        auth_session: AuthSession,
+    ) -> ApiResult<Json<Vec<ArticleCategoryCountResponse>>> {
+        let user = auth_session
+            .user
+            .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_read = state
-        .user_service
-        .has_permission(user.id, "articles:read")
-        .await
-        .map_err(AppError::from)?;
-    if !can_read {
-        return Err(AppError::forbidden("Permission denied"));
+        let can_read = state
+            .user_service
+            .has_permission(user.id, "articles:read")
+            .await
+            .map_err(AppError::from)?;
+        if !can_read {
+            return Err(AppError::forbidden("Permission denied"));
+        }
+
+        let rows = state
+            .article_service
+            .get_category_counts(user.tenant_id)
+            .await
+            .map_err(|e| AppError::internal_with_code("STATS_ERROR", e.to_string()))?;
+
+        Ok(Json(
+            rows.into_iter()
+                .map(|row| ArticleCategoryCountResponse {
+                    category_id: row.category_id,
+                    count: row.count,
+                })
+                .collect(),
+        ))
     }
 
-    let rows = state
-        .article_service
-        .get_category_counts(user.tenant_id)
-        .await
-        .map_err(|e| AppError::internal_with_code("STATS_ERROR", e.to_string()))?;
-
-    Ok(Json(
-        rows.into_iter()
-            .map(|row| ArticleCategoryCountResponse {
-                category_id: row.category_id,
-                count: row.count,
-            })
-            .collect(),
-    ))
-}
-
-#[utoipa::path(
+    #[utoipa::path(
     get,
     path = "/api/v1/articles/trends",
     params(
@@ -484,47 +509,47 @@ pub(crate) async fn get_category_counts(
         (status = 500, description = "Server error", body = ApiError)
     )
 )]
-pub(crate) async fn get_trends(
-    State(state): State<AppState>,
-    auth_session: AuthSession,
-    ApiQuery(params): ApiQuery<TrendParams>,
-) -> ApiResult<Json<Vec<ArticleTrendPointResponse>>> {
-    let user = auth_session
-        .user
-        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+    pub(crate) async fn get_trends(
+        State(state): State<AppState>,
+        auth_session: AuthSession,
+        ApiQuery(params): ApiQuery<TrendParams>,
+    ) -> ApiResult<Json<Vec<ArticleTrendPointResponse>>> {
+        let user = auth_session
+            .user
+            .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_read = state
-        .user_service
-        .has_permission(user.id, "articles:read")
-        .await
-        .map_err(AppError::from)?;
-    if !can_read {
-        return Err(AppError::forbidden("Permission denied"));
+        let can_read = state
+            .user_service
+            .has_permission(user.id, "articles:read")
+            .await
+            .map_err(AppError::from)?;
+        if !can_read {
+            return Err(AppError::forbidden("Permission denied"));
+        }
+
+        let days = params.days.unwrap_or(7);
+        if !(1..=90).contains(&days) {
+            return Err(AppError::validation("Invalid days"));
+        }
+
+        let points = state
+            .article_service
+            .get_daily_trend(user.tenant_id, days)
+            .await
+            .map_err(|e| AppError::internal_with_code("STATS_ERROR", e.to_string()))?;
+
+        Ok(Json(
+            points
+                .into_iter()
+                .map(|point| ArticleTrendPointResponse {
+                    date: point.date.to_string(),
+                    count: point.count,
+                })
+                .collect(),
+        ))
     }
 
-    let days = params.days.unwrap_or(7);
-    if !(1..=90).contains(&days) {
-        return Err(AppError::validation("Invalid days"));
-    }
-
-    let points = state
-        .article_service
-        .get_daily_trend(user.tenant_id, days)
-        .await
-        .map_err(|e| AppError::internal_with_code("STATS_ERROR", e.to_string()))?;
-
-    Ok(Json(
-        points
-            .into_iter()
-            .map(|point| ArticleTrendPointResponse {
-                date: point.date.to_string(),
-                count: point.count,
-            })
-            .collect(),
-    ))
-}
-
-#[utoipa::path(
+    #[utoipa::path(
     get,
     path = "/api/v1/articles/recent",
     params(
@@ -540,35 +565,35 @@ pub(crate) async fn get_trends(
         (status = 500, description = "Server error", body = ApiError)
     )
 )]
-pub(crate) async fn list_recent(
-    State(state): State<AppState>,
-    auth_session: AuthSession,
-    ApiQuery(params): ApiQuery<ListParams>,
-) -> ApiResult<Json<Vec<ArticleResponse>>> {
-    let user = auth_session
-        .user
-        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+    pub(crate) async fn list_recent(
+        State(state): State<AppState>,
+        auth_session: AuthSession,
+        ApiQuery(params): ApiQuery<ListParams>,
+    ) -> ApiResult<Json<Vec<ArticleResponse>>> {
+        let user = auth_session
+            .user
+            .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_read = state
-        .user_service
-        .has_permission(user.id, "articles:read")
-        .await
-        .map_err(AppError::from)?;
-    if !can_read {
-        return Err(AppError::forbidden("Permission denied"));
+        let can_read = state
+            .user_service
+            .has_permission(user.id, "articles:read")
+            .await
+            .map_err(AppError::from)?;
+        if !can_read {
+            return Err(AppError::forbidden("Permission denied"));
+        }
+
+        let limit = params.limit.unwrap_or(10).min(50);
+        let articles = state
+            .article_service
+            .list_recent(user.tenant_id, limit)
+            .await
+            .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?;
+        let data: Vec<ArticleResponse> = articles.into_iter().map(|a| a.into()).collect();
+        Ok(Json(data))
     }
 
-    let limit = params.limit.unwrap_or(10).min(50);
-    let articles = state
-        .article_service
-        .list_recent(user.tenant_id, limit)
-        .await
-        .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?;
-    let data: Vec<ArticleResponse> = articles.into_iter().map(|a| a.into()).collect();
-    Ok(Json(data))
-}
-
-#[utoipa::path(
+    #[utoipa::path(
     get,
     path = "/api/v1/articles/{id}",
     params(("id" = Uuid, Path, description = "Article ID")),
@@ -583,38 +608,42 @@ pub(crate) async fn list_recent(
         (status = 500, description = "Server error", body = ApiError)
     )
 )]
-pub(crate) async fn get_article(
-    State(state): State<AppState>,
-    auth_session: AuthSession,
-    Path(id): Path<Uuid>,
-) -> ApiResult<Response> {
-    let user = auth_session
-        .user
-        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+    pub(crate) async fn get_article(
+        State(state): State<AppState>,
+        auth_session: AuthSession,
+        Path(id): Path<Uuid>,
+    ) -> ApiResult<Response> {
+        let user = auth_session
+            .user
+            .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_read = state
-        .user_service
-        .has_permission(user.id, "articles:read")
-        .await
-        .map_err(AppError::from)?;
-    if !can_read {
-        return Err(AppError::forbidden("Permission denied"));
+        let can_read = state
+            .user_service
+            .has_permission(user.id, "articles:read")
+            .await
+            .map_err(AppError::from)?;
+        if !can_read {
+            return Err(AppError::forbidden("Permission denied"));
+        }
+
+        let article = state
+            .article_service
+            .get_by_id(user.tenant_id, id)
+            .await
+            .map_err(AppError::from)?;
+
+        let body: ArticleResponse = article.into();
+        let etag = etag_for_version(body.version)?;
+        let mut response = Json(body).into_response();
+        response.headers_mut().insert(header::ETAG, etag);
+        Ok(response)
     }
-
-    let article = state
-        .article_service
-        .get_by_id(user.tenant_id, id)
-        .await
-        .map_err(AppError::from)?;
-
-    let body: ArticleResponse = article.into();
-    let etag = etag_for_version(body.version)?;
-    let mut response = Json(body).into_response();
-    response.headers_mut().insert(header::ETAG, etag);
-    Ok(response)
 }
 
-#[utoipa::path(
+pub(crate) mod command {
+    use super::*;
+
+    #[utoipa::path(
     patch,
     path = "/api/v1/articles/{id}",
     params(("id" = Uuid, Path, description = "Article ID")),
@@ -631,148 +660,148 @@ pub(crate) async fn get_article(
         (status = 500, description = "Server error", body = ApiError)
     )
 )]
-pub(crate) async fn update_article(
-    State(state): State<AppState>,
-    auth_session: AuthSession,
-    headers: HeaderMap,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    Path(id): Path<Uuid>,
-    ApiJson(req): ApiJson<UpdateArticleRequest>,
-) -> ApiResult<Response> {
-    let user = auth_session
-        .user
-        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+    pub(crate) async fn update_article(
+        State(state): State<AppState>,
+        auth_session: AuthSession,
+        headers: HeaderMap,
+        ConnectInfo(addr): ConnectInfo<SocketAddr>,
+        Path(id): Path<Uuid>,
+        ApiJson(req): ApiJson<UpdateArticleRequest>,
+    ) -> ApiResult<Response> {
+        let user = auth_session
+            .user
+            .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_write = state
-        .user_service
-        .has_permission(user.id, "articles:write")
+        let can_write = state
+            .user_service
+            .has_permission(user.id, "articles:write")
+            .await
+            .map_err(AppError::from)?;
+        if !can_write {
+            return Err(AppError::forbidden("Permission denied"));
+        }
+
+        let expected_version = Some(require_if_match_version(&headers)?);
+
+        let title = req.title.as_deref().map(str::trim);
+        let content = req.content.as_deref().map(str::trim);
+        let summary = req.summary.as_deref().map(str::trim);
+
+        if matches!(title, Some("")) {
+            return Err(AppError::validation("title cannot be empty"));
+        }
+
+        if matches!(content, Some("")) {
+            return Err(AppError::validation("content cannot be empty"));
+        }
+
+        if matches!(summary, Some("")) {
+            return Err(AppError::validation("summary cannot be empty"));
+        }
+
+        let has_changes =
+            title.is_some() || content.is_some() || summary.is_some() || req.category_id.is_some();
+        if !has_changes {
+            return Err(AppError::validation("No fields to update"));
+        }
+
+        if let Some(category_id) = req.category_id {
+            state
+                .category_service
+                .get_by_id(category_id)
+                .await
+                .map_err(|e| match e {
+                    Error::NotFound(_) => AppError::validation("Invalid category_id"),
+                    _ => AppError::from(e),
+                })?;
+        }
+
+        let (ip_address, user_agent) = super::super::extract_audit_meta(&headers, addr);
+
+        let tenant_id = user.tenant_id;
+        let user_id = user.id;
+
+        let title_for_db = title.map(str::to_string);
+        let content_for_db = content.map(str::to_string);
+        let summary_for_db = summary.map(str::to_string);
+
+        let article = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
+            let article_service = state.article_service.clone();
+            let audit_service = state.audit_service.clone();
+            let ip_address = ip_address.clone();
+            let user_agent = user_agent.clone();
+            let title_for_db = title_for_db.clone();
+            let content_for_db = content_for_db.clone();
+            let summary_for_db = summary_for_db.clone();
+            let category_id = req.category_id;
+
+            Box::pin(async move {
+                let before = article_service.get_by_id_tx(tenant_id, tx, id).await?;
+
+                let after = article_service
+                    .update_tx(
+                        tenant_id,
+                        tx,
+                        id,
+                        law_eye_core::article::UpdateArticlePatch {
+                            title: title_for_db.as_deref(),
+                            content: content_for_db.as_deref(),
+                            summary: summary_for_db.as_deref(),
+                            category_id,
+                        },
+                        expected_version,
+                    )
+                    .await?;
+
+                audit_service
+                    .log_tx(
+                        tenant_id,
+                        tx,
+                        CreateAuditLog {
+                            user_id: Some(user_id),
+                            action: "articles.update".to_string(),
+                            resource: "articles".to_string(),
+                            resource_id: Some(id),
+                            old_value: Some(serde_json::json!({
+                                "title": before.title,
+                                "summary": before.summary,
+                                "category_id": before.category_id,
+                                "status": before.status,
+                                "content_len": before.content.as_deref().map(|v| v.len()),
+                            })),
+                            new_value: Some(serde_json::json!({
+                                "title": after.title,
+                                "summary": after.summary,
+                                "category_id": after.category_id,
+                                "status": after.status,
+                                "content_len": after.content.as_deref().map(|v| v.len()),
+                                "requested": {
+                                    "title": title_for_db,
+                                    "summary": summary_for_db,
+                                    "category_id": category_id,
+                                    "content_len": content_for_db.as_deref().map(|v| v.len()),
+                                }
+                            })),
+                            ip_address,
+                            user_agent,
+                        },
+                    )
+                    .await?;
+
+                Ok(after)
+            })
+        })
         .await
         .map_err(AppError::from)?;
-    if !can_write {
-        return Err(AppError::forbidden("Permission denied"));
+
+        let body: ArticleResponse = article.into();
+        let etag = etag_for_version(body.version)?;
+        let mut response = Json(body).into_response();
+        response.headers_mut().insert(header::ETAG, etag);
+        Ok(response)
     }
 
-    let expected_version = Some(require_if_match_version(&headers)?);
-
-    let title = req.title.as_deref().map(str::trim);
-    let content = req.content.as_deref().map(str::trim);
-    let summary = req.summary.as_deref().map(str::trim);
-
-    if matches!(title, Some("")) {
-        return Err(AppError::validation("title cannot be empty"));
-    }
-
-    if matches!(content, Some("")) {
-        return Err(AppError::validation("content cannot be empty"));
-    }
-
-    if matches!(summary, Some("")) {
-        return Err(AppError::validation("summary cannot be empty"));
-    }
-
-    let has_changes =
-        title.is_some() || content.is_some() || summary.is_some() || req.category_id.is_some();
-    if !has_changes {
-        return Err(AppError::validation("No fields to update"));
-    }
-
-    if let Some(category_id) = req.category_id {
-        state
-            .category_service
-            .get_by_id(category_id)
-            .await
-            .map_err(|e| match e {
-                Error::NotFound(_) => AppError::validation("Invalid category_id"),
-                _ => AppError::from(e),
-            })?;
-    }
-
-    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
-
-    let tenant_id = user.tenant_id;
-    let user_id = user.id;
-
-    let title_for_db = title.map(str::to_string);
-    let content_for_db = content.map(str::to_string);
-    let summary_for_db = summary.map(str::to_string);
-
-    let article = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
-        let article_service = state.article_service.clone();
-        let audit_service = state.audit_service.clone();
-        let ip_address = ip_address.clone();
-        let user_agent = user_agent.clone();
-        let title_for_db = title_for_db.clone();
-        let content_for_db = content_for_db.clone();
-        let summary_for_db = summary_for_db.clone();
-        let category_id = req.category_id;
-
-        Box::pin(async move {
-            let before = article_service.get_by_id_tx(tenant_id, tx, id).await?;
-
-            let after = article_service
-                .update_tx(
-                    tenant_id,
-                    tx,
-                    id,
-                    law_eye_core::article::UpdateArticlePatch {
-                        title: title_for_db.as_deref(),
-                        content: content_for_db.as_deref(),
-                        summary: summary_for_db.as_deref(),
-                        category_id,
-                    },
-                    expected_version,
-                )
-                .await?;
-
-            audit_service
-                .log_tx(
-                    tenant_id,
-                    tx,
-                    CreateAuditLog {
-                        user_id: Some(user_id),
-                        action: "articles.update".to_string(),
-                        resource: "articles".to_string(),
-                        resource_id: Some(id),
-                        old_value: Some(serde_json::json!({
-                            "title": before.title,
-                            "summary": before.summary,
-                            "category_id": before.category_id,
-                            "status": before.status,
-                            "content_len": before.content.as_deref().map(|v| v.len()),
-                        })),
-                        new_value: Some(serde_json::json!({
-                            "title": after.title,
-                            "summary": after.summary,
-                            "category_id": after.category_id,
-                            "status": after.status,
-                            "content_len": after.content.as_deref().map(|v| v.len()),
-                            "requested": {
-                                "title": title_for_db,
-                                "summary": summary_for_db,
-                                "category_id": category_id,
-                                "content_len": content_for_db.as_deref().map(|v| v.len()),
-                            }
-                        })),
-                        ip_address,
-                        user_agent,
-                    },
-                )
-                .await?;
-
-            Ok(after)
-        })
-    })
-    .await
-    .map_err(AppError::from)?;
-
-    let body: ArticleResponse = article.into();
-    let etag = etag_for_version(body.version)?;
-    let mut response = Json(body).into_response();
-    response.headers_mut().insert(header::ETAG, etag);
-    Ok(response)
-}
-
-#[utoipa::path(
+    #[utoipa::path(
     delete,
     path = "/api/v1/articles/{id}",
     params(("id" = Uuid, Path, description = "Article ID")),
@@ -787,86 +816,175 @@ pub(crate) async fn update_article(
         (status = 500, description = "Server error", body = ApiError)
     )
 )]
-pub(crate) async fn delete_article(
-    State(state): State<AppState>,
-    auth_session: AuthSession,
-    headers: HeaderMap,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    Path(id): Path<Uuid>,
-) -> ApiResult<Json<DeleteResponse>> {
-    let user = auth_session
-        .user
-        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+    pub(crate) async fn delete_article(
+        State(state): State<AppState>,
+        auth_session: AuthSession,
+        headers: HeaderMap,
+        ConnectInfo(addr): ConnectInfo<SocketAddr>,
+        Path(id): Path<Uuid>,
+    ) -> ApiResult<Json<DeleteResponse>> {
+        let user = auth_session
+            .user
+            .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_write = state
-        .user_service
-        .has_permission(user.id, "articles:write")
+        let can_write = state
+            .user_service
+            .has_permission(user.id, "articles:write")
+            .await
+            .map_err(AppError::from)?;
+        if !can_write {
+            return Err(AppError::forbidden("Permission denied"));
+        }
+
+        let expected_version = Some(require_if_match_version(&headers)?);
+
+        let (ip_address, user_agent) = super::super::extract_audit_meta(&headers, addr);
+        let tenant_id = user.tenant_id;
+        let user_id = user.id;
+
+        law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
+            let article_service = state.article_service.clone();
+            let audit_service = state.audit_service.clone();
+            let ip_address = ip_address.clone();
+            let user_agent = user_agent.clone();
+
+            Box::pin(async move {
+                let before = article_service.get_by_id_tx(tenant_id, tx, id).await?;
+
+                article_service
+                    .delete_tx(tenant_id, tx, id, expected_version)
+                    .await?;
+
+                audit_service
+                    .log_tx(
+                        tenant_id,
+                        tx,
+                        CreateAuditLog {
+                            user_id: Some(user_id),
+                            action: "articles.delete".to_string(),
+                            resource: "articles".to_string(),
+                            resource_id: Some(id),
+                            old_value: Some(serde_json::json!({
+                                "title": before.title,
+                                "summary": before.summary,
+                                "category_id": before.category_id,
+                                "status": before.status,
+                                "content_len": before.content.as_deref().map(|v| v.len()),
+                            })),
+                            new_value: Some(serde_json::json!({
+                                "deleted": true,
+                            })),
+                            ip_address,
+                            user_agent,
+                        },
+                    )
+                    .await?;
+
+                Ok::<(), law_eye_common::Error>(())
+            })
+        })
         .await
-        .map_err(AppError::from)?;
-    if !can_write {
-        return Err(AppError::forbidden("Permission denied"));
+        .map_err(|e| match e {
+            Error::NotFound(_) | Error::Conflict(_) => AppError::from(e),
+            _ => AppError::internal_with_code("DELETE_ERROR", e.to_string()),
+        })?;
+
+        Ok(Json(DeleteResponse {
+            success: true,
+            message: "Article deleted".to_string(),
+        }))
     }
 
-    let expected_version = Some(require_if_match_version(&headers)?);
+    #[utoipa::path(
+    post,
+    path = "/api/v1/articles/{id}/restore",
+    params(("id" = Uuid, Path, description = "Article ID")),
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "Article restored", body = ArticleResponse),
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 404, description = "Not found", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
+    )
+)]
+    pub(crate) async fn restore_article(
+        State(state): State<AppState>,
+        auth_session: AuthSession,
+        headers: HeaderMap,
+        ConnectInfo(addr): ConnectInfo<SocketAddr>,
+        Path(id): Path<Uuid>,
+    ) -> ApiResult<Response> {
+        let user = auth_session
+            .user
+            .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
-    let tenant_id = user.tenant_id;
-    let user_id = user.id;
+        let can_write = state
+            .user_service
+            .has_permission(user.id, "articles:write")
+            .await
+            .map_err(AppError::from)?;
+        if !can_write {
+            return Err(AppError::forbidden("Permission denied"));
+        }
 
-    law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
-        let article_service = state.article_service.clone();
-        let audit_service = state.audit_service.clone();
-        let ip_address = ip_address.clone();
-        let user_agent = user_agent.clone();
+        let (ip_address, user_agent) = super::super::extract_audit_meta(&headers, addr);
+        let tenant_id = user.tenant_id;
+        let user_id = user.id;
 
-        Box::pin(async move {
-            let before = article_service.get_by_id_tx(tenant_id, tx, id).await?;
+        let article = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
+            let article_service = state.article_service.clone();
+            let audit_service = state.audit_service.clone();
+            let ip_address = ip_address.clone();
+            let user_agent = user_agent.clone();
 
-            article_service
-                .delete_tx(tenant_id, tx, id, expected_version)
-                .await?;
+            Box::pin(async move {
+                let before = article_service.get_by_id_any_tx(tenant_id, tx, id).await?;
+                let after = article_service.restore_tx(tenant_id, tx, id).await?;
 
-            audit_service
-                .log_tx(
-                    tenant_id,
-                    tx,
-                    CreateAuditLog {
-                        user_id: Some(user_id),
-                        action: "articles.delete".to_string(),
-                        resource: "articles".to_string(),
-                        resource_id: Some(id),
-                        old_value: Some(serde_json::json!({
-                            "title": before.title,
-                            "summary": before.summary,
-                            "category_id": before.category_id,
-                            "status": before.status,
-                            "content_len": before.content.as_deref().map(|v| v.len()),
-                        })),
-                        new_value: Some(serde_json::json!({
-                            "deleted": true,
-                        })),
-                        ip_address,
-                        user_agent,
-                    },
-                )
-                .await?;
+                audit_service
+                    .log_tx(
+                        tenant_id,
+                        tx,
+                        CreateAuditLog {
+                            user_id: Some(user_id),
+                            action: "articles.restore".to_string(),
+                            resource: "articles".to_string(),
+                            resource_id: Some(id),
+                            old_value: Some(serde_json::json!({
+                                "status": before.status,
+                                "deleted_at": before.deleted_at,
+                            })),
+                            new_value: Some(serde_json::json!({
+                                "status": after.status,
+                                "deleted_at": after.deleted_at,
+                            })),
+                            ip_address,
+                            user_agent,
+                        },
+                    )
+                    .await?;
 
-            Ok::<(), law_eye_common::Error>(())
+                Ok(after)
+            })
         })
-    })
-    .await
-    .map_err(|e| match e {
-        Error::NotFound(_) | Error::Conflict(_) => AppError::from(e),
-        _ => AppError::internal_with_code("DELETE_ERROR", e.to_string()),
-    })?;
+        .await
+        .map_err(|e| match e {
+            Error::NotFound(_) | Error::Validation(_) => AppError::from(e),
+            _ => AppError::internal_with_code("RESTORE_ERROR", e.to_string()),
+        })?;
 
-    Ok(Json(DeleteResponse {
-        success: true,
-        message: "Article deleted".to_string(),
-    }))
-}
+        let body: ArticleResponse = article.into();
+        let etag = etag_for_version(body.version)?;
+        let mut response = Json(body).into_response();
+        response.headers_mut().insert(header::ETAG, etag);
+        Ok(response)
+    }
 
-#[utoipa::path(
+    #[utoipa::path(
     post,
     path = "/api/v1/articles/{id}/publish",
     params(("id" = Uuid, Path, description = "Article ID")),
@@ -881,82 +999,82 @@ pub(crate) async fn delete_article(
         (status = 500, description = "Server error", body = ApiError)
     )
 )]
-pub(crate) async fn publish_article(
-    State(state): State<AppState>,
-    auth_session: AuthSession,
-    headers: HeaderMap,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    Path(id): Path<Uuid>,
-) -> ApiResult<Response> {
-    let user = auth_session
-        .user
-        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+    pub(crate) async fn publish_article(
+        State(state): State<AppState>,
+        auth_session: AuthSession,
+        headers: HeaderMap,
+        ConnectInfo(addr): ConnectInfo<SocketAddr>,
+        Path(id): Path<Uuid>,
+    ) -> ApiResult<Response> {
+        let user = auth_session
+            .user
+            .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_publish = state
-        .user_service
-        .has_permission(user.id, "articles:publish")
+        let can_publish = state
+            .user_service
+            .has_permission(user.id, "articles:publish")
+            .await
+            .map_err(AppError::from)?;
+        if !can_publish {
+            return Err(AppError::forbidden("Permission denied"));
+        }
+
+        let expected_version = Some(require_if_match_version(&headers)?);
+
+        let (ip_address, user_agent) = super::super::extract_audit_meta(&headers, addr);
+        let tenant_id = user.tenant_id;
+        let user_id = user.id;
+
+        let article = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
+            let article_service = state.article_service.clone();
+            let audit_service = state.audit_service.clone();
+            let ip_address = ip_address.clone();
+            let user_agent = user_agent.clone();
+
+            Box::pin(async move {
+                let before = article_service.get_by_id_tx(tenant_id, tx, id).await?;
+                let after = article_service
+                    .update_status_tx(tenant_id, tx, id, "published", expected_version)
+                    .await?;
+
+                audit_service
+                    .log_tx(
+                        tenant_id,
+                        tx,
+                        CreateAuditLog {
+                            user_id: Some(user_id),
+                            action: "articles.publish".to_string(),
+                            resource: "articles".to_string(),
+                            resource_id: Some(id),
+                            old_value: Some(serde_json::json!({
+                                "status": before.status,
+                            })),
+                            new_value: Some(serde_json::json!({
+                                "status": after.status,
+                            })),
+                            ip_address,
+                            user_agent,
+                        },
+                    )
+                    .await?;
+
+                Ok(after)
+            })
+        })
         .await
-        .map_err(AppError::from)?;
-    if !can_publish {
-        return Err(AppError::forbidden("Permission denied"));
+        .map_err(|e| match e {
+            Error::NotFound(_) | Error::Conflict(_) => AppError::from(e),
+            _ => AppError::internal_with_code("PUBLISH_ERROR", e.to_string()),
+        })?;
+
+        let body: ArticleResponse = article.into();
+        let etag = etag_for_version(body.version)?;
+        let mut response = Json(body).into_response();
+        response.headers_mut().insert(header::ETAG, etag);
+        Ok(response)
     }
 
-    let expected_version = Some(require_if_match_version(&headers)?);
-
-    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
-    let tenant_id = user.tenant_id;
-    let user_id = user.id;
-
-    let article = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
-        let article_service = state.article_service.clone();
-        let audit_service = state.audit_service.clone();
-        let ip_address = ip_address.clone();
-        let user_agent = user_agent.clone();
-
-        Box::pin(async move {
-            let before = article_service.get_by_id_tx(tenant_id, tx, id).await?;
-            let after = article_service
-                .update_status_tx(tenant_id, tx, id, "published", expected_version)
-                .await?;
-
-            audit_service
-                .log_tx(
-                    tenant_id,
-                    tx,
-                    CreateAuditLog {
-                        user_id: Some(user_id),
-                        action: "articles.publish".to_string(),
-                        resource: "articles".to_string(),
-                        resource_id: Some(id),
-                        old_value: Some(serde_json::json!({
-                            "status": before.status,
-                        })),
-                        new_value: Some(serde_json::json!({
-                            "status": after.status,
-                        })),
-                        ip_address,
-                        user_agent,
-                    },
-                )
-                .await?;
-
-            Ok(after)
-        })
-    })
-    .await
-    .map_err(|e| match e {
-        Error::NotFound(_) | Error::Conflict(_) => AppError::from(e),
-        _ => AppError::internal_with_code("PUBLISH_ERROR", e.to_string()),
-    })?;
-
-    let body: ArticleResponse = article.into();
-    let etag = etag_for_version(body.version)?;
-    let mut response = Json(body).into_response();
-    response.headers_mut().insert(header::ETAG, etag);
-    Ok(response)
-}
-
-#[utoipa::path(
+    #[utoipa::path(
     post,
     path = "/api/v1/articles/{id}/archive",
     params(("id" = Uuid, Path, description = "Article ID")),
@@ -971,82 +1089,82 @@ pub(crate) async fn publish_article(
         (status = 500, description = "Server error", body = ApiError)
     )
 )]
-pub(crate) async fn archive_article(
-    State(state): State<AppState>,
-    auth_session: AuthSession,
-    headers: HeaderMap,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    Path(id): Path<Uuid>,
-) -> ApiResult<Response> {
-    let user = auth_session
-        .user
-        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+    pub(crate) async fn archive_article(
+        State(state): State<AppState>,
+        auth_session: AuthSession,
+        headers: HeaderMap,
+        ConnectInfo(addr): ConnectInfo<SocketAddr>,
+        Path(id): Path<Uuid>,
+    ) -> ApiResult<Response> {
+        let user = auth_session
+            .user
+            .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_publish = state
-        .user_service
-        .has_permission(user.id, "articles:publish")
+        let can_publish = state
+            .user_service
+            .has_permission(user.id, "articles:publish")
+            .await
+            .map_err(AppError::from)?;
+        if !can_publish {
+            return Err(AppError::forbidden("Permission denied"));
+        }
+
+        let expected_version = Some(require_if_match_version(&headers)?);
+
+        let (ip_address, user_agent) = super::super::extract_audit_meta(&headers, addr);
+        let tenant_id = user.tenant_id;
+        let user_id = user.id;
+
+        let article = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
+            let article_service = state.article_service.clone();
+            let audit_service = state.audit_service.clone();
+            let ip_address = ip_address.clone();
+            let user_agent = user_agent.clone();
+
+            Box::pin(async move {
+                let before = article_service.get_by_id_tx(tenant_id, tx, id).await?;
+                let after = article_service
+                    .update_status_tx(tenant_id, tx, id, "archived", expected_version)
+                    .await?;
+
+                audit_service
+                    .log_tx(
+                        tenant_id,
+                        tx,
+                        CreateAuditLog {
+                            user_id: Some(user_id),
+                            action: "articles.archive".to_string(),
+                            resource: "articles".to_string(),
+                            resource_id: Some(id),
+                            old_value: Some(serde_json::json!({
+                                "status": before.status,
+                            })),
+                            new_value: Some(serde_json::json!({
+                                "status": after.status,
+                            })),
+                            ip_address,
+                            user_agent,
+                        },
+                    )
+                    .await?;
+
+                Ok(after)
+            })
+        })
         .await
-        .map_err(AppError::from)?;
-    if !can_publish {
-        return Err(AppError::forbidden("Permission denied"));
+        .map_err(|e| match e {
+            Error::NotFound(_) | Error::Conflict(_) => AppError::from(e),
+            _ => AppError::internal_with_code("ARCHIVE_ERROR", e.to_string()),
+        })?;
+
+        let body: ArticleResponse = article.into();
+        let etag = etag_for_version(body.version)?;
+        let mut response = Json(body).into_response();
+        response.headers_mut().insert(header::ETAG, etag);
+        Ok(response)
     }
 
-    let expected_version = Some(require_if_match_version(&headers)?);
-
-    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
-    let tenant_id = user.tenant_id;
-    let user_id = user.id;
-
-    let article = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
-        let article_service = state.article_service.clone();
-        let audit_service = state.audit_service.clone();
-        let ip_address = ip_address.clone();
-        let user_agent = user_agent.clone();
-
-        Box::pin(async move {
-            let before = article_service.get_by_id_tx(tenant_id, tx, id).await?;
-            let after = article_service
-                .update_status_tx(tenant_id, tx, id, "archived", expected_version)
-                .await?;
-
-            audit_service
-                .log_tx(
-                    tenant_id,
-                    tx,
-                    CreateAuditLog {
-                        user_id: Some(user_id),
-                        action: "articles.archive".to_string(),
-                        resource: "articles".to_string(),
-                        resource_id: Some(id),
-                        old_value: Some(serde_json::json!({
-                            "status": before.status,
-                        })),
-                        new_value: Some(serde_json::json!({
-                            "status": after.status,
-                        })),
-                        ip_address,
-                        user_agent,
-                    },
-                )
-                .await?;
-
-            Ok(after)
-        })
-    })
-    .await
-    .map_err(|e| match e {
-        Error::NotFound(_) | Error::Conflict(_) => AppError::from(e),
-        _ => AppError::internal_with_code("ARCHIVE_ERROR", e.to_string()),
-    })?;
-
-    let body: ArticleResponse = article.into();
-    let etag = etag_for_version(body.version)?;
-    let mut response = Json(body).into_response();
-    response.headers_mut().insert(header::ETAG, etag);
-    Ok(response)
-}
-
-#[utoipa::path(
+    #[utoipa::path(
     post,
     path = "/api/v1/articles/batch-status",
     request_body = BatchStatusRequest,
@@ -1061,59 +1179,96 @@ pub(crate) async fn archive_article(
         (status = 500, description = "Server error", body = ApiError)
     )
 )]
-pub(crate) async fn batch_update_status(
-    State(state): State<AppState>,
-    auth_session: AuthSession,
-    headers: HeaderMap,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    ApiJson(req): ApiJson<BatchStatusRequest>,
-) -> ApiResult<Json<BatchStatusResponse>> {
-    let user = auth_session
-        .user
-        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+    pub(crate) async fn batch_update_status(
+        State(state): State<AppState>,
+        auth_session: AuthSession,
+        headers: HeaderMap,
+        ConnectInfo(addr): ConnectInfo<SocketAddr>,
+        ApiJson(req): ApiJson<BatchStatusRequest>,
+    ) -> ApiResult<Json<BatchStatusResponse>> {
+        let user = auth_session
+            .user
+            .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let can_publish = state
-        .user_service
-        .has_permission(user.id, "articles:publish")
-        .await
-        .map_err(AppError::from)?;
-    if !can_publish {
-        return Err(AppError::forbidden("Permission denied"));
-    }
+        let can_publish = state
+            .user_service
+            .has_permission(user.id, "articles:publish")
+            .await
+            .map_err(AppError::from)?;
+        if !can_publish {
+            return Err(AppError::forbidden("Permission denied"));
+        }
 
-    if req.ids.is_empty() {
-        return Err(AppError::validation("ids cannot be empty"));
-    }
-    if req.ids.len() > MAX_BATCH_STATUS_IDS {
-        return Err(AppError::validation(format!(
-            "ids cannot exceed {MAX_BATCH_STATUS_IDS}"
-        )));
-    }
+        let uses_items = !req.items.is_empty();
+        let count = if uses_items {
+            req.items.len()
+        } else {
+            req.ids.len()
+        };
 
-    if !is_valid_status(&req.status) {
-        return Err(AppError::validation("Invalid status"));
-    }
+        if count == 0 {
+            return Err(AppError::validation("ids/items cannot be empty"));
+        }
+        if count > MAX_BATCH_STATUS_IDS {
+            return Err(AppError::validation(format!(
+                "ids cannot exceed {MAX_BATCH_STATUS_IDS}"
+            )));
+        }
 
-    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
-    let tenant_id = user.tenant_id;
-    let user_id = user.id;
+        if !is_valid_status(&req.status) {
+            return Err(AppError::validation("Invalid status"));
+        }
 
-    let ids_sample: Vec<Uuid> = req.ids.iter().copied().take(50).collect();
-    let ids_count = req.ids.len();
+        let (ip_address, user_agent) = super::super::extract_audit_meta(&headers, addr);
+        let tenant_id = user.tenant_id;
+        let user_id = user.id;
 
-    let updated = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
+        let ids_sample: Vec<Uuid> = if uses_items {
+            req.items.iter().map(|item| item.id).take(50).collect()
+        } else {
+            req.ids.iter().copied().take(50).collect()
+        };
+        let ids_count = count;
+
+        let result = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
         let article_service = state.article_service.clone();
         let audit_service = state.audit_service.clone();
         let ip_address = ip_address.clone();
         let user_agent = user_agent.clone();
         let status = req.status.clone();
         let ids = req.ids.clone();
+        let items = req.items.clone();
         let ids_sample = ids_sample.clone();
 
         Box::pin(async move {
-            let updated = article_service
-                .batch_update_status_tx(tenant_id, tx, &ids, &status)
-                .await?;
+            let (updated, conflicts, missing_ids, mode) = if !items.is_empty() {
+                let mut version_items = Vec::with_capacity(items.len());
+                for item in items {
+                    if item.version < 1 {
+                        return Err(Error::Validation("Invalid version".to_string()));
+                    }
+                    version_items.push(law_eye_core::article::BatchStatusVersionItem {
+                        id: item.id,
+                        version: item.version,
+                    });
+                }
+
+                let outcome = article_service
+                    .batch_update_status_with_versions_tx(tenant_id, tx, &version_items, &status)
+                    .await?;
+
+                (
+                    outcome.updated,
+                    outcome.conflicts,
+                    outcome.missing_ids,
+                    "if_match",
+                )
+            } else {
+                let updated = article_service
+                    .batch_update_status_tx(tenant_id, tx, &ids, &status)
+                    .await?;
+                (updated, Vec::new(), Vec::new(), "blind")
+            };
 
             audit_service
                 .log_tx(
@@ -1130,6 +1285,13 @@ pub(crate) async fn batch_update_status(
                             "ids_count": ids_count,
                             "ids_sample": ids_sample,
                             "updated": updated,
+                            "mode": mode,
+                            "conflicts": conflicts.iter().take(50).map(|c| serde_json::json!({
+                                "id": c.id,
+                                "expected_version": c.expected_version,
+                                "current_version": c.current_version,
+                            })).collect::<Vec<_>>(),
+                            "missing_ids_sample": missing_ids.iter().copied().take(50).collect::<Vec<_>>(),
                         })),
                         ip_address,
                         user_agent,
@@ -1137,10 +1299,51 @@ pub(crate) async fn batch_update_status(
                 )
                 .await?;
 
-            Ok(updated)
+            Ok((updated, conflicts, missing_ids))
         })
     })
     .await
-    .map_err(|e| AppError::internal_with_code("BATCH_ERROR", e.to_string()))?;
-    Ok(Json(BatchStatusResponse { updated }))
+    .map_err(|e| match e {
+        Error::Validation(msg) => AppError::validation(msg),
+        _ => AppError::internal_with_code("BATCH_ERROR", e.to_string()),
+    })?;
+
+        let (updated, conflicts, missing_ids) = result;
+        if !conflicts.is_empty() || !missing_ids.is_empty() {
+            let conflicts_body: Vec<BatchStatusItemConflict> = conflicts
+                .into_iter()
+                .map(|c| BatchStatusItemConflict {
+                    id: c.id,
+                    expected_version: c.expected_version,
+                    current_version: c.current_version,
+                })
+                .collect();
+
+            return Err(AppError {
+                status: axum::http::StatusCode::CONFLICT,
+                body: ApiError::new("Batch update conflict")
+                    .with_code("CONFLICT")
+                    .with_details(serde_json::json!({
+                        "updated": updated,
+                        "conflicts": conflicts_body,
+                        "missing_ids": missing_ids,
+                    })),
+            });
+        }
+
+        Ok(Json(BatchStatusResponse {
+            updated,
+            conflicts: Vec::new(),
+            missing_ids: Vec::new(),
+        }))
+    }
 }
+
+pub(crate) use command::{
+    archive_article, batch_update_status, delete_article, publish_article, restore_article,
+    update_article,
+};
+pub(crate) use query::{
+    get_analytics_summary, get_article, get_category_counts, get_stats, get_trends, list_articles,
+    list_recent,
+};

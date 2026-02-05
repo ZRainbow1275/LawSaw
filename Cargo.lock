@@ -2911,6 +2911,7 @@ name = "law-eye-worker"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
  "law-eye-ai",
  "law-eye-common",
  "law-eye-core",
