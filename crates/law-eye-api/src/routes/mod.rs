@@ -8,6 +8,7 @@ pub mod health;
 pub mod knowledge;
 pub mod objects;
 pub mod openapi;
+pub mod push;
 pub mod search;
 pub mod sources;
 pub mod users;
@@ -19,8 +20,7 @@ use axum::{
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::get,
-    Extension,
-    Router,
+    Extension, Router,
 };
 use metrics::{counter, histogram};
 use std::net::{IpAddr, SocketAddr};
@@ -142,7 +142,10 @@ pub fn create_router(state: AppState) -> Router {
             "/sources",
             require_permissions(sources::router(), "sources:read", "*"),
         )
-        .nest("/categories", require_permission(categories::router(), "categories:read"))
+        .nest(
+            "/categories",
+            require_permission(categories::router(), "categories:read"),
+        )
         .nest(
             "/feedbacks",
             require_permission(feedbacks::router(), "feedbacks:write"),
@@ -152,10 +155,23 @@ pub fn create_router(state: AppState) -> Router {
             require_permissions(ai::router(), "articles:read", "articles:write"),
         )
         .nest("/users", require_permission(users::router(), "users:read"))
-        .nest("/objects", require_permission(objects::router(), "objects:read"))
-        .nest("/search", require_permission(search::router(), "articles:read"))
-        .nest("/apikeys", require_permission(apikeys::router(), "apikeys:manage"))
-        .nest("/knowledge", require_permission(knowledge::router(), "articles:read"))
+        .nest(
+            "/objects",
+            require_permission(objects::router(), "objects:read"),
+        )
+        .nest(
+            "/search",
+            require_permission(search::router(), "articles:read"),
+        )
+        .nest("/push", require_permission(push::router(), "articles:read"))
+        .nest(
+            "/apikeys",
+            require_permission(apikeys::router(), "apikeys:manage"),
+        )
+        .nest(
+            "/knowledge",
+            require_permission(knowledge::router(), "articles:read"),
+        )
         // Default deny: everything under /api/v1 requires an authenticated session,
         // except routes explicitly mounted outside this protected router (e.g. /api/v1/auth/*).
         .layer(middleware::from_extractor::<RequireAuth>())

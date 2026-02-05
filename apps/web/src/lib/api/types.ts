@@ -110,6 +110,20 @@ export interface HealthResponse {
 	version: string;
 }
 
+export interface VapidPublicKeyResponse {
+	public_key: string;
+}
+
+export interface PushSubscribeResponse {
+	id: string;
+}
+
+export interface PushTestResponse {
+	delivered: number;
+	failed: number;
+	total: number;
+}
+
 export interface ArticleListResponse {
 	data: Article[];
 	total: number;
@@ -932,7 +946,10 @@ export function assertSourceStatsResponse(
 ): asserts value is SourceStatsResponse {
 	assertRecord(value, path);
 	assertNumber(getRequired(value, "total", path), `${path}.total`);
-	assertNumber(getRequired(value, "active_count", path), `${path}.active_count`);
+	assertNumber(
+		getRequired(value, "active_count", path),
+		`${path}.active_count`,
+	);
 	assertNumber(getRequired(value, "error_count", path), `${path}.error_count`);
 }
 
@@ -1005,6 +1022,32 @@ export function assertAiAvailabilityResponse(
 ): asserts value is AiAvailabilityResponse {
 	assertRecord(value, path);
 	assertBoolean(getRequired(value, "available", path), `${path}.available`);
+}
+
+export function assertVapidPublicKeyResponse(
+	value: unknown,
+	path = "vapidPublicKeyResponse",
+): asserts value is VapidPublicKeyResponse {
+	assertRecord(value, path);
+	assertString(getRequired(value, "public_key", path), `${path}.public_key`);
+}
+
+export function assertPushSubscribeResponse(
+	value: unknown,
+	path = "pushSubscribeResponse",
+): asserts value is PushSubscribeResponse {
+	assertRecord(value, path);
+	assertString(getRequired(value, "id", path), `${path}.id`);
+}
+
+export function assertPushTestResponse(
+	value: unknown,
+	path = "pushTestResponse",
+): asserts value is PushTestResponse {
+	assertRecord(value, path);
+	assertNumber(getRequired(value, "delivered", path), `${path}.delivered`);
+	assertNumber(getRequired(value, "failed", path), `${path}.failed`);
+	assertNumber(getRequired(value, "total", path), `${path}.total`);
 }
 
 export function assertFeedback(

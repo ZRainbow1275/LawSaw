@@ -23,8 +23,11 @@ import {
 	assertCreateApiKeyResponse,
 	assertDeleteResponse,
 	assertHealthResponse,
+	assertPushSubscribeResponse,
+	assertPushTestResponse,
 	assertUserDetailResponse,
 	assertUserProfile,
+	assertVapidPublicKeyResponse,
 } from "@/lib/api/types";
 import { useAuthStore } from "@/stores/auth-store";
 import { useToast } from "@/stores/toast-store";
@@ -45,7 +48,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 type Theme = "light" | "dark" | "system";
 
@@ -92,6 +95,22 @@ function parseCsv(value: string): string[] {
 		.split(",")
 		.map((s) => s.trim())
 		.filter((s) => s.length > 0);
+}
+
+function base64UrlToUint8Array(value: string): Uint8Array<ArrayBuffer> {
+	const trimmed = value.trim();
+	if (!trimmed) return new Uint8Array(0) as Uint8Array<ArrayBuffer>;
+
+	const base64 = trimmed.replace(/-/g, "+").replace(/_/g, "/");
+	const padLength = (4 - (base64.length % 4)) % 4;
+	const padded = `${base64}${"=".repeat(padLength)}`;
+
+	const binary = globalThis.atob(padded);
+	const bytes: Uint8Array<ArrayBuffer> = new Uint8Array(binary.length);
+	for (let i = 0; i < binary.length; i += 1) {
+		bytes[i] = binary.charCodeAt(i);
+	}
+	return bytes;
 }
 
 function SettingsContent() {
@@ -144,6 +163,188 @@ function SettingsContent() {
 
 	const [appearance, setAppearance] =
 		useState<AppearancePreferences>(DEFAULT_APPEARANCE);
+
+	type WebPushState = {
+		supported: boolean;
+		permission: NotificationPermission;
+		enabled: boolean;
+		busy: boolean;
+	};
+
+	const [webPush, setWebPush] = useState<WebPushState>(() => ({
+		supported: false,
+		permission:
+			typeof Notification !== "undefined" ? Notification.permission : "default",
+		enabled: false,
+		busy: false,
+	}));
+
+	const getServiceWorkerRegistration = useCallback(
+		async (): Promise<ServiceWorkerRegistration | null> => {
+			if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+				return null;
+			}
+
+			const existing = await navigator.serviceWorker.getRegistration("/");
+			if (existing) return existing;
+
+			try {
+				return await navigator.serviceWorker.register("/sw", { scope: "/" });
+			} catch {
+				return null;
+			}
+		},
+		[],
+	);
+
+	const refreshWebPushStatus = useCallback(async (): Promise<void> => {
+		if (typeof window === "undefined") return;
+
+		const supported =
+			"serviceWorker" in navigator &&
+			"PushManager" in window &&
+			"Notification" in window;
+
+		if (!supported) {
+			setWebPush((prev) => ({
+				...prev,
+				supported: false,
+				permission: "default",
+				enabled: false,
+			}));
+			return;
+		}
+
+		const permission = Notification.permission;
+		try {
+			const registration = await getServiceWorkerRegistration();
+			const subscription = registration
+				? await registration.pushManager.getSubscription()
+				: null;
+			setWebPush((prev) => ({
+				...prev,
+				supported: true,
+				permission,
+				enabled: Boolean(subscription),
+			}));
+		} catch {
+			setWebPush((prev) => ({
+				...prev,
+				supported: true,
+				permission,
+				enabled: false,
+			}));
+		}
+	}, [getServiceWorkerRegistration]);
+
+	useEffect(() => {
+		void refreshWebPushStatus();
+	}, [refreshWebPushStatus]);
+
+	const enableWebPush = async (): Promise<void> => {
+		if (webPush.busy) return;
+		setWebPush((prev) => ({ ...prev, busy: true }));
+
+		try {
+			if (!webPush.supported) {
+				throw new Error("当前浏览器不支持 Web Push");
+			}
+
+			const permission =
+				Notification.permission === "default"
+					? await Notification.requestPermission()
+					: Notification.permission;
+
+			if (permission !== "granted") {
+				setWebPush((prev) => ({ ...prev, permission }));
+				throw new Error("未获得通知权限");
+			}
+
+			const registration = await getServiceWorkerRegistration();
+			if (!registration) {
+				throw new Error("Service Worker 未就绪");
+			}
+
+			const { public_key } = await apiClient.get(
+				"/api/v1/push/vapid-public-key",
+				assertVapidPublicKeyResponse,
+			);
+			const applicationServerKey = base64UrlToUint8Array(public_key);
+			if (applicationServerKey.length === 0) {
+				throw new Error("VAPID 公钥为空");
+			}
+
+			const subscription = await registration.pushManager.subscribe({
+				userVisibleOnly: true,
+				applicationServerKey,
+			});
+
+			await apiClient.post(
+				"/api/v1/push/subscribe",
+				subscription.toJSON(),
+				assertPushSubscribeResponse,
+			);
+
+			toastSuccess("已开启 Web Push", "可在下方发送测试通知验证");
+			await refreshWebPushStatus();
+		} catch (err) {
+			toastError("开启 Web Push 失败", err instanceof Error ? err.message : "未知错误");
+			await refreshWebPushStatus();
+		} finally {
+			setWebPush((prev) => ({ ...prev, busy: false }));
+		}
+	};
+
+	const disableWebPush = async (): Promise<void> => {
+		if (webPush.busy) return;
+		setWebPush((prev) => ({ ...prev, busy: true }));
+
+		try {
+			const registration = await getServiceWorkerRegistration();
+			const subscription = registration
+				? await registration.pushManager.getSubscription()
+				: null;
+
+			if (subscription) {
+				await apiClient.post("/api/v1/push/unsubscribe", {
+					endpoint: subscription.endpoint,
+				});
+				await subscription.unsubscribe();
+			}
+
+			toastSuccess("已关闭 Web Push");
+			await refreshWebPushStatus();
+		} catch (err) {
+			toastError("关闭 Web Push 失败", err instanceof Error ? err.message : "未知错误");
+			await refreshWebPushStatus();
+		} finally {
+			setWebPush((prev) => ({ ...prev, busy: false }));
+		}
+	};
+
+	const sendTestWebPush = async (): Promise<void> => {
+		if (webPush.busy) return;
+		setWebPush((prev) => ({ ...prev, busy: true }));
+
+		try {
+			const result = await apiClient.post(
+				"/api/v1/push/test",
+				undefined,
+				assertPushTestResponse,
+			);
+			toastSuccess(
+				"已发送测试通知",
+				`投递 ${result.delivered}/${result.total}（失败 ${result.failed}）`,
+			);
+		} catch (err) {
+			toastError(
+				"发送测试通知失败",
+				err instanceof Error ? err.message : "未知错误",
+			);
+		} finally {
+			setWebPush((prev) => ({ ...prev, busy: false }));
+		}
+	};
 
 	const userId = user?.id;
 
@@ -402,8 +603,7 @@ function SettingsContent() {
 	const AVATAR_MAX_BYTES = 1_048_576;
 	const allowedAvatarTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
 
-	const avatarSrc =
-		avatarPreviewUrl || user?.avatar_url || null;
+	const avatarSrc = avatarPreviewUrl || user?.avatar_url || null;
 	const isPreviewAvatar =
 		typeof avatarSrc === "string" &&
 		(avatarSrc.startsWith("blob:") || avatarSrc.startsWith("data:"));
@@ -674,6 +874,65 @@ function SettingsContent() {
 													</label>
 												</div>
 											))}
+
+											<div className="rounded-lg border border-neutral-100 p-4">
+												<div className="flex items-start justify-between gap-4">
+													<div>
+														<p className="font-medium">浏览器推送（Web Push）</p>
+														<p className="text-sm text-neutral-500">
+															在后台接收通知（需要浏览器授权与 Service Worker）
+														</p>
+													</div>
+
+													{!webPush.supported ? (
+														<Badge variant="outline">不支持</Badge>
+													) : webPush.enabled ? (
+														<div className="flex items-center gap-2">
+															<Badge variant="outline">已开启</Badge>
+															<Button
+																type="button"
+																variant="outline"
+																size="sm"
+																disabled={webPush.busy}
+																onClick={disableWebPush}
+															>
+																关闭
+															</Button>
+														</div>
+													) : (
+														<Button
+															type="button"
+															size="sm"
+															disabled={
+																webPush.busy || webPush.permission === "denied"
+															}
+															onClick={enableWebPush}
+														>
+															开启
+														</Button>
+													)}
+												</div>
+
+												{webPush.supported && webPush.permission === "denied" ? (
+													<p className="mt-2 text-xs text-neutral-500">
+														浏览器已拒绝通知权限，请在浏览器设置中允许本站通知后重试。
+													</p>
+												) : null}
+
+												{webPush.supported && webPush.enabled ? (
+													<div className="mt-3 flex gap-2">
+														<Button
+															type="button"
+															variant="outline"
+															size="sm"
+															disabled={webPush.busy}
+															onClick={sendTestWebPush}
+														>
+															发送测试通知
+														</Button>
+													</div>
+												) : null}
+											</div>
 											<div className="flex justify-end">
 												<Button onClick={handleSave} disabled={saving}>
 													{saving ? (

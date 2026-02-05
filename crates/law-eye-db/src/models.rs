@@ -175,6 +175,31 @@ pub struct PasswordResetToken {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct WebPushSubscription {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+    pub endpoint: String,
+    pub p256dh: String,
+    pub auth: String,
+    pub expiration_time: Option<DateTime<Utc>>,
+    pub user_agent: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateWebPushSubscription {
+    pub user_id: Uuid,
+    pub endpoint: String,
+    pub p256dh: String,
+    pub auth: String,
+    pub expiration_time: Option<DateTime<Utc>>,
+    pub user_agent: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct AuditLog {
     pub id: Uuid,
     pub tenant_id: Uuid,

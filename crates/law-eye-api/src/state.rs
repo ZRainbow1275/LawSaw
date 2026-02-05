@@ -2,8 +2,8 @@ use law_eye_ai::{AiService, LlmGateway};
 use law_eye_common::vault::SensitiveStringCipher;
 use law_eye_core::{
     ApiKeyService, ArticleService, AuditService, CategoryService, FeedbackService,
-    KnowledgeService, ObjectService, PasswordResetService, RagService, SourceService, TenantService,
-    UserService,
+    KnowledgeService, ObjectService, PasswordResetService, RagService, SourceService,
+    TenantService, UserService, WebPushSubscriptionService,
 };
 use law_eye_queue::TaskQueue;
 use metrics_exporter_prometheus::PrometheusHandle;
@@ -30,6 +30,7 @@ pub struct AppState {
     #[allow(dead_code)] // Reserved for future knowledge base features
     pub knowledge_service: Arc<KnowledgeService>,
     pub apikey_service: Arc<ApiKeyService>,
+    pub web_push_subscription_service: Arc<WebPushSubscriptionService>,
     pub metrics_handle: PrometheusHandle,
     pub metrics_token: Option<String>,
     pub allow_internal_source_urls: bool,
@@ -71,7 +72,8 @@ impl AppState {
             ai_service: ai_service.map(Arc::new),
             rag_service: Arc::new(RagService::new(pool.clone(), gateway.clone())),
             knowledge_service: Arc::new(KnowledgeService::new(pool.clone(), gateway)),
-            apikey_service: Arc::new(ApiKeyService::new(pool)),
+            apikey_service: Arc::new(ApiKeyService::new(pool.clone())),
+            web_push_subscription_service: Arc::new(WebPushSubscriptionService::new(pool.clone())),
             metrics_handle,
             metrics_token,
             allow_internal_source_urls,

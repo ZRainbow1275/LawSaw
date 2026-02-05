@@ -134,6 +134,18 @@ bash scripts/no-dockerhub/e2e.sh --name law-eye-e2e-local --web-mode prod
   - `LAW_EYE__RATE_LIMIT__LOGIN_MAX_REQUESTS`
   - `LAW_EYE__RATE_LIMIT__REGISTER_MAX_REQUESTS`
 
+### 国际化（i18n）
+
+- Web 已支持 `zh/en` 两种 locale 路由（示例：`/zh/login`、`/en/login`）。
+- `apps/web/src/middleware.ts` 会将无前缀路径重定向到 `/{locale}/...`，并通过 cookie `LAW_EYE_LOCALE` 记忆选择。
+- 翻译资源在 `apps/web/src/lib/i18n.ts`（以中文文案作为 key，英文作为 value）；前端通过 `useT()` 渲染，日期/数字通过 `formatDateTime/formatNumber` 做 locale-aware 格式化。
+
+### Web Push（浏览器推送）
+
+- 需要配置 `.env`：`WEB_PUSH_VAPID_PUBLIC_KEY`、`WEB_PUSH_VAPID_PRIVATE_KEY`、`WEB_PUSH_SUBJECT`（建议 `mailto:`）。
+- 前端：设置页可“开启/关闭/发送测试通知”；Service Worker 监听 `push` 事件并展示通知（点击跳转到 payload.url）。
+- 后端：`/api/v1/push/*` 提供 VAPID 公钥、订阅/退订、测试投递；订阅落库到 `web_push_subscriptions` 并写入审计日志；投递前会做 SSRF 防护（仅允许 https 且阻断内网地址）。
+
 ## 企业/云端模式（Vault + Gateway）
 
 仓库提供 `docker-compose.enterprise.yml`，用于启用 Vault 注入敏感配置、以及 Caddy 网关（含 mTLS 组件）。这是高级部署路径，需要额外的 PKI/证书准备（见 `infra/` 与 `scripts/enterprise/*`）。

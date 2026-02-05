@@ -427,6 +427,57 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(staleWhileRevalidate(request));
   }
 });
+
+self.addEventListener("push", (event) => {
+  event.waitUntil((async () => {
+    let data = {};
+    try {
+      data = event.data ? event.data.json() : {};
+    } catch {
+      data = {};
+    }
+
+    const title = typeof data.title === "string" ? data.title : "LawSaw";
+    const body = typeof data.body === "string" ? data.body : "";
+    const url = typeof data.url === "string" ? data.url : "/";
+
+    await self.registration.showNotification(title, {
+      body,
+      icon: "/icon.svg",
+      badge: "/icon.svg",
+      data: { url },
+    });
+  })());
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const payload = event.notification.data || {};
+  const url = payload && typeof payload.url === "string" ? payload.url : "/";
+
+  event.waitUntil((async () => {
+    const clients = await self.clients.matchAll({
+      type: "window",
+      includeUncontrolled: true,
+    });
+
+    for (const client of clients) {
+      if ("focus" in client) {
+        await client.focus();
+        if ("navigate" in client) {
+          try {
+            await client.navigate(url);
+          } catch {
+            // ignore
+          }
+        }
+        return;
+      }
+    }
+
+    await self.clients.openWindow(url);
+  })());
+});
 `;
 
 export async function GET(): Promise<Response> {
