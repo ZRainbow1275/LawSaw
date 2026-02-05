@@ -14,8 +14,8 @@ use sqlx::PgPool;
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tokio::signal;
 use tokio::net::TcpListener;
+use tokio::signal;
 use tokio::time::{timeout, Duration, Instant};
 use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -50,7 +50,9 @@ async fn health_live() -> (StatusCode, Json<serde_json::Value>) {
     (StatusCode::OK, Json(json!({ "status": "ok" })))
 }
 
-async fn health_ready(State(state): State<WorkerHealthState>) -> (StatusCode, Json<serde_json::Value>) {
+async fn health_ready(
+    State(state): State<WorkerHealthState>,
+) -> (StatusCode, Json<serde_json::Value>) {
     if state.shutdown.load(Ordering::Relaxed) {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -58,9 +60,12 @@ async fn health_ready(State(state): State<WorkerHealthState>) -> (StatusCode, Js
         );
     }
 
-    let db_ok = timeout(state.check_timeout, sqlx::query("SELECT 1").execute(&state.pool))
-        .await
-        .is_ok_and(|res| res.is_ok());
+    let db_ok = timeout(
+        state.check_timeout,
+        sqlx::query("SELECT 1").execute(&state.pool),
+    )
+    .await
+    .is_ok_and(|res| res.is_ok());
 
     if !db_ok {
         return (
@@ -999,7 +1004,7 @@ impl Worker {
             .execute(&mut *tx)
             .await?;
 
-        for (idx, (content, embedding)) in chunks.into_iter().enumerate() {
+        for (idx, (_, embedding)) in chunks.iter().enumerate() {
             if embedding.vector.len() != EXPECTED_VECTOR_DIM {
                 return Err(anyhow::anyhow!(
                     "Embedding dimension mismatch for article {} chunk {}: expected {}, got {}",
@@ -1009,26 +1014,30 @@ impl Worker {
                     embedding.vector.len()
                 ));
             }
+        }
 
-            sqlx::query(
-                r#"
-                INSERT INTO article_chunks (article_id, chunk_index, content, embedding, token_count)
-                VALUES ($1, $2, $3, $4::vector, $5)
-                ON CONFLICT (tenant_id, article_id, chunk_index)
-                DO UPDATE SET
-                    content = EXCLUDED.content,
-                    embedding = EXCLUDED.embedding,
-                    token_count = EXCLUDED.token_count,
-                    deleted_at = NULL
-                "#,
-            )
-            .bind(article_id)
-            .bind(idx as i32)
-            .bind(&content)
-            .bind(&embedding.vector)
-            .bind(embedding.token_count as i32)
-            .execute(&mut *tx)
-            .await?;
+        const INSERT_BATCH_SIZE: usize = 200;
+        for (batch_idx, batch) in chunks.chunks(INSERT_BATCH_SIZE).enumerate() {
+            let base_idx = batch_idx * INSERT_BATCH_SIZE;
+
+            let mut builder = sqlx::QueryBuilder::new(
+                "INSERT INTO article_chunks (article_id, chunk_index, content, embedding, token_count) ",
+            );
+
+            builder.push_values(batch.iter().enumerate(), |mut row, (offset, (content, embedding))| {
+                row.push_bind(article_id);
+                row.push_bind((base_idx + offset) as i32);
+                row.push_bind(content);
+                row.push_bind(&embedding.vector);
+                row.push("::vector");
+                row.push_bind(embedding.token_count as i32);
+            });
+
+            builder.push(
+                " ON CONFLICT (tenant_id, article_id, chunk_index) DO UPDATE SET content = EXCLUDED.content, embedding = EXCLUDED.embedding, token_count = EXCLUDED.token_count, deleted_at = NULL",
+            );
+
+            builder.build().execute(&mut *tx).await?;
         }
 
         tx.commit().await?;
