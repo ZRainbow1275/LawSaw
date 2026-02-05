@@ -1,3 +1,5 @@
+import { type Locale, t } from "@/lib/i18n";
+
 const ENV_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 const API_BASE_URL =
 	ENV_API_BASE_URL && ENV_API_BASE_URL.trim().length > 0
@@ -6,6 +8,10 @@ const API_BASE_URL =
 			? window.location.origin
 			: "http://localhost:3000";
 const DEFAULT_API_TIMEOUT_MS = 15_000;
+const DEFAULT_API_RETRIES = 2;
+const DEFAULT_API_RETRY_BASE_DELAY_MS = 500;
+const DEFAULT_API_RETRY_MAX_DELAY_MS = 8000;
+const DEFAULT_API_RETRY_JITTER_MS = 200;
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1"]);
 
 function stripTrailingSlash(value: string): string {
@@ -38,7 +44,25 @@ function parseTimeoutMs(value: string | undefined): number | null {
 
 const API_TIMEOUT_MS = parseTimeoutMs(process.env.NEXT_PUBLIC_API_TIMEOUT_MS);
 
+function localeFromDocument(): Locale {
+	const lang =
+		typeof document !== "undefined" ? document.documentElement.lang : "";
+	return lang.toLowerCase().startsWith("en") ? "en" : "zh";
+}
+
 export type ResponseValidator<T> = (value: unknown) => asserts value is T;
+
+export type ApiRetryOptions = {
+	retries?: number;
+	baseDelayMs?: number;
+	maxDelayMs?: number;
+	jitterMs?: number;
+};
+
+export type ApiRequestInit = Omit<RequestInit, "headers"> & {
+	headers?: HeadersInit;
+	retry?: ApiRetryOptions | false;
+};
 
 export function getApiBaseUrl(): string {
 	return normalizeLoopbackBaseUrl(API_BASE_URL);
@@ -89,9 +113,74 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-async function readErrorInfo(
-	response: Response,
-): Promise<{
+function isRetryableMethod(method: string): boolean {
+	return method === "GET" || method === "HEAD" || method === "OPTIONS";
+}
+
+function resolvedRetryOptions(value: ApiRetryOptions | false | undefined): {
+	retries: number;
+	baseDelayMs: number;
+	maxDelayMs: number;
+	jitterMs: number;
+} | null {
+	if (value === false) return null;
+	const retries =
+		value?.retries === undefined ? DEFAULT_API_RETRIES : value.retries;
+	if (!Number.isFinite(retries) || retries <= 0) return null;
+
+	const baseDelayMs =
+		value?.baseDelayMs === undefined
+			? DEFAULT_API_RETRY_BASE_DELAY_MS
+			: value.baseDelayMs;
+	const maxDelayMs =
+		value?.maxDelayMs === undefined
+			? DEFAULT_API_RETRY_MAX_DELAY_MS
+			: value.maxDelayMs;
+	const jitterMs =
+		value?.jitterMs === undefined ? DEFAULT_API_RETRY_JITTER_MS : value.jitterMs;
+
+	return {
+		retries,
+		baseDelayMs: Math.max(0, baseDelayMs),
+		maxDelayMs: Math.max(0, maxDelayMs),
+		jitterMs: Math.max(0, jitterMs),
+	};
+}
+
+function computeRetryDelayMs(
+	attemptIndex: number,
+	options: {
+		baseDelayMs: number;
+		maxDelayMs: number;
+		jitterMs: number;
+	},
+): number {
+	const base = options.baseDelayMs * 2 ** attemptIndex;
+	const capped = Math.min(base, options.maxDelayMs);
+	const jitter = options.jitterMs > 0 ? Math.floor(Math.random() * options.jitterMs) : 0;
+	return capped + jitter;
+}
+
+function retryAfterSeconds(details: unknown): number | null {
+	if (!isRecord(details)) return null;
+	const raw = details.retry_after_seconds;
+	if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) return raw;
+	if (typeof raw === "string") {
+		const parsed = Number.parseInt(raw, 10);
+		if (Number.isFinite(parsed) && parsed > 0) return parsed;
+	}
+	return null;
+}
+
+function isRetryableError(error: ApiClientError): boolean {
+	if (error.code === "CLIENT_ABORTED") return false;
+	if (error.status === 0) return true;
+	if (error.status === 408) return true;
+	if (error.status === 429) return true;
+	return error.status >= 500 && error.status < 600;
+}
+
+async function readErrorInfo(response: Response): Promise<{
 	message: string;
 	requestId: string | null;
 	code: string | null;
@@ -159,7 +248,7 @@ export class ApiClient {
 		}
 	}
 
-	private async request<T>(
+	private async requestOnce<T>(
 		endpoint: string,
 		options: RequestInit = {},
 		validate?: ResponseValidator<T>,
@@ -169,6 +258,15 @@ export class ApiClient {
 		const headers = new Headers(options.headers);
 		if (!headers.has("Accept")) {
 			headers.set("Accept", "application/json");
+		}
+		if (!headers.has("Accept-Language")) {
+			const lang =
+				typeof document !== "undefined"
+					? document.documentElement.lang
+					: undefined;
+			if (lang && lang.trim().length > 0) {
+				headers.set("Accept-Language", lang);
+			}
 		}
 
 		const hasBody = options.body !== undefined && options.body !== null;
@@ -212,34 +310,43 @@ export class ApiClient {
 		try {
 			response = await fetch(url, { ...config, signal: controller.signal });
 		} catch (cause) {
-				if (cause instanceof Error && cause.name === "AbortError") {
-					const error = new ApiClientError(
-						didTimeout
-							? `Request timed out after ${this.timeoutMs}ms`
-							: "Request aborted",
-						{
-							status: 0,
-							code: null,
-							endpoint,
-							requestId: null,
-							details: null,
-							cause,
-						},
-					);
-					this.emitError(error);
-					throw error;
+			if (cause instanceof Error && cause.name === "AbortError") {
+				if (externalSignal?.aborted) {
+					throw new ApiClientError("Request aborted", {
+						status: 0,
+						code: "CLIENT_ABORTED",
+						endpoint,
+						requestId: null,
+						details: null,
+						cause,
+					});
 				}
 
-				const error = new ApiClientError("Network request failed", {
-					status: 0,
-					code: null,
-					endpoint,
-					requestId: null,
-					details: null,
-					cause,
-				});
-				this.emitError(error);
+				const error = new ApiClientError(
+					didTimeout
+						? `Request timed out after ${this.timeoutMs}ms`
+						: "Request aborted",
+					{
+						status: 0,
+						code: didTimeout ? "CLIENT_TIMEOUT" : null,
+						endpoint,
+						requestId: null,
+						details: null,
+						cause,
+					},
+				);
 				throw error;
+			}
+
+			const error = new ApiClientError("Network request failed", {
+				status: 0,
+				code: "CLIENT_NETWORK",
+				endpoint,
+				requestId: null,
+				details: null,
+				cause,
+			});
+			throw error;
 		} finally {
 			if (timeoutId) clearTimeout(timeoutId);
 			if (externalSignal && abortListener) {
@@ -249,27 +356,36 @@ export class ApiClient {
 
 		const requestIdFromHeader = response.headers.get("x-request-id");
 
-			if (!response.ok) {
-				const {
-					message,
-					requestId: requestIdFromBody,
+		if (!response.ok) {
+			const retryAfterHeader = response.headers.get("retry-after");
+			const retryAfterSecondsFromHeader = retryAfterHeader
+				? Number.parseInt(retryAfterHeader, 10)
+				: Number.NaN;
+			const {
+				message,
+				requestId: requestIdFromBody,
+				code,
+				details,
+			} = await readErrorInfo(response);
+			const requestId = requestIdFromHeader ?? requestIdFromBody;
+			const hydratedDetails =
+				Number.isFinite(retryAfterSecondsFromHeader) && retryAfterSecondsFromHeader > 0
+					? isRecord(details)
+						? { ...details, retry_after_seconds: retryAfterSecondsFromHeader }
+						: { retry_after_seconds: retryAfterSecondsFromHeader, details }
+					: details;
+			const error = new ApiClientError(
+				requestId ? `${message} (request_id=${requestId})` : message,
+				{
+					status: response.status,
 					code,
-					details,
-				} = await readErrorInfo(response);
-				const requestId = requestIdFromHeader ?? requestIdFromBody;
-				const error = new ApiClientError(
-					requestId ? `${message} (request_id=${requestId})` : message,
-					{
-						status: response.status,
-						code,
-						endpoint,
-						requestId,
-						details,
-					},
-				);
-				this.emitError(error);
-				throw error;
-			}
+					endpoint,
+					requestId,
+					details: hydratedDetails,
+				},
+			);
+			throw error;
+		}
 
 		const requestId = requestIdFromHeader;
 
@@ -282,16 +398,16 @@ export class ApiClient {
 		let parsed: unknown;
 		try {
 			parsed = JSON.parse(text) as unknown;
-			} catch (cause) {
-				throw new ApiClientError("Invalid JSON response", {
-					status: response.status,
-					code: null,
-					endpoint,
-					requestId,
-					details: null,
-					cause,
-				});
-			}
+		} catch (cause) {
+			throw new ApiClientError("Invalid JSON response", {
+				status: response.status,
+				code: null,
+				endpoint,
+				requestId,
+				details: null,
+				cause,
+			});
+		}
 
 		if (validate) {
 			try {
@@ -300,29 +416,88 @@ export class ApiClient {
 			} catch (cause) {
 				const detail =
 					cause instanceof Error ? cause.message : "Unknown schema error";
-					throw new ApiClientError(
-						requestId
-							? `API 契约校验失败：${detail} (request_id=${requestId})`
-							: `API 契约校验失败：${detail}`,
-						{
-							status: response.status,
-							code: null,
-							endpoint,
-							requestId,
-							details: null,
-							cause,
-						},
-					);
-				}
+				const locale = localeFromDocument();
+				throw new ApiClientError(
+					requestId
+						? `${t(locale, "API 契约校验失败：{detail}", { detail })} (request_id=${requestId})`
+						: t(locale, "API 契约校验失败：{detail}", { detail }),
+					{
+						status: response.status,
+						code: null,
+						endpoint,
+						requestId,
+						details: null,
+						cause,
+					},
+				);
 			}
+		}
 
 		return parsed as T;
+	}
+
+	private async request<T>(
+		endpoint: string,
+		options: ApiRequestInit = {},
+		validate?: ResponseValidator<T>,
+	): Promise<T> {
+		const { retry, ...fetchOptions } = options;
+		const method = (fetchOptions.method ?? "GET").toUpperCase();
+		const resolvedRetry = isRetryableMethod(method)
+			? resolvedRetryOptions(retry)
+			: null;
+
+		let attempt = 0;
+
+		while (true) {
+			try {
+				return await this.requestOnce<T>(endpoint, fetchOptions, validate);
+			} catch (cause) {
+				if (!(cause instanceof ApiClientError)) throw cause;
+
+				// Explicit abort from caller should not emit global error hooks or retry.
+				if (cause.code === "CLIENT_ABORTED") {
+					throw cause;
+				}
+
+				if (!resolvedRetry || attempt >= resolvedRetry.retries) {
+					this.emitError(cause);
+					throw cause;
+				}
+
+				if (!isRetryableError(cause)) {
+					this.emitError(cause);
+					throw cause;
+				}
+
+				if (fetchOptions.signal?.aborted) {
+					throw new ApiClientError("Request aborted", {
+						status: 0,
+						code: "CLIENT_ABORTED",
+						endpoint,
+						requestId: null,
+						details: null,
+						cause: fetchOptions.signal.reason,
+					});
+				}
+
+				const retryAfter = retryAfterSeconds(cause.details);
+				const delayMs = retryAfter
+					? Math.min(retryAfter * 1000, resolvedRetry.maxDelayMs)
+					: computeRetryDelayMs(attempt, resolvedRetry);
+
+				attempt += 1;
+				if (delayMs > 0) {
+					await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+				}
+			}
+		}
 	}
 
 	async get<T>(
 		endpoint: string,
 		validate?: ResponseValidator<T>,
-		options: RequestInit = {},
+		options: ApiRequestInit = {},
 	): Promise<T> {
 		return this.request<T>(endpoint, { ...options, method: "GET" }, validate);
 	}
@@ -331,7 +506,7 @@ export class ApiClient {
 		endpoint: string,
 		data?: unknown,
 		validate?: ResponseValidator<T>,
-		options: RequestInit = {},
+		options: ApiRequestInit = {},
 	): Promise<T> {
 		return this.request<T>(
 			endpoint,
@@ -339,6 +514,7 @@ export class ApiClient {
 				...options,
 				method: "POST",
 				body: data ? JSON.stringify(data) : undefined,
+				retry: false,
 			},
 			validate,
 		);
@@ -348,7 +524,7 @@ export class ApiClient {
 		endpoint: string,
 		form: FormData,
 		validate?: ResponseValidator<T>,
-		options: RequestInit = {},
+		options: ApiRequestInit = {},
 	): Promise<T> {
 		return this.request<T>(
 			endpoint,
@@ -361,7 +537,7 @@ export class ApiClient {
 		endpoint: string,
 		data: unknown,
 		validate?: ResponseValidator<T>,
-		options: RequestInit = {},
+		options: ApiRequestInit = {},
 	): Promise<T> {
 		return this.request<T>(
 			endpoint,
@@ -369,6 +545,7 @@ export class ApiClient {
 				...options,
 				method: "PATCH",
 				body: JSON.stringify(data),
+				retry: false,
 			},
 			validate,
 		);
@@ -377,9 +554,13 @@ export class ApiClient {
 	async delete<T>(
 		endpoint: string,
 		validate?: ResponseValidator<T>,
-		options: RequestInit = {},
+		options: ApiRequestInit = {},
 	): Promise<T> {
-		return this.request<T>(endpoint, { ...options, method: "DELETE" }, validate);
+		return this.request<T>(
+			endpoint,
+			{ ...options, method: "DELETE", retry: false },
+			validate,
+		);
 	}
 }
 
