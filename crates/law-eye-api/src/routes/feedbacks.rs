@@ -1,8 +1,9 @@
 use axum::{
     extract::ConnectInfo,
     extract::{Path, State},
-    http::HeaderMap,
     http::StatusCode,
+    http::{HeaderMap, HeaderValue},
+    response::{IntoResponse, Response},
     routing::get,
     Json, Router,
 };
@@ -76,6 +77,8 @@ impl From<law_eye_db::Feedback> for FeedbackResponse {
 pub struct ListParams {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    /// Cursor for keyset pagination (base64url-encoded JSON).
+    pub cursor: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -103,7 +106,8 @@ pub struct UpdateFeedbackRequest {
     path = "/api/v1/feedbacks",
     params(
         ("limit" = Option<i64>, Query, description = "Max results (default 50, max 200)"),
-        ("offset" = Option<i64>, Query, description = "Offset (default 0)")
+        ("offset" = Option<i64>, Query, description = "Offset (default 0)"),
+        ("cursor" = Option<String>, Query, description = "Cursor for keyset pagination (base64url JSON). When set, offset is ignored.")
     ),
     security(
         ("session" = [])
@@ -119,7 +123,13 @@ pub(crate) async fn list_feedbacks(
     State(state): State<AppState>,
     auth_session: AuthSession,
     ApiQuery(params): ApiQuery<ListParams>,
-) -> ApiResult<Json<Vec<FeedbackResponse>>> {
+) -> ApiResult<Response> {
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct CreatedAtCursor {
+        created_at: DateTime<Utc>,
+        id: Uuid,
+    }
+
     let user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
@@ -133,16 +143,47 @@ pub(crate) async fn list_feedbacks(
         return Err(AppError::forbidden("Admin permission required"));
     }
 
-    let limit = params.limit.unwrap_or(50).min(200);
+    let limit = params.limit.unwrap_or(50).clamp(1, 200);
     let offset = params.offset.unwrap_or(0);
+    if offset < 0 {
+        return Err(AppError::validation("offset must be >= 0"));
+    }
 
-    let rows = state
-        .feedback_service
-        .list_all(user.tenant_id, limit, offset)
-        .await
-        .map_err(AppError::from)?;
+    let cursor = params
+        .cursor
+        .as_deref()
+        .map(crate::pagination::decode_cursor::<CreatedAtCursor>)
+        .transpose()?;
 
-    let data = rows
+    let mut next_cursor: Option<String> = None;
+    let rows = if let Some(cursor) = cursor {
+        let fetch_limit = limit.saturating_add(1);
+        let mut items = state
+            .feedback_service
+            .list_all_cursor(user.tenant_id, fetch_limit, cursor.created_at, cursor.id)
+            .await
+            .map_err(AppError::from)?;
+
+        if items.len() as i64 > limit {
+            items.truncate(limit as usize);
+            if let Some(last) = items.last() {
+                next_cursor = Some(crate::pagination::encode_cursor(&CreatedAtCursor {
+                    created_at: last.created_at,
+                    id: last.id,
+                })?);
+            }
+        }
+
+        items
+    } else {
+        state
+            .feedback_service
+            .list_all(user.tenant_id, limit, offset)
+            .await
+            .map_err(AppError::from)?
+    };
+
+    let data: Vec<FeedbackResponse> = rows
         .into_iter()
         .map(|row| {
             let mut resp = FeedbackResponse::from(row);
@@ -153,7 +194,13 @@ pub(crate) async fn list_feedbacks(
         })
         .collect();
 
-    Ok(Json(data))
+    let mut response = Json(data).into_response();
+    if let Some(cursor) = next_cursor {
+        let value = HeaderValue::from_str(&cursor)
+            .map_err(|_| AppError::internal("Failed to format cursor header"))?;
+        response.headers_mut().insert("x-next-cursor", value);
+    }
+    Ok(response)
 }
 
 /// Current user: list my feedbacks
@@ -162,7 +209,8 @@ pub(crate) async fn list_feedbacks(
     path = "/api/v1/feedbacks/my",
     params(
         ("limit" = Option<i64>, Query, description = "Max results (default 50, max 200)"),
-        ("offset" = Option<i64>, Query, description = "Offset (default 0)")
+        ("offset" = Option<i64>, Query, description = "Offset (default 0)"),
+        ("cursor" = Option<String>, Query, description = "Cursor for keyset pagination (base64url JSON). When set, offset is ignored.")
     ),
     security(
         ("session" = [])
@@ -177,21 +225,75 @@ pub(crate) async fn list_my_feedbacks(
     State(state): State<AppState>,
     auth_session: AuthSession,
     ApiQuery(params): ApiQuery<ListParams>,
-) -> ApiResult<Json<Vec<FeedbackResponse>>> {
+) -> ApiResult<Response> {
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct CreatedAtCursor {
+        created_at: DateTime<Utc>,
+        id: Uuid,
+    }
+
     let user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let limit = params.limit.unwrap_or(50).min(200);
+    let limit = params.limit.unwrap_or(50).clamp(1, 200);
     let offset = params.offset.unwrap_or(0);
+    if offset < 0 {
+        return Err(AppError::validation("offset must be >= 0"));
+    }
 
-    let rows = state
-        .feedback_service
-        .list_by_user(user.tenant_id, user.id, limit, offset)
-        .await
-        .map_err(AppError::from)?;
+    let cursor = params
+        .cursor
+        .as_deref()
+        .map(crate::pagination::decode_cursor::<CreatedAtCursor>)
+        .transpose()?;
 
-    Ok(Json(rows.into_iter().map(FeedbackResponse::from).collect()))
+    let mut next_cursor: Option<String> = None;
+    let rows = if let Some(cursor) = cursor {
+        let fetch_limit = limit.saturating_add(1);
+        let mut items = state
+            .feedback_service
+            .list_by_user_cursor(
+                user.tenant_id,
+                user.id,
+                fetch_limit,
+                cursor.created_at,
+                cursor.id,
+            )
+            .await
+            .map_err(AppError::from)?;
+
+        if items.len() as i64 > limit {
+            items.truncate(limit as usize);
+            if let Some(last) = items.last() {
+                next_cursor = Some(crate::pagination::encode_cursor(&CreatedAtCursor {
+                    created_at: last.created_at,
+                    id: last.id,
+                })?);
+            }
+        }
+
+        items
+    } else {
+        state
+            .feedback_service
+            .list_by_user(user.tenant_id, user.id, limit, offset)
+            .await
+            .map_err(AppError::from)?
+    };
+
+    let mut response = Json(
+        rows.into_iter()
+            .map(FeedbackResponse::from)
+            .collect::<Vec<_>>(),
+    )
+    .into_response();
+    if let Some(cursor) = next_cursor {
+        let value = HeaderValue::from_str(&cursor)
+            .map_err(|_| AppError::internal("Failed to format cursor header"))?;
+        response.headers_mut().insert("x-next-cursor", value);
+    }
+    Ok(response)
 }
 
 /// Create a feedback (any authenticated user)

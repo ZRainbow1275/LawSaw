@@ -4,6 +4,7 @@ use axum::{
     routing::{get, patch, post},
     Json, Router,
 };
+use chrono::{DateTime, Utc};
 use law_eye_core::UploadUserAvatarInput;
 use law_eye_db::{CreateAuditLog, UpdateUser};
 use serde::{Deserialize, Serialize};
@@ -31,6 +32,8 @@ pub struct ListQuery {
     pub limit: i64,
     #[serde(default)]
     pub offset: i64,
+    /// Cursor for keyset pagination (base64url-encoded JSON).
+    pub cursor: Option<String>,
 }
 
 fn default_limit() -> i64 {
@@ -46,6 +49,8 @@ pub struct UsersListResponse {
     pub total: i64,
     pub limit: i64,
     pub offset: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -139,7 +144,8 @@ async fn check_admin_permission(state: &AppState, user_id: Uuid) -> Result<bool,
     path = "/api/v1/users",
     params(
         ("limit" = Option<i64>, Query, description = "Limit"),
-        ("offset" = Option<i64>, Query, description = "Offset")
+        ("offset" = Option<i64>, Query, description = "Offset"),
+        ("cursor" = Option<String>, Query, description = "Cursor for keyset pagination (base64url JSON). When set, offset is ignored.")
     ),
     security(
         ("session" = [])
@@ -156,6 +162,12 @@ pub(crate) async fn list_users(
     auth_session: AuthSession,
     ApiQuery(query): ApiQuery<ListQuery>,
 ) -> ApiResult<Json<UsersListResponse>> {
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct CreatedAtCursor {
+        created_at: DateTime<Utc>,
+        id: Uuid,
+    }
+
     let user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
@@ -166,13 +178,44 @@ pub(crate) async fn list_users(
     }
 
     let limit = query.limit.clamp(1, 100);
-    let offset = query.offset.max(0);
+    let offset = query.offset;
+    if offset < 0 {
+        return Err(AppError::validation("offset must be >= 0"));
+    }
 
-    let users = state
-        .user_service
-        .list_by_tenant(user.tenant_id, limit, offset)
-        .await
-        .map_err(AppError::from)?;
+    let cursor = query
+        .cursor
+        .as_deref()
+        .map(crate::pagination::decode_cursor::<CreatedAtCursor>)
+        .transpose()?;
+
+    let mut next_cursor: Option<String> = None;
+    let users = if let Some(cursor) = cursor {
+        let fetch_limit = limit.saturating_add(1);
+        let mut items = state
+            .user_service
+            .list_by_tenant_cursor(user.tenant_id, fetch_limit, cursor.created_at, cursor.id)
+            .await
+            .map_err(AppError::from)?;
+
+        if items.len() as i64 > limit {
+            items.truncate(limit as usize);
+            if let Some(last) = items.last() {
+                next_cursor = Some(crate::pagination::encode_cursor(&CreatedAtCursor {
+                    created_at: last.created_at,
+                    id: last.id,
+                })?);
+            }
+        }
+
+        items
+    } else {
+        state
+            .user_service
+            .list_by_tenant(user.tenant_id, limit, offset)
+            .await
+            .map_err(AppError::from)?
+    };
     let total = state
         .user_service
         .count_by_tenant(user.tenant_id)
@@ -183,7 +226,8 @@ pub(crate) async fn list_users(
         users: users.into_iter().map(Into::into).collect(),
         total,
         limit,
-        offset,
+        offset: if query.cursor.is_some() { 0 } else { offset },
+        next_cursor,
     }))
 }
 

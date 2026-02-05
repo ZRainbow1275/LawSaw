@@ -1,5 +1,5 @@
 use crate::tenant::with_tenant_tx;
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use law_eye_common::{Error, Result};
 use law_eye_db::{Article, CreateArticle};
 use sqlx::{PgPool, Postgres, QueryBuilder, Transaction};
@@ -45,6 +45,7 @@ pub struct ArticleSearchHit {
     pub excerpt: String,
     /// Normalized relevance score in [0, 1].
     pub score: f64,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -113,9 +114,9 @@ impl ArticleService {
             Box::pin(async move {
                 let result: (i64,) =
                     sqlx::query_as("SELECT COUNT(*) FROM articles WHERE deleted_at IS NULL")
-                    .fetch_one(tx.as_mut())
-                    .await
-                    .map_err(|e| Error::Database(e.to_string()))?;
+                        .fetch_one(tx.as_mut())
+                        .await
+                        .map_err(|e| Error::Database(e.to_string()))?;
                 Ok(result.0)
             })
         })
@@ -181,9 +182,46 @@ impl ArticleService {
                     QueryBuilder::new("SELECT * FROM articles");
                 push_article_filters(&mut qb, category_id, status);
 
-                qb.push(" ORDER BY created_at DESC");
+                qb.push(" ORDER BY created_at DESC, id DESC");
                 qb.push(" LIMIT ").push_bind(limit);
                 qb.push(" OFFSET ").push_bind(offset);
+
+                qb.build_query_as::<Article>()
+                    .fetch_all(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))
+            })
+        })
+        .await
+    }
+
+    pub async fn list_filtered_cursor<'a>(
+        &self,
+        tenant_id: Uuid,
+        limit: i64,
+        cursor_created_at: DateTime<Utc>,
+        cursor_id: Uuid,
+        category_id: Option<Uuid>,
+        status: Option<&'a str>,
+    ) -> Result<Vec<Article>> {
+        if limit < 1 {
+            return Err(Error::Validation("limit must be >= 1".to_string()));
+        }
+
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let mut qb: QueryBuilder<'a, Postgres> =
+                    QueryBuilder::new("SELECT * FROM articles");
+                push_article_filters(&mut qb, category_id, status);
+
+                qb.push(" AND (created_at, id) < (");
+                qb.push_bind(cursor_created_at);
+                qb.push(", ");
+                qb.push_bind(cursor_id);
+                qb.push(")");
+
+                qb.push(" ORDER BY created_at DESC, id DESC");
+                qb.push(" LIMIT ").push_bind(limit);
 
                 qb.build_query_as::<Article>()
                     .fetch_all(tx.as_mut())
@@ -221,6 +259,26 @@ impl ArticleService {
             .ok_or_else(|| Error::NotFound(format!("Article {} not found", id)))
     }
 
+    pub async fn get_by_id_any_tx(
+        &self,
+        tenant_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+        id: Uuid,
+    ) -> Result<Article> {
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(tenant_id.to_string())
+            .execute(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
+        sqlx::query_as::<_, Article>("SELECT * FROM articles WHERE id = $1")
+            .bind(id)
+            .fetch_optional(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?
+            .ok_or_else(|| Error::NotFound(format!("Article {} not found", id)))
+    }
+
     pub async fn create(&self, tenant_id: Uuid, input: CreateArticle) -> Result<Article> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
@@ -245,7 +303,11 @@ impl ArticleService {
         .await
     }
 
-    pub async fn upsert_many(&self, tenant_id: Uuid, inputs: &[CreateArticle]) -> Result<Vec<Uuid>> {
+    pub async fn upsert_many(
+        &self,
+        tenant_id: Uuid,
+        inputs: &[CreateArticle],
+    ) -> Result<Vec<Uuid>> {
         if inputs.is_empty() {
             return Ok(Vec::new());
         }
@@ -425,11 +487,11 @@ impl ArticleService {
               AND ($2::bigint IS NULL OR version = $2)
             "#,
         )
-            .bind(id)
-            .bind(expected_version)
-            .execute(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+        .bind(id)
+        .bind(expected_version)
+        .execute(tx.as_mut())
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
 
         if result.rows_affected() == 0 {
             if let Some(expected_version) = expected_version {
@@ -453,15 +515,62 @@ impl ArticleService {
         Ok(())
     }
 
+    pub async fn restore_tx(
+        &self,
+        tenant_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+        id: Uuid,
+    ) -> Result<Article> {
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(tenant_id.to_string())
+            .execute(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
+        let restored = sqlx::query_as::<_, Article>(
+            r#"
+            UPDATE articles
+            SET deleted_at = NULL, updated_at = NOW()
+            WHERE id = $1
+              AND deleted_at IS NOT NULL
+            RETURNING *
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(tx.as_mut())
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        if let Some(article) = restored {
+            return Ok(article);
+        }
+
+        let deleted_at: Option<Option<DateTime<Utc>>> =
+            sqlx::query_scalar("SELECT deleted_at FROM articles WHERE id = $1")
+                .bind(id)
+                .fetch_optional(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
+
+        match deleted_at {
+            None => Err(Error::NotFound(format!("Article {} not found", id))),
+            Some(None) => Err(Error::Validation("Article is not deleted".into())),
+            Some(Some(_)) => Err(Error::Internal(
+                "Restore failed (record still deleted)".to_string(),
+            )),
+        }
+    }
+
     pub async fn exists_by_link(&self, tenant_id: Uuid, link: &str) -> Result<bool> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
-                let result: (bool,) =
-                    sqlx::query_as("SELECT EXISTS(SELECT 1 FROM articles WHERE link = $1)")
-                        .bind(link)
-                        .fetch_one(tx.as_mut())
-                        .await
-                        .map_err(|e| Error::Database(e.to_string()))?;
+                let result: (bool,) = sqlx::query_as(
+                    "SELECT EXISTS(SELECT 1 FROM articles WHERE link = $1 AND deleted_at IS NULL)",
+                )
+                .bind(link)
+                .fetch_one(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
                 Ok(result.0)
             })
         })
@@ -560,7 +669,10 @@ impl ArticleService {
 
         let result = sqlx::query(
             r#"
-            UPDATE articles SET status = $2, updated_at = NOW()
+            UPDATE articles
+            SET status = $2,
+                updated_at = NOW(),
+                version = version + 1
             WHERE id = ANY($1)
               AND deleted_at IS NULL
             "#,
@@ -572,6 +684,98 @@ impl ArticleService {
         .map_err(|e| Error::Database(e.to_string()))?;
 
         Ok(result.rows_affected() as i64)
+    }
+
+    /// Batch update status with optimistic concurrency control (expected versions).
+    ///
+    /// If any item is missing or has a version mismatch, no rows are updated and the conflicts
+    /// are returned for the caller to resolve.
+    pub async fn batch_update_status_with_versions_tx(
+        &self,
+        tenant_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+        items: &[BatchStatusVersionItem],
+        status: &str,
+    ) -> Result<BatchStatusWithVersionsResult> {
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(tenant_id.to_string())
+            .execute(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
+        let ids: Vec<Uuid> = items.iter().map(|item| item.id).collect();
+        if ids.is_empty() {
+            return Ok(BatchStatusWithVersionsResult {
+                updated: 0,
+                conflicts: Vec::new(),
+                missing_ids: Vec::new(),
+            });
+        }
+
+        // Lock existing rows to prevent TOCTOU on version checks.
+        let rows = sqlx::query_as::<_, (Uuid, i64)>(
+            r#"
+            SELECT id, version
+            FROM articles
+            WHERE id = ANY($1)
+              AND deleted_at IS NULL
+            FOR UPDATE
+            "#,
+        )
+        .bind(&ids)
+        .fetch_all(tx.as_mut())
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        let mut current_versions = std::collections::HashMap::<Uuid, i64>::new();
+        for (id, version) in rows {
+            current_versions.insert(id, version);
+        }
+
+        let mut conflicts = Vec::new();
+        let mut missing_ids = Vec::new();
+
+        for item in items {
+            match current_versions.get(&item.id) {
+                None => missing_ids.push(item.id),
+                Some(current) if *current != item.version => conflicts.push(BatchStatusConflict {
+                    id: item.id,
+                    expected_version: item.version,
+                    current_version: *current,
+                }),
+                _ => {}
+            }
+        }
+
+        if !conflicts.is_empty() || !missing_ids.is_empty() {
+            return Ok(BatchStatusWithVersionsResult {
+                updated: 0,
+                conflicts,
+                missing_ids,
+            });
+        }
+
+        let result = sqlx::query(
+            r#"
+            UPDATE articles
+            SET status = $2,
+                updated_at = NOW(),
+                version = version + 1
+            WHERE id = ANY($1)
+              AND deleted_at IS NULL
+            "#,
+        )
+        .bind(&ids)
+        .bind(status)
+        .execute(tx.as_mut())
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        Ok(BatchStatusWithVersionsResult {
+            updated: result.rows_affected() as i64,
+            conflicts: Vec::new(),
+            missing_ids: Vec::new(),
+        })
     }
 
     pub async fn list_by_category(
@@ -643,7 +847,7 @@ impl ArticleService {
         let limit = limit.clamp(1, 50);
         let offset = offset.max(0);
 
-        let rows: Vec<(Uuid, String, String, f64, i64)> =
+        let rows: Vec<(Uuid, String, String, DateTime<Utc>, f64, i64)> =
             with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
                 sqlx::query_as(
                     r#"
@@ -682,10 +886,11 @@ impl ArticleService {
                         id,
                         title,
                         excerpt,
+                        created_at,
                         GREATEST(LEAST(score, 1.0), 0.0)::float8 AS score,
                         total
                     FROM scored
-                    ORDER BY score DESC, created_at DESC
+                    ORDER BY score DESC, created_at DESC, id DESC
                     LIMIT $2 OFFSET $3
                     "#,
                 )
@@ -698,15 +903,117 @@ impl ArticleService {
             }))
             .await?;
 
-        let total = rows.first().map(|(_, _, _, _, total)| *total).unwrap_or(0);
+        let total = rows
+            .first()
+            .map(|(_, _, _, _, _, total)| *total)
+            .unwrap_or(0);
         let hits = rows
             .into_iter()
             .map(
-                |(article_id, title, excerpt, score, _total)| ArticleSearchHit {
+                |(article_id, title, excerpt, created_at, score, _total)| ArticleSearchHit {
                     article_id,
                     title,
                     excerpt,
                     score,
+                    created_at,
+                },
+            )
+            .collect();
+
+        Ok((hits, total))
+    }
+
+    pub async fn search_ranked_cursor(
+        &self,
+        tenant_id: Uuid,
+        query: &str,
+        limit: i64,
+        cursor_score: f64,
+        cursor_created_at: DateTime<Utc>,
+        cursor_id: Uuid,
+    ) -> Result<(Vec<ArticleSearchHit>, i64)> {
+        let query = query.trim();
+        if query.is_empty() {
+            return Ok((vec![], 0));
+        }
+
+        let limit = limit.clamp(1, 51);
+
+        let rows: Vec<(Uuid, String, String, DateTime<Utc>, f64, i64)> =
+            with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
+                sqlx::query_as(
+                    r#"
+                    WITH q AS (
+                        SELECT plainto_tsquery('simple', $1) AS query
+                    ),
+                    ranked AS (
+                        SELECT
+                            a.id,
+                            a.title,
+                            COALESCE(a.summary, LEFT(a.content, 200), '') AS excerpt,
+                            ts_rank(
+                                to_tsvector('simple', a.title || ' ' || COALESCE(a.content, '')),
+                                q.query
+                            ) AS rank,
+                            a.created_at AS created_at,
+                            COUNT(*) OVER() AS total
+                        FROM articles a, q
+                        WHERE a.deleted_at IS NULL
+                          AND to_tsvector('simple', a.title || ' ' || COALESCE(a.content, '')) @@ q.query
+                    ),
+                    scored AS (
+                        SELECT
+                            id,
+                            title,
+                            excerpt,
+                            created_at,
+                            total,
+                            CASE
+                                WHEN MAX(rank) OVER() > 0 THEN rank / MAX(rank) OVER()
+                                ELSE 0
+                            END AS score
+                        FROM ranked
+                    )
+                    SELECT
+                        id,
+                        title,
+                        excerpt,
+                        created_at,
+                        GREATEST(LEAST(score, 1.0), 0.0)::float8 AS score,
+                        total
+                    FROM scored
+                    WHERE
+                        score < $3
+                        OR (score = $3 AND created_at < $4)
+                        OR (score = $3 AND created_at = $4 AND id < $5)
+                    ORDER BY score DESC, created_at DESC, id DESC
+                    LIMIT $2
+                    "#,
+                )
+                .bind(query)
+                .bind(limit)
+                .bind(cursor_score)
+                .bind(cursor_created_at)
+                .bind(cursor_id)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))
+            }))
+            .await?;
+
+        let total = rows
+            .first()
+            .map(|(_, _, _, _, _, total)| *total)
+            .unwrap_or(0);
+        let hits = rows
+            .into_iter()
+            .map(
+                |(article_id, title, excerpt, created_at, score, _total)| ArticleSearchHit {
+                    article_id,
+                    title,
+                    excerpt,
+                    score,
+                    created_at,
                 },
             )
             .collect();
@@ -919,6 +1226,26 @@ impl ArticleService {
             },
         })
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct BatchStatusVersionItem {
+    pub id: Uuid,
+    pub version: i64,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct BatchStatusConflict {
+    pub id: Uuid,
+    pub expected_version: i64,
+    pub current_version: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct BatchStatusWithVersionsResult {
+    pub updated: i64,
+    pub conflicts: Vec<BatchStatusConflict>,
+    pub missing_ids: Vec<Uuid>,
 }
 
 fn push_article_filters<'a>(

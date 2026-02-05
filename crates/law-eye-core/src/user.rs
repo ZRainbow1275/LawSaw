@@ -354,12 +354,44 @@ impl UserService {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<User>> {
+        if limit < 1 {
+            return Err(Error::Validation("limit must be >= 1".to_string()));
+        }
+        if offset < 0 {
+            return Err(Error::Validation("offset must be >= 0".to_string()));
+        }
+
         let users = sqlx::query_as::<_, User>(
-            "SELECT * FROM users WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+            "SELECT * FROM users WHERE tenant_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3",
         )
         .bind(tenant_id)
         .bind(limit)
         .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        Ok(users)
+    }
+
+    pub async fn list_by_tenant_cursor(
+        &self,
+        tenant_id: Uuid,
+        limit: i64,
+        cursor_created_at: chrono::DateTime<chrono::Utc>,
+        cursor_id: Uuid,
+    ) -> Result<Vec<User>> {
+        if limit < 1 {
+            return Err(Error::Validation("limit must be >= 1".to_string()));
+        }
+
+        let users = sqlx::query_as::<_, User>(
+            "SELECT * FROM users WHERE tenant_id = $1 AND (created_at, id) < ($2, $3) ORDER BY created_at DESC, id DESC LIMIT $4",
+        )
+        .bind(tenant_id)
+        .bind(cursor_created_at)
+        .bind(cursor_id)
+        .bind(limit)
         .fetch_all(&self.pool)
         .await
         .map_err(|e| Error::Database(e.to_string()))?;

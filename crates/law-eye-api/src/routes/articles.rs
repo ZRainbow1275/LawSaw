@@ -65,6 +65,8 @@ impl From<law_eye_db::Article> for ArticleResponse {
 pub struct ListParams {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    /// Cursor for keyset pagination (base64url-encoded JSON).
+    pub cursor: Option<String>,
     pub category_id: Option<Uuid>,
     pub status: Option<String>,
 }
@@ -75,6 +77,8 @@ pub struct ArticleListResponse {
     pub total: i64,
     pub limit: i64,
     pub offset: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -272,6 +276,7 @@ pub(crate) mod query {
     params(
         ("limit" = Option<i64>, Query, description = "Max results (default 20, max 100)"),
         ("offset" = Option<i64>, Query, description = "Offset (default 0)"),
+        ("cursor" = Option<String>, Query, description = "Cursor for keyset pagination (base64url JSON). When set, offset is ignored."),
         ("category_id" = Option<Uuid>, Query, description = "Filter by category id"),
         ("status" = Option<String>, Query, description = "Filter by status (pending/processing/published/archived/rejected)")
     ),
@@ -291,6 +296,12 @@ pub(crate) mod query {
         auth_session: AuthSession,
         ApiQuery(params): ApiQuery<ListParams>,
     ) -> ApiResult<Json<ArticleListResponse>> {
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        struct CreatedAtCursor {
+            created_at: DateTime<Utc>,
+            id: Uuid,
+        }
+
         let user = auth_session
             .user
             .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
@@ -304,8 +315,17 @@ pub(crate) mod query {
             return Err(AppError::forbidden("Permission denied"));
         }
 
-        let limit = params.limit.unwrap_or(20).min(100);
+        let limit = params.limit.unwrap_or(20).clamp(1, 100);
         let offset = params.offset.unwrap_or(0);
+        if offset < 0 {
+            return Err(AppError::validation("offset must be >= 0"));
+        }
+
+        let cursor = params
+            .cursor
+            .as_deref()
+            .map(crate::pagination::decode_cursor::<CreatedAtCursor>)
+            .transpose()?;
 
         if let Some(status) = params.status.as_deref() {
             if !is_valid_status(status) {
@@ -313,17 +333,46 @@ pub(crate) mod query {
             }
         }
 
-        let articles = state
-            .article_service
-            .list_filtered(
-                user.tenant_id,
-                limit,
-                offset,
-                params.category_id,
-                params.status.as_deref(),
-            )
-            .await
-            .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?;
+        let mut next_cursor: Option<String> = None;
+        let articles = if let Some(cursor) = cursor {
+            let fetch_limit = limit.saturating_add(1);
+            let mut items = state
+                .article_service
+                .list_filtered_cursor(
+                    user.tenant_id,
+                    fetch_limit,
+                    cursor.created_at,
+                    cursor.id,
+                    params.category_id,
+                    params.status.as_deref(),
+                )
+                .await
+                .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?;
+
+            if items.len() as i64 > limit {
+                items.truncate(limit as usize);
+                if let Some(last) = items.last() {
+                    next_cursor = Some(crate::pagination::encode_cursor(&CreatedAtCursor {
+                        created_at: last.created_at,
+                        id: last.id,
+                    })?);
+                }
+            }
+
+            items
+        } else {
+            state
+                .article_service
+                .list_filtered(
+                    user.tenant_id,
+                    limit,
+                    offset,
+                    params.category_id,
+                    params.status.as_deref(),
+                )
+                .await
+                .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?
+        };
 
         let total = state
             .article_service
@@ -336,7 +385,8 @@ pub(crate) mod query {
             data,
             total,
             limit,
-            offset,
+            offset: if params.cursor.is_some() { 0 } else { offset },
+            next_cursor,
         }))
     }
 

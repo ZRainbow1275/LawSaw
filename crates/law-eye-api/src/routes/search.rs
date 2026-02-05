@@ -3,6 +3,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -26,6 +27,8 @@ pub struct SearchQuery {
     pub limit: i64,
     #[serde(default)]
     pub offset: i64,
+    /// Cursor for keyset pagination (base64url-encoded JSON).
+    pub cursor: Option<String>,
 }
 
 fn default_limit() -> i64 {
@@ -44,6 +47,10 @@ pub struct SearchResultItem {
 pub struct SearchResponse {
     pub results: Vec<SearchResultItem>,
     pub total: i64,
+    pub limit: i64,
+    pub offset: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -108,7 +115,8 @@ const ASK_QUESTION_MAX_CHARS: usize = 4096;
     params(
         ("q" = String, Query, description = "Search query"),
         ("limit" = Option<i64>, Query, description = "Max results (default 10, max 50)"),
-        ("offset" = Option<i64>, Query, description = "Offset (default 0)")
+        ("offset" = Option<i64>, Query, description = "Offset (default 0)"),
+        ("cursor" = Option<String>, Query, description = "Cursor for keyset pagination (base64url JSON). When set, offset is ignored.")
     ),
     security(
         ("session" = [])
@@ -126,6 +134,13 @@ pub(crate) async fn search(
     auth_session: AuthSession,
     ApiQuery(query): ApiQuery<SearchQuery>,
 ) -> ApiResult<Json<SearchResponse>> {
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct SearchCursor {
+        score: f64,
+        created_at: DateTime<Utc>,
+        id: Uuid,
+    }
+
     let user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
@@ -150,13 +165,53 @@ pub(crate) async fn search(
     }
 
     let limit = query.limit.clamp(1, KEYWORD_SEARCH_MAX_LIMIT);
-    let offset = query.offset.max(0);
+    let offset = query.offset;
+    if offset < 0 {
+        return Err(AppError::validation("offset must be >= 0"));
+    }
 
-    let (hits, total) = state
-        .article_service
-        .search_ranked(user.tenant_id, q, limit, offset)
-        .await
-        .map_err(AppError::from)?;
+    let cursor = query
+        .cursor
+        .as_deref()
+        .map(crate::pagination::decode_cursor::<SearchCursor>)
+        .transpose()?;
+
+    let mut next_cursor: Option<String> = None;
+
+    let (mut hits, total) = if let Some(cursor) = cursor {
+        let fetch_limit = limit.saturating_add(1);
+        let (items, total) = state
+            .article_service
+            .search_ranked_cursor(
+                user.tenant_id,
+                q,
+                fetch_limit,
+                cursor.score,
+                cursor.created_at,
+                cursor.id,
+            )
+            .await
+            .map_err(AppError::from)?;
+
+        (items, total)
+    } else {
+        state
+            .article_service
+            .search_ranked(user.tenant_id, q, limit, offset)
+            .await
+            .map_err(AppError::from)?
+    };
+
+    if query.cursor.is_some() && hits.len() as i64 > limit {
+        hits.truncate(limit as usize);
+        if let Some(last) = hits.last() {
+            next_cursor = Some(crate::pagination::encode_cursor(&SearchCursor {
+                score: last.score,
+                created_at: last.created_at,
+                id: last.article_id,
+            })?);
+        }
+    }
 
     let results: Vec<SearchResultItem> = hits
         .into_iter()
@@ -168,7 +223,13 @@ pub(crate) async fn search(
         })
         .collect();
 
-    Ok(Json(SearchResponse { results, total }))
+    Ok(Json(SearchResponse {
+        results,
+        total,
+        limit,
+        offset: if query.cursor.is_some() { 0 } else { offset },
+        next_cursor,
+    }))
 }
 
 /// Semantic vector search

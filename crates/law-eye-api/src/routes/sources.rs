@@ -7,6 +7,7 @@ use axum::{
     Json, Router,
 };
 use chrono::{DateTime, Utc};
+use law_eye_common::Error;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -14,9 +15,9 @@ use uuid::Uuid;
 use crate::auth::AuthSession;
 use crate::state::AppState;
 use crate::{ApiError, ApiJson, ApiQuery, ApiResult, AppError};
+use law_eye_common::egress::{validate_outbound_url, OutboundUrlPolicy};
 use law_eye_db::{CreateAuditLog, CreateSource};
 use law_eye_queue::IngestTask;
-use law_eye_common::egress::{validate_outbound_url, OutboundUrlPolicy};
 use serde_json::Value;
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -33,7 +34,8 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/stats", get(get_source_stats))
         .route("/", get(list_sources).post(create_source))
-        .route("/{id}", get(get_source))
+        .route("/{id}", get(get_source).delete(delete_source))
+        .route("/{id}/restore", post(restore_source))
         .route("/{id}/fetch", post(trigger_fetch))
 }
 
@@ -134,6 +136,8 @@ pub struct SourceResponse {
 pub struct ListSourcesParams {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    /// Cursor for keyset pagination (base64url-encoded JSON).
+    pub cursor: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -142,6 +146,8 @@ pub struct SourceListResponse {
     pub total: i64,
     pub limit: i64,
     pub offset: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -199,6 +205,11 @@ pub struct EnqueueResponse {
     pub message: String,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MessageResponse {
+    pub message: String,
+}
+
 /// Source stats (total/active/error)
 #[utoipa::path(
     get,
@@ -249,7 +260,8 @@ pub(crate) async fn get_source_stats(
     path = "/api/v1/sources",
     params(
         ("limit" = Option<i64>, Query, description = "Max results (default 100, max 1000)"),
-        ("offset" = Option<i64>, Query, description = "Offset (default 0)")
+        ("offset" = Option<i64>, Query, description = "Offset (default 0)"),
+        ("cursor" = Option<String>, Query, description = "Cursor for keyset pagination (base64url JSON). When set, offset is ignored.")
     ),
     security(
         ("session" = [])
@@ -267,6 +279,13 @@ pub(crate) async fn list_sources(
     auth_session: AuthSession,
     ApiQuery(params): ApiQuery<ListSourcesParams>,
 ) -> ApiResult<Json<SourceListResponse>> {
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct SourceCursor {
+        priority: i32,
+        name: String,
+        id: Uuid,
+    }
+
     let user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
@@ -291,11 +310,46 @@ pub(crate) async fn list_sources(
         return Err(AppError::validation("offset must be >= 0"));
     }
 
-    let sources = state
-        .source_service
-        .list(user.tenant_id, limit, offset)
-        .await
-        .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?;
+    let cursor = params
+        .cursor
+        .as_deref()
+        .map(crate::pagination::decode_cursor::<SourceCursor>)
+        .transpose()?;
+
+    let mut next_cursor: Option<String> = None;
+    let sources = if let Some(cursor) = cursor {
+        let fetch_limit = limit.saturating_add(1);
+        let mut items = state
+            .source_service
+            .list_cursor(
+                user.tenant_id,
+                fetch_limit,
+                cursor.priority,
+                &cursor.name,
+                cursor.id,
+            )
+            .await
+            .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?;
+
+        if items.len() as i64 > limit {
+            items.truncate(limit as usize);
+            if let Some(last) = items.last() {
+                next_cursor = Some(crate::pagination::encode_cursor(&SourceCursor {
+                    priority: last.priority,
+                    name: last.name.clone(),
+                    id: last.id,
+                })?);
+            }
+        }
+
+        items
+    } else {
+        state
+            .source_service
+            .list(user.tenant_id, limit, offset)
+            .await
+            .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?
+    };
 
     let total = state
         .source_service
@@ -307,7 +361,8 @@ pub(crate) async fn list_sources(
         data: sources.into_iter().map(SourceResponse::from).collect(),
         total,
         limit,
-        offset,
+        offset: if params.cursor.is_some() { 0 } else { offset },
+        next_cursor,
     }))
 }
 
@@ -350,6 +405,187 @@ pub(crate) async fn get_source(
         .get_by_id(user.tenant_id, id)
         .await
         .map_err(AppError::from)?;
+    Ok(Json(SourceResponse::from(source)))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/v1/sources/{id}",
+    params(("id" = Uuid, Path, description = "Source ID")),
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "Source deleted", body = MessageResponse),
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Admin permission required", body = ApiError),
+        (status = 404, description = "Not found", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
+    )
+)]
+pub(crate) async fn delete_source(
+    State(state): State<AppState>,
+    auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<MessageResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+
+    let is_admin = state
+        .user_service
+        .has_permission(user.id, "*")
+        .await
+        .map_err(AppError::from)?;
+    if !is_admin {
+        return Err(AppError::forbidden("Admin permission required"));
+    }
+
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    let tenant_id = user.tenant_id;
+    let user_id = user.id;
+
+    law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
+        let source_service = state.source_service.clone();
+        let audit_service = state.audit_service.clone();
+        let ip_address = ip_address.clone();
+        let user_agent = user_agent.clone();
+
+        Box::pin(async move {
+            let before = source_service.get_by_id_tx(tenant_id, tx, id).await?;
+            let after = source_service.delete_tx(tenant_id, tx, id).await?;
+
+            audit_service
+                .log_tx(
+                    tenant_id,
+                    tx,
+                    CreateAuditLog {
+                        user_id: Some(user_id),
+                        action: "sources.delete".to_string(),
+                        resource: "sources".to_string(),
+                        resource_id: Some(id),
+                        old_value: Some(serde_json::json!({
+                            "name": before.name,
+                            "url": before.url,
+                            "type": before.source_type,
+                            "priority": before.priority,
+                            "schedule": before.schedule,
+                            "is_active": before.is_active,
+                        })),
+                        new_value: Some(serde_json::json!({
+                            "deleted": true,
+                            "is_active": after.is_active,
+                        })),
+                        ip_address,
+                        user_agent,
+                    },
+                )
+                .await?;
+
+            Ok::<(), law_eye_common::Error>(())
+        })
+    })
+    .await
+    .map_err(|e| match e {
+        Error::NotFound(_) | Error::Validation(_) | Error::Conflict(_) => AppError::from(e),
+        _ => AppError::internal_with_code("DELETE_ERROR", e.to_string()),
+    })?;
+
+    Ok(Json(MessageResponse {
+        message: "Source deleted".to_string(),
+    }))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/sources/{id}/restore",
+    params(("id" = Uuid, Path, description = "Source ID")),
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "Source restored", body = SourceResponse),
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Admin permission required", body = ApiError),
+        (status = 404, description = "Not found", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
+    )
+)]
+pub(crate) async fn restore_source(
+    State(state): State<AppState>,
+    auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<SourceResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+
+    let is_admin = state
+        .user_service
+        .has_permission(user.id, "*")
+        .await
+        .map_err(AppError::from)?;
+    if !is_admin {
+        return Err(AppError::forbidden("Admin permission required"));
+    }
+
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    let tenant_id = user.tenant_id;
+    let user_id = user.id;
+
+    let source = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
+        let source_service = state.source_service.clone();
+        let audit_service = state.audit_service.clone();
+        let ip_address = ip_address.clone();
+        let user_agent = user_agent.clone();
+
+        Box::pin(async move {
+            let before = source_service.get_by_id_any_tx(tenant_id, tx, id).await?;
+            let before_deleted_at: Option<DateTime<Utc>> =
+                sqlx::query_scalar("SELECT deleted_at FROM sources WHERE id = $1")
+                    .bind(id)
+                    .fetch_one(tx.as_mut())
+                    .await
+                    .map_err(|e| law_eye_common::Error::Database(e.to_string()))?;
+            let after = source_service.restore_tx(tenant_id, tx, id).await?;
+
+            audit_service
+                .log_tx(
+                    tenant_id,
+                    tx,
+                    CreateAuditLog {
+                        user_id: Some(user_id),
+                        action: "sources.restore".to_string(),
+                        resource: "sources".to_string(),
+                        resource_id: Some(id),
+                        old_value: Some(serde_json::json!({
+                            "deleted": before_deleted_at.is_some(),
+                            "is_active": before.is_active,
+                        })),
+                        new_value: Some(serde_json::json!({
+                            "restored": true,
+                            "is_active": after.is_active,
+                        })),
+                        ip_address,
+                        user_agent,
+                    },
+                )
+                .await?;
+
+            Ok(after)
+        })
+    })
+    .await
+    .map_err(|e| match e {
+        Error::NotFound(_) | Error::Validation(_) | Error::Conflict(_) => AppError::from(e),
+        _ => AppError::internal_with_code("RESTORE_ERROR", e.to_string()),
+    })?;
+
     Ok(Json(SourceResponse::from(source)))
 }
 

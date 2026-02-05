@@ -2,6 +2,7 @@ mod auth;
 mod error;
 mod middleware;
 mod openapi;
+mod pagination;
 mod routes;
 mod state;
 pub use error::{ApiError, ApiJson, ApiQuery, ApiResult, AppError};

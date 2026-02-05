@@ -59,6 +59,8 @@ pub struct CreateKeyResponse {
 pub struct ListKeysParams {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    /// Cursor for keyset pagination (base64url-encoded JSON).
+    pub cursor: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -67,6 +69,8 @@ pub struct KeyListResponse {
     pub total: i64,
     pub limit: i64,
     pub offset: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -81,7 +85,8 @@ pub struct SuccessResponse {
     path = "/api/v1/apikeys",
     params(
         ("limit" = Option<i64>, Query, description = "Max results (default 100, max 1000)"),
-        ("offset" = Option<i64>, Query, description = "Offset (default 0)")
+        ("offset" = Option<i64>, Query, description = "Offset (default 0)"),
+        ("cursor" = Option<String>, Query, description = "Cursor for keyset pagination (base64url JSON). When set, offset is ignored.")
     ),
     security(
         ("session" = [])
@@ -98,6 +103,12 @@ pub(crate) async fn list_keys(
     auth_session: AuthSession,
     ApiQuery(params): ApiQuery<ListKeysParams>,
 ) -> ApiResult<Json<KeyListResponse>> {
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct CreatedAtCursor {
+        created_at: chrono::DateTime<chrono::Utc>,
+        id: Uuid,
+    }
+
     let user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
@@ -113,11 +124,39 @@ pub(crate) async fn list_keys(
         return Err(AppError::validation("offset must be >= 0"));
     }
 
-    let keys = state
-        .apikey_service
-        .list_by_user(user.id, limit, offset)
-        .await
-        .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?;
+    let cursor = params
+        .cursor
+        .as_deref()
+        .map(crate::pagination::decode_cursor::<CreatedAtCursor>)
+        .transpose()?;
+
+    let mut next_cursor: Option<String> = None;
+    let keys = if let Some(cursor) = cursor {
+        let fetch_limit = limit.saturating_add(1);
+        let mut items = state
+            .apikey_service
+            .list_by_user_cursor(user.id, fetch_limit, cursor.created_at, cursor.id)
+            .await
+            .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?;
+
+        if items.len() as i64 > limit {
+            items.truncate(limit as usize);
+            if let Some(last) = items.last() {
+                next_cursor = Some(crate::pagination::encode_cursor(&CreatedAtCursor {
+                    created_at: last.created_at,
+                    id: last.id,
+                })?);
+            }
+        }
+
+        items
+    } else {
+        state
+            .apikey_service
+            .list_by_user(user.id, limit, offset)
+            .await
+            .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?
+    };
 
     let total = state
         .apikey_service
@@ -141,7 +180,8 @@ pub(crate) async fn list_keys(
             .collect(),
         total,
         limit,
-        offset,
+        offset: if params.cursor.is_some() { 0 } else { offset },
+        next_cursor,
     }))
 }
 
