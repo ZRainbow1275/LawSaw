@@ -3,7 +3,7 @@ use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
 use law_eye_ai::{AiService, ClassifyResult, RiskAssessment, SummaryResult, TagsResult};
 use law_eye_common::egress::{validate_outbound_url, OutboundUrlPolicy};
 use law_eye_common::AppConfig;
-use law_eye_core::{ArticleService, SourceService};
+use law_eye_core::{ArticleService, ObjectService, SourceService, OBJECT_KIND_USER_AVATAR};
 use law_eye_crawler::{RssFetcher, SpiderConfig, WebSpider};
 use law_eye_db::{
     create_pool_with_session_role, create_pool_with_session_role_retry, CreateArticle,
@@ -14,6 +14,7 @@ use sqlx::{types::Json as DbJson, PgPool, Postgres, QueryBuilder};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::net::TcpListener;
 use tokio::signal;
 use tokio::time::{timeout, Duration, Instant};
@@ -146,11 +147,25 @@ struct Worker {
     rss_fetcher: RssFetcher,
     web_spider: WebSpider,
     ai_service: Option<AiService>,
+    object_service: Option<ObjectService>,
     push_http_client: reqwest::Client,
     allow_internal_source_urls: bool,
     allow_internal_webhook_urls: bool,
     worker_id: uuid::Uuid,
     shutdown: Arc<AtomicBool>,
+    object_purge: Option<ObjectPurgeConfig>,
+}
+
+struct WorkerInit {
+    pool: PgPool,
+    task_queue: TaskQueue,
+    ai_service: Option<AiService>,
+    object_service: Option<ObjectService>,
+    shutdown: Arc<AtomicBool>,
+    allow_internal_source_urls: bool,
+    allow_internal_webhook_urls: bool,
+    push_http_client: reqwest::Client,
+    object_purge: Option<ObjectPurgeConfig>,
 }
 
 #[derive(Debug, Clone)]
@@ -168,6 +183,21 @@ struct QueueOutboxRow {
     attempts: i32,
 }
 
+#[derive(Debug, Clone)]
+struct ObjectPurgeConfig {
+    interval: Duration,
+    batch_size: i64,
+    grace_period_seconds: i64,
+    max_attempts: i32,
+    lock_timeout_ms: i64,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct ObjectPurgeLockRow {
+    id: uuid::Uuid,
+    object_key: String,
+}
+
 impl QueueOutboxEntry {
     fn new(queue: &str, dedupe_key: String, payload: serde_json::Value) -> Self {
         Self {
@@ -179,26 +209,20 @@ impl QueueOutboxEntry {
 }
 
 impl Worker {
-    fn new(
-        pool: PgPool,
-        task_queue: TaskQueue,
-        ai_service: Option<AiService>,
-        shutdown: Arc<AtomicBool>,
-        allow_internal_source_urls: bool,
-        allow_internal_webhook_urls: bool,
-        push_http_client: reqwest::Client,
-    ) -> anyhow::Result<Self> {
+    fn new(init: WorkerInit) -> anyhow::Result<Self> {
         Ok(Self {
-            pool,
-            task_queue: Arc::new(task_queue),
+            pool: init.pool,
+            task_queue: Arc::new(init.task_queue),
             rss_fetcher: RssFetcher::new().context("create RSS fetcher")?,
             web_spider: WebSpider::new().context("create web spider")?,
-            ai_service,
-            push_http_client,
-            allow_internal_source_urls,
-            allow_internal_webhook_urls,
+            ai_service: init.ai_service,
+            object_service: init.object_service,
+            push_http_client: init.push_http_client,
+            allow_internal_source_urls: init.allow_internal_source_urls,
+            allow_internal_webhook_urls: init.allow_internal_webhook_urls,
             worker_id: uuid::Uuid::new_v4(),
-            shutdown,
+            shutdown: init.shutdown,
+            object_purge: init.object_purge,
         })
     }
 
@@ -208,12 +232,27 @@ impl Worker {
         let maintenance_interval = Duration::from_secs(MAINTENANCE_INTERVAL_SECS);
         let mut last_maintenance = Instant::now() - maintenance_interval;
 
+        let object_purge_interval = self.object_purge.as_ref().map(|cfg| cfg.interval);
+        let mut last_object_purge = Instant::now();
+        if let Some(interval) = object_purge_interval {
+            last_object_purge = Instant::now() - interval;
+        }
+
         while !self.shutdown.load(Ordering::Relaxed) {
             if last_maintenance.elapsed() >= maintenance_interval {
                 if let Err(e) = self.run_queue_maintenance().await {
                     error!("Queue maintenance failed: {}", e);
                 }
                 last_maintenance = Instant::now();
+            }
+
+            if let Some(interval) = object_purge_interval {
+                if last_object_purge.elapsed() >= interval {
+                    if let Err(e) = self.run_object_purge_maintenance().await {
+                        error!("Object purge maintenance failed: {}", e);
+                    }
+                    last_object_purge = Instant::now();
+                }
             }
 
             if let Some(reserved) = self
@@ -276,6 +315,265 @@ impl Worker {
         self.flush_queue_outbox_all_tenants().await?;
 
         Ok(())
+    }
+
+    fn unix_now_secs() -> i64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0)
+    }
+
+    async fn run_object_purge_maintenance(&self) -> anyhow::Result<()> {
+        let Some(cfg) = self.object_purge.as_ref() else {
+            return Ok(());
+        };
+        let Some(object_service) = self.object_service.as_ref() else {
+            return Ok(());
+        };
+
+        let tenant_ids = sqlx::query_scalar::<_, uuid::Uuid>("SELECT id FROM tenants ORDER BY created_at")
+            .fetch_all(&self.pool)
+            .await?;
+
+        for tenant_id in tenant_ids {
+            match self
+                .mark_orphan_object_records_for_tenant(tenant_id, cfg)
+                .await
+            {
+                Ok(marked) if marked > 0 => {
+                    info!(%tenant_id, marked, "Marked orphan object records (soft delete)");
+                }
+                Ok(_) => {}
+                Err(err) => error!(%tenant_id, error = %err, "Mark orphan object records failed"),
+            }
+
+            match self
+                .purge_deleted_object_records_for_tenant(tenant_id, cfg, object_service)
+                .await
+            {
+                Ok(purged) if purged > 0 => {
+                    info!(%tenant_id, purged, "Purged soft-deleted objects from storage");
+                }
+                Ok(_) => {}
+                Err(err) => error!(%tenant_id, error = %err, "Purge soft-deleted objects failed"),
+            }
+
+            match self
+                .cleanup_orphan_storage_objects_for_tenant(tenant_id, cfg, object_service)
+                .await
+            {
+                Ok(deleted) if deleted > 0 => {
+                    info!(%tenant_id, deleted, "Deleted orphan storage objects without DB records");
+                }
+                Ok(_) => {}
+                Err(err) => error!(%tenant_id, error = %err, "Cleanup orphan storage objects failed"),
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn mark_orphan_object_records_for_tenant(
+        &self,
+        tenant_id: uuid::Uuid,
+        cfg: &ObjectPurgeConfig,
+    ) -> anyhow::Result<i64> {
+        let mut tx = self.begin_tenant_tx(tenant_id).await?;
+
+        let res = sqlx::query(
+            r#"
+            WITH candidates AS (
+                SELECT o.id
+                FROM objects o
+                LEFT JOIN users u
+                  ON u.id = o.owner_user_id
+                 AND u.avatar_url = ('/api/v1/objects/' || o.id::text)
+                WHERE o.deleted_at IS NULL
+                  AND o.purged_at IS NULL
+                  AND o.kind = $1
+                  AND o.created_at < NOW() - ($2::bigint * interval '1 second')
+                  AND u.id IS NULL
+                ORDER BY o.created_at ASC
+                LIMIT $3
+            )
+            UPDATE objects
+            SET deleted_at = NOW()
+            WHERE id IN (SELECT id FROM candidates)
+            "#,
+        )
+        .bind(OBJECT_KIND_USER_AVATAR)
+        .bind(cfg.grace_period_seconds)
+        .bind(cfg.batch_size)
+        .execute(tx.as_mut())
+        .await?;
+
+        tx.commit().await?;
+        Ok(res.rows_affected() as i64)
+    }
+
+    async fn purge_deleted_object_records_for_tenant(
+        &self,
+        tenant_id: uuid::Uuid,
+        cfg: &ObjectPurgeConfig,
+        object_service: &ObjectService,
+    ) -> anyhow::Result<i64> {
+        let mut lock_tx = self.begin_tenant_tx(tenant_id).await?;
+        let rows = sqlx::query_as::<_, ObjectPurgeLockRow>(
+            r#"
+            WITH candidates AS (
+                SELECT id
+                FROM objects
+                WHERE deleted_at IS NOT NULL
+                  AND purged_at IS NULL
+                  AND purge_attempts < $2
+                  AND (purge_locked_at IS NULL OR purge_locked_at < NOW() - ($3::bigint * interval '1 millisecond'))
+                  AND deleted_at < NOW() - ($4::bigint * interval '1 second')
+                ORDER BY deleted_at ASC
+                LIMIT $5
+                FOR UPDATE SKIP LOCKED
+            )
+            UPDATE objects
+            SET purge_locked_at = NOW(),
+                purge_locked_by = $1
+            WHERE id IN (SELECT id FROM candidates)
+            RETURNING id, object_key
+            "#,
+        )
+        .bind(self.worker_id)
+        .bind(cfg.max_attempts)
+        .bind(cfg.lock_timeout_ms)
+        .bind(cfg.grace_period_seconds)
+        .bind(cfg.batch_size)
+        .fetch_all(lock_tx.as_mut())
+        .await?;
+        lock_tx.commit().await?;
+
+        if rows.is_empty() {
+            return Ok(0);
+        }
+
+        let mut outcomes: Vec<(uuid::Uuid, Result<(), String>)> = Vec::with_capacity(rows.len());
+        for row in &rows {
+            let result = object_service
+                .delete_object_key(&row.object_key)
+                .await
+                .map_err(|e| e.to_string());
+            outcomes.push((row.id, result));
+        }
+
+        let mut tx = self.begin_tenant_tx(tenant_id).await?;
+        for (id, outcome) in outcomes {
+            match outcome {
+                Ok(()) => {
+                    sqlx::query(
+                        r#"
+                        UPDATE objects
+                        SET purged_at = NOW(),
+                            purge_last_error = NULL,
+                            purge_locked_at = NULL,
+                            purge_locked_by = NULL
+                        WHERE id = $1
+                        "#,
+                    )
+                    .bind(id)
+                    .execute(tx.as_mut())
+                    .await?;
+                }
+                Err(err) => {
+                    sqlx::query(
+                        r#"
+                        UPDATE objects
+                        SET purge_attempts = purge_attempts + 1,
+                            purge_last_error = $2,
+                            purge_locked_at = NULL,
+                            purge_locked_by = NULL
+                        WHERE id = $1
+                        "#,
+                    )
+                    .bind(id)
+                    .bind(err)
+                    .execute(tx.as_mut())
+                    .await?;
+                }
+            }
+        }
+        tx.commit().await?;
+
+        Ok(rows.len() as i64)
+    }
+
+    async fn cleanup_orphan_storage_objects_for_tenant(
+        &self,
+        tenant_id: uuid::Uuid,
+        cfg: &ObjectPurgeConfig,
+        object_service: &ObjectService,
+    ) -> anyhow::Result<i64> {
+        if cfg.batch_size <= 0 {
+            return Ok(0);
+        }
+
+        let now_secs = Self::unix_now_secs();
+        let cutoff_secs = now_secs.saturating_sub(cfg.grace_period_seconds.max(0));
+        let prefix = format!("tenants/{tenant_id}/");
+
+        let mut continuation: Option<String> = None;
+        let mut deleted: i64 = 0;
+
+        while deleted < cfg.batch_size {
+            let page = object_service
+                .list_objects_page(&prefix, continuation.clone(), None)
+                .await?;
+
+            if page.objects.is_empty() {
+                break;
+            }
+
+            let mut candidates: Vec<String> = page
+                .objects
+                .iter()
+                .filter_map(|obj| {
+                    let modified = obj.last_modified_epoch_secs?;
+                    if modified <= cutoff_secs {
+                        Some(obj.object_key.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            if !candidates.is_empty() {
+                let mut tx = self.begin_tenant_tx(tenant_id).await?;
+                let existing = sqlx::query_scalar::<_, String>(
+                    "SELECT object_key FROM objects WHERE bucket = $1 AND object_key = ANY($2) AND purged_at IS NULL",
+                )
+                .bind(object_service.bucket())
+                .bind(&candidates)
+                .fetch_all(tx.as_mut())
+                .await?;
+                tx.commit().await?;
+
+                let existing: HashSet<String> = existing.into_iter().collect();
+                candidates.retain(|key| !existing.contains(key));
+
+                for key in candidates {
+                    if deleted >= cfg.batch_size {
+                        break;
+                    }
+                    match object_service.delete_object_key(&key).await {
+                        Ok(()) => deleted += 1,
+                        Err(err) => warn!(%tenant_id, object_key = %key, error = %err, "Delete orphan storage object failed"),
+                    }
+                }
+            }
+
+            continuation = page.next_continuation_token;
+            if continuation.is_none() {
+                break;
+            }
+        }
+
+        Ok(deleted)
     }
 
     async fn begin_tenant_tx(
@@ -1511,6 +1809,33 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
+    let object_service = if config.object_storage.enabled {
+        info!(
+            "Object storage enabled (bucket: {}, endpoint: {})",
+            config.object_storage.bucket, config.object_storage.endpoint
+        );
+        Some(ObjectService::new(pool.clone(), &config.object_storage).await?)
+    } else {
+        info!("Object storage disabled");
+        None
+    };
+
+    let object_purge = if object_service.is_some()
+        && config.object_storage.purge_interval_seconds > 0
+        && config.object_storage.purge_batch_size > 0
+        && config.object_storage.purge_max_attempts > 0
+    {
+        Some(ObjectPurgeConfig {
+            interval: Duration::from_secs(config.object_storage.purge_interval_seconds),
+            batch_size: config.object_storage.purge_batch_size,
+            grace_period_seconds: config.object_storage.purge_grace_period_seconds as i64,
+            max_attempts: config.object_storage.purge_max_attempts,
+            lock_timeout_ms: OUTBOX_LOCK_TIMEOUT_MS,
+        })
+    } else {
+        None
+    };
+
     let shutdown = Arc::new(AtomicBool::new(false));
     let shutdown_clone = shutdown.clone();
 
@@ -1560,15 +1885,17 @@ async fn main() -> anyhow::Result<()> {
         .build()
         .context("build webhook http client")?;
 
-    let worker = Worker::new(
+    let worker = Worker::new(WorkerInit {
         pool,
         task_queue,
         ai_service,
+        object_service,
         shutdown,
-        config.security.allow_internal_source_urls,
-        config.security.allow_internal_webhook_urls,
+        allow_internal_source_urls: config.security.allow_internal_source_urls,
+        allow_internal_webhook_urls: config.security.allow_internal_webhook_urls,
         push_http_client,
-    )?;
+        object_purge,
+    })?;
     worker.run().await
 }
 

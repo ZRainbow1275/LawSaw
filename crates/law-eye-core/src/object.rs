@@ -22,6 +22,19 @@ pub const OBJECT_KIND_USER_AVATAR: &str = "user.avatar";
 const MAX_AVATAR_BYTES: usize = 1_048_576; // 1 MiB
 const ENSURE_BUCKET_MAX_ATTEMPTS: usize = 10;
 const ENSURE_BUCKET_INITIAL_BACKOFF_MS: u64 = 250;
+const DEFAULT_LIST_OBJECTS_MAX_KEYS: i32 = 1000;
+
+#[derive(Debug, Clone)]
+pub struct ListedObject {
+    pub object_key: String,
+    pub last_modified_epoch_secs: Option<i64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ListObjectsPage {
+    pub objects: Vec<ListedObject>,
+    pub next_continuation_token: Option<String>,
+}
 
 #[derive(Debug, Clone)]
 pub struct UploadUserAvatarInput {
@@ -101,6 +114,10 @@ impl ObjectService {
         service.ensure_bucket().await?;
 
         Ok(service)
+    }
+
+    pub fn bucket(&self) -> &str {
+        &self.bucket
     }
 
     fn is_bucket_not_found(err: &SdkError<HeadBucketError>) -> bool {
@@ -315,12 +332,14 @@ impl ObjectService {
     pub async fn get_object_record(&self, tenant_id: Uuid, id: Uuid) -> Result<Object> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
-                sqlx::query_as::<_, Object>("SELECT * FROM objects WHERE id = $1")
-                    .bind(id)
-                    .fetch_optional(tx.as_mut())
-                    .await
-                    .map_err(|e| Error::Database(e.to_string()))?
-                    .ok_or_else(|| Error::NotFound(format!("Object {} not found", id)))
+                sqlx::query_as::<_, Object>(
+                    "SELECT * FROM objects WHERE id = $1 AND deleted_at IS NULL AND purged_at IS NULL",
+                )
+                .bind(id)
+                .fetch_optional(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?
+                .ok_or_else(|| Error::NotFound(format!("Object {} not found", id)))
             })
         })
         .await
@@ -337,5 +356,56 @@ impl ObjectService {
             .map_err(|e| Error::Http(format!("Get object failed: {e:?}")))?;
 
         Ok(resp.body)
+    }
+
+    pub async fn delete_object_key(&self, object_key: &str) -> Result<()> {
+        self.client
+            .delete_object()
+            .bucket(&self.bucket)
+            .key(object_key)
+            .send()
+            .await
+            .map_err(|e| Error::Http(format!("Delete object failed: {e:?}")))?;
+        Ok(())
+    }
+
+    pub async fn list_objects_page(
+        &self,
+        prefix: &str,
+        continuation_token: Option<String>,
+        max_keys: Option<i32>,
+    ) -> Result<ListObjectsPage> {
+        let max_keys = max_keys.unwrap_or(DEFAULT_LIST_OBJECTS_MAX_KEYS);
+
+        let mut req = self
+            .client
+            .list_objects_v2()
+            .bucket(&self.bucket)
+            .prefix(prefix)
+            .max_keys(max_keys);
+        if let Some(token) = continuation_token {
+            req = req.continuation_token(token);
+        }
+
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| Error::Http(format!("List objects failed: {e:?}")))?;
+
+        let objects = resp
+            .contents()
+            .iter()
+            .filter_map(|obj| {
+                obj.key().map(|key| ListedObject {
+                    object_key: key.to_string(),
+                    last_modified_epoch_secs: obj.last_modified().map(|dt| dt.secs()),
+                })
+            })
+            .collect::<Vec<_>>();
+
+        Ok(ListObjectsPage {
+            objects,
+            next_continuation_token: resp.next_continuation_token().map(|s| s.to_string()),
+        })
     }
 }

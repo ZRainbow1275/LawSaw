@@ -260,6 +260,12 @@ pub struct Object {
     pub byte_size: i64,
     pub sha256: Option<Vec<u8>>,
     pub created_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub purged_at: Option<DateTime<Utc>>,
+    pub purge_attempts: i32,
+    pub purge_last_error: Option<String>,
+    pub purge_locked_at: Option<DateTime<Utc>>,
+    pub purge_locked_by: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
