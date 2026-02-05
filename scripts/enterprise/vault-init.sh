@@ -47,15 +47,19 @@ migrate_legacy_file() {
 if [[ -d "$LEGACY_VAULT_STATE_DIR" ]]; then
   migrate_legacy_file "${LEGACY_VAULT_STATE_DIR}/init.json" "${VAULT_STATE_DIR}/init.json"
   migrate_legacy_file "${LEGACY_VAULT_STATE_DIR}/unseal.key" "${VAULT_STATE_DIR}/unseal.key"
-  migrate_legacy_file "${LEGACY_VAULT_STATE_DIR}/root.token" "${VAULT_STATE_DIR}/root.token"
 fi
 if [[ -d "$LEGACY_SECRETS_DIR" ]]; then
   migrate_legacy_file "${LEGACY_SECRETS_DIR}/postgres_password" "${SECRETS_DIR}/postgres_password"
 fi
 
-INIT_JSON="${VAULT_STATE_DIR}/init.json"
+LEGACY_INIT_JSON_FILE="${VAULT_STATE_DIR}/init.json"
 UNSEAL_KEY_FILE="${VAULT_STATE_DIR}/unseal.key"
-ROOT_TOKEN_FILE="${VAULT_STATE_DIR}/root.token"
+LEGACY_ROOT_TOKEN_FILE="${VAULT_STATE_DIR}/root.token"
+LEGACY_REPO_ROOT_TOKEN_FILE="${LEGACY_VAULT_STATE_DIR}/root.token"
+
+# Root token is only used during one-time bootstrap and must never be persisted.
+VAULT_SETUP_ROOT_TOKEN=""
+VAULT_ADMIN_TOKEN=""
 
 VAULT_UNSEAL_KEY_SHARES="${LAW_EYE_ENTERPRISE_VAULT_UNSEAL_KEY_SHARES:-5}"
 VAULT_UNSEAL_KEY_THRESHOLD="${LAW_EYE_ENTERPRISE_VAULT_UNSEAL_KEY_THRESHOLD:-3}"
@@ -181,6 +185,53 @@ vault_exec() {
     "$VAULT_CONTAINER" vault "$@"
 }
 
+vault_login_bootstrap_cert() {
+  set +e
+  local login_output
+  login_output="$(vault_exec write -format=json auth/cert/login name=law-eye-bootstrap 2>/dev/null)"
+  local login_code=$?
+  set -e
+
+  if [[ $login_code -ne 0 || -z "$login_output" ]]; then
+    return 1
+  fi
+
+  local token
+  token="$(
+    printf '%s' "$login_output" | python - <<'PY'
+import json
+import sys
+
+try:
+    data = json.load(sys.stdin)
+    auth = data.get("auth") or {}
+    sys.stdout.write(str(auth.get("client_token", "")).strip())
+except Exception:
+    sys.stdout.write("")
+PY
+  )"
+
+  token="$(printf '%s' "$token" | tr -d '\r\n')"
+  [[ -n "$token" ]] || return 1
+  printf '%s' "$token"
+}
+
+ensure_vault_admin_token() {
+  if [[ -n "$VAULT_ADMIN_TOKEN" ]]; then
+    return 0
+  fi
+
+  local token
+  token="$(vault_login_bootstrap_cert || true)"
+  token="$(printf '%s' "$token" | tr -d '\r\n')"
+  if [[ -n "$token" ]]; then
+    VAULT_ADMIN_TOKEN="$token"
+    return 0
+  fi
+
+  return 1
+}
+
 wait_vault_ready() {
   echo "[vault] waiting for vault to accept connections..."
   for _ in {1..60}; do
@@ -218,15 +269,69 @@ reset_vault_data() {
   done
 
   docker volume rm "$volume_name" >/dev/null 2>&1 || true
-  rm -f "$INIT_JSON" "$UNSEAL_KEY_FILE" "$ROOT_TOKEN_FILE" || true
+  rm -f "$LEGACY_INIT_JSON_FILE" "$UNSEAL_KEY_FILE" "$LEGACY_ROOT_TOKEN_FILE" || true
 }
 
 init_and_unseal() {
   mkdir -p "$VAULT_STATE_DIR"
 
-  if [[ ! -s "$UNSEAL_KEY_FILE" || ! -s "$ROOT_TOKEN_FILE" ]]; then
+  # Legacy cleanup: `init.json` used to contain BOTH unseal keys and the root token.
+  # We must not keep it on disk. Extract what we need, then remove it.
+  if [[ -s "$LEGACY_INIT_JSON_FILE" ]]; then
+    echo "[vault] WARNING: found legacy init.json with sensitive material; extracting required values and removing it..." >&2
+
+    legacy_root_token="$(
+      python - "$LEGACY_INIT_JSON_FILE" "$UNSEAL_KEY_FILE" "$VAULT_UNSEAL_KEY_SHARES" <<'PY'
+import json
+import os
+import sys
+
+init_path = sys.argv[1]
+unseal_path = sys.argv[2]
+shares = int(sys.argv[3])
+
+with open(init_path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+keys = data.get("unseal_keys_b64") or []
+if len(keys) < shares:
+    raise SystemExit(f"expected at least {shares} unseal keys, got {len(keys)}")
+
+if not os.path.exists(unseal_path) or os.path.getsize(unseal_path) == 0:
+    with open(unseal_path, "w", encoding="utf-8") as f:
+        for key in keys[:shares]:
+            f.write(str(key).strip() + "\n")
+
+print(str(data.get("root_token", "")).strip())
+PY
+    )"
+
+    chmod 600 "$UNSEAL_KEY_FILE" >/dev/null 2>&1 || true
+    rm -f "$LEGACY_INIT_JSON_FILE" || true
+
+    if [[ -z "$VAULT_SETUP_ROOT_TOKEN" && -n "$legacy_root_token" ]]; then
+      VAULT_SETUP_ROOT_TOKEN="$(printf '%s' "$legacy_root_token" | tr -d '\r\n')"
+    fi
+  fi
+
+  # Legacy cleanup: root token must never live under the repo (tmp/enterprise/vault).
+  if [[ -s "$LEGACY_REPO_ROOT_TOKEN_FILE" && -z "$VAULT_SETUP_ROOT_TOKEN" ]]; then
+    echo "[vault] WARNING: found legacy root token under repo tmp dir; consuming and deleting it..." >&2
+    VAULT_SETUP_ROOT_TOKEN="$(tr -d '\r\n' < "$LEGACY_REPO_ROOT_TOKEN_FILE")"
+    rm -f "$LEGACY_REPO_ROOT_TOKEN_FILE" || true
+  fi
+
+  # Legacy cleanup: root token must never live on disk. If present, consume it in-memory for
+  # bootstrap only (configure_vault will revoke & delete it).
+  if [[ -s "$LEGACY_ROOT_TOKEN_FILE" && -z "$VAULT_SETUP_ROOT_TOKEN" ]]; then
+    echo "[vault] WARNING: found legacy root token file; consuming and deleting it..." >&2
+    VAULT_SETUP_ROOT_TOKEN="$(tr -d '\r\n' < "$LEGACY_ROOT_TOKEN_FILE")"
+    rm -f "$LEGACY_ROOT_TOKEN_FILE" || true
+  fi
+
+  if [[ ! -s "$UNSEAL_KEY_FILE" ]]; then
     echo "[vault] initializing (operator init)..."
-    rm -f "$INIT_JSON" || true
+    rm -f "$UNSEAL_KEY_FILE" || true
 
     set +e
     local init_output
@@ -254,14 +359,34 @@ init_and_unseal() {
       exit 1
     fi
 
-    printf '%s' "$init_output" > "$INIT_JSON"
-    rm -f "$UNSEAL_KEY_FILE" || true
-    for ((i=0; i<VAULT_UNSEAL_KEY_SHARES; i++)); do
-      json_get "unseal_keys_b64.${i}" "$INIT_JSON" | tr -d '\r\n' >> "$UNSEAL_KEY_FILE"
-      echo >> "$UNSEAL_KEY_FILE"
-    done
-    json_get "root_token" "$INIT_JSON" > "$ROOT_TOKEN_FILE"
-    chmod 600 "$UNSEAL_KEY_FILE" "$ROOT_TOKEN_FILE" || true
+    VAULT_SETUP_ROOT_TOKEN="$(
+      printf '%s' "$init_output" | python - "$UNSEAL_KEY_FILE" "$VAULT_UNSEAL_KEY_SHARES" <<'PY'
+import json
+import sys
+
+unseal_path = sys.argv[1]
+shares = int(sys.argv[2])
+
+data = json.load(sys.stdin)
+keys = data.get("unseal_keys_b64") or []
+if len(keys) < shares:
+    raise SystemExit(f"expected at least {shares} unseal keys, got {len(keys)}")
+
+with open(unseal_path, "w", encoding="utf-8") as f:
+    for key in keys[:shares]:
+        f.write(str(key).strip() + "\n")
+
+print(str(data.get("root_token", "")).strip())
+PY
+    )"
+
+    VAULT_SETUP_ROOT_TOKEN="$(printf '%s' "$VAULT_SETUP_ROOT_TOKEN" | tr -d '\r\n')"
+    if [[ -z "$VAULT_SETUP_ROOT_TOKEN" ]]; then
+      echo "[vault] failed to read root token from init output" >&2
+      exit 1
+    fi
+
+    chmod 600 "$UNSEAL_KEY_FILE" >/dev/null 2>&1 || true
   fi
 
   set +e
@@ -302,13 +427,106 @@ init_and_unseal() {
 
 configure_vault() {
   echo "[vault] configuring secrets engine + auth methods + policies..."
-  local root_token
-  root_token="$(cat "$ROOT_TOKEN_FILE")"
+  if ! ensure_vault_admin_token; then
+    if [[ -z "$VAULT_SETUP_ROOT_TOKEN" ]]; then
+      echo "[vault] ERROR: cannot authenticate to Vault: cert auth not ready and no setup root token available." >&2
+      echo "[vault] Hint: reset Vault data volume and rerun this script to re-initialize." >&2
+      exit 1
+    fi
+
+    echo "[vault] bootstrapping cert auth (one-time) using in-memory root token..." >&2
+    local root_token="$VAULT_SETUP_ROOT_TOKEN"
+
+    docker_exec \
+      -e "VAULT_ADDR=${VAULT_ADDR}" \
+      -e "VAULT_TOKEN=${root_token}" \
+      -e "VAULT_CACERT=/vault/tls/ca.crt" \
+      -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
+      -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
+      "$VAULT_CONTAINER" vault auth enable cert >/dev/null 2>&1 || true
+
+    # Bootstrap policy: this is an operator/admin policy used by scripts via cert auth.
+    docker_exec -i \
+      -e "VAULT_ADDR=${VAULT_ADDR}" \
+      -e "VAULT_TOKEN=${root_token}" \
+      -e "VAULT_CACERT=/vault/tls/ca.crt" \
+      -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
+      -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
+      "$VAULT_CONTAINER" vault policy write law-eye-bootstrap - <<'EOF'
+path "sys/mounts" {
+  capabilities = ["read"]
+}
+
+path "sys/mounts/*" {
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+}
+
+path "sys/auth" {
+  capabilities = ["read"]
+}
+
+path "sys/auth/*" {
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+}
+
+path "sys/policies/acl" {
+  capabilities = ["list"]
+}
+
+path "sys/policies/acl/*" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
+
+path "auth/cert/*" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
+
+path "secret/data/law-eye/*" {
+  capabilities = ["create", "read", "update"]
+}
+
+path "secret/metadata/law-eye/*" {
+  capabilities = ["read", "list"]
+}
+
+path "transit/*" {
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+}
+EOF
+
+    docker_exec \
+      -e "VAULT_ADDR=${VAULT_ADDR}" \
+      -e "VAULT_TOKEN=${root_token}" \
+      -e "VAULT_CACERT=/vault/tls/ca.crt" \
+      -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
+      -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
+      "$VAULT_CONTAINER" vault write auth/cert/certs/law-eye-bootstrap \
+      display_name="law-eye-bootstrap" \
+      policies="law-eye-bootstrap" \
+      certificate=@/vault/tls/vault-bootstrap-client.crt >/dev/null
+
+    if ! ensure_vault_admin_token; then
+      echo "[vault] ERROR: failed to login via cert auth after bootstrap." >&2
+      exit 1
+    fi
+
+    # Revoke the one-time root token after bootstrap.
+    docker_exec \
+      -e "VAULT_ADDR=${VAULT_ADDR}" \
+      -e "VAULT_TOKEN=${root_token}" \
+      -e "VAULT_CACERT=/vault/tls/ca.crt" \
+      -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
+      -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
+      "$VAULT_CONTAINER" vault token revoke -self >/dev/null 2>&1 || true
+    VAULT_SETUP_ROOT_TOKEN=""
+  fi
+
+  local admin_token="$VAULT_ADMIN_TOKEN"
 
   # Enable KV v2 at `secret/`
   docker_exec \
     -e "VAULT_ADDR=${VAULT_ADDR}" \
-    -e "VAULT_TOKEN=${root_token}" \
+    -e "VAULT_TOKEN=${admin_token}" \
     -e "VAULT_CACERT=/vault/tls/ca.crt" \
     -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
     -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
@@ -317,7 +535,7 @@ configure_vault() {
   # Enable cert auth.
   docker_exec \
     -e "VAULT_ADDR=${VAULT_ADDR}" \
-    -e "VAULT_TOKEN=${root_token}" \
+    -e "VAULT_TOKEN=${admin_token}" \
     -e "VAULT_CACERT=/vault/tls/ca.crt" \
     -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
     -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
@@ -326,7 +544,7 @@ configure_vault() {
   # Enable transit for encryption-as-a-service.
   docker_exec \
     -e "VAULT_ADDR=${VAULT_ADDR}" \
-    -e "VAULT_TOKEN=${root_token}" \
+    -e "VAULT_TOKEN=${admin_token}" \
     -e "VAULT_CACERT=/vault/tls/ca.crt" \
     -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
     -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
@@ -335,7 +553,7 @@ configure_vault() {
   # Ensure transit key exists for feedback field encryption (ENC-301).
   docker_exec \
     -e "VAULT_ADDR=${VAULT_ADDR}" \
-    -e "VAULT_TOKEN=${root_token}" \
+    -e "VAULT_TOKEN=${admin_token}" \
     -e "VAULT_CACERT=/vault/tls/ca.crt" \
     -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
     -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
@@ -344,7 +562,7 @@ configure_vault() {
   # Policies: keep least-privilege by separating API/worker paths.
   docker_exec -i \
     -e "VAULT_ADDR=${VAULT_ADDR}" \
-    -e "VAULT_TOKEN=${root_token}" \
+    -e "VAULT_TOKEN=${admin_token}" \
     -e "VAULT_CACERT=/vault/tls/ca.crt" \
     -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
     -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
@@ -368,7 +586,7 @@ EOF
 
   docker_exec -i \
     -e "VAULT_ADDR=${VAULT_ADDR}" \
-    -e "VAULT_TOKEN=${root_token}" \
+    -e "VAULT_TOKEN=${admin_token}" \
     -e "VAULT_CACERT=/vault/tls/ca.crt" \
     -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
     -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
@@ -393,7 +611,7 @@ EOF
   # Map client certs to policies.
   docker_exec \
     -e "VAULT_ADDR=${VAULT_ADDR}" \
-    -e "VAULT_TOKEN=${root_token}" \
+    -e "VAULT_TOKEN=${admin_token}" \
     -e "VAULT_CACERT=/vault/tls/ca.crt" \
     -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
     -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
@@ -404,7 +622,7 @@ EOF
 
   docker_exec \
     -e "VAULT_ADDR=${VAULT_ADDR}" \
-    -e "VAULT_TOKEN=${root_token}" \
+    -e "VAULT_TOKEN=${admin_token}" \
     -e "VAULT_CACERT=/vault/tls/ca.crt" \
     -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
     -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
@@ -412,6 +630,9 @@ EOF
     display_name="law-eye-worker" \
     policies="law-eye-worker" \
     certificate=@/vault/tls/vault-worker-client.crt >/dev/null
+
+  # Ensure any legacy root token files are gone.
+  rm -f "$LEGACY_ROOT_TOKEN_FILE" "$LEGACY_REPO_ROOT_TOKEN_FILE" || true
 }
 
 seed_secrets() {
@@ -465,12 +686,17 @@ seed_secrets() {
     openai_base_url="https://api.openai.com/v1"
   fi
 
-  local root_token
-  root_token="$(cat "$ROOT_TOKEN_FILE")"
+  if [[ -z "$VAULT_ADMIN_TOKEN" ]]; then
+    if ! ensure_vault_admin_token; then
+      echo "[vault] ERROR: missing Vault admin token; did configure_vault run successfully?" >&2
+      exit 1
+    fi
+  fi
+  local admin_token="$VAULT_ADMIN_TOKEN"
 
   docker_exec \
     -e "VAULT_ADDR=${VAULT_ADDR}" \
-    -e "VAULT_TOKEN=${root_token}" \
+    -e "VAULT_TOKEN=${admin_token}" \
     -e "VAULT_CACERT=/vault/tls/ca.crt" \
     -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
     -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
@@ -487,7 +713,7 @@ seed_secrets() {
 
   docker_exec \
     -e "VAULT_ADDR=${VAULT_ADDR}" \
-    -e "VAULT_TOKEN=${root_token}" \
+    -e "VAULT_TOKEN=${admin_token}" \
     -e "VAULT_CACERT=/vault/tls/ca.crt" \
     -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
     -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \

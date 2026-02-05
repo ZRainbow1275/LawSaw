@@ -26,12 +26,9 @@ migrate_legacy_file() {
 }
 
 if [[ -d "$LEGACY_VAULT_STATE_DIR" ]]; then
-  migrate_legacy_file "root.token"
   migrate_legacy_file "init.json"
   migrate_legacy_file "unseal.key"
 fi
-
-ROOT_TOKEN_FILE="${VAULT_STATE_DIR}/root.token"
 
 usage() {
   echo "Usage: $0 <api|worker>" >&2
@@ -42,6 +39,44 @@ docker_exec() {
   MSYS2_ARG_CONV_EXCL='*' docker exec "$@"
 }
 
+vault_login_bootstrap_cert() {
+  set +e
+  local login_output
+  login_output="$(
+    docker_exec \
+      -e "VAULT_ADDR=${VAULT_ADDR}" \
+      -e "VAULT_CACERT=/vault/tls/ca.crt" \
+      -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
+      -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
+      "$VAULT_CONTAINER" vault write -format=json auth/cert/login name=law-eye-bootstrap 2>/dev/null
+  )"
+  local login_code=$?
+  set -e
+
+  if [[ $login_code -ne 0 || -z "$login_output" ]]; then
+    return 1
+  fi
+
+  local token
+  token="$(
+    printf '%s' "$login_output" | python - <<'PY'
+import json
+import sys
+
+try:
+    data = json.load(sys.stdin)
+    auth = data.get("auth") or {}
+    sys.stdout.write(str(auth.get("client_token", "")).strip())
+except Exception:
+    sys.stdout.write("")
+PY
+  )"
+
+  token="$(printf '%s' "$token" | tr -d '\r\n')"
+  [[ -n "$token" ]] || return 1
+  printf '%s' "$token"
+}
+
 main() {
   local target="${1:-}"
   case "$target" in
@@ -49,18 +84,16 @@ main() {
     *) usage ;;
   esac
 
-  if [[ ! -f "$ROOT_TOKEN_FILE" ]]; then
-    echo "[revoke] missing root token file: $ROOT_TOKEN_FILE" >&2
+  local admin_token
+  if ! admin_token="$(vault_login_bootstrap_cert)"; then
+    echo "[revoke] failed to login to Vault using cert auth; run vault init first." >&2
     exit 1
   fi
-
-  local root_token
-  root_token="$(cat "$ROOT_TOKEN_FILE")"
 
   echo "[revoke] revoking $target client certificate mapping..."
   docker_exec \
     -e "VAULT_ADDR=${VAULT_ADDR}" \
-    -e "VAULT_TOKEN=${root_token}" \
+    -e "VAULT_TOKEN=${admin_token}" \
     -e "VAULT_CACERT=/vault/tls/ca.crt" \
     -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
     -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \

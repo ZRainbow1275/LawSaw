@@ -42,7 +42,6 @@ migrate_legacy_file() {
 }
 
 if [[ -d "$LEGACY_VAULT_STATE_DIR" ]]; then
-  migrate_legacy_file "${LEGACY_VAULT_STATE_DIR}/root.token" "${VAULT_STATE_DIR}/root.token"
   migrate_legacy_file "${LEGACY_VAULT_STATE_DIR}/init.json" "${VAULT_STATE_DIR}/init.json"
   migrate_legacy_file "${LEGACY_VAULT_STATE_DIR}/unseal.key" "${VAULT_STATE_DIR}/unseal.key"
 fi
@@ -50,7 +49,6 @@ if [[ -d "$LEGACY_SECRETS_DIR" ]]; then
   migrate_legacy_file "${LEGACY_SECRETS_DIR}/postgres_password" "${SECRETS_DIR}/postgres_password"
 fi
 
-ROOT_TOKEN_FILE="${VAULT_STATE_DIR}/root.token"
 POSTGRES_PASSWORD_FILE="${SECRETS_DIR}/postgres_password"
 
 require_file() {
@@ -64,6 +62,44 @@ docker_exec() {
   MSYS2_ARG_CONV_EXCL='*' docker exec "$@"
 }
 
+vault_login_bootstrap_cert() {
+  set +e
+  local login_output
+  login_output="$(
+    docker_exec \
+      -e "VAULT_ADDR=${VAULT_ADDR}" \
+      -e "VAULT_CACERT=/vault/tls/ca.crt" \
+      -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
+      -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
+      "$VAULT_CONTAINER" vault write -format=json auth/cert/login name=law-eye-bootstrap 2>/dev/null
+  )"
+  local login_code=$?
+  set -e
+
+  if [[ $login_code -ne 0 || -z "$login_output" ]]; then
+    return 1
+  fi
+
+  local token
+  token="$(
+    printf '%s' "$login_output" | python - <<'PY'
+import json
+import sys
+
+try:
+    data = json.load(sys.stdin)
+    auth = data.get("auth") or {}
+    sys.stdout.write(str(auth.get("client_token", "")).strip())
+except Exception:
+    sys.stdout.write("")
+PY
+  )"
+
+  token="$(printf '%s' "$token" | tr -d '\r\n')"
+  [[ -n "$token" ]] || return 1
+  printf '%s' "$token"
+}
+
 gen_password() {
   python - <<'PY'
 import secrets
@@ -73,11 +109,13 @@ PY
 }
 
 main() {
-  require_file "$ROOT_TOKEN_FILE"
   require_file "$POSTGRES_PASSWORD_FILE"
 
-  local root_token
-  root_token="$(cat "$ROOT_TOKEN_FILE")"
+  local admin_token
+  if ! admin_token="$(vault_login_bootstrap_cert)"; then
+    echo "[rotate] failed to login to Vault using cert auth; run vault init first." >&2
+    exit 1
+  fi
 
   local old_password
   old_password="$(cat "$POSTGRES_PASSWORD_FILE")"
@@ -101,7 +139,7 @@ main() {
   echo "[rotate] updating Vault KV secrets..."
   docker_exec \
     -e "VAULT_ADDR=${VAULT_ADDR}" \
-    -e "VAULT_TOKEN=${root_token}" \
+    -e "VAULT_TOKEN=${admin_token}" \
     -e "VAULT_CACERT=/vault/tls/ca.crt" \
     -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
     -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
@@ -109,7 +147,7 @@ main() {
 
   docker_exec \
     -e "VAULT_ADDR=${VAULT_ADDR}" \
-    -e "VAULT_TOKEN=${root_token}" \
+    -e "VAULT_TOKEN=${admin_token}" \
     -e "VAULT_CACERT=/vault/tls/ca.crt" \
     -e "VAULT_CLIENT_CERT=/vault/tls/vault-bootstrap-client.crt" \
     -e "VAULT_CLIENT_KEY=/vault/tls/vault-bootstrap-client.key" \
