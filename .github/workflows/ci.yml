@@ -53,6 +53,11 @@ jobs:
       - name: Test
         run: cargo test --workspace --all-features --locked
 
+      - name: Contract (OpenAPI spec drift)
+        run: |
+          cargo run -p law-eye-api --locked -- --dump-openapi > /tmp/openapi.v1.json
+          diff -u resource/openapi.v1.json /tmp/openapi.v1.json
+
       - name: Install coverage tool (cargo-tarpaulin)
         run: cargo install cargo-tarpaulin --locked
 
@@ -93,6 +98,12 @@ jobs:
 
       - name: Install deps
         run: pnpm install --frozen-lockfile
+
+      - name: Contract (OpenAPI -> TypeScript)
+        run: pnpm gen:api-types
+
+      - name: Contract (generated API types drift)
+        run: git diff --exit-code -- src/lib/api/generated/openapi.ts
 
       - name: Typecheck
         run: pnpm typecheck

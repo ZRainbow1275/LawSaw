@@ -20,6 +20,7 @@ where
             id,
             tenant_id,
             seq,
+            event_version,
             encode(prev_hash, 'hex') AS prev_hash,
             encode(hash, 'hex') AS hash,
             user_id,
@@ -89,7 +90,7 @@ impl AuditService {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
                 let mut query = String::from(
-                    "SELECT id, tenant_id, seq, encode(prev_hash, 'hex') AS prev_hash, encode(hash, 'hex') AS hash, user_id, action, resource, resource_id, old_value, new_value, ip_address::text AS ip_address, user_agent, created_at FROM audit_logs WHERE 1=1"
+                    "SELECT id, tenant_id, seq, event_version, encode(prev_hash, 'hex') AS prev_hash, encode(hash, 'hex') AS hash, user_id, action, resource, resource_id, old_value, new_value, ip_address::text AS ip_address, user_agent, created_at FROM audit_logs WHERE 1=1"
                 );
                 let mut param_count = 0;
 
@@ -148,7 +149,7 @@ impl AuditService {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
                 sqlx::query_as::<_, AuditLog>(
-                    "SELECT id, tenant_id, seq, encode(prev_hash, 'hex') AS prev_hash, encode(hash, 'hex') AS hash, user_id, action, resource, resource_id, old_value, new_value, ip_address::text AS ip_address, user_agent, created_at FROM audit_logs WHERE id = $1",
+                    "SELECT id, tenant_id, seq, event_version, encode(prev_hash, 'hex') AS prev_hash, encode(hash, 'hex') AS hash, user_id, action, resource, resource_id, old_value, new_value, ip_address::text AS ip_address, user_agent, created_at FROM audit_logs WHERE id = $1",
                 )
                 .bind(id)
                 .fetch_optional(tx.as_mut())

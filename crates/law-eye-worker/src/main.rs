@@ -8,9 +8,9 @@ use law_eye_crawler::{RssFetcher, SpiderConfig, WebSpider};
 use law_eye_db::{
     create_pool_with_session_role, create_pool_with_session_role_retry, CreateArticle,
 };
-use law_eye_queue::{AiTask, AiTaskType, IngestTask, PushTask, ReservedTask, TaskQueue};
+use law_eye_queue::{AiTask, AiTaskType, IngestTask, PushTask, ReservedTask, RetryableTask, TaskQueue};
 use serde_json::json;
-use sqlx::PgPool;
+use sqlx::{types::Json as DbJson, PgPool, Postgres, QueryBuilder};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -26,6 +26,8 @@ const QUEUE_PUSH: &str = "queue:push";
 
 const MAINTENANCE_INTERVAL_SECS: u64 = 15;
 const MAINTENANCE_MAX_BATCH: usize = 200;
+const OUTBOX_FLUSH_MAX_BATCH: i64 = 500;
+const OUTBOX_LOCK_TIMEOUT_MS: i64 = 2 * 60 * 1_000;
 
 const DB_CONNECT_MAX_ATTEMPTS: u32 = 30;
 
@@ -147,7 +149,33 @@ struct Worker {
     push_http_client: reqwest::Client,
     allow_internal_source_urls: bool,
     allow_internal_webhook_urls: bool,
+    worker_id: uuid::Uuid,
     shutdown: Arc<AtomicBool>,
+}
+
+#[derive(Debug, Clone)]
+struct QueueOutboxEntry {
+    queue: String,
+    dedupe_key: String,
+    payload: DbJson<serde_json::Value>,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct QueueOutboxRow {
+    id: uuid::Uuid,
+    queue: String,
+    payload: DbJson<serde_json::Value>,
+    attempts: i32,
+}
+
+impl QueueOutboxEntry {
+    fn new(queue: &str, dedupe_key: String, payload: serde_json::Value) -> Self {
+        Self {
+            queue: queue.to_string(),
+            dedupe_key,
+            payload: DbJson(payload),
+        }
+    }
 }
 
 impl Worker {
@@ -169,6 +197,7 @@ impl Worker {
             push_http_client,
             allow_internal_source_urls,
             allow_internal_webhook_urls,
+            worker_id: uuid::Uuid::new_v4(),
             shutdown,
         })
     }
@@ -244,6 +273,8 @@ impl Worker {
             }
         }
 
+        self.flush_queue_outbox_all_tenants().await?;
+
         Ok(())
     }
 
@@ -265,6 +296,173 @@ impl Worker {
             .execute(&mut *tx)
             .await?;
         Ok(tx)
+    }
+
+    async fn resolve_tenant_id(&self, tenant_id: uuid::Uuid) -> anyhow::Result<uuid::Uuid> {
+        if !tenant_id.is_nil() {
+            return Ok(tenant_id);
+        }
+
+        sqlx::query_scalar::<_, uuid::Uuid>("SELECT id FROM tenants WHERE slug = 'default'")
+            .fetch_optional(&self.pool)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Default tenant not found"))
+    }
+
+    fn ai_task_dedupe_key(article_id: uuid::Uuid, task_type: &AiTaskType) -> String {
+        let task_type = match task_type {
+            AiTaskType::Classify => "classify",
+            AiTaskType::Summarize => "summarize",
+            AiTaskType::RiskAssess => "risk_assess",
+            AiTaskType::ExtractTags => "extract_tags",
+            AiTaskType::Embed => "embed",
+            AiTaskType::Full => "full",
+        };
+        format!("ai:{article_id}:{task_type}")
+    }
+
+    fn outbox_retry_delay_ms(attempt: i32) -> i64 {
+        const BASE_MS: i64 = 5_000;
+        const MAX_MS: i64 = 60_000;
+
+        let attempt = attempt.max(1) as u32;
+        let shift = attempt.saturating_sub(1).min(16);
+        let delay = BASE_MS.saturating_mul(1i64 << shift);
+        delay.min(MAX_MS)
+    }
+
+    async fn insert_queue_outbox_entries(
+        &self,
+        tx: &mut sqlx::Transaction<'_, Postgres>,
+        entries: &[QueueOutboxEntry],
+    ) -> anyhow::Result<()> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+
+        for chunk in entries.chunks(OUTBOX_FLUSH_MAX_BATCH as usize) {
+            let mut qb: QueryBuilder<'_, Postgres> =
+                QueryBuilder::new("INSERT INTO queue_outbox (queue, dedupe_key, payload) ");
+            qb.push_values(chunk, |mut row, entry| {
+                row.push_bind(&entry.queue)
+                    .push_bind(&entry.dedupe_key)
+                    .push_bind(&entry.payload);
+            });
+            qb.push(
+                " ON CONFLICT (tenant_id, queue, dedupe_key) WHERE delivered_at IS NULL DO NOTHING",
+            );
+            qb.build().execute(tx.as_mut()).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn flush_queue_outbox_all_tenants(&self) -> anyhow::Result<()> {
+        let tenant_ids = sqlx::query_scalar::<_, uuid::Uuid>("SELECT id FROM tenants ORDER BY created_at")
+            .fetch_all(&self.pool)
+            .await?;
+
+        for tenant_id in tenant_ids {
+            if let Err(e) = self.flush_queue_outbox_for_tenant(tenant_id).await {
+                error!(%tenant_id, "Queue outbox flush failed: {}", e);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn flush_queue_outbox_for_tenant(&self, tenant_id: uuid::Uuid) -> anyhow::Result<()> {
+        let mut lock_tx = self.begin_tenant_tx(tenant_id).await?;
+        let rows = sqlx::query_as::<_, QueueOutboxRow>(
+            r#"
+            WITH candidates AS (
+                SELECT id
+                FROM queue_outbox
+                WHERE delivered_at IS NULL
+                  AND next_attempt_at <= NOW()
+                  AND (
+                    locked_at IS NULL
+                    OR locked_at < NOW() - ($1 * INTERVAL '1 millisecond')
+                  )
+                ORDER BY created_at
+                FOR UPDATE SKIP LOCKED
+                LIMIT $2
+            )
+            UPDATE queue_outbox q
+            SET locked_at = NOW(),
+                locked_by = $3
+            FROM candidates c
+            WHERE q.id = c.id
+            RETURNING q.id, q.queue, q.payload, q.attempts
+            "#,
+        )
+        .bind(OUTBOX_LOCK_TIMEOUT_MS)
+        .bind(OUTBOX_FLUSH_MAX_BATCH)
+        .bind(self.worker_id)
+        .fetch_all(&mut *lock_tx)
+        .await?;
+        lock_tx.commit().await?;
+
+        if rows.is_empty() {
+            return Ok(());
+        }
+
+        let mut results: Vec<(uuid::Uuid, Result<(), String>, i32)> = Vec::with_capacity(rows.len());
+        for row in rows {
+            let outcome = self
+                .task_queue
+                .enqueue(&row.queue, &row.payload.0)
+                .await
+                .map_err(|e| e.to_string());
+            results.push((row.id, outcome, row.attempts));
+        }
+
+        let mut update_tx = self.begin_tenant_tx(tenant_id).await?;
+        for (id, outcome, attempts) in results {
+            match outcome {
+                Ok(()) => {
+                    sqlx::query(
+                        r#"
+                        UPDATE queue_outbox
+                        SET delivered_at = NOW(),
+                            last_error = NULL,
+                            locked_at = NULL,
+                            locked_by = NULL,
+                            updated_at = NOW()
+                        WHERE id = $1
+                        "#,
+                    )
+                    .bind(id)
+                    .execute(&mut *update_tx)
+                    .await?;
+                }
+                Err(err_msg) => {
+                    let err_msg = err_msg.chars().take(500).collect::<String>();
+                    let new_attempt = attempts.saturating_add(1);
+                    let delay_ms = Self::outbox_retry_delay_ms(new_attempt);
+                    sqlx::query(
+                        r#"
+                        UPDATE queue_outbox
+                        SET attempts = attempts + 1,
+                            last_error = $2,
+                            next_attempt_at = NOW() + ($3 * INTERVAL '1 millisecond'),
+                            locked_at = NULL,
+                            locked_by = NULL,
+                            updated_at = NOW()
+                        WHERE id = $1
+                        "#,
+                    )
+                    .bind(id)
+                    .bind(err_msg)
+                    .bind(delay_ms)
+                    .execute(&mut *update_tx)
+                    .await?;
+                }
+            }
+        }
+        update_tx.commit().await?;
+
+        Ok(())
     }
 
     async fn handle_ingest_reserved(&self, reserved: ReservedTask<IngestTask>) {
@@ -559,6 +757,7 @@ impl Worker {
         if tenant_id.is_nil() {
             warn!("Ingest task missing tenant_id; falling back to default tenant");
         }
+        let tenant_id = self.resolve_tenant_id(tenant_id).await?;
 
         let source_service = SourceService::new(self.pool.clone());
 
@@ -633,21 +832,34 @@ impl Worker {
                     });
                 }
 
+                let mut tx = self.begin_tenant_tx(tenant_id).await?;
                 let saved_article_ids = article_service
-                    .upsert_many(tenant_id, &create_articles)
+                    .upsert_many_tx(&mut tx, &create_articles)
                     .await?;
 
-                for article_id in &saved_article_ids {
-                    if self.ai_service.is_some() {
-                        let ai_task = AiTask {
+                if self.ai_service.is_some() {
+                    let mut outbox_entries = Vec::with_capacity(saved_article_ids.len());
+                    for article_id in &saved_article_ids {
+                        let ai_task = RetryableTask::new(AiTask {
                             tenant_id,
                             article_id: *article_id,
                             task_type: AiTaskType::Full,
-                        };
-                        if let Err(e) = self.task_queue.enqueue_retryable(QUEUE_AI, ai_task).await {
-                            error!("Failed to enqueue AI task: {}", e);
-                        }
+                        });
+                        let payload = serde_json::to_value(&ai_task)?;
+                        outbox_entries.push(QueueOutboxEntry::new(
+                            QUEUE_AI,
+                            Self::ai_task_dedupe_key(*article_id, &AiTaskType::Full),
+                            payload,
+                        ));
                     }
+                    self.insert_queue_outbox_entries(&mut tx, &outbox_entries)
+                        .await?;
+                }
+
+                tx.commit().await?;
+
+                if let Err(e) = self.flush_queue_outbox_for_tenant(tenant_id).await {
+                    error!(%tenant_id, "Failed to flush queue outbox after ingest: {}", e);
                 }
 
                 info!(
@@ -682,6 +894,7 @@ impl Worker {
         if tenant_id.is_nil() {
             warn!("AI task missing tenant_id; falling back to default tenant");
         }
+        let tenant_id = self.resolve_tenant_id(tenant_id).await?;
 
         let ai_service = match &self.ai_service {
             Some(s) => s,
@@ -734,20 +947,12 @@ impl Worker {
                 )
                 .await?;
 
-                // Embedding 可能较慢且对外部依赖敏感：拆成单独的任务，失败可独立重试/DLQ。
-                let embed_task = AiTask {
-                    tenant_id,
-                    article_id: task.article_id,
-                    task_type: AiTaskType::Embed,
-                };
-                if let Err(e) = self
-                    .task_queue
-                    .enqueue_retryable(QUEUE_AI, embed_task)
-                    .await
-                {
-                    warn!(
-                        "Failed to enqueue embed task for article {}: {}",
-                        task.article_id, e
+                if let Err(e) = self.flush_queue_outbox_for_tenant(tenant_id).await {
+                    error!(
+                        %tenant_id,
+                        article_id = %task.article_id,
+                        "Failed to flush queue outbox after AI full: {}",
+                        e
                     );
                 }
 
@@ -872,6 +1077,21 @@ impl Worker {
         .bind(&metadata_patch)
         .execute(&mut *tx)
         .await?;
+
+        let embed_task = RetryableTask::new(AiTask {
+            tenant_id,
+            article_id,
+            task_type: AiTaskType::Embed,
+        });
+        let payload = serde_json::to_value(&embed_task)?;
+        let outbox_entry = QueueOutboxEntry::new(
+            QUEUE_AI,
+            Self::ai_task_dedupe_key(article_id, &AiTaskType::Embed),
+            payload,
+        );
+        self.insert_queue_outbox_entries(&mut tx, std::slice::from_ref(&outbox_entry))
+            .await?;
+
         tx.commit().await?;
 
         Ok(())

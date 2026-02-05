@@ -36,7 +36,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use url::{Host, Url};
 
 use crate::auth::AuthBackend;
-use crate::middleware::{CsrfLayer, RequestIdLayer};
+use crate::middleware::{idempotency_middleware, CsrfLayer, RequestIdLayer};
 use crate::state::AppState;
 
 const DB_CONNECT_MAX_ATTEMPTS: u32 = 30;
@@ -267,6 +267,15 @@ async fn apply_security_headers(req: Request<Body>, next: Next) -> Response {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    if std::env::args().any(|arg| arg == "--dump-openapi") {
+        use utoipa::OpenApi;
+
+        let doc = crate::openapi::ApiDoc::openapi();
+        let json = serde_json::to_string_pretty(&doc)?;
+        println!("{json}");
+        return Ok(());
+    }
+
     if std::env::args().any(|arg| arg == "--healthcheck") {
         run_healthcheck().context("healthcheck")?;
         return Ok(());
@@ -434,6 +443,7 @@ async fn main() -> anyhow::Result<()> {
 
     let cors_allowed_origins = allowed_origins.clone();
     let request_id_header = HeaderName::from_static("x-request-id");
+    let idempotency_key_header = HeaderName::from_static("idempotency-key");
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(move |origin, _| {
             cors_allowed_origins.iter().any(|allowed| allowed == origin)
@@ -450,6 +460,7 @@ async fn main() -> anyhow::Result<()> {
             header::AUTHORIZATION,
             header::COOKIE,
             request_id_header.clone(),
+            idempotency_key_header.clone(),
         ])
         .expose_headers([request_id_header])
         .allow_credentials(true);
@@ -470,7 +481,13 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // Build application with middleware layers
-    let mut app = routes::create_router(state).layer(auth_layer).layer(csrf);
+    let mut app = routes::create_router(state.clone())
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            idempotency_middleware,
+        ))
+        .layer(auth_layer)
+        .layer(csrf);
 
     if is_production {
         if config.server.request_timeout_ms == 0 {

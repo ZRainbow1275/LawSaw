@@ -1,0 +1,104 @@
+name: Deploy (K8s Rollouts)
+
+on:
+  workflow_dispatch:
+    inputs:
+      strategy:
+        description: "Deployment strategy overlay under infra/k8s/overlays/"
+        required: true
+        type: choice
+        options:
+          - bluegreen
+          - canary
+      action:
+        description: "Rollout action"
+        required: true
+        type: choice
+        options:
+          - apply
+          - promote
+          - abort
+          - rollback
+      namespace:
+        description: "Kubernetes namespace"
+        required: true
+        type: string
+        default: law-eye
+      image_tag:
+        description: "Image tag to deploy (e.g. v2.6.0 or sha-<sha>). If empty, uses current ref name."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-api:
+    name: Deploy API (Argo Rollouts)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: vars
+        run: |
+          TAG_INPUT="${{ inputs.image_tag }}"
+          if [ -n "${TAG_INPUT}" ]; then
+            TAG="${TAG_INPUT}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY}/api:${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.29.0"
+
+      - name: Configure kubeconfig
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }}
+        run: |
+          if [ -z "${KUBE_CONFIG_B64}" ]; then
+            echo "Missing secret: KUBE_CONFIG_B64" >&2
+            exit 1
+          fi
+          mkdir -p "$HOME/.kube"
+          echo "${KUBE_CONFIG_B64}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Install kubectl-argo-rollouts
+        run: |
+          VERSION="v1.7.0"
+          curl -sSL -o kubectl-argo-rollouts "https://github.com/argoproj/argo-rollouts/releases/download/${VERSION}/kubectl-argo-rollouts-linux-amd64"
+          chmod +x kubectl-argo-rollouts
+          sudo mv kubectl-argo-rollouts /usr/local/bin/kubectl-argo-rollouts
+          kubectl argo rollouts version
+
+      - name: Apply manifests + set image
+        if: ${{ inputs.action == 'apply' }}
+        run: |
+          kubectl apply -k "infra/k8s/overlays/${{ inputs.strategy }}" -n "${{ inputs.namespace }}"
+          kubectl -n "${{ inputs.namespace }}" patch rollout law-eye-api --type='json' -p='[
+            {"op":"replace","path":"/spec/template/spec/containers/0/image","value":"${{ steps.vars.outputs.image }}"}
+          ]'
+
+      - name: Promote
+        if: ${{ inputs.action == 'promote' }}
+        run: |
+          kubectl argo rollouts promote law-eye-api -n "${{ inputs.namespace }}"
+
+      - name: Abort
+        if: ${{ inputs.action == 'abort' }}
+        run: |
+          kubectl argo rollouts abort law-eye-api -n "${{ inputs.namespace }}"
+
+      - name: Rollback
+        if: ${{ inputs.action == 'rollback' }}
+        run: |
+          kubectl argo rollouts undo law-eye-api -n "${{ inputs.namespace }}"
+
+      - name: Status
+        run: |
+          kubectl argo rollouts status law-eye-api -n "${{ inputs.namespace }}" --timeout 10m

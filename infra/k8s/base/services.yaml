@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: law-eye-api
+  labels:
+    app: law-eye-api
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3001
+  selector:
+    app: law-eye-api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: law-eye-api-preview
+  labels:
+    app: law-eye-api
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3001
+  selector:
+    app: law-eye-api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: law-eye-api-canary
+  labels:
+    app: law-eye-api
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3001
+  selector:
+    app: law-eye-api

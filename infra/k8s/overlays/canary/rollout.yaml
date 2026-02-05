@@ -1,0 +1,74 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: law-eye-api
+  labels:
+    app: law-eye-api
+spec:
+  replicas: 4
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: law-eye-api
+  template:
+    metadata:
+      labels:
+        app: law-eye-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+      containers:
+        - name: api
+          image: ghcr.io/user/law-eye/api:sha-0000000
+          ports:
+            - name: http
+              containerPort: 3001
+          env:
+            - name: LAW_EYE__SERVER__HOST
+              value: "0.0.0.0"
+            - name: LAW_EYE__SERVER__PORT
+              value: "3001"
+            - name: LAW_EYE__DATABASE__SESSION_ROLE
+              value: "law_eye_app"
+          envFrom:
+            - secretRef:
+                name: law-eye-secrets
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 3001
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 3001
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+  strategy:
+    canary:
+      stableService: law-eye-api
+      canaryService: law-eye-api-canary
+      maxSurge: 1
+      maxUnavailable: 0
+      steps:
+        - setWeight: 10
+        - pause:
+            duration: 60s
+        - setWeight: 50
+        - pause:
+            duration: 180s
+        - setWeight: 100

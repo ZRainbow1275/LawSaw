@@ -345,6 +345,17 @@ impl ArticleService {
         tenant_id: Uuid,
         inputs: &[CreateArticle],
     ) -> Result<Vec<Uuid>> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move { self.upsert_many_tx(tx, inputs).await })
+        })
+        .await
+    }
+
+    pub async fn upsert_many_tx(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        inputs: &[CreateArticle],
+    ) -> Result<Vec<Uuid>> {
         if inputs.is_empty() {
             return Ok(Vec::new());
         }
@@ -356,25 +367,23 @@ impl ArticleService {
             }
         }
 
-        with_tenant_tx(&self.pool, tenant_id, |tx| {
-            Box::pin(async move {
-                let mut qb: QueryBuilder<'_, Postgres> = QueryBuilder::new(
-                    r#"
+        let mut qb: QueryBuilder<'_, Postgres> = QueryBuilder::new(
+            r#"
                     INSERT INTO articles (source_id, title, link, content, author, published_at)
                     "#,
-                );
+        );
 
-                qb.push_values(inputs, |mut row, input| {
-                    row.push_bind(input.source_id)
-                        .push_bind(&input.title)
-                        .push_bind(&input.link)
-                        .push_bind(&input.content)
-                        .push_bind(&input.author)
-                        .push_bind(input.published_at);
-                });
+        qb.push_values(inputs, |mut row, input| {
+            row.push_bind(input.source_id)
+                .push_bind(&input.title)
+                .push_bind(&input.link)
+                .push_bind(&input.content)
+                .push_bind(&input.author)
+                .push_bind(input.published_at);
+        });
 
-                    qb.push(
-                    r#"
+        qb.push(
+            r#"
                     ON CONFLICT (tenant_id, link) DO UPDATE SET
                         source_id = EXCLUDED.source_id,
                         title = EXCLUDED.title,
@@ -393,21 +402,18 @@ impl ArticleService {
                         )
                     RETURNING id
                     "#,
-                );
+        );
 
-                let ids = qb
-                    .build_query_as::<(Uuid,)>()
-                    .fetch_all(tx.as_mut())
-                    .await
-                    .map_err(|e| Error::Database(e.to_string()))?
-                    .into_iter()
-                    .map(|row| row.0)
-                    .collect::<Vec<_>>();
+        let ids = qb
+            .build_query_as::<(Uuid,)>()
+            .fetch_all(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?
+            .into_iter()
+            .map(|row| row.0)
+            .collect::<Vec<_>>();
 
-                Ok(ids)
-            })
-        })
-        .await
+        Ok(ids)
     }
 
     /// Update article

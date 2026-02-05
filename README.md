@@ -94,6 +94,21 @@ cargo test --workspace
 pnpm -C apps/web test
 ```
 
+### 契约/类型同步（OpenAPI → TypeScript）
+
+后端以 utoipa 生成 OpenAPI 作为 API 契约单一事实来源，并固定输出到 `resource/openapi.v1.json`。  
+前端通过 `openapi-typescript` 生成类型到 `apps/web/src/lib/api/generated/openapi.ts`，用于避免前后端类型漂移（CI 会强制检查）。
+
+生成/更新方式：
+
+```bash
+# Bash / Git Bash / WSL
+cargo run -p law-eye-api -- --dump-openapi > resource/openapi.v1.json
+pnpm -C apps/web gen:api-types
+```
+
+> Windows PowerShell 注意：`>` 默认输出 UTF-16，需改用 `Set-Content -Encoding utf8`（或直接用 Git Bash 执行上面的命令）。
+
 ### 覆盖率（Coverage）
 
 ```bash

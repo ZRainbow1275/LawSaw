@@ -220,6 +220,7 @@ pub struct AuditLog {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub seq: i64,
+    pub event_version: i32,
     pub prev_hash: Option<String>,
     pub hash: String,
     pub user_id: Option<Uuid>,

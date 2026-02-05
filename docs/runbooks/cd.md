@@ -31,6 +31,24 @@ docker compose up -d --no-build
 
 如果你的 compose 默认使用 `build:`，建议在生产环境使用“仅镜像”的 compose 文件（不包含 build），或者在部署命令中显式 `--no-build` 并确保镜像已 `pull`。
 
+## 3.1) 部署建议（Kubernetes：蓝绿 / 金丝雀）
+
+为满足企业级“零停机发布 + 可回滚”，仓库提供 **Argo Rollouts** 模板与手动部署工作流：
+- K8s 模板：`infra/k8s/*`
+- 部署工作流：`.github/workflows/deploy.yml`
+
+常用命令：
+```bash
+# 蓝绿 / 金丝雀（二选一）
+kubectl apply -k infra/k8s/overlays/bluegreen -n law-eye
+kubectl apply -k infra/k8s/overlays/canary -n law-eye
+
+# 更新镜像（示例：发布版本）
+kubectl -n law-eye patch rollout law-eye-api --type='json' -p='[
+  {"op":"replace","path":"/spec/template/spec/containers/0/image","value":"ghcr.io/<owner>/<repo>/api:v2.6.0"}
+]'
+```
+
 ## 4) 回滚策略
 
 回滚原则：**只回滚应用镜像**（api/worker/web），数据服务（postgres/redis/minio）不随发布回滚。
@@ -45,10 +63,17 @@ docker compose up -d --no-build
 
 如果按 `sha-<sha>` 回滚，则可精确定位到任意一次发布产物。
 
+### 4.1) Kubernetes 回滚（Argo Rollouts）
+
+安装 `kubectl-argo-rollouts` 插件后：
+```bash
+kubectl argo rollouts status law-eye-api -n law-eye --timeout 10m
+kubectl argo rollouts undo law-eye-api -n law-eye
+```
+
 ## 5) 发布前门禁（强制）
 
 CD 发布前应确保对应 commit 已通过 CI：
 - Rust：`cargo fmt/clippy/test` + RustSec audit
 - Web：`pnpm typecheck/lint/build` + pnpm audit
 - E2E：`bash scripts/no-dockerhub/e2e.sh`
-
