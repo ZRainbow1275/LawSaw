@@ -358,6 +358,26 @@ impl ObjectService {
         Ok(resp.body)
     }
 
+    pub async fn get_object_stream_range(
+        &self,
+        object: &Object,
+        start: u64,
+        end: u64,
+    ) -> Result<ByteStream> {
+        let range = format!("bytes={start}-{end}");
+        let resp = self
+            .client
+            .get_object()
+            .bucket(&object.bucket)
+            .key(&object.object_key)
+            .range(range)
+            .send()
+            .await
+            .map_err(|e| Error::Http(format!("Get object (range) failed: {e:?}")))?;
+
+        Ok(resp.body)
+    }
+
     pub async fn delete_object_key(&self, object_key: &str) -> Result<()> {
         self.client
             .delete_object()
