@@ -16,6 +16,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { useCreateFeedback, useMyFeedbacks } from "@/hooks/use-feedback";
 import type { CreateFeedbackInput, Feedback } from "@/lib/api/types";
+import { type Locale, formatDateTime, formatTimeAgo } from "@/lib/i18n";
+import { useLocale } from "@/lib/i18n-client";
+import { useToast } from "@/stores/toast-store";
 import { AnimatePresence, motion } from "framer-motion";
 import {
 	Bug,
@@ -30,7 +33,7 @@ import {
 	Sparkles,
 	XCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const containerVariants = {
 	hidden: { opacity: 0 },
@@ -95,23 +98,30 @@ const statusConfig: Record<
 	},
 };
 
-function formatTime(dateStr: string): string {
+function formatTime(locale: Locale, dateStr: string): string {
 	const date = new Date(dateStr);
 	const now = new Date();
 	const diffMs = now.getTime() - date.getTime();
-	const diffMins = Math.floor(diffMs / 60000);
-	const diffHours = Math.floor(diffMs / 3600000);
+	if (!Number.isFinite(diffMs)) return "";
+	if (diffMs < 0) return formatDateTime(locale, date);
+
 	const diffDays = Math.floor(diffMs / 86400000);
-	if (diffMins < 1) return "刚刚";
-	if (diffMins < 60) return `${diffMins} 分钟前`;
-	if (diffHours < 24) return `${diffHours} 小时前`;
-	if (diffDays < 30) return `${diffDays} 天前`;
-	return date.toLocaleDateString("zh-CN");
+	if (diffDays >= 30) {
+		return formatDateTime(locale, date, {
+			year: "numeric",
+			month: "short",
+			day: "numeric",
+		});
+	}
+
+	return formatTimeAgo(locale, date);
 }
 
 export default function FeedbackPage() {
-	const { data: myFeedbacks, isLoading: feedbacksLoading } = useMyFeedbacks();
+	const locale = useLocale();
+	const { data: myFeedbacks, isLoading: feedbacksLoading, refetch } = useMyFeedbacks();
 	const createFeedback = useCreateFeedback();
+	const { info: toastInfo, success: toastSuccess, error: toastError } = useToast();
 	const [selectedType, setSelectedType] = useState<
 		CreateFeedbackInput["type"] | null
 	>(null);
@@ -123,6 +133,63 @@ export default function FeedbackPage() {
 		source_name: "",
 	});
 	const [submitted, setSubmitted] = useState(false);
+	const [queuedOffline, setQueuedOffline] = useState(false);
+
+	useEffect(() => {
+		if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+
+		const onMessage = (event: MessageEvent) => {
+			const data: unknown = event.data;
+			if (!data || typeof data !== "object") return;
+			const record = data as { type?: unknown; payload?: unknown };
+			if (typeof record.type !== "string") return;
+
+			if (record.type === "OUTBOX_DELIVERED") {
+				toastSuccess("离线反馈已提交", "网络恢复后已自动发送");
+				refetch();
+				return;
+			}
+
+			if (record.type === "OUTBOX_DROPPED" || record.type === "OUTBOX_GAVE_UP") {
+				toastError("离线反馈提交失败", "请重新提交或稍后再试");
+				return;
+			}
+		};
+
+		navigator.serviceWorker.addEventListener("message", onMessage);
+		return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+	}, [refetch, toastError, toastSuccess]);
+
+	const enqueueFeedback = async (payload: CreateFeedbackInput): Promise<boolean> => {
+		if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return false;
+
+		try {
+			const registration = await navigator.serviceWorker.ready;
+			const target =
+				registration.active ?? registration.waiting ?? registration.installing;
+			if (!target) return false;
+
+			const headers: Record<string, string> = {
+				"Content-Type": "application/json",
+			};
+			const lang = document.documentElement.lang;
+			if (lang?.trim()) headers["Accept-Language"] = lang;
+
+			target.postMessage({
+				type: "OUTBOX_ENQUEUE",
+				request: {
+					url: "/api/v1/feedbacks",
+					method: "POST",
+					headers,
+					body: JSON.stringify(payload),
+				},
+			});
+
+			return true;
+		} catch {
+			return false;
+		}
+	};
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -135,8 +202,35 @@ export default function FeedbackPage() {
 		if (formData.contact_email) payload.contact_email = formData.contact_email;
 		if (formData.source_url) payload.source_url = formData.source_url;
 		if (formData.source_name) payload.source_name = formData.source_name;
+
+		if (typeof navigator !== "undefined" && navigator.onLine === false) {
+			const ok = await enqueueFeedback(payload);
+			if (!ok) {
+				toastError("离线提交不可用", "当前环境不支持离线队列，请恢复网络后再试");
+				return;
+			}
+
+			setQueuedOffline(true);
+			setSubmitted(true);
+			setFormData({
+				title: "",
+				content: "",
+				contact_email: "",
+				source_url: "",
+				source_name: "",
+			});
+			setSelectedType(null);
+			toastInfo("已加入离线队列", "网络恢复后将自动提交");
+			setTimeout(() => {
+				setSubmitted(false);
+				setQueuedOffline(false);
+			}, 3000);
+			return;
+		}
+
 		createFeedback.mutate(payload, {
 			onSuccess: () => {
+				setQueuedOffline(false);
 				setSubmitted(true);
 				setFormData({
 					title: "",
@@ -240,7 +334,7 @@ export default function FeedbackPage() {
 														animate={{ opacity: 1, y: 0 }}
 														transition={{ delay: 0.4 }}
 													>
-														提交成功！
+														{queuedOffline ? "已加入离线队列" : "提交成功！"}
 													</motion.h3>
 													<motion.p
 														className="mt-2 text-sm text-neutral-500"
@@ -248,7 +342,9 @@ export default function FeedbackPage() {
 														animate={{ opacity: 1 }}
 														transition={{ delay: 0.5 }}
 													>
-														感谢您的反馈，我们会尽快处理
+														{queuedOffline
+															? "网络恢复后将自动提交，并出现在「我的反馈」列表中"
+															: "感谢您的反馈，我们会尽快处理"}
 													</motion.p>
 													<motion.div
 														initial={{ opacity: 0, y: 10 }}
@@ -575,7 +671,7 @@ export default function FeedbackPage() {
 																</Badge>
 															</div>
 															<p className="text-xs text-neutral-500">
-																{formatTime(feedback.created_at)}
+																{formatTime(locale, feedback.created_at)}
 															</p>
 															{feedback.admin_response && (
 																<motion.div
