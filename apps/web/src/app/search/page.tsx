@@ -107,6 +107,29 @@ function SearchContent() {
 	}, [searchParams]);
 
 	useEffect(() => {
+		const trimmed = query.trim();
+		const current = searchTerm.trim();
+		if (trimmed === current) return;
+
+		const id = window.setTimeout(() => {
+			setSearchTerm(trimmed);
+			setPage(1);
+
+			if (!trimmed) {
+				router.replace("/search");
+				return;
+			}
+
+			const params = new URLSearchParams();
+			params.set("q", trimmed);
+			params.set("page", "1");
+			router.replace(`/search?${params.toString()}`);
+		}, 400);
+
+		return () => window.clearTimeout(id);
+	}, [query, router, searchTerm]);
+
+	useEffect(() => {
 		if (!aiAvailabilityQuery.isLoading && !aiAvailable && showAI) {
 			setShowAI(false);
 		}
