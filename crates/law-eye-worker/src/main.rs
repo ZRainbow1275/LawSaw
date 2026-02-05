@@ -606,13 +606,30 @@ impl Worker {
                     }
                     seen_links.insert(article.link.clone());
 
+                    let title_raw = article.title;
+                    let link = article.link;
+                    let content_raw = article.content;
+                    let author = article.author;
+                    let published_at = article.published_at;
+
+                    let title = law_eye_core::article::truncate_string_to_max_bytes(
+                        title_raw,
+                        law_eye_core::article::MAX_ARTICLE_TITLE_BYTES,
+                    );
+                    let content = content_raw.map(|value| {
+                        law_eye_core::article::truncate_string_to_max_bytes(
+                            value,
+                            law_eye_core::article::MAX_ARTICLE_CONTENT_BYTES,
+                        )
+                    });
+
                     create_articles.push(CreateArticle {
                         source_id: task.source_id,
-                        title: article.title,
-                        link: article.link,
-                        content: article.content,
-                        author: article.author,
-                        published_at: article.published_at,
+                        title,
+                        link,
+                        content,
+                        author,
+                        published_at,
                     });
                 }
 
@@ -1024,14 +1041,17 @@ impl Worker {
                 "INSERT INTO article_chunks (article_id, chunk_index, content, embedding, token_count) ",
             );
 
-            builder.push_values(batch.iter().enumerate(), |mut row, (offset, (content, embedding))| {
-                row.push_bind(article_id);
-                row.push_bind((base_idx + offset) as i32);
-                row.push_bind(content);
-                row.push_bind(&embedding.vector);
-                row.push("::vector");
-                row.push_bind(embedding.token_count as i32);
-            });
+            builder.push_values(
+                batch.iter().enumerate(),
+                |mut row, (offset, (content, embedding))| {
+                    row.push_bind(article_id);
+                    row.push_bind((base_idx + offset) as i32);
+                    row.push_bind(content);
+                    row.push_bind(&embedding.vector);
+                    row.push("::vector");
+                    row.push_bind(embedding.token_count as i32);
+                },
+            );
 
             builder.push(
                 " ON CONFLICT (tenant_id, article_id, chunk_index) DO UPDATE SET content = EXCLUDED.content, embedding = EXCLUDED.embedding, token_count = EXCLUDED.token_count, deleted_at = NULL",

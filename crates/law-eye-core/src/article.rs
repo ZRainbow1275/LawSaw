@@ -5,6 +5,38 @@ use law_eye_db::{Article, CreateArticle};
 use sqlx::{PgPool, Postgres, QueryBuilder, Transaction};
 use uuid::Uuid;
 
+pub const MAX_ARTICLE_TITLE_BYTES: usize = 8 * 1024;
+pub const MAX_ARTICLE_SUMMARY_BYTES: usize = 256 * 1024;
+pub const MAX_ARTICLE_CONTENT_BYTES: usize = 4 * 1024 * 1024;
+
+fn validate_max_bytes(field: &str, value: &str, max_bytes: usize) -> Result<()> {
+    if value.len() > max_bytes {
+        return Err(Error::Validation(format!(
+            "{field} too large (max {max_bytes} bytes)"
+        )));
+    }
+    Ok(())
+}
+
+pub fn truncate_string_to_max_bytes(mut value: String, max_bytes: usize) -> String {
+    if max_bytes == 0 {
+        value.clear();
+        return value;
+    }
+
+    if value.len() <= max_bytes {
+        return value;
+    }
+
+    let mut end = max_bytes.min(value.len());
+    while end > 0 && !value.is_char_boundary(end) {
+        end -= 1;
+    }
+
+    value.truncate(end);
+    value
+}
+
 pub struct ArticleService {
     pool: PgPool,
 }
@@ -280,6 +312,11 @@ impl ArticleService {
     }
 
     pub async fn create(&self, tenant_id: Uuid, input: CreateArticle) -> Result<Article> {
+        validate_max_bytes("title", &input.title, MAX_ARTICLE_TITLE_BYTES)?;
+        if let Some(content) = input.content.as_deref() {
+            validate_max_bytes("content", content, MAX_ARTICLE_CONTENT_BYTES)?;
+        }
+
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
                 sqlx::query_as::<_, Article>(
@@ -310,6 +347,13 @@ impl ArticleService {
     ) -> Result<Vec<Uuid>> {
         if inputs.is_empty() {
             return Ok(Vec::new());
+        }
+
+        for input in inputs {
+            validate_max_bytes("title", &input.title, MAX_ARTICLE_TITLE_BYTES)?;
+            if let Some(content) = input.content.as_deref() {
+                validate_max_bytes("content", content, MAX_ARTICLE_CONTENT_BYTES)?;
+            }
         }
 
         with_tenant_tx(&self.pool, tenant_id, |tx| {
@@ -404,6 +448,16 @@ impl ArticleService {
         patch: UpdateArticlePatch<'a>,
         expected_version: Option<i64>,
     ) -> Result<Article> {
+        if let Some(title) = patch.title {
+            validate_max_bytes("title", title, MAX_ARTICLE_TITLE_BYTES)?;
+        }
+        if let Some(content) = patch.content {
+            validate_max_bytes("content", content, MAX_ARTICLE_CONTENT_BYTES)?;
+        }
+        if let Some(summary) = patch.summary {
+            validate_max_bytes("summary", summary, MAX_ARTICLE_SUMMARY_BYTES)?;
+        }
+
         sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
             .bind(tenant_id.to_string())
             .execute(tx.as_mut())
