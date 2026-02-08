@@ -212,4 +212,5 @@ docker compose -f docker-compose.yml -f docker-compose.enterprise.yml up -d
 
 - 外部大脑（当前状态/执行队列）：`prompts/state/master_plan.md`、`prompts/state/todo_list.md`
 - 架构决策记录：`prompts/adr/`
+- 文档入口（当前 + 归档）：`docs/README.md`
 - 历史规划与设计文档：`docs/plans/`

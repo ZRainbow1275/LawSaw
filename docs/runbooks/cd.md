@@ -122,7 +122,7 @@ API 暴露慢查询观测接口：GET /health/slow-queries?limit=20。
 
 ## 9) v2.6 批次交付核对（2026-02-08）
 
-本批次以 `prompt/audit-report.md` 的 `v2.6` 修复清单与 `.trellis/spec/` 规范集作为交付依据，建议发布前后执行以下核对：
+本批次以 `prompt/audit-report.md` 的 `v2.6` 修复清单与 `prompts/specs/archive/` 规格集作为交付依据，建议发布前后执行以下核对：
 
 - 任务闭环：确认 `prompt/audit-report.md` 中 `V26-*` 与 `SEC/REL/PERF/DATA-C*` 条目保持已完成状态。
 - 契约一致：执行 API v1/v2 契约与 OpenAPI 生成流程，确保前后端 schema 同步。
@@ -130,4 +130,4 @@ API 暴露慢查询观测接口：GET /health/slow-queries?limit=20。
 - 运维任务：确认 `vault-rotate-cron`、`backup-cron`、`audit-report-cron` 三个 enterprise 定时任务均为运行状态。
 - 安全门禁：生产环境必须配置 `LAW_EYE__METRICS__TOKEN` 与 `LAW_EYE__AI__API_KEY`，避免观测面裸露与 AI 静默降级。
 
-如需追溯历史设计与实施路径，请参考 `docs/plans/`；如需执行规范，请以 `.trellis/spec/` 为准。
+如需追溯历史设计与实施路径，请参考 `docs/plans/`；如需查看本批次规格，请以 `prompts/specs/archive/` 为准。
