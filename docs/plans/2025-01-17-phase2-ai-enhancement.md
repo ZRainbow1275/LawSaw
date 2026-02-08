@@ -1,5 +1,12 @@
 # Phase 2: AI 能力增强实施计划
 
+> **维护状态（2026-02-08）**
+> - 本文档属于 2025-01 的历史规划归档，主要用于追溯早期决策背景。
+> - 当前系统交付状态请以 `prompt/audit-report.md`（v2.6 修复清单）与 `prompts/audit/2.6audit.md`（审计基线）为准。
+> - 研发规范请参考 `.trellis/spec/`（`backend/`、`frontend/`、`guides/`）。
+> - 若本文内容与现行代码冲突，请以代码与上述“真相源”文档为准。
+
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 实现 LLM Gateway、智能分类、摘要生成、风险评估、标签提取和向量嵌入能力

@@ -1,5 +1,12 @@
 # 法眼 (Law Eye) 项目批判性可行性审视报告
 
+> **维护状态（2026-02-08）**
+> - 本文档属于 2025-01 的历史规划归档，主要用于追溯早期决策背景。
+> - 当前系统交付状态请以 `prompt/audit-report.md`（v2.6 修复清单）与 `prompts/audit/2.6audit.md`（审计基线）为准。
+> - 研发规范请参考 `.trellis/spec/`（`backend/`、`frontend/`、`guides/`）。
+> - 若本文内容与现行代码冲突，请以代码与上述“真相源”文档为准。
+
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 全方位批判性审视 Law Eye 项目的可行性，识别风险并提出改进建议
