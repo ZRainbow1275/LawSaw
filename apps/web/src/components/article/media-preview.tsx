@@ -148,7 +148,7 @@ function ImagePreviewer({ src, alt }: ImagePreviewerProps) {
 					className="p-2 rounded-lg hover:bg-neutral-100 disabled:opacity-40 transition-colors"
 					title={t("Zoom out")}
 				>
-					<ZoomOut className="h-4 w-4" />
+					<ZoomOut aria-hidden="true" className="h-4 w-4" />
 				</button>
 				<span className="text-sm text-neutral-600 min-w-[4rem] text-center">
 					{Math.round(zoom * 100)}%
@@ -160,7 +160,7 @@ function ImagePreviewer({ src, alt }: ImagePreviewerProps) {
 					className="p-2 rounded-lg hover:bg-neutral-100 disabled:opacity-40 transition-colors"
 					title={t("Zoom in")}
 				>
-					<ZoomIn className="h-4 w-4" />
+					<ZoomIn aria-hidden="true" className="h-4 w-4" />
 				</button>
 				<div className="w-px h-5 bg-neutral-200 mx-2" />
 				<button
@@ -169,7 +169,7 @@ function ImagePreviewer({ src, alt }: ImagePreviewerProps) {
 					className="p-2 rounded-lg hover:bg-neutral-100 transition-colors"
 					title={t("Rotate")}
 				>
-					<RotateCw className="h-4 w-4" />
+					<RotateCw aria-hidden="true" className="h-4 w-4" />
 				</button>
 				<button
 					type="button"
@@ -225,7 +225,7 @@ function PdfPreviewer({ src, title }: PdfPreviewerProps) {
 						className="p-2 rounded-lg hover:bg-neutral-100 transition-colors"
 						title={t("Open in new window")}
 					>
-						<ExternalLink className="h-4 w-4" />
+						<ExternalLink aria-hidden="true" className="h-4 w-4" />
 					</a>
 					<a
 						href={src}
@@ -233,7 +233,7 @@ function PdfPreviewer({ src, title }: PdfPreviewerProps) {
 						className="p-2 rounded-lg hover:bg-neutral-100 transition-colors"
 						title={t("Download")}
 					>
-						<Download className="h-4 w-4" />
+						<Download aria-hidden="true" className="h-4 w-4" />
 					</a>
 				</div>
 			</div>
@@ -275,7 +275,7 @@ function VideoPreviewer({ src, title }: VideoPreviewerProps) {
 					className="p-2 rounded-lg hover:bg-neutral-100 transition-colors"
 					title={t("Download")}
 				>
-					<Download className="h-4 w-4" />
+					<Download aria-hidden="true" className="h-4 w-4" />
 				</a>
 			</div>
 
@@ -309,7 +309,7 @@ function AudioPreviewer({ src, title }: AudioPreviewerProps) {
 	return (
 		<div className="flex flex-col items-center justify-center p-8 gap-6">
 			<div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary-100 to-primary-200 flex items-center justify-center">
-				<Volume2 className="w-12 h-12 text-primary-600" />
+				<Volume2 aria-hidden="true" className="w-12 h-12 text-primary-600" />
 			</div>
 			<span className="text-sm font-medium text-neutral-700">
 				{title || t("Audio file")}
@@ -323,7 +323,7 @@ function AudioPreviewer({ src, title }: AudioPreviewerProps) {
 				download
 				className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-600 rounded-lg hover:bg-neutral-100 transition-colors"
 			>
-				<Download className="h-4 w-4" />
+				<Download aria-hidden="true" className="h-4 w-4" />
 				{t("Download audio")}
 			</a>
 		</div>
@@ -347,7 +347,7 @@ function DocumentPreviewer({ src, title, type }: DocumentPreviewerProps) {
 	return (
 		<div className="flex flex-col items-center justify-center p-8 gap-6">
 			<div className="w-24 h-24 rounded-2xl bg-neutral-100 flex items-center justify-center">
-				<Icon className="w-12 h-12 text-neutral-400" />
+				<Icon aria-hidden="true" className="w-12 h-12 text-neutral-400" />
 			</div>
 			<div className="text-center">
 				<p className="text-sm font-medium text-neutral-700">
@@ -364,7 +364,7 @@ function DocumentPreviewer({ src, title, type }: DocumentPreviewerProps) {
 					download
 					className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white text-sm font-medium rounded-lg hover:bg-primary-600 transition-colors"
 				>
-					<Download className="h-4 w-4" />
+					<Download aria-hidden="true" className="h-4 w-4" />
 					{t("Download file")}
 				</a>
 				<a
@@ -373,7 +373,7 @@ function DocumentPreviewer({ src, title, type }: DocumentPreviewerProps) {
 					rel="noopener noreferrer"
 					className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-600 rounded-lg border border-neutral-200 hover:bg-neutral-50 transition-colors"
 				>
-					<ExternalLink className="h-4 w-4" />
+					<ExternalLink aria-hidden="true" className="h-4 w-4" />
 					{t("Open in new window")}
 				</a>
 			</div>
@@ -478,13 +478,13 @@ export function MediaPreviewTrigger({
 				/>
 			) : (
 				<div className="w-full h-full flex items-center justify-center bg-neutral-50">
-					<Icon className="w-8 h-8 text-neutral-400" />
+					<Icon aria-hidden="true" className="w-8 h-8 text-neutral-400" />
 				</div>
 			)}
 
 			{/* Hover overlay */}
 			<div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
-				<Maximize2 className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+				<Maximize2 aria-hidden="true" className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
 			</div>
 
 			{/* Type label */}

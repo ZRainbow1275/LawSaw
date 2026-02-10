@@ -237,7 +237,7 @@ export default function ArticlesPage() {
 										className="h-8 w-8"
 										onClick={() => setViewMode("list")}
 									>
-										<List className="h-4 w-4" />
+										<List aria-hidden="true" className="h-4 w-4" />
 									</Button>
 									<Button
 										variant={viewMode === "grid" ? "secondary" : "ghost"}
@@ -245,7 +245,7 @@ export default function ArticlesPage() {
 										className="h-8 w-8"
 										onClick={() => setViewMode("grid")}
 									>
-										<LayoutGrid className="h-4 w-4" />
+										<LayoutGrid aria-hidden="true" className="h-4 w-4" />
 									</Button>
 								</div>
 								<Button
@@ -255,7 +255,7 @@ export default function ArticlesPage() {
 									aria-controls="articles-filters"
 									onClick={() => setFiltersOpen((open) => !open)}
 								>
-									<SlidersHorizontal className="mr-2 h-4 w-4" />
+									<SlidersHorizontal aria-hidden="true" className="mr-2 h-4 w-4" />
 									{t("Filter")}
 								</Button>
 							</div>
@@ -383,7 +383,7 @@ export default function ArticlesPage() {
 						<Card>
 							<CardHeader>
 								<CardTitle className="flex items-center gap-2">
-									<FileText className="h-5 w-5 text-primary-500" />
+									<FileText aria-hidden="true" className="h-5 w-5 text-primary-500" />
 									{t("Articles list")}
 								</CardTitle>
 							</CardHeader>
@@ -471,7 +471,7 @@ export default function ArticlesPage() {
 												onClick={() => setPage((p) => Math.max(0, p - 1))}
 												disabled={page === 0}
 											>
-												<ChevronLeft className="h-4 w-4" />
+												<ChevronLeft aria-hidden="true" className="h-4 w-4" />
 												{t("Previous")}
 											</Button>
 											<Button
@@ -483,7 +483,7 @@ export default function ArticlesPage() {
 												disabled={page >= totalPages - 1}
 											>
 												{t("Next")}
-												<ChevronRight className="h-4 w-4" />
+												<ChevronRight aria-hidden="true" className="h-4 w-4" />
 											</Button>
 										</div>
 									</motion.div>

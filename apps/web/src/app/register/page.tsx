@@ -70,7 +70,7 @@ export default function RegisterPage() {
 						whileHover={{ scale: 1.05, rotate: -5 }}
 						whileTap={{ scale: 0.95 }}
 					>
-						<Eye className="h-8 w-8 text-white" />
+						<Eye aria-hidden="true" className="h-8 w-8 text-white" />
 						<motion.div
 							className="absolute -right-1 -top-1"
 							initial={{ scale: 0 }}
@@ -78,7 +78,7 @@ export default function RegisterPage() {
 							transition={{ delay: 0.5, type: "spring" }}
 						>
 							<div className="flex h-5 w-5 items-center justify-center rounded-full bg-green-500 shadow-sm">
-								<UserPlus className="h-3 w-3 text-white" />
+								<UserPlus aria-hidden="true" className="h-3 w-3 text-white" />
 							</div>
 						</motion.div>
 					</motion.div>

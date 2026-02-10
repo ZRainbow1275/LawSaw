@@ -60,7 +60,7 @@ export function EntityPalette({
 			<div className="border-b border-neutral-100 p-4">
 				<div className="flex items-center gap-2">
 					<div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-100 text-neutral-700">
-						<Sparkles className="h-4 w-4" />
+						<Sparkles aria-hidden="true" className="h-4 w-4" />
 					</div>
 					<div className="min-w-0">
 						<div className="text-sm font-semibold text-neutral-900">
@@ -75,7 +75,7 @@ export function EntityPalette({
 				</div>
 
 				<div className="relative mt-3">
-					<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+					<Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
 					<Input
 						value={searchTerm}
 						onChange={(e) => onSearchTermChange(e.target.value)}
@@ -104,7 +104,7 @@ export function EntityPalette({
 					<div className="p-4">
 						<div className="rounded-xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
 							<div className="flex items-start gap-2">
-								<TriangleAlert className="mt-0.5 h-4 w-4" />
+								<TriangleAlert aria-hidden="true" className="mt-0.5 h-4 w-4" />
 								<div>
 									<div className="font-medium">
 										{t("Failed to load entities")}
@@ -121,7 +121,7 @@ export function EntityPalette({
 						<div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-5 text-sm text-neutral-700">
 							<div className="flex items-start gap-3">
 								<div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-neutral-600 shadow-sm">
-									<Database className="h-5 w-5" />
+									<Database aria-hidden="true" className="h-5 w-5" />
 								</div>
 								<div className="min-w-0">
 									<div className="font-semibold text-neutral-900">

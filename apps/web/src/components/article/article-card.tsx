@@ -13,7 +13,9 @@ import {
 	formatTimeAgo,
 	withLocalePath,
 } from "@/lib/i18n";
+import { useLongPress } from "@/hooks/use-long-press";
 import { useLocale, useT } from "@/lib/i18n-client";
+import { useToast } from "@/stores/toast-store";
 import { buttonTapEffect, cardHoverEffect, fadeVariants } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -29,7 +31,7 @@ import {
 	ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
-import { type ReactNode, forwardRef } from "react";
+import { type ReactNode, forwardRef, useCallback } from "react";
 
 // ============================================
 // Types
@@ -47,6 +49,8 @@ interface ArticleCardProps {
 	onBookmark?: (id: string) => void;
 	/** Click handler (if you don't want to use a Link) */
 	onClick?: (article: Article) => void;
+	/** Long-press handler (mobile/touch friendly). */
+	onLongPress?: (article: Article) => void;
 	/** Custom class name */
 	className?: string;
 	/** Whether to show summary */
@@ -76,35 +80,35 @@ const riskConfig: Record<
 		color: "text-neutral-700",
 		bgColor: "bg-neutral-100",
 		borderColor: "border-neutral-200",
-		icon: <HelpCircle className="h-3.5 w-3.5" />,
+		icon: <HelpCircle aria-hidden="true" className="h-3.5 w-3.5" />,
 	},
 	low: {
 		label: "Low risk",
 		color: "text-green-700",
 		bgColor: "bg-green-50",
 		borderColor: "border-green-200",
-		icon: <ShieldCheck className="h-3.5 w-3.5" />,
+		icon: <ShieldCheck aria-hidden="true" className="h-3.5 w-3.5" />,
 	},
 	medium: {
 		label: "Medium risk",
 		color: "text-amber-700",
 		bgColor: "bg-amber-50",
 		borderColor: "border-amber-200",
-		icon: <Shield className="h-3.5 w-3.5" />,
+		icon: <Shield aria-hidden="true" className="h-3.5 w-3.5" />,
 	},
 	high: {
 		label: "High risk",
 		color: "text-orange-700",
 		bgColor: "bg-orange-50",
 		borderColor: "border-orange-200",
-		icon: <ShieldAlert className="h-3.5 w-3.5" />,
+		icon: <ShieldAlert aria-hidden="true" className="h-3.5 w-3.5" />,
 	},
 	critical: {
 		label: "Critical",
 		color: "text-red-700",
 		bgColor: "bg-red-50",
 		borderColor: "border-red-200",
-		icon: <AlertTriangle className="h-3.5 w-3.5" />,
+		icon: <AlertTriangle aria-hidden="true" className="h-3.5 w-3.5" />,
 	},
 };
 
@@ -139,6 +143,7 @@ export const ArticleCard = forwardRef<HTMLDivElement, ArticleCardProps>(
 			isBookmarked = false,
 			onBookmark,
 			onClick,
+			onLongPress,
 			className,
 			showSummary = true,
 			variant = "default",
@@ -148,6 +153,7 @@ export const ArticleCard = forwardRef<HTMLDivElement, ArticleCardProps>(
 	) => {
 		const locale = useLocale();
 		const t = useT();
+		const { success: toastSuccess } = useToast();
 
 		const riskLevel = getArticleRiskLevel(article.risk_score);
 		const risk = riskConfig[riskLevel];
@@ -158,6 +164,31 @@ export const ArticleCard = forwardRef<HTMLDivElement, ArticleCardProps>(
 			e.stopPropagation();
 			onBookmark?.(article.id);
 		};
+
+		const handleLongPress = useCallback(async () => {
+			if (onLongPress) {
+				onLongPress(article);
+				return;
+			}
+
+			if (!article.link || !navigator?.clipboard) {
+				return;
+			}
+
+			try {
+				await navigator.clipboard.writeText(article.link);
+				toastSuccess(t("Article link copied"));
+			} catch {
+				// Ignore clipboard failures to avoid breaking card interactions.
+			}
+		}, [article, onLongPress, t, toastSuccess]);
+
+		const longPressHandlers = useLongPress({
+			enabled: Boolean(onLongPress || article.link),
+			onLongPress: () => {
+				void handleLongPress();
+			},
+		});
 
 		const CardContent = (
 			<motion.div
@@ -224,9 +255,9 @@ export const ArticleCard = forwardRef<HTMLDivElement, ArticleCardProps>(
 							onClick={handleBookmarkClick}
 						>
 							{isBookmarked ? (
-								<BookmarkCheck className="h-4 w-4 text-primary-500" />
+								<BookmarkCheck aria-hidden="true" className="h-4 w-4 text-primary-500" />
 							) : (
-								<Bookmark className="h-4 w-4" />
+								<Bookmark aria-hidden="true" className="h-4 w-4" />
 							)}
 						</Button>
 					)}
@@ -260,7 +291,7 @@ export const ArticleCard = forwardRef<HTMLDivElement, ArticleCardProps>(
 						{/* Time */}
 						{relativeTime && (
 							<span className="flex items-center gap-1">
-								<Clock className="h-3 w-3" />
+								<Clock aria-hidden="true" className="h-3 w-3" />
 								{relativeTime}
 							</span>
 						)}
@@ -268,7 +299,7 @@ export const ArticleCard = forwardRef<HTMLDivElement, ArticleCardProps>(
 
 					{/* External */}
 					{article.link && (
-						<ExternalLink className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+						<ExternalLink aria-hidden="true" className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
 					)}
 				</div>
 			</motion.div>
@@ -283,6 +314,7 @@ export const ArticleCard = forwardRef<HTMLDivElement, ArticleCardProps>(
 						className="absolute inset-0 z-10 cursor-pointer rounded-xl bg-transparent p-0 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 						onClick={() => onClick(article)}
 						aria-label={article.title}
+						{...longPressHandlers}
 					/>
 					{CardContent}
 				</div>
@@ -294,6 +326,7 @@ export const ArticleCard = forwardRef<HTMLDivElement, ArticleCardProps>(
 			<Link
 				href={withLocalePath(locale, `/articles/${article.id}`)}
 				className="block"
+				{...longPressHandlers}
 			>
 				{CardContent}
 			</Link>

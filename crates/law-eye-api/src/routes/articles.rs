@@ -262,7 +262,7 @@ pub(crate) mod query {
 
         let can_read = state
             .user_service
-            .has_permission(user.id, "articles:read")
+            .has_permission(user.tenant_id, user.id, "articles:read")
             .await
             .map_err(AppError::from)?;
         if !can_read {
@@ -367,7 +367,7 @@ pub(crate) mod query {
 
         let can_read = state
             .user_service
-            .has_permission(user.id, "articles:read")
+            .has_permission(user.tenant_id, user.id, "articles:read")
             .await
             .map_err(AppError::from)?;
         if !can_read {
@@ -411,7 +411,7 @@ pub(crate) mod query {
 
         let can_read = state
             .user_service
-            .has_permission(user.id, "articles:read")
+            .has_permission(user.tenant_id, user.id, "articles:read")
             .await
             .map_err(AppError::from)?;
         if !can_read {
@@ -473,7 +473,7 @@ pub(crate) mod query {
 
         let can_read = state
             .user_service
-            .has_permission(user.id, "articles:read")
+            .has_permission(user.tenant_id, user.id, "articles:read")
             .await
             .map_err(AppError::from)?;
         if !can_read {
@@ -524,7 +524,7 @@ pub(crate) mod query {
 
         let can_read = state
             .user_service
-            .has_permission(user.id, "articles:read")
+            .has_permission(user.tenant_id, user.id, "articles:read")
             .await
             .map_err(AppError::from)?;
         if !can_read {
@@ -580,7 +580,7 @@ pub(crate) mod query {
 
         let can_read = state
             .user_service
-            .has_permission(user.id, "articles:read")
+            .has_permission(user.tenant_id, user.id, "articles:read")
             .await
             .map_err(AppError::from)?;
         if !can_read {
@@ -623,7 +623,7 @@ pub(crate) mod query {
 
         let can_read = state
             .user_service
-            .has_permission(user.id, "articles:read")
+            .has_permission(user.tenant_id, user.id, "articles:read")
             .await
             .map_err(AppError::from)?;
         if !can_read {
@@ -678,7 +678,7 @@ pub(crate) mod command {
 
         let can_write = state
             .user_service
-            .has_permission(user.id, "articles:write")
+            .has_permission(user.tenant_id, user.id, "articles:write")
             .await
             .map_err(AppError::from)?;
         if !can_write {
@@ -833,7 +833,7 @@ pub(crate) mod command {
 
         let can_write = state
             .user_service
-            .has_permission(user.id, "articles:write")
+            .has_permission(user.tenant_id, user.id, "articles:write")
             .await
             .map_err(AppError::from)?;
         if !can_write {
@@ -928,7 +928,7 @@ pub(crate) mod command {
 
         let can_write = state
             .user_service
-            .has_permission(user.id, "articles:write")
+            .has_permission(user.tenant_id, user.id, "articles:write")
             .await
             .map_err(AppError::from)?;
         if !can_write {
@@ -1016,7 +1016,7 @@ pub(crate) mod command {
 
         let can_publish = state
             .user_service
-            .has_permission(user.id, "articles:publish")
+            .has_permission(user.tenant_id, user.id, "articles:publish")
             .await
             .map_err(AppError::from)?;
         if !can_publish {
@@ -1032,6 +1032,7 @@ pub(crate) mod command {
         let article = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
             let article_service = state.article_service.clone();
             let audit_service = state.audit_service.clone();
+            let webhook_service = state.webhook_service.clone();
             let ip_address = ip_address.clone();
             let user_agent = user_agent.clone();
 
@@ -1040,6 +1041,9 @@ pub(crate) mod command {
                 let after = article_service
                     .update_status_tx(tenant_id, tx, id, "published", expected_version)
                     .await?;
+
+                let before_status = before.status.clone();
+                let after_status = after.status.clone();
 
                 audit_service
                     .log_tx(
@@ -1051,14 +1055,36 @@ pub(crate) mod command {
                             resource: "articles".to_string(),
                             resource_id: Some(id),
                             old_value: Some(serde_json::json!({
-                                "status": before.status,
+                                "status": before_status,
                             })),
                             new_value: Some(serde_json::json!({
-                                "status": after.status,
+                                "status": after_status,
                             })),
                             ip_address,
                             user_agent,
                         },
+                    )
+                    .await?;
+
+                let dedupe_key = format!("articles.published:{}:v{}", after.id, after.version);
+                let webhook_payload = serde_json::json!({
+                    "article_id": after.id,
+                    "source_id": after.source_id,
+                    "category_id": after.category_id,
+                    "status": &after.status,
+                    "previous_status": &before.status,
+                    "published_at": after.published_at,
+                    "version": after.version,
+                    "actor_user_id": user_id,
+                });
+
+                webhook_service
+                    .enqueue_event_tx(
+                        tenant_id,
+                        tx,
+                        "articles.published",
+                        &webhook_payload,
+                        &dedupe_key,
                     )
                     .await?;
 
@@ -1106,7 +1132,7 @@ pub(crate) mod command {
 
         let can_publish = state
             .user_service
-            .has_permission(user.id, "articles:publish")
+            .has_permission(user.tenant_id, user.id, "articles:publish")
             .await
             .map_err(AppError::from)?;
         if !can_publish {
@@ -1196,7 +1222,7 @@ pub(crate) mod command {
 
         let can_publish = state
             .user_service
-            .has_permission(user.id, "articles:publish")
+            .has_permission(user.tenant_id, user.id, "articles:publish")
             .await
             .map_err(AppError::from)?;
         if !can_publish {

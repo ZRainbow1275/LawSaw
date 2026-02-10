@@ -116,7 +116,7 @@ function SidebarPanel({
 					whileHover={{ scale: 1.08, rotate: 5 }}
 					whileTap={{ scale: 0.95 }}
 				>
-					<Eye className="h-5 w-5" />
+					<Eye aria-hidden="true" className="h-5 w-5" />
 					<motion.div
 						className="absolute -right-0.5 -top-0.5"
 						animate={{ scale: [1, 1.2, 1], opacity: [0.7, 1, 0.7] }}
@@ -126,7 +126,7 @@ function SidebarPanel({
 							ease: "easeInOut",
 						}}
 					>
-						<Sparkles className="h-3 w-3 text-yellow-300" />
+						<Sparkles aria-hidden="true" className="h-3 w-3 text-yellow-300" />
 					</motion.div>
 				</motion.div>
 				<AnimatePresence>
@@ -156,7 +156,7 @@ function SidebarPanel({
 						aria-label={t("Close navigation")}
 						onClick={() => onRequestClose?.()}
 					>
-						<X className="h-5 w-5" aria-hidden="true" />
+						<X aria-hidden="true" className="h-5 w-5"  />
 					</button>
 				)}
 			</div>
@@ -363,7 +363,7 @@ function SidebarPanel({
 							animate={{ rotate: collapsed ? 0 : 180 }}
 							transition={{ duration: 0.3 }}
 						>
-							<ChevronRight className="h-4 w-4" />
+							<ChevronRight aria-hidden="true" className="h-4 w-4" />
 						</motion.div>
 						<AnimatePresence>
 							{!collapsed && (

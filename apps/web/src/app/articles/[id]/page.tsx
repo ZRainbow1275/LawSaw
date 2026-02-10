@@ -160,7 +160,7 @@ export default function ArticleDetailPage() {
 									: "text-neutral-500 hover:text-neutral-900",
 							)}
 						>
-							<ArrowLeft className="h-4 w-4" />
+							<ArrowLeft aria-hidden="true" className="h-4 w-4" />
 							<span>{t("Back")}</span>
 						</button>
 
@@ -188,7 +188,7 @@ export default function ArticleDetailPage() {
 									)}
 								>
 									<span>{t("Original")}</span>
-									<ExternalLink className="h-3.5 w-3.5" />
+									<ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
 								</Link>
 							)}
 						</div>

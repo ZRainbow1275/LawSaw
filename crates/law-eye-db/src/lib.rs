@@ -9,6 +9,7 @@ pub use models::*;
 
 const CONNECT_RETRY_BASE_DELAY_MS: u64 = 500;
 const CONNECT_RETRY_MAX_DELAY_MS: u64 = 10_000;
+const SET_ROLE_SQL: &str = "SELECT set_config('role', $1, false)";
 
 pub async fn create_pool(database_url: &str, max_connections: u32) -> Result<PgPool, sqlx::Error> {
     create_pool_with_session_role(database_url, max_connections, None).await
@@ -43,14 +44,17 @@ pub async fn create_pool_with_session_role(
 
     let mut options = PgPoolOptions::new()
         .max_connections(max_connections)
-        .acquire_timeout(Duration::from_secs(30));
+        .acquire_timeout(Duration::from_secs(30))
+        .test_before_acquire(true);
 
     if let Some(role) = session_role {
         options = options.after_connect(move |conn, _meta| {
             let role = role.clone();
             Box::pin(async move {
-                let sql = format!("SET ROLE {}", role);
-                sqlx::query(&sql).execute(conn).await?;
+                sqlx::query_scalar::<_, String>(SET_ROLE_SQL)
+                    .bind(role)
+                    .fetch_one(conn)
+                    .await?;
                 Ok(())
             })
         });
@@ -124,4 +128,38 @@ fn is_valid_role_name(role: &str) -> bool {
     }
 
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn role_name_validation_accepts_safe_identifier() {
+        assert!(is_valid_role_name("law_eye_app"));
+        assert!(is_valid_role_name("laweye1"));
+        assert!(is_valid_role_name("_law_eye"));
+    }
+
+    #[test]
+    fn role_name_validation_rejects_unsafe_identifier() {
+        assert!(!is_valid_role_name(""));
+        assert!(!is_valid_role_name("1laweye"));
+        assert!(!is_valid_role_name("law-eye"));
+        assert!(!is_valid_role_name("law eye"));
+        assert!(!is_valid_role_name("laweye;drop role admin"));
+    }
+
+    #[tokio::test]
+    async fn create_pool_rejects_invalid_role_without_connecting() {
+        let err = create_pool_with_session_role(
+            "postgres://user:pass@127.0.0.1:5432/law_eye",
+            1,
+            Some("bad;role"),
+        )
+        .await
+        .expect_err("invalid role should return configuration error");
+
+        assert!(matches!(err, sqlx::Error::Configuration(_)));
+    }
 }

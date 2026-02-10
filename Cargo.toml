@@ -53,8 +53,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # Metrics
-metrics = "0.21"
-metrics-exporter-prometheus = "0.12"
+metrics = "0.22"
+metrics-exporter-prometheus = "0.13"
 
 # Config
 config = "0.14"
@@ -67,6 +67,7 @@ url = "2.5"
 rand = "0.8"
 base64 = "0.22"
 sha2 = "0.10"
+hmac = "0.12"
 
 # AWS (S3 / MinIO)
 aws-config = "1.8.12"

@@ -11,17 +11,25 @@ pub struct UserService {
     pool: PgPool,
 }
 
-async fn fetch_user_roles<'e, E>(executor: E, user_id: Uuid) -> Result<Vec<Role>>
+async fn fetch_user_roles<'e, E>(
+    executor: E,
+    tenant_id: Uuid,
+    user_id: Uuid,
+) -> Result<Vec<Role>>
 where
     E: Executor<'e, Database = Postgres>,
 {
     let roles = sqlx::query_as::<_, Role>(
         r#"
         SELECT r.* FROM roles r
-        INNER JOIN user_roles ur ON r.id = ur.role_id
-        WHERE ur.user_id = $1
+        INNER JOIN user_roles ur ON r.id = ur.role_id AND r.tenant_id = ur.tenant_id
+        INNER JOIN users u ON u.id = ur.user_id
+        WHERE ur.tenant_id = $1
+          AND ur.user_id = $2
+          AND u.tenant_id = $1
         "#,
     )
+    .bind(tenant_id)
     .bind(user_id)
     .fetch_all(executor)
     .await
@@ -41,8 +49,11 @@ where
 {
     sqlx::query(
         r#"
-        INSERT INTO user_roles (user_id, role_id, granted_by)
-        SELECT $1, id, $3 FROM roles WHERE name = $2
+        INSERT INTO user_roles (tenant_id, user_id, role_id, granted_by)
+        SELECT u.tenant_id, u.id, r.id, $3
+        FROM users u
+        INNER JOIN roles r ON r.tenant_id = u.tenant_id
+        WHERE u.id = $1 AND r.name = $2
         ON CONFLICT DO NOTHING
         "#,
     )
@@ -62,8 +73,14 @@ where
 {
     sqlx::query(
         r#"
-        DELETE FROM user_roles
-        WHERE user_id = $1 AND role_id = (SELECT id FROM roles WHERE name = $2)
+        DELETE FROM user_roles ur
+        USING users u, roles r
+        WHERE ur.user_id = u.id
+          AND ur.role_id = r.id
+          AND ur.tenant_id = u.tenant_id
+          AND ur.tenant_id = r.tenant_id
+          AND ur.user_id = $1
+          AND r.name = $2
         "#,
     )
     .bind(user_id)
@@ -90,11 +107,54 @@ where
         .collect();
 
     let existing: Vec<String> =
-        sqlx::query_scalar::<_, String>("SELECT name FROM roles WHERE name = ANY($1)")
+        sqlx::query_scalar::<_, String>("SELECT DISTINCT name FROM roles WHERE name = ANY($1)")
             .bind(&unique)
             .fetch_all(executor)
             .await
             .map_err(|e| Error::Database(e.to_string()))?;
+
+    let existing_set: BTreeSet<String> = existing.into_iter().collect();
+    let missing: Vec<String> = unique
+        .into_iter()
+        .filter(|name| !existing_set.contains(name))
+        .collect();
+
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(Error::Validation(format!(
+            "Unknown role(s): {}",
+            missing.join(", ")
+        )))
+    }
+}
+
+async fn validate_roles_exist_for_tenant_inner<'e, E>(
+    executor: E,
+    tenant_id: Uuid,
+    role_names: &[String],
+) -> Result<()>
+where
+    E: Executor<'e, Database = Postgres>,
+{
+    use std::collections::BTreeSet;
+
+    if role_names.is_empty() {
+        return Ok(());
+    }
+
+    let unique: Vec<String> = BTreeSet::<String>::from_iter(role_names.iter().cloned())
+        .into_iter()
+        .collect();
+
+    let existing: Vec<String> = sqlx::query_scalar::<_, String>(
+        "SELECT name FROM roles WHERE tenant_id = $1 AND name = ANY($2)",
+    )
+    .bind(tenant_id)
+    .bind(&unique)
+    .fetch_all(executor)
+    .await
+    .map_err(|e| Error::Database(e.to_string()))?;
 
     let existing_set: BTreeSet<String> = existing.into_iter().collect();
     let missing: Vec<String> = unique
@@ -288,20 +348,21 @@ impl UserService {
         Ok(())
     }
 
-    pub async fn get_user_roles(&self, user_id: Uuid) -> Result<Vec<Role>> {
-        fetch_user_roles(&self.pool, user_id).await
+    pub async fn get_user_roles(&self, tenant_id: Uuid, user_id: Uuid) -> Result<Vec<Role>> {
+        fetch_user_roles(&self.pool, tenant_id, user_id).await
     }
 
     pub async fn get_user_roles_tx(
         &self,
         tx: &mut Transaction<'_, Postgres>,
+        tenant_id: Uuid,
         user_id: Uuid,
     ) -> Result<Vec<Role>> {
-        fetch_user_roles(&mut **tx, user_id).await
+        fetch_user_roles(&mut **tx, tenant_id, user_id).await
     }
 
-    pub async fn get_user_permissions(&self, user_id: Uuid) -> Result<Vec<String>> {
-        let roles = self.get_user_roles(user_id).await?;
+    pub async fn get_user_permissions(&self, tenant_id: Uuid, user_id: Uuid) -> Result<Vec<String>> {
+        let roles = self.get_user_roles(tenant_id, user_id).await?;
 
         let mut permissions = Vec::new();
         for role in roles {
@@ -319,8 +380,13 @@ impl UserService {
         Ok(permissions)
     }
 
-    pub async fn has_permission(&self, user_id: Uuid, permission: &str) -> Result<bool> {
-        let permissions = self.get_user_permissions(user_id).await?;
+    pub async fn has_permission(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        permission: &str,
+    ) -> Result<bool> {
+        let permissions = self.get_user_permissions(tenant_id, user_id).await?;
 
         // Check for wildcard permission
         if permissions.contains(&"*".to_string()) {
@@ -372,6 +438,23 @@ impl UserService {
         role_names: &[String],
     ) -> Result<()> {
         validate_roles_exist_inner(&mut **tx, role_names).await
+    }
+
+    pub async fn validate_roles_exist_for_tenant(
+        &self,
+        tenant_id: Uuid,
+        role_names: &[String],
+    ) -> Result<()> {
+        validate_roles_exist_for_tenant_inner(&self.pool, tenant_id, role_names).await
+    }
+
+    pub async fn validate_roles_exist_for_tenant_tx(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        tenant_id: Uuid,
+        role_names: &[String],
+    ) -> Result<()> {
+        validate_roles_exist_for_tenant_inner(&mut **tx, tenant_id, role_names).await
     }
 
     pub async fn list(&self, limit: i64, offset: i64) -> Result<Vec<User>> {

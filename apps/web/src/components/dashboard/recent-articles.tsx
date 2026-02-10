@@ -47,7 +47,7 @@ export function RecentArticles() {
 			<Card className="lg:col-span-2">
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
-						<TrendingUp className="h-5 w-5 text-primary-500" />
+						<TrendingUp aria-hidden="true" className="h-5 w-5 text-primary-500" />
 						{t("Latest articles")}
 					</CardTitle>
 				</CardHeader>
@@ -74,7 +74,7 @@ export function RecentArticles() {
 			<Card className="lg:col-span-2">
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
-						<TrendingUp className="h-5 w-5 text-primary-500" />
+						<TrendingUp aria-hidden="true" className="h-5 w-5 text-primary-500" />
 						{t("Latest articles")}
 					</CardTitle>
 					<CardDescription>{t("Load failed")}</CardDescription>
@@ -106,7 +106,7 @@ export function RecentArticles() {
 				<CardHeader className="flex flex-row items-center justify-between">
 					<div>
 						<CardTitle className="flex items-center gap-2">
-							<TrendingUp className="h-5 w-5 text-primary-500" />
+							<TrendingUp aria-hidden="true" className="h-5 w-5 text-primary-500" />
 							{t("Latest articles")}
 						</CardTitle>
 						<CardDescription>
@@ -116,7 +116,7 @@ export function RecentArticles() {
 					<Link href={withLocalePath(locale, "/articles")}>
 						<Button variant="outline" size="sm">
 							{t("View all")}
-							<ArrowUpRight className="ml-1 h-4 w-4" />
+							<ArrowUpRight aria-hidden="true" className="ml-1 h-4 w-4" />
 						</Button>
 					</Link>
 				</CardHeader>

@@ -137,7 +137,7 @@ export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
 								{t("Reading settings")}
 							</h3>
 							<Button variant="ghost" size="icon" onClick={onClose}>
-								<X className="h-4 w-4" />
+								<X aria-hidden="true" className="h-4 w-4" />
 							</Button>
 						</div>
 
@@ -329,7 +329,7 @@ function SettingSection({ icon: Icon, label, children }: SettingSectionProps) {
 	return (
 		<div className="space-y-2">
 			<div className="flex items-center gap-2">
-				<Icon className="h-4 w-4 text-neutral-400" />
+				<Icon aria-hidden="true" className="h-4 w-4 text-neutral-400" />
 				<span className="text-sm font-medium text-neutral-700">{label}</span>
 			</div>
 			{children}
@@ -394,7 +394,7 @@ export function ReadingSettingsBar({ className }: { className?: string }) {
 									: "text-neutral-500 hover:bg-neutral-100",
 							)}
 						>
-							<Icon className="h-4 w-4" />
+							<Icon aria-hidden="true" className="h-4 w-4" />
 						</button>
 					);
 				})}

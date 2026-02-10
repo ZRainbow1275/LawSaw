@@ -1,6 +1,10 @@
 use serde::Deserialize;
 use std::time::Duration;
 
+#[path = "config_runtime.rs"]
+mod config_runtime;
+pub use config_runtime::ConfigRuntime;
+
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct SecretsConfig {
     #[serde(default)]
@@ -97,6 +101,10 @@ fn default_object_storage_force_path_style() -> bool {
     true
 }
 
+fn default_object_storage_sse_enabled() -> bool {
+    true
+}
+
 fn default_object_storage_purge_interval_seconds() -> u64 {
     60
 }
@@ -111,6 +119,38 @@ fn default_object_storage_purge_grace_period_seconds() -> u64 {
 
 fn default_object_storage_purge_max_attempts() -> i32 {
     20
+}
+
+fn default_rate_limit_redis_prefix() -> String {
+    "law-eye:rate-limit".to_string()
+}
+
+fn default_rate_limit_redis_fail_open() -> bool {
+    true
+}
+
+fn default_auth_oauth_state_ttl_seconds() -> u64 {
+    300
+}
+
+fn default_auth_oauth_enabled_providers() -> Vec<String> {
+    vec!["google".to_string(), "github".to_string(), "microsoft".to_string()]
+}
+
+fn default_auth_mfa_totp_issuer() -> String {
+    "LawSaw".to_string()
+}
+
+fn default_auth_mfa_login_challenge_ttl_seconds() -> u64 {
+    300
+}
+
+fn default_config_reload_enabled() -> bool {
+    false
+}
+
+fn default_config_reload_interval_seconds() -> u64 {
+    30
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -130,6 +170,9 @@ pub struct ObjectStorageConfig {
     pub secret_access_key: String,
     #[serde(default = "default_object_storage_force_path_style")]
     pub force_path_style: bool,
+    /// Enforce server-side encryption for all object writes.
+    #[serde(default = "default_object_storage_sse_enabled")]
+    pub sse_enabled: bool,
     /// Purge loop interval in seconds (0 disables background purge).
     #[serde(default = "default_object_storage_purge_interval_seconds")]
     pub purge_interval_seconds: u64,
@@ -154,10 +197,96 @@ impl Default for ObjectStorageConfig {
             access_key_id: String::new(),
             secret_access_key: String::new(),
             force_path_style: default_object_storage_force_path_style(),
+            sse_enabled: default_object_storage_sse_enabled(),
             purge_interval_seconds: default_object_storage_purge_interval_seconds(),
             purge_batch_size: default_object_storage_purge_batch_size(),
             purge_grace_period_seconds: default_object_storage_purge_grace_period_seconds(),
             purge_max_attempts: default_object_storage_purge_max_attempts(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RateLimitConfig {
+    /// Redis key prefix used by fixed-window rate limiting.
+    #[serde(default = "default_rate_limit_redis_prefix")]
+    pub redis_prefix: String,
+    /// Redis runtime failure policy.
+    ///
+    /// - `true`: fail-open, requests continue if Redis is temporarily unavailable.
+    /// - `false`: fail-closed, requests are rejected with 429 when Redis errors occur.
+    #[serde(default = "default_rate_limit_redis_fail_open")]
+    pub redis_fail_open: bool,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            redis_prefix: default_rate_limit_redis_prefix(),
+            redis_fail_open: default_rate_limit_redis_fail_open(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AuthOAuthConfig {
+    /// One-time OAuth state token TTL.
+    #[serde(default = "default_auth_oauth_state_ttl_seconds")]
+    pub state_ttl_seconds: u64,
+    /// Allowed OAuth providers.
+    #[serde(default = "default_auth_oauth_enabled_providers")]
+    pub enabled_providers: Vec<String>,
+}
+
+impl Default for AuthOAuthConfig {
+    fn default() -> Self {
+        Self {
+            state_ttl_seconds: default_auth_oauth_state_ttl_seconds(),
+            enabled_providers: default_auth_oauth_enabled_providers(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AuthMfaConfig {
+    /// Issuer used in TOTP provisioning URI.
+    #[serde(default = "default_auth_mfa_totp_issuer")]
+    pub totp_issuer: String,
+    /// One-time MFA login challenge TTL.
+    #[serde(default = "default_auth_mfa_login_challenge_ttl_seconds")]
+    pub login_challenge_ttl_seconds: u64,
+}
+
+impl Default for AuthMfaConfig {
+    fn default() -> Self {
+        Self {
+            totp_issuer: default_auth_mfa_totp_issuer(),
+            login_challenge_ttl_seconds: default_auth_mfa_login_challenge_ttl_seconds(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct AuthConfig {
+    #[serde(default)]
+    pub oauth: AuthOAuthConfig,
+    #[serde(default)]
+    pub mfa: AuthMfaConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ConfigReloadConfig {
+    #[serde(default = "default_config_reload_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_config_reload_interval_seconds")]
+    pub interval_seconds: u64,
+}
+
+impl Default for ConfigReloadConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_config_reload_enabled(),
+            interval_seconds: default_config_reload_interval_seconds(),
         }
     }
 }
@@ -181,6 +310,12 @@ pub struct AppConfig {
     pub encryption: EncryptionConfig,
     #[serde(default)]
     pub object_storage: ObjectStorageConfig,
+    #[serde(default)]
+    pub rate_limit: RateLimitConfig,
+    #[serde(default)]
+    pub auth: AuthConfig,
+    #[serde(default)]
+    pub config_reload: ConfigReloadConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -248,23 +383,25 @@ impl Default for WorkerConfig {
 
 fn default_allowed_origins() -> Vec<String> {
     vec![
-        "https://localhost".to_string(),
-        "https://127.0.0.1".to_string(),
-        "http://localhost".to_string(),
-        "http://127.0.0.1".to_string(),
-        "http://localhost:3000".to_string(),
         "http://localhost:8849".to_string(),
-        "http://localhost:3002".to_string(),
-        "http://localhost:3333".to_string(),
-        "http://127.0.0.1:3000".to_string(),
         "http://127.0.0.1:8849".to_string(),
-        "http://127.0.0.1:3002".to_string(),
-        "http://127.0.0.1:3333".to_string(),
     ]
 }
 
 fn default_request_timeout_ms() -> u64 {
     30_000
+}
+
+fn default_redis_pool_wait_timeout_ms() -> u64 {
+    2_000
+}
+
+fn default_redis_pool_create_timeout_ms() -> u64 {
+    2_000
+}
+
+fn default_redis_pool_recycle_timeout_ms() -> u64 {
+    2_000
 }
 
 fn default_max_body_bytes() -> usize {
@@ -286,6 +423,12 @@ pub struct DatabaseConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct RedisConfig {
     pub url: String,
+    #[serde(default = "default_redis_pool_wait_timeout_ms")]
+    pub pool_wait_timeout_ms: u64,
+    #[serde(default = "default_redis_pool_create_timeout_ms")]
+    pub pool_create_timeout_ms: u64,
+    #[serde(default = "default_redis_pool_recycle_timeout_ms")]
+    pub pool_recycle_timeout_ms: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -337,7 +480,8 @@ impl AppConfig {
                     .separator("__")
                     .try_parsing(true)
                     .list_separator(",")
-                    .with_list_parse_key("server.allowed_origins"),
+                    .with_list_parse_key("server.allowed_origins")
+                    .with_list_parse_key("auth.oauth.enabled_providers"),
             )
             .build()?;
 
@@ -399,6 +543,10 @@ impl AppConfig {
             if let Some(force_path_style) = secrets.s3_force_path_style {
                 config.object_storage.force_path_style = force_path_style;
             }
+
+            if let Some(sse_enabled) = secrets.s3_sse_enabled {
+                config.object_storage.sse_enabled = sse_enabled;
+            }
         }
 
         if config.database.url.trim().is_empty() {
@@ -425,6 +573,57 @@ impl AppConfig {
             ));
         }
 
+        if config.rate_limit.redis_prefix.trim().is_empty() {
+            return Err(crate::Error::Config(
+                "LAW_EYE__RATE_LIMIT__REDIS_PREFIX must not be empty".into(),
+            ));
+        }
+
+        if config.auth.oauth.state_ttl_seconds == 0 {
+            return Err(crate::Error::Config(
+                "LAW_EYE__AUTH__OAUTH__STATE_TTL_SECONDS must be > 0".into(),
+            ));
+        }
+
+        if config.auth.mfa.login_challenge_ttl_seconds == 0 {
+            return Err(crate::Error::Config(
+                "LAW_EYE__AUTH__MFA__LOGIN_CHALLENGE_TTL_SECONDS must be > 0".into(),
+            ));
+        }
+
+        if config.config_reload.enabled && config.config_reload.interval_seconds == 0 {
+            return Err(crate::Error::Config(
+                "LAW_EYE__CONFIG_RELOAD__INTERVAL_SECONDS must be > 0 when config reload is enabled".into(),
+            ));
+        }
+
+        config.auth.oauth.enabled_providers = config
+            .auth
+            .oauth
+            .enabled_providers
+            .into_iter()
+            .map(|provider| provider.trim().to_ascii_lowercase())
+            .filter(|provider| {
+                !provider.is_empty()
+                    && provider
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
+            })
+            .collect();
+
+        if config.auth.oauth.enabled_providers.is_empty() {
+            return Err(crate::Error::Config(
+                "LAW_EYE__AUTH__OAUTH__ENABLED_PROVIDERS must include at least one provider".into(),
+            ));
+        }
+
+        config.auth.mfa.totp_issuer = config.auth.mfa.totp_issuer.trim().to_string();
+        if config.auth.mfa.totp_issuer.is_empty() {
+            return Err(crate::Error::Config(
+                "LAW_EYE__AUTH__MFA__TOTP_ISSUER must not be empty".into(),
+            ));
+        }
+
         Ok(config)
     }
 }
@@ -445,13 +644,21 @@ impl Default for AppConfig {
                 max_connections: 10,
                 session_role: None,
             },
-            redis: RedisConfig { url: String::new() },
+            redis: RedisConfig {
+                url: String::new(),
+                pool_wait_timeout_ms: default_redis_pool_wait_timeout_ms(),
+                pool_create_timeout_ms: default_redis_pool_create_timeout_ms(),
+                pool_recycle_timeout_ms: default_redis_pool_recycle_timeout_ms(),
+            },
             ai: AiConfig::default(),
             metrics: MetricsConfig::default(),
             security: SecurityConfig::default(),
             secrets: SecretsConfig::default(),
             encryption: EncryptionConfig::default(),
             object_storage: ObjectStorageConfig::default(),
+            rate_limit: RateLimitConfig::default(),
+            auth: AuthConfig::default(),
+            config_reload: ConfigReloadConfig::default(),
         }
     }
 }
@@ -469,6 +676,7 @@ struct VaultKvSecrets {
     s3_access_key_id: Option<String>,
     s3_secret_access_key: Option<String>,
     s3_force_path_style: Option<bool>,
+    s3_sse_enabled: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -513,6 +721,8 @@ struct VaultLawEyeSecretsPayload {
     s3_secret_access_key: Option<String>,
     #[serde(default)]
     s3_force_path_style: Option<bool>,
+    #[serde(default)]
+    s3_sse_enabled: Option<bool>,
 }
 
 fn kv_v2_data_endpoint(kv_path: &str) -> crate::Result<String> {
@@ -636,5 +846,30 @@ async fn load_vault_kv_secrets(cfg: &VaultSecretsConfig) -> crate::Result<VaultK
         s3_access_key_id: payload.data.data.s3_access_key_id,
         s3_secret_access_key: payload.data.data.s3_secret_access_key,
         s3_force_path_style: payload.data.data.s3_force_path_style,
+        s3_sse_enabled: payload.data.data.s3_sse_enabled,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_allowed_origins_uses_minimal_local_dev_allowlist() {
+        assert_eq!(
+            default_allowed_origins(),
+            vec![
+                "http://localhost:8849".to_string(),
+                "http://127.0.0.1:8849".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn app_config_default_reuses_allowed_origin_default() {
+        assert_eq!(
+            AppConfig::default().server.allowed_origins,
+            default_allowed_origins()
+        );
+    }
 }

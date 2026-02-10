@@ -118,7 +118,7 @@ export function Modal({
 								)}
 								aria-label="Close"
 							>
-								<X className="h-4 w-4" />
+								<X aria-hidden="true" className="h-4 w-4" />
 							</button>
 						)}
 						{children}

@@ -734,7 +734,7 @@ export function KnowledgeCanvas({
 			<div className="flex items-center justify-between gap-2 pb-3">
 				<div className="flex items-center gap-2 text-sm text-neutral-600">
 					<span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-neutral-100 text-neutral-600">
-						<Move className="h-4 w-4" />
+						<Move aria-hidden="true" className="h-4 w-4" />
 					</span>
 					<div className="min-w-0">
 						<div className="font-medium text-neutral-900">
@@ -759,7 +759,7 @@ export function KnowledgeCanvas({
 						disabled={showEmptySeed}
 						title={t("Zoom out")}
 					>
-						<Minus className="h-4 w-4" />
+						<Minus aria-hidden="true" className="h-4 w-4" />
 					</Button>
 					<Button
 						type="button"
@@ -769,7 +769,7 @@ export function KnowledgeCanvas({
 						disabled={showEmptySeed}
 						title={t("Zoom in")}
 					>
-						<Plus className="h-4 w-4" />
+						<Plus aria-hidden="true" className="h-4 w-4" />
 					</Button>
 					<Button
 						type="button"
@@ -779,7 +779,7 @@ export function KnowledgeCanvas({
 						disabled={showEmptySeed}
 						title={t("Reset view")}
 					>
-						<RotateCcw className="h-4 w-4" />
+						<RotateCcw aria-hidden="true" className="h-4 w-4" />
 					</Button>
 					<div className="ml-2 hidden rounded-lg bg-neutral-100 px-2 py-1 text-xs text-neutral-600 sm:block">
 						{Math.round(viewport.scale * 100)}%
@@ -896,7 +896,7 @@ export function KnowledgeCanvas({
 												: t("Click to select, drag to move")
 										}
 									>
-										<MousePointer2 className="h-3.5 w-3.5" />
+										<MousePointer2 aria-hidden="true" className="h-3.5 w-3.5" />
 									</span>
 								</div>
 							</button>
@@ -907,7 +907,7 @@ export function KnowledgeCanvas({
 				{isLoading && (
 					<div className="absolute inset-0 flex items-center justify-center bg-white/40 backdrop-blur-sm">
 						<div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm text-neutral-700 shadow-sm">
-							<Loader2 className="h-4 w-4 animate-spin" />
+							<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
 							<span>{t("Loading graph...")}</span>
 						</div>
 					</div>
@@ -917,7 +917,7 @@ export function KnowledgeCanvas({
 					<div className="absolute inset-0 flex items-center justify-center p-6">
 						<div className="max-w-md rounded-2xl border border-neutral-200 bg-white/80 p-6 text-center shadow-sm backdrop-blur">
 							<div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-50 text-primary-700">
-								<Move className="h-5 w-5" />
+								<Move aria-hidden="true" className="h-5 w-5" />
 							</div>
 							<h3 className="mt-4 text-base font-semibold text-neutral-900">
 								{t("No seed entity selected")}
@@ -935,7 +935,7 @@ export function KnowledgeCanvas({
 					<div className="absolute inset-0 flex items-center justify-center p-6">
 						<div className="max-w-md rounded-2xl border border-neutral-200 bg-white/80 p-6 text-center shadow-sm backdrop-blur">
 							<div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-neutral-100 text-neutral-600">
-								<Loader2 className="h-5 w-5" />
+								<Loader2 aria-hidden="true" className="h-5 w-5" />
 							</div>
 							<h3 className="mt-4 text-base font-semibold text-neutral-900">
 								{t("No relationship data available")}

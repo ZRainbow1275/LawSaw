@@ -4,6 +4,7 @@
       "command": "law-eye-mcp",
       "env": {
         "DATABASE_URL": "postgres://law_eye:<REDACTED>@localhost:5432/law_eye",
+        "LAW_EYE_MCP_AUTH_TOKEN": "replace-with-strong-token",
         "OPENAI_API_KEY": "your-api-key-here",
         "OPENAI_BASE_URL": "https://api.openai.com/v1"
       }

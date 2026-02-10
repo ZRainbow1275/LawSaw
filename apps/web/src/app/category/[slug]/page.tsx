@@ -96,7 +96,7 @@ export default function CategoryPage() {
 							</p>
 							<Link href="/articles" className="mt-4">
 								<Button variant="outline">
-									<ArrowLeft className="mr-2 h-4 w-4" />
+									<ArrowLeft aria-hidden="true" className="mr-2 h-4 w-4" />
 									{t("Back to articles")}
 								</Button>
 							</Link>
@@ -122,7 +122,7 @@ export default function CategoryPage() {
 								href="/articles"
 								className="inline-flex items-center text-sm text-neutral-500 hover:text-neutral-900"
 							>
-								<ArrowLeft className="mr-1 h-4 w-4" />
+								<ArrowLeft aria-hidden="true" className="mr-1 h-4 w-4" />
 								{t("Back to all articles")}
 							</Link>
 						</div>
@@ -153,7 +153,7 @@ export default function CategoryPage() {
 						<Card>
 							<CardHeader>
 								<CardTitle className="flex items-center gap-2">
-									<FileText className="h-5 w-5 text-primary-500" />
+									<FileText aria-hidden="true" className="h-5 w-5 text-primary-500" />
 									{t("{name} articles", { name: category?.name ?? "" })}
 								</CardTitle>
 							</CardHeader>
@@ -208,7 +208,7 @@ export default function CategoryPage() {
 																</span>
 															)}
 															<span className="flex items-center gap-1">
-																<Clock className="h-3 w-3" />
+																<Clock aria-hidden="true" className="h-3 w-3" />
 																{formatTime(
 																	locale,
 																	article.published_at,
@@ -225,7 +225,7 @@ export default function CategoryPage() {
 																rel="noopener noreferrer"
 																className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-neutral-700 opacity-0 transition-opacity hover:bg-neutral-100 hover:text-neutral-900 group-hover:opacity-100"
 															>
-																<ArrowUpRight className="h-4 w-4" />
+																<ArrowUpRight aria-hidden="true" className="h-4 w-4" />
 															</a>
 														)}
 													</div>
@@ -251,7 +251,7 @@ export default function CategoryPage() {
 												onClick={() => setPage((p) => Math.max(0, p - 1))}
 												disabled={page === 0}
 											>
-												<ChevronLeft className="h-4 w-4" />
+												<ChevronLeft aria-hidden="true" className="h-4 w-4" />
 												{t("Previous")}
 											</Button>
 											<Button
@@ -263,7 +263,7 @@ export default function CategoryPage() {
 												disabled={page >= totalPages - 1}
 											>
 												{t("Next")}
-												<ChevronRight className="h-4 w-4" />
+												<ChevronRight aria-hidden="true" className="h-4 w-4" />
 											</Button>
 										</div>
 									</div>

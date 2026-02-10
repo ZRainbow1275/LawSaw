@@ -4,7 +4,10 @@ use law_eye_core::{ArticleService, CategoryService, RagService};
 use serde::Serialize;
 use serde_json::{json, Value};
 use sqlx::PgPool;
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -23,15 +26,19 @@ pub struct McpServer {
     article_service: Arc<ArticleService>,
     category_service: Arc<CategoryService>,
     rag_service: Arc<RagService>,
+    required_auth_token: String,
+    initialized_authenticated: AtomicBool,
 }
 
 impl McpServer {
-    pub fn new(pool: PgPool, gateway: Arc<LlmGateway>) -> Self {
+    pub fn new(pool: PgPool, gateway: Arc<LlmGateway>, required_auth_token: String) -> Self {
         Self {
             pool: pool.clone(),
             article_service: Arc::new(ArticleService::new(pool.clone())),
             category_service: Arc::new(CategoryService::new(pool.clone())),
             rag_service: Arc::new(RagService::new(pool, gateway)),
+            required_auth_token,
+            initialized_authenticated: AtomicBool::new(false),
         }
     }
 
@@ -44,11 +51,62 @@ impl McpServer {
         Ok(row.0)
     }
 
+    fn token_is_valid(&self, provided: Option<&str>) -> bool {
+        provided.is_some_and(|token| token == self.required_auth_token)
+    }
+
+    fn extract_auth_token(top_level: Option<&str>, params: Option<&Value>) -> Option<String> {
+        let top_level = top_level
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        if top_level.is_some() {
+            return top_level;
+        }
+
+        params
+            .and_then(|value| value.as_object())
+            .and_then(|map| {
+                map.get("auth_token")
+                    .or_else(|| map.get("authToken"))
+                    .and_then(|value| value.as_str())
+            })
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    }
+
     pub async fn handle_request(&self, request: JsonRpcRequest) -> JsonRpcResponse {
+        let provided_token =
+            Self::extract_auth_token(request.auth_token.as_deref(), request.params.as_ref());
+
+        if request.method == "initialize" {
+            if !self.token_is_valid(provided_token.as_deref()) {
+                return JsonRpcResponse::error(
+                    request.id,
+                    -32001,
+                    "Unauthorized: invalid auth token",
+                );
+            }
+            self.initialized_authenticated.store(true, Ordering::SeqCst);
+            return self.handle_initialize(request.id);
+        }
+
+        if !self.initialized_authenticated.load(Ordering::SeqCst) {
+            return JsonRpcResponse::error(
+                request.id,
+                -32001,
+                "Unauthorized: call initialize with auth_token first",
+            );
+        }
+
+        if provided_token.is_some() && !self.token_is_valid(provided_token.as_deref()) {
+            return JsonRpcResponse::error(request.id, -32001, "Unauthorized: invalid auth token");
+        }
+
         info!("Handling MCP request: {}", request.method);
 
         match request.method.as_str() {
-            "initialize" => self.handle_initialize(request.id),
             "initialized" => JsonRpcResponse::success(request.id, json!({})),
             "tools/list" => self.handle_list_tools(request.id),
             "tools/call" => self.handle_call_tool(request.id, request.params).await,

@@ -211,7 +211,7 @@ export default function AnalyticsPage() {
 								<CardContent className="p-4">
 									<div className="flex items-center gap-3">
 										<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-100">
-											<FileText className="h-5 w-5 text-primary-600" />
+											<FileText aria-hidden="true" className="h-5 w-5 text-primary-600" />
 										</div>
 										<div>
 											<p className="text-2xl font-bold">
@@ -228,7 +228,7 @@ export default function AnalyticsPage() {
 								<CardContent className="p-4">
 									<div className="flex items-center gap-3">
 										<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success-light">
-											<Rss className="h-5 w-5 text-success" />
+											<Rss aria-hidden="true" className="h-5 w-5 text-success" />
 										</div>
 										<div>
 											<p className="text-2xl font-bold">
@@ -245,7 +245,7 @@ export default function AnalyticsPage() {
 								<CardContent className="p-4">
 									<div className="flex items-center gap-3">
 										<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
-											<Activity className="h-5 w-5 text-warning" />
+											<Activity aria-hidden="true" className="h-5 w-5 text-warning" />
 										</div>
 										<div>
 											<p className="text-2xl font-bold">
@@ -262,7 +262,7 @@ export default function AnalyticsPage() {
 								<CardContent className="p-4">
 									<div className="flex items-center gap-3">
 										<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
-											<AlertTriangle className="h-5 w-5 text-destructive" />
+											<AlertTriangle aria-hidden="true" className="h-5 w-5 text-destructive" />
 										</div>
 										<div>
 											<p className="text-2xl font-bold">
@@ -303,7 +303,7 @@ export default function AnalyticsPage() {
 							<Card>
 								<CardHeader>
 									<CardTitle className="flex items-center gap-2">
-										<PieChart className="h-5 w-5 text-primary-500" />
+										<PieChart aria-hidden="true" className="h-5 w-5 text-primary-500" />
 										{t("Risk distribution")}
 									</CardTitle>
 								</CardHeader>
@@ -343,7 +343,7 @@ export default function AnalyticsPage() {
 							<Card>
 								<CardHeader>
 									<CardTitle className="flex items-center gap-2">
-										<BarChart3 className="h-5 w-5 text-primary-500" />
+										<BarChart3 aria-hidden="true" className="h-5 w-5 text-primary-500" />
 										{t("Sentiment analysis")}
 									</CardTitle>
 								</CardHeader>
@@ -383,7 +383,7 @@ export default function AnalyticsPage() {
 							<Card>
 								<CardHeader>
 									<CardTitle className="flex items-center gap-2">
-										<CheckCircle className="h-5 w-5 text-primary-500" />
+										<CheckCircle aria-hidden="true" className="h-5 w-5 text-primary-500" />
 										{t("Article status")}
 									</CardTitle>
 								</CardHeader>
@@ -410,7 +410,7 @@ export default function AnalyticsPage() {
 							<Card>
 								<CardHeader>
 									<CardTitle className="flex items-center gap-2">
-										<TrendingUp className="h-5 w-5 text-primary-500" />
+										<TrendingUp aria-hidden="true" className="h-5 w-5 text-primary-500" />
 										{t("Last 7 days trend")}
 									</CardTitle>
 								</CardHeader>
@@ -479,7 +479,7 @@ export default function AnalyticsPage() {
 						<Card className="mt-6">
 							<CardHeader>
 								<CardTitle className="flex items-center gap-2">
-									<BarChart3 className="h-5 w-5 text-primary-500" />
+									<BarChart3 aria-hidden="true" className="h-5 w-5 text-primary-500" />
 									{t("Category statistics")}
 								</CardTitle>
 							</CardHeader>
@@ -534,7 +534,7 @@ export default function AnalyticsPage() {
 										) : null}
 										{uncategorizedCount > 0 && (
 											<div className="flex flex-col items-center rounded-lg border border-neutral-100 p-4 text-center">
-												<FileText className="h-6 w-6 text-neutral-500" />
+												<FileText aria-hidden="true" className="h-6 w-6 text-neutral-500" />
 												<span className="mt-2 text-sm font-medium">
 													{t("Uncategorized")}
 												</span>
@@ -557,7 +557,7 @@ export default function AnalyticsPage() {
 															className={`h-6 w-6 ${iconInfo.color}`}
 														/>
 													) : (
-														<BarChart3 className="h-6 w-6 text-neutral-400" />
+														<BarChart3 aria-hidden="true" className="h-6 w-6 text-neutral-400" />
 													)}
 													<span className="mt-2 text-sm font-medium">
 														{category.name}

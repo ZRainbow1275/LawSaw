@@ -14,14 +14,28 @@ const DONE_TTL_SECS: u64 = 60 * 60 * 24 * 7;
 const RESERVE_POLL_INTERVAL_MS: u64 = 200;
 const PROCESS_DELAYED_MAX_BATCH: u32 = 500;
 
+const DEFAULT_REDIS_POOL_WAIT_TIMEOUT_MS: u64 = 2_000;
+const DEFAULT_REDIS_POOL_CREATE_TIMEOUT_MS: u64 = 2_000;
+const DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS: u64 = 2_000;
+
+fn redis_timeout_env_ms(name: &str, default: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default)
+}
+
 // Atomic reserve: move from <queue> to <queue:processing> and track in <queue:inflight> with a timestamp.
+// Uses FIFO semantics (LPOP from main queue).
 const LUA_RESERVE_RETRYABLE_ATOMIC: &str = r#"
 local src = KEYS[1]
 local dst = KEYS[2]
 local inflight = KEYS[3]
 local now = ARGV[1]
-local payload = redis.call('RPOPLPUSH', src, dst)
+local payload = redis.call('LPOP', src)
 if payload then
+  redis.call('RPUSH', dst, payload)
   redis.call('ZADD', inflight, now, payload)
 end
 return payload
@@ -41,6 +55,61 @@ end
 return #tasks
 "#;
 
+// Ordered processing gate: allow exactly one in-flight task per ordering key and enforce
+// monotonically increasing ordering_seq when provided.
+const LUA_ORDERING_ACQUIRE: &str = r#"
+local lock_key = KEYS[1]
+local expected_key = KEYS[2]
+local owner = ARGV[1]
+local ttl_ms = tonumber(ARGV[2])
+local seq = tonumber(ARGV[3])
+
+local expected = tonumber(redis.call('GET', expected_key) or '1')
+
+if seq and seq > 0 then
+  if seq < expected then
+    return -1
+  end
+  if seq > expected then
+    return 0
+  end
+end
+
+local acquired = redis.call('SET', lock_key, owner, 'NX', 'PX', ttl_ms)
+if acquired then
+  return 1
+end
+
+local current_owner = redis.call('GET', lock_key)
+if current_owner == owner then
+  redis.call('PEXPIRE', lock_key, ttl_ms)
+  return 1
+end
+
+return 0
+"#;
+
+const LUA_ORDERING_RELEASE: &str = r#"
+local lock_key = KEYS[1]
+local expected_key = KEYS[2]
+local owner = ARGV[1]
+local advance = ARGV[2] == '1'
+local seq = tonumber(ARGV[3])
+
+if redis.call('GET', lock_key) == owner then
+  redis.call('DEL', lock_key)
+end
+
+if advance and seq and seq > 0 then
+  local expected = tonumber(redis.call('GET', expected_key) or '1')
+  if seq >= expected then
+    redis.call('SET', expected_key, seq + 1)
+  end
+end
+
+return 1
+"#;
+
 #[derive(Clone)]
 pub struct TaskQueue {
     pool: Pool,
@@ -55,6 +124,10 @@ pub struct RetryableTask<T> {
     pub max_retries: u32,
     pub created_at: i64,
     pub last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ordering_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ordering_seq: Option<i64>,
 }
 
 impl<T> RetryableTask<T> {
@@ -66,6 +139,8 @@ impl<T> RetryableTask<T> {
             max_retries: DEFAULT_MAX_RETRIES,
             created_at: chrono::Utc::now().timestamp(),
             last_error: None,
+            ordering_key: None,
+            ordering_seq: None,
         }
     }
 
@@ -84,9 +159,47 @@ pub struct ReservedTask<T> {
     pub task: RetryableTask<T>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrderedTaskGate {
+    Unordered,
+    Acquired,
+    Blocked,
+    Stale,
+}
+
 impl TaskQueue {
     pub fn new(redis_url: &str) -> Result<Self> {
-        let config = Config::from_url(redis_url);
+        Self::new_with_pool_timeouts(
+            redis_url,
+            redis_timeout_env_ms(
+                "LAW_EYE__REDIS__POOL_WAIT_TIMEOUT_MS",
+                DEFAULT_REDIS_POOL_WAIT_TIMEOUT_MS,
+            ),
+            redis_timeout_env_ms(
+                "LAW_EYE__REDIS__POOL_CREATE_TIMEOUT_MS",
+                DEFAULT_REDIS_POOL_CREATE_TIMEOUT_MS,
+            ),
+            redis_timeout_env_ms(
+                "LAW_EYE__REDIS__POOL_RECYCLE_TIMEOUT_MS",
+                DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS,
+            ),
+        )
+    }
+
+    pub fn new_with_pool_timeouts(
+        redis_url: &str,
+        pool_wait_timeout_ms: u64,
+        pool_create_timeout_ms: u64,
+        pool_recycle_timeout_ms: u64,
+    ) -> Result<Self> {
+        let mut config = Config::from_url(redis_url);
+
+        let mut pool_config = config.pool.unwrap_or_default();
+        pool_config.timeouts.wait = Some(Duration::from_millis(pool_wait_timeout_ms));
+        pool_config.timeouts.create = Some(Duration::from_millis(pool_create_timeout_ms));
+        pool_config.timeouts.recycle = Some(Duration::from_millis(pool_recycle_timeout_ms));
+        config.pool = Some(pool_config);
+
         let pool = config
             .create_pool(Some(Runtime::Tokio1))
             .map_err(|e| Error::Internal(e.to_string()))?;
@@ -117,7 +230,10 @@ impl TaskQueue {
 
         let payload = serde_json::to_string(task).map_err(|e| Error::Internal(e.to_string()))?;
 
-        conn.rpush::<_, _, ()>(queue, &payload)
+        redis::pipe()
+            .atomic()
+            .rpush(queue, &payload)
+            .query_async::<()>(&mut conn)
             .await
             .map_err(|e| Error::Internal(e.to_string()))?;
 
@@ -127,6 +243,21 @@ impl TaskQueue {
 
     pub async fn enqueue_retryable<T: Serialize>(&self, queue: &str, task: T) -> Result<()> {
         let retryable = RetryableTask::new(task);
+        self.enqueue(queue, &retryable).await
+    }
+
+    pub async fn enqueue_retryable_with_ordering<T: Serialize>(
+        &self,
+        queue: &str,
+        task: T,
+        ordering_key: Option<String>,
+        ordering_seq: Option<i64>,
+    ) -> Result<()> {
+        let mut retryable = RetryableTask::new(task);
+        retryable.ordering_key = ordering_key
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        retryable.ordering_seq = ordering_seq.filter(|value| *value > 0);
         self.enqueue(queue, &retryable).await
     }
 
@@ -261,6 +392,111 @@ impl TaskQueue {
         conn.zrem::<_, _, ()>(&inflight_queue, raw_payload)
             .await
             .map_err(|e| Error::Internal(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn release_reserved_back_to_queue(&self, queue: &str, raw_payload: &str) -> Result<()> {
+        let processing_queue = format!("{}:processing", queue);
+        let inflight_queue = format!("{}:inflight", queue);
+
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+
+        conn.lrem::<_, _, ()>(&processing_queue, 1, raw_payload)
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+        conn.zrem::<_, _, ()>(&inflight_queue, raw_payload)
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+        conn.lpush::<_, _, ()>(queue, raw_payload)
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn try_acquire_ordering_gate(
+        &self,
+        queue: &str,
+        task_id: uuid::Uuid,
+        ordering_key: Option<&str>,
+        ordering_seq: Option<i64>,
+        visibility_timeout_ms: i64,
+    ) -> Result<OrderedTaskGate> {
+        let ordering_key = ordering_key
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let Some(ordering_key) = ordering_key else {
+            return Ok(OrderedTaskGate::Unordered);
+        };
+
+        let lock_key = format!("{}:ordering:{}:lock", queue, ordering_key);
+        let expected_key = format!("{}:ordering:{}:expected", queue, ordering_key);
+        let ttl_ms = visibility_timeout_ms.max(1_000);
+
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+
+        let script = redis::Script::new(LUA_ORDERING_ACQUIRE);
+        let code: i64 = script
+            .key(&lock_key)
+            .key(&expected_key)
+            .arg(task_id.to_string())
+            .arg(ttl_ms)
+            .arg(ordering_seq.unwrap_or(0))
+            .invoke_async(&mut conn)
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+
+        let status = match code {
+            1 => OrderedTaskGate::Acquired,
+            0 => OrderedTaskGate::Blocked,
+            -1 => OrderedTaskGate::Stale,
+            _ => OrderedTaskGate::Blocked,
+        };
+        Ok(status)
+    }
+
+    pub async fn release_ordering_gate(
+        &self,
+        queue: &str,
+        task_id: uuid::Uuid,
+        ordering_key: Option<&str>,
+        ordering_seq: Option<i64>,
+        advance_expected: bool,
+    ) -> Result<()> {
+        let ordering_key = ordering_key
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let Some(ordering_key) = ordering_key else {
+            return Ok(());
+        };
+
+        let lock_key = format!("{}:ordering:{}:lock", queue, ordering_key);
+        let expected_key = format!("{}:ordering:{}:expected", queue, ordering_key);
+
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+
+        let script = redis::Script::new(LUA_ORDERING_RELEASE);
+        script
+            .key(&lock_key)
+            .key(&expected_key)
+            .arg(task_id.to_string())
+            .arg(if advance_expected { "1" } else { "0" })
+            .arg(ordering_seq.unwrap_or(0))
+            .invoke_async::<()>(&mut conn)
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+
         Ok(())
     }
 
@@ -603,6 +839,17 @@ pub struct PushTask {
     pub article_ids: Vec<uuid::Uuid>,
     pub channel: String,
     pub webhook_url: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct WebhookDeliveryTask {
+    #[serde(default)]
+    pub tenant_id: uuid::Uuid,
+    pub endpoint_id: uuid::Uuid,
+    pub event_id: uuid::Uuid,
+    pub event_type: String,
+    pub occurred_at: i64,
+    pub payload: serde_json::Value,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

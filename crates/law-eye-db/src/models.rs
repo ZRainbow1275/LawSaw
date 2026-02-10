@@ -148,6 +148,7 @@ pub struct UpdateUser {
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Role {
     pub id: Uuid,
+    pub tenant_id: Uuid,
     pub name: String,
     pub permissions: serde_json::Value,
     pub description: Option<String>,
@@ -156,6 +157,7 @@ pub struct Role {
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct UserRole {
+    pub tenant_id: Uuid,
     pub user_id: Uuid,
     pub role_id: Uuid,
     pub granted_at: DateTime<Utc>,
@@ -186,6 +188,57 @@ pub struct EmailVerificationToken {
     pub token_prefix: String,
     pub requested_ip: Option<String>,
     pub requested_user_agent: Option<String>,
+    pub expires_at: DateTime<Utc>,
+    pub used_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct OAuthIdentity {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+    pub provider: String,
+    pub provider_user_id: String,
+    pub provider_email: String,
+    pub linked_at: DateTime<Utc>,
+    pub last_login_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct OAuthStateToken {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub provider: String,
+    pub state_hash: String,
+    pub state_prefix: String,
+    pub expires_at: DateTime<Utc>,
+    pub used_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct UserMfaTotp {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+    pub issuer: String,
+    pub secret_ciphertext: String,
+    pub enabled: bool,
+    pub verified_at: Option<DateTime<Utc>>,
+    pub last_used_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct MfaLoginChallenge {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+    pub challenge_hash: String,
+    pub challenge_prefix: String,
     pub expires_at: DateTime<Utc>,
     pub used_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
@@ -245,6 +298,35 @@ pub struct CreateAuditLog {
     pub new_value: Option<serde_json::Value>,
     pub ip_address: Option<String>,
     pub user_agent: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct DomainEvent {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub aggregate_type: String,
+    pub aggregate_id: Uuid,
+    pub aggregate_version: i64,
+    pub event_type: String,
+    pub event_version: i32,
+    pub dedupe_key: String,
+    pub payload: serde_json::Value,
+    pub metadata: serde_json::Value,
+    pub occurred_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateDomainEvent {
+    pub aggregate_type: String,
+    pub aggregate_id: Uuid,
+    pub aggregate_version: i64,
+    pub event_type: String,
+    pub event_version: i32,
+    pub dedupe_key: String,
+    pub payload: serde_json::Value,
+    pub metadata: serde_json::Value,
+    pub occurred_at: Option<DateTime<Utc>>,
 }
 
 // ========== Object Storage Models ==========

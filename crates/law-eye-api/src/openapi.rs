@@ -30,8 +30,15 @@ impl Modify for SecurityAddon {
     ),
     paths(
         crate::routes::health::health_check,
+        crate::routes::health::slow_queries,
         crate::routes::auth::register,
         crate::routes::auth::login,
+        crate::routes::auth::oauth_start,
+        crate::routes::auth::oauth_callback,
+        crate::routes::auth::mfa_totp_setup,
+        crate::routes::auth::mfa_totp_confirm,
+        crate::routes::auth::mfa_totp_disable,
+        crate::routes::auth::mfa_verify,
         crate::routes::auth::request_email_verification,
         crate::routes::auth::confirm_email_verification,
         crate::routes::auth::request_password_reset,
@@ -73,9 +80,15 @@ impl Modify for SecurityAddon {
         crate::routes::push::test_push,
         crate::routes::users::list_users,
         crate::routes::users::get_user,
+        crate::routes::users::list_permission_audits,
         crate::routes::users::update_user,
         crate::routes::users::upload_user_avatar,
         crate::routes::users::update_user_roles,
+        crate::routes::webhooks::list_webhooks,
+        crate::routes::webhooks::create_webhook,
+        crate::routes::webhooks::update_webhook,
+        crate::routes::webhooks::delete_webhook,
+        crate::routes::webhooks::test_webhook,
         crate::routes::objects::get_object,
         crate::routes::apikeys::list_keys,
         crate::routes::apikeys::create_key,
@@ -104,6 +117,7 @@ impl Modify for SecurityAddon {
         (name = "ai", description = "AI"),
         (name = "push", description = "Web Push notifications"),
         (name = "users", description = "Users"),
+        (name = "webhooks", description = "Webhook endpoints"),
         (name = "objects", description = "Object storage"),
         (name = "apikeys", description = "API keys"),
         (name = "knowledge", description = "Knowledge graph")
@@ -131,7 +145,17 @@ mod tests {
             "OpenAPI must declare components.securitySchemes.session"
         );
 
-        for required_path in ["/api/v1/auth/login", "/api/v1/articles", "/api/v1/search"] {
+        for required_path in [
+            "/api/v1/auth/login",
+            "/api/v1/auth/oauth/start",
+            "/api/v1/auth/oauth/callback",
+            "/api/v1/auth/mfa/totp/setup",
+            "/api/v1/auth/mfa/totp/confirm",
+            "/api/v1/auth/mfa/totp/disable",
+            "/api/v1/auth/mfa/verify",
+            "/api/v1/articles",
+            "/api/v1/search",
+        ] {
             let pointer = format!("/paths/{}", ptr_escape(required_path));
             assert!(
                 value.pointer(&pointer).is_some(),

@@ -296,6 +296,16 @@ impl SourceService {
             r#"
             INSERT INTO sources (name, url, type, config, schedule, priority)
             VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (tenant_id, url) WHERE deleted_at IS NULL
+            DO UPDATE SET
+                name = EXCLUDED.name,
+                type = EXCLUDED.type,
+                config = EXCLUDED.config,
+                schedule = EXCLUDED.schedule,
+                priority = EXCLUDED.priority,
+                is_active = true,
+                deleted_at = NULL,
+                updated_at = NOW()
             RETURNING *
             "#,
         )

@@ -62,6 +62,9 @@ export type ApiRetryOptions = {
 export type ApiRequestInit = Omit<RequestInit, "headers"> & {
 	headers?: HeadersInit;
 	retry?: ApiRetryOptions | false;
+	// Only applies to retryable methods (GET/HEAD/OPTIONS).
+	// Defaults to true unless a custom signal is provided.
+	dedupe?: boolean;
 };
 
 export function getApiBaseUrl(): string {
@@ -229,6 +232,7 @@ export class ApiClient {
 	private baseUrl: string;
 	private timeoutMs: number | null;
 	private errorHandler: ApiClientErrorHandler | null = null;
+	private inflightRequests = new Map<string, Promise<unknown>>();
 
 	constructor(
 		baseUrl: string = API_BASE_URL,
@@ -249,6 +253,20 @@ export class ApiClient {
 			console.warn("[api] error handler threw", err);
 			// Never let a global hook break request error semantics.
 		}
+	}
+
+	private buildDedupeKey(method: string, endpoint: string): string {
+		return `${method}:${endpoint}`;
+	}
+
+	private shouldDedupeRequest(
+		method: string,
+		options: ApiRequestInit,
+	): boolean {
+		if (!isRetryableMethod(method)) return false;
+		if (options.dedupe === false) return false;
+		if (options.signal) return false;
+		return true;
 	}
 
 	private async requestOnce<T>(
@@ -445,57 +463,78 @@ export class ApiClient {
 		options: ApiRequestInit = {},
 		validate?: ResponseValidator<T>,
 	): Promise<T> {
-		const { retry, ...fetchOptions } = options;
+		const { retry, dedupe: _dedupe, ...fetchOptions } = options;
 		const method = (fetchOptions.method ?? "GET").toUpperCase();
 		const resolvedRetry = isRetryableMethod(method)
 			? resolvedRetryOptions(retry)
 			: null;
+		const shouldDedupe = this.shouldDedupeRequest(method, options);
+		const dedupeKey = this.buildDedupeKey(method, endpoint);
 
-		let attempt = 0;
-
-		while (true) {
-			try {
-				return await this.requestOnce<T>(endpoint, fetchOptions, validate);
-			} catch (cause) {
-				if (!(cause instanceof ApiClientError)) throw cause;
-
-				// Explicit abort from caller should not emit global error hooks or retry.
-				if (cause.code === "CLIENT_ABORTED") {
-					throw cause;
-				}
-
-				if (!resolvedRetry || attempt >= resolvedRetry.retries) {
-					this.emitError(cause);
-					throw cause;
-				}
-
-				if (!isRetryableError(cause)) {
-					this.emitError(cause);
-					throw cause;
-				}
-
-				if (fetchOptions.signal?.aborted) {
-					throw new ApiClientError("Request aborted", {
-						status: 0,
-						code: "CLIENT_ABORTED",
-						endpoint,
-						requestId: null,
-						details: null,
-						cause: fetchOptions.signal.reason,
-					});
-				}
-
-				const retryAfter = retryAfterSeconds(cause.details);
-				const delayMs = retryAfter
-					? Math.min(retryAfter * 1000, resolvedRetry.maxDelayMs)
-					: computeRetryDelayMs(attempt, resolvedRetry);
-
-				attempt += 1;
-				if (delayMs > 0) {
-					await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
-				}
+		if (shouldDedupe) {
+			const inflight = this.inflightRequests.get(dedupeKey);
+			if (inflight) {
+				return inflight as Promise<T>;
 			}
 		}
+
+		const requestPromise = (async (): Promise<T> => {
+			let attempt = 0;
+
+			while (true) {
+				try {
+					return await this.requestOnce<T>(endpoint, fetchOptions, validate);
+				} catch (cause) {
+					if (!(cause instanceof ApiClientError)) throw cause;
+
+					// Explicit abort from caller should not emit global error hooks or retry.
+					if (cause.code === "CLIENT_ABORTED") {
+						throw cause;
+					}
+
+					if (!resolvedRetry || attempt >= resolvedRetry.retries) {
+						this.emitError(cause);
+						throw cause;
+					}
+
+					if (!isRetryableError(cause)) {
+						this.emitError(cause);
+						throw cause;
+					}
+
+					if (fetchOptions.signal?.aborted) {
+						throw new ApiClientError("Request aborted", {
+							status: 0,
+							code: "CLIENT_ABORTED",
+							endpoint,
+							requestId: null,
+							details: null,
+							cause: fetchOptions.signal.reason,
+						});
+					}
+
+					const retryAfter = retryAfterSeconds(cause.details);
+					const delayMs = retryAfter
+						? Math.min(retryAfter * 1000, resolvedRetry.maxDelayMs)
+						: computeRetryDelayMs(attempt, resolvedRetry);
+
+					attempt += 1;
+					if (delayMs > 0) {
+						await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+					}
+				}
+			}
+		})();
+
+		if (!shouldDedupe) {
+			return requestPromise;
+		}
+
+		const trackedPromise = requestPromise.finally(() => {
+			this.inflightRequests.delete(dedupeKey);
+		});
+		this.inflightRequests.set(dedupeKey, trackedPromise as Promise<unknown>);
+		return trackedPromise;
 	}
 
 	async get<T>(

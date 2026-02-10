@@ -310,7 +310,7 @@ export default function FeedbackPage() {
 									animate={{ rotate: [0, 10, -10, 0] }}
 									transition={{ duration: 2, repeat: Number.POSITIVE_INFINITY }}
 								>
-									<Sparkles className="h-5 w-5 text-primary-400" />
+									<Sparkles aria-hidden="true" className="h-5 w-5 text-primary-400" />
 								</motion.div>
 							</div>
 							<p className="mt-1 text-sm text-neutral-500">
@@ -329,7 +329,7 @@ export default function FeedbackPage() {
 												whileHover={{ scale: 1.1, rotate: 10 }}
 												className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-100"
 											>
-												<MessageSquarePlus className="h-4 w-4 text-primary-600" />
+												<MessageSquarePlus aria-hidden="true" className="h-4 w-4 text-primary-600" />
 											</motion.div>
 											{t("Submit feedback")}
 										</CardTitle>
@@ -358,7 +358,7 @@ export default function FeedbackPage() {
 															animate={{ scale: 1 }}
 															transition={{ delay: 0.3 }}
 														>
-															<CheckCircle2 className="h-10 w-10 text-green-600" />
+															<CheckCircle2 aria-hidden="true" className="h-10 w-10 text-green-600" />
 														</motion.div>
 													</motion.div>
 													<motion.h3
@@ -626,12 +626,12 @@ export default function FeedbackPage() {
 																	>
 																		{createFeedback.isPending ? (
 																			<>
-																				<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+																				<Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
 																				{t("Submitting...")}
 																			</>
 																		) : (
 																			<>
-																				<Send className="mr-2 h-4 w-4" />
+																				<Send aria-hidden="true" className="mr-2 h-4 w-4" />
 																				{t("Submit feedback")}
 																			</>
 																		)}
@@ -686,7 +686,7 @@ export default function FeedbackPage() {
 														repeat: Number.POSITIVE_INFINITY,
 													}}
 												>
-													<MessageSquarePlus className="mx-auto h-12 w-12 text-neutral-200" />
+													<MessageSquarePlus aria-hidden="true" className="mx-auto h-12 w-12 text-neutral-200" />
 												</motion.div>
 												<p className="mt-3 text-sm text-neutral-500">
 													{t("No feedback yet")}
@@ -716,7 +716,7 @@ export default function FeedbackPage() {
 																<Badge
 																	className={`ml-2 shrink-0 ${status.color}`}
 																>
-																	<StatusIcon className="mr-1 h-3 w-3" />
+																	<StatusIcon aria-hidden="true" className="mr-1 h-3 w-3" />
 																	{t(status.labelKey)}
 																</Badge>
 															</div>

@@ -42,7 +42,7 @@ export function EntityInspector({
 			<div className="border-b border-neutral-100 p-4">
 				<div className="flex items-center gap-2">
 					<div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-100 text-neutral-700">
-						<PanelRight className="h-4 w-4" />
+						<PanelRight aria-hidden="true" className="h-4 w-4" />
 					</div>
 					<div className="min-w-0">
 						<div className="text-sm font-semibold text-neutral-900">
@@ -60,7 +60,7 @@ export function EntityInspector({
 					<div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-5 text-sm text-neutral-700">
 						<div className="flex items-start gap-3">
 							<div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-neutral-600 shadow-sm">
-								<Sparkles className="h-5 w-5" />
+								<Sparkles aria-hidden="true" className="h-5 w-5" />
 							</div>
 							<div className="min-w-0">
 								<div className="font-semibold text-neutral-900">
@@ -76,7 +76,7 @@ export function EntityInspector({
 					</div>
 				) : entityQuery.isLoading ? (
 					<div className="flex items-center justify-center py-10 text-sm text-neutral-600">
-						<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+						<Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
 						{t("Loading entity...")}
 					</div>
 				) : entityQuery.isError ? (
@@ -133,7 +133,7 @@ export function EntityInspector({
 
 							{articlesQuery.isLoading ? (
 								<div className="mt-2 flex items-center text-sm text-neutral-600">
-									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+									<Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
 									{t("Loading...")}
 								</div>
 							) : articlesQuery.isError ? (
@@ -153,7 +153,7 @@ export function EntityInspector({
 										>
 											<div className="min-w-0">
 												<div className="flex items-center gap-2">
-													<FileText className="h-4 w-4 shrink-0 text-neutral-400" />
+													<FileText aria-hidden="true" className="h-4 w-4 shrink-0 text-neutral-400" />
 													<Link
 														href={withLocalePath(
 															locale,
@@ -186,7 +186,7 @@ export function EntityInspector({
 													"shrink-0",
 												)}
 											>
-												<ExternalLink className="h-4 w-4" />
+												<ExternalLink aria-hidden="true" className="h-4 w-4" />
 											</Link>
 										</div>
 									))}

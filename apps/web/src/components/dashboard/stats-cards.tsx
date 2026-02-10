@@ -118,7 +118,7 @@ function StatCard({ stat, index }: { stat: StatConfig; index: number }) {
 								colors.text,
 							)}
 						>
-							<Icon className="h-6 w-6" />
+							<Icon aria-hidden="true" className="h-6 w-6" />
 						</motion.div>
 					</div>
 				</CardContent>

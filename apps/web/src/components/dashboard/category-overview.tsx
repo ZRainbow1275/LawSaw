@@ -69,7 +69,7 @@ export function CategoryOverview() {
 			<Card className="lg:col-span-1">
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
-						<BarChart3 className="h-5 w-5 text-primary-500" />
+						<BarChart3 aria-hidden="true" className="h-5 w-5 text-primary-500" />
 						{t("Category overview")}
 					</CardTitle>
 				</CardHeader>
@@ -97,7 +97,7 @@ export function CategoryOverview() {
 			<Card className="lg:col-span-1">
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
-						<BarChart3 className="h-5 w-5 text-primary-500" />
+						<BarChart3 aria-hidden="true" className="h-5 w-5 text-primary-500" />
 						{t("Category overview")}
 					</CardTitle>
 					<CardDescription>{t("Load failed")}</CardDescription>
@@ -125,7 +125,7 @@ export function CategoryOverview() {
 		<Card className="lg:col-span-1">
 			<CardHeader>
 				<CardTitle className="flex items-center gap-2">
-					<BarChart3 className="h-5 w-5 text-primary-500" />
+					<BarChart3 aria-hidden="true" className="h-5 w-5 text-primary-500" />
 					{t("Category overview")}
 				</CardTitle>
 				<CardDescription>
@@ -165,7 +165,7 @@ export function CategoryOverview() {
 										"text-neutral-500 bg-neutral-50",
 									)}
 								>
-									<FileText className="h-4 w-4" />
+									<FileText aria-hidden="true" className="h-4 w-4" />
 								</div>
 								<span className="text-sm font-medium text-neutral-700">
 									{t("Uncategorized")}
@@ -195,7 +195,7 @@ export function CategoryOverview() {
 											iconConfig.style,
 										)}
 									>
-										<IconComponent className="h-4 w-4" />
+										<IconComponent aria-hidden="true" className="h-4 w-4" />
 									</div>
 									<span className="text-sm font-medium text-neutral-700">
 										{category.name}

@@ -33,6 +33,18 @@ max_connections = 10
 
 [redis]
 url = ""
+pool_wait_timeout_ms = 2000
+pool_create_timeout_ms = 2000
+pool_recycle_timeout_ms = 2000
+
+[rate_limit]
+# Redis key prefix for fixed-window rate limits.
+# Final key format: `<redis_prefix>:<scope>:<client_ip>`.
+redis_prefix = "law-eye:rate-limit"
+# Redis runtime failure policy:
+# - true  => fail-open (allow requests when Redis is unavailable)
+# - false => fail-closed (reject with HTTP 429 when Redis is unavailable)
+redis_fail_open = true
 
 [ai]
 api_key = ""
@@ -55,3 +67,10 @@ bucket = "law-eye"
 access_key_id = ""
 secret_access_key = ""
 force_path_style = true
+sse_enabled = true
+
+[config_reload]
+# Enable periodic hot reload for file/env configuration.
+enabled = false
+# Polling interval in seconds when hot reload is enabled.
+interval_seconds = 30

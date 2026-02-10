@@ -63,7 +63,7 @@ function ToolbarButton({
 			)}
 			title={label}
 		>
-			<Icon className="h-4 w-4" />
+			<Icon aria-hidden="true" className="h-4 w-4" />
 			<span className="hidden sm:inline">{label}</span>
 		</button>
 	);
@@ -305,7 +305,7 @@ export function SelectionToolbar({
 						className="p-1.5 text-neutral-400 hover:text-white transition-colors rounded-md hover:bg-neutral-700"
 						title={t("Close")}
 					>
-						<X className="h-4 w-4" />
+						<X aria-hidden="true" className="h-4 w-4" />
 					</button>
 				</motion.div>
 			)}

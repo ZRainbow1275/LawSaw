@@ -13,7 +13,8 @@ import {
 	useAskQuestion,
 	useSearch,
 } from "@/hooks/use-search";
-import { useT } from "@/lib/i18n-client";
+import { formatNumber } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n-client";
 import { useToast } from "@/stores/toast-store";
 import {
 	ArrowUpRight,
@@ -54,6 +55,7 @@ function SearchContent() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const t = useT();
+	const locale = useLocale();
 	const initialQuery = searchParams.get("q") || "";
 	const initialPageParam = searchParams.get("page");
 	const initialPageParsed = initialPageParam
@@ -216,7 +218,7 @@ function SearchContent() {
 			{/* Search Form */}
 			<form onSubmit={handleSearch} className="mb-6">
 				<div className="relative">
-					<Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-neutral-400" />
+					<Search aria-hidden="true" className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-neutral-400" />
 					<Input
 						type="search"
 						placeholder={t("Type keywords to search...")}
@@ -241,7 +243,7 @@ function SearchContent() {
 					size="sm"
 					onClick={() => setShowAI(false)}
 				>
-					<Search className="mr-2 h-4 w-4" />
+					<Search aria-hidden="true" className="mr-2 h-4 w-4" />
 					{t("Keyword search")}
 				</Button>
 				<Button
@@ -250,7 +252,7 @@ function SearchContent() {
 					disabled={aiDisabled}
 					onClick={() => setShowAI(true)}
 				>
-					<Sparkles className="mr-2 h-4 w-4" />
+					<Sparkles aria-hidden="true" className="mr-2 h-4 w-4" />
 					{t("AI Q&A")}
 				</Button>
 			</div>
@@ -279,7 +281,7 @@ function SearchContent() {
 				<Card>
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2">
-							<MessageCircle className="h-5 w-5 text-primary-500" />
+							<MessageCircle aria-hidden="true" className="h-5 w-5 text-primary-500" />
 							{t("AI Q&A")}
 						</CardTitle>
 					</CardHeader>
@@ -293,7 +295,7 @@ function SearchContent() {
 									className="flex-1"
 								/>
 								<Button type="submit" disabled={askMutation.isPending}>
-									<Send className="h-4 w-4" />
+									<Send aria-hidden="true" className="h-4 w-4" />
 								</Button>
 							</div>
 						</form>
@@ -312,7 +314,9 @@ function SearchContent() {
 									</p>
 									<p className="mt-2 text-xs text-neutral-500">
 										{t("Confidence: {value}%", {
-											value: (askMutation.data.confidence * 100).toFixed(0),
+											value: formatNumber(locale, askMutation.data.confidence * 100, {
+											maximumFractionDigits: 0,
+										}),
 										})}
 									</p>
 								</div>
@@ -346,7 +350,7 @@ function SearchContent() {
 				<Card>
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2">
-							<Search className="h-5 w-5 text-primary-500" />
+							<Search aria-hidden="true" className="h-5 w-5 text-primary-500" />
 							{t("Search results")}
 							{searchEnabled && searchData && !searchIsError && (
 								<Badge variant="outline">
@@ -413,7 +417,9 @@ function SearchContent() {
 											</p>
 											<p className="mt-2 text-xs text-neutral-400">
 												{t("Relevance: {value}%", {
-													value: (result.score * 100).toFixed(0),
+													value: formatNumber(locale, result.score * 100, {
+											maximumFractionDigits: 0,
+										}),
 												})}
 											</p>
 										</div>
@@ -427,7 +433,7 @@ function SearchContent() {
 													"opacity-0 transition-opacity group-hover:opacity-100",
 											})}
 										>
-											<ArrowUpRight className="h-4 w-4" />
+											<ArrowUpRight aria-hidden="true" className="h-4 w-4" />
 										</Link>
 									</div>
 								))}

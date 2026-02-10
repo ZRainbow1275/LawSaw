@@ -811,7 +811,7 @@ function SettingsContent() {
 																disabled={!avatarFile || uploadingAvatar}
 															>
 																{uploadingAvatar ? (
-																	<RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+																	<RefreshCw aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
 																) : null}
 																{t("Upload avatar")}
 															</Button>
@@ -873,9 +873,9 @@ function SettingsContent() {
 											<div className="flex justify-end">
 												<Button onClick={handleSave} disabled={saving}>
 													{saving ? (
-														<RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+														<RefreshCw aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
 													) : (
-														<Save className="mr-2 h-4 w-4" />
+														<Save aria-hidden="true" className="mr-2 h-4 w-4" />
 													)}
 													{t("Save changes")}
 												</Button>
@@ -1017,9 +1017,9 @@ function SettingsContent() {
 											<div className="flex justify-end">
 												<Button onClick={handleSave} disabled={saving}>
 													{saving ? (
-														<RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+														<RefreshCw aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
 													) : (
-														<Save className="mr-2 h-4 w-4" />
+														<Save aria-hidden="true" className="mr-2 h-4 w-4" />
 													)}
 													{t("Save settings")}
 												</Button>
@@ -1074,7 +1074,7 @@ function SettingsContent() {
 																	: "border-neutral-200 hover:bg-neutral-50"
 															}`}
 														>
-															<Icon className="h-5 w-5" />
+															<Icon aria-hidden="true" className="h-5 w-5" />
 															<span className="text-sm">{t(labelKey)}</span>
 														</button>
 													))}
@@ -1212,7 +1212,7 @@ function SettingsContent() {
 																}
 															}}
 														>
-															<Copy className="mr-2 h-4 w-4" />
+															<Copy aria-hidden="true" className="mr-2 h-4 w-4" />
 															{t("Copy")}
 														</Button>
 														<Button
@@ -1284,9 +1284,9 @@ function SettingsContent() {
 														disabled={createApiKeyMutation.isPending}
 													>
 														{createApiKeyMutation.isPending ? (
-															<RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+															<RefreshCw aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
 														) : (
-															<Key className="mr-2 h-4 w-4" />
+															<Key aria-hidden="true" className="mr-2 h-4 w-4" />
 														)}
 														{t("Create")}
 													</Button>
@@ -1306,8 +1306,7 @@ function SettingsContent() {
 														<RefreshCw
 															className={`mr-2 h-4 w-4 ${
 																apiKeysQuery.isFetching ? "animate-spin" : ""
-															}`}
-														/>
+															}`} aria-hidden="true" focusable="false" />
 														{t("Refresh")}
 													</Button>
 												</div>
@@ -1401,7 +1400,7 @@ function SettingsContent() {
 																		deleteApiKeyMutation.mutate(k.id);
 																	}}
 																>
-																	<Trash2 className="mr-2 h-4 w-4" />
+																	<Trash2 aria-hidden="true" className="mr-2 h-4 w-4" />
 																	{t("Delete")}
 																</Button>
 															</div>

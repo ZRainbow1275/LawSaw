@@ -72,9 +72,11 @@ if [ ! -s "${PGDATA}/PG_VERSION" ]; then
   echo "host all all ::/0 scram-sha-256" >> "${PGDATA}/pg_hba.conf"
 
   if [[ "${ENABLE_PG_TDE}" == "1" ]]; then
-    echo "shared_preload_libraries='pg_tde'" >> "${PGDATA}/postgresql.conf"
+    echo "shared_preload_libraries='pg_tde,pg_stat_statements'" >> "${PGDATA}/postgresql.conf"
     echo "default_table_access_method='tde_heap'" >> "${PGDATA}/postgresql.conf"
     echo "pg_tde.enforce_encryption='on'" >> "${PGDATA}/postgresql.conf"
+  else
+    echo "shared_preload_libraries='pg_stat_statements'" >> "${PGDATA}/postgresql.conf"
   fi
 
   "${BIN}/pg_ctl" -D "${PGDATA}" -o "-c listen_addresses='*'" -w start
@@ -108,6 +110,7 @@ SQL
   psql -v ON_ERROR_STOP=1 --username=postgres --dbname="${POSTGRES_DB}" -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'
   psql -v ON_ERROR_STOP=1 --username=postgres --dbname="${POSTGRES_DB}" -c 'CREATE EXTENSION IF NOT EXISTS pgcrypto;'
   psql -v ON_ERROR_STOP=1 --username=postgres --dbname="${POSTGRES_DB}" -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+  psql -v ON_ERROR_STOP=1 --username=postgres --dbname="${POSTGRES_DB}" -c 'CREATE EXTENSION IF NOT EXISTS pg_stat_statements;'
 
   if [[ "${ENABLE_PG_TDE}" == "1" ]]; then
     psql -v ON_ERROR_STOP=1 --username=postgres --dbname="${POSTGRES_DB}" -c 'CREATE EXTENSION IF NOT EXISTS pg_tde;'

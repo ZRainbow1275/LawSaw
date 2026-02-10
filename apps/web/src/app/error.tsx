@@ -30,7 +30,7 @@ export default function GlobalError({
 				<Card>
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2">
-							<AlertTriangle className="h-5 w-5 text-destructive" />
+							<AlertTriangle aria-hidden="true" className="h-5 w-5 text-destructive" />
 							{t("Something went wrong")}
 						</CardTitle>
 					</CardHeader>
@@ -63,7 +63,7 @@ export default function GlobalError({
 
 						<div className="flex flex-col gap-2 sm:flex-row">
 							<Button onClick={() => reset()}>
-								<RefreshCcw className="h-4 w-4" />
+								<RefreshCcw aria-hidden="true" className="h-4 w-4" />
 								{t("Retry")}
 							</Button>
 							<Link
@@ -73,7 +73,7 @@ export default function GlobalError({
 									className: "w-full sm:w-auto",
 								})}
 							>
-								<Home className="h-4 w-4" />
+								<Home aria-hidden="true" className="h-4 w-4" />
 								{t("Back to home")}
 							</Link>
 						</div>

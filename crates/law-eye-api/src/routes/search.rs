@@ -4,7 +4,12 @@ use axum::{
     Json, Router,
 };
 use chrono::{DateTime, Utc};
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::hash::Hash;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -35,7 +40,7 @@ fn default_limit() -> i64 {
     10
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct SearchResultItem {
     pub article_id: Uuid,
     pub title: String,
@@ -43,7 +48,7 @@ pub struct SearchResultItem {
     pub score: f64,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct SearchResponse {
     pub results: Vec<SearchResultItem>,
     pub total: i64,
@@ -61,7 +66,7 @@ pub struct SemanticSearchRequest {
     pub limit: i64,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct SemanticSearchResult {
     pub chunk_id: Uuid,
     pub article_id: Uuid,
@@ -69,7 +74,7 @@ pub struct SemanticSearchResult {
     pub similarity: f64,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct SemanticSearchResponse {
     pub results: Vec<SemanticSearchResult>,
 }
@@ -107,6 +112,187 @@ const ASK_MAX_TOP_K: i64 = 20;
 const KEYWORD_QUERY_MAX_CHARS: usize = 1024;
 const SEMANTIC_QUERY_MAX_CHARS: usize = 2048;
 const ASK_QUESTION_MAX_CHARS: usize = 4096;
+const KEYWORD_SEARCH_CACHE_CAPACITY: usize = 512;
+const SEMANTIC_SEARCH_CACHE_CAPACITY: usize = 256;
+const KEYWORD_SEARCH_CACHE_TTL: Duration = Duration::from_secs(30);
+const SEMANTIC_SEARCH_CACHE_TTL: Duration = Duration::from_secs(30);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct KeywordSearchCacheKey {
+    tenant_id: Uuid,
+    query: String,
+    limit: i64,
+    offset: i64,
+    cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct SemanticSearchCacheKey {
+    tenant_id: Uuid,
+    query: String,
+    limit: i64,
+}
+
+#[derive(Debug)]
+struct CacheEntry<V> {
+    value: V,
+    expires_at: Instant,
+    last_accessed: Instant,
+}
+
+#[derive(Debug)]
+struct TtlLruCache<K, V> {
+    entries: HashMap<K, CacheEntry<V>>,
+    capacity: usize,
+    ttl: Duration,
+}
+
+impl<K, V> TtlLruCache<K, V>
+where
+    K: Eq + Hash + Clone,
+    V: Clone,
+{
+    fn new(capacity: usize, ttl: Duration) -> Self {
+        Self {
+            entries: HashMap::with_capacity(capacity),
+            capacity,
+            ttl,
+        }
+    }
+
+    fn get(&mut self, key: &K) -> Option<V> {
+        let now = Instant::now();
+
+        let mut remove_expired = false;
+        let result = if let Some(entry) = self.entries.get_mut(key) {
+            if entry.expires_at > now {
+                entry.last_accessed = now;
+                Some(entry.value.clone())
+            } else {
+                remove_expired = true;
+                None
+            }
+        } else {
+            None
+        };
+
+        if remove_expired {
+            self.entries.remove(key);
+        }
+
+        result
+    }
+
+    fn insert(&mut self, key: K, value: V) {
+        if self.capacity == 0 {
+            return;
+        }
+
+        let now = Instant::now();
+        self.prune_expired(now);
+
+        if !self.entries.contains_key(&key) && self.entries.len() >= self.capacity {
+            self.evict_least_recently_used();
+        }
+
+        self.entries.insert(
+            key,
+            CacheEntry {
+                value,
+                expires_at: now + self.ttl,
+                last_accessed: now,
+            },
+        );
+    }
+
+    fn prune_expired(&mut self, now: Instant) {
+        self.entries.retain(|_, entry| entry.expires_at > now);
+    }
+
+    fn evict_least_recently_used(&mut self) {
+        if let Some(key) = self
+            .entries
+            .iter()
+            .min_by_key(|(_, entry)| entry.last_accessed)
+            .map(|(key, _)| key.clone())
+        {
+            self.entries.remove(&key);
+        }
+    }
+}
+
+static KEYWORD_SEARCH_CACHE: Lazy<Mutex<TtlLruCache<KeywordSearchCacheKey, SearchResponse>>> =
+    Lazy::new(|| {
+        Mutex::new(TtlLruCache::new(
+            KEYWORD_SEARCH_CACHE_CAPACITY,
+            KEYWORD_SEARCH_CACHE_TTL,
+        ))
+    });
+
+static SEMANTIC_SEARCH_CACHE: Lazy<
+    Mutex<TtlLruCache<SemanticSearchCacheKey, SemanticSearchResponse>>,
+> = Lazy::new(|| {
+    Mutex::new(TtlLruCache::new(
+        SEMANTIC_SEARCH_CACHE_CAPACITY,
+        SEMANTIC_SEARCH_CACHE_TTL,
+    ))
+});
+
+fn build_keyword_search_cache_key(
+    tenant_id: Uuid,
+    query: &str,
+    limit: i64,
+    offset: i64,
+    cursor: Option<&str>,
+) -> KeywordSearchCacheKey {
+    KeywordSearchCacheKey {
+        tenant_id,
+        query: query.to_owned(),
+        limit,
+        offset: if cursor.is_some() { 0 } else { offset },
+        cursor: cursor.map(str::to_owned),
+    }
+}
+
+fn build_semantic_search_cache_key(
+    tenant_id: Uuid,
+    query: &str,
+    limit: i64,
+) -> SemanticSearchCacheKey {
+    SemanticSearchCacheKey {
+        tenant_id,
+        query: query.to_owned(),
+        limit,
+    }
+}
+
+fn keyword_search_cache_get(key: &KeywordSearchCacheKey) -> Option<SearchResponse> {
+    KEYWORD_SEARCH_CACHE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(key)
+}
+
+fn keyword_search_cache_insert(key: KeywordSearchCacheKey, response: SearchResponse) {
+    KEYWORD_SEARCH_CACHE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(key, response);
+}
+
+fn semantic_search_cache_get(key: &SemanticSearchCacheKey) -> Option<SemanticSearchResponse> {
+    SEMANTIC_SEARCH_CACHE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(key)
+}
+
+fn semantic_search_cache_insert(key: SemanticSearchCacheKey, response: SemanticSearchResponse) {
+    SEMANTIC_SEARCH_CACHE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(key, response);
+}
 
 /// Full-text search
 #[utoipa::path(
@@ -147,7 +333,7 @@ pub(crate) async fn search(
 
     let can_read = state
         .user_service
-        .has_permission(user.id, "articles:read")
+        .has_permission(user.tenant_id, user.id, "articles:read")
         .await
         .map_err(AppError::from)?;
     if !can_read {
@@ -175,6 +361,13 @@ pub(crate) async fn search(
         .as_deref()
         .map(crate::pagination::decode_cursor::<SearchCursor>)
         .transpose()?;
+
+    let cache_key =
+        build_keyword_search_cache_key(user.tenant_id, q, limit, offset, query.cursor.as_deref());
+
+    if let Some(cached_response) = keyword_search_cache_get(&cache_key) {
+        return Ok(Json(cached_response));
+    }
 
     let mut next_cursor: Option<String> = None;
 
@@ -223,13 +416,17 @@ pub(crate) async fn search(
         })
         .collect();
 
-    Ok(Json(SearchResponse {
+    let response = SearchResponse {
         results,
         total,
         limit,
         offset: if query.cursor.is_some() { 0 } else { offset },
         next_cursor,
-    }))
+    };
+
+    keyword_search_cache_insert(cache_key, response.clone());
+
+    Ok(Json(response))
 }
 
 /// Semantic vector search
@@ -260,7 +457,7 @@ pub(crate) async fn semantic_search(
 
     let can_read = state
         .user_service
-        .has_permission(user.id, "articles:read")
+        .has_permission(user.tenant_id, user.id, "articles:read")
         .await
         .map_err(AppError::from)?;
     if !can_read {
@@ -283,13 +480,18 @@ pub(crate) async fn semantic_search(
 
     let limit = req.limit.clamp(1, SEMANTIC_SEARCH_MAX_LIMIT);
 
+    let cache_key = build_semantic_search_cache_key(user.tenant_id, query, limit);
+    if let Some(cached_response) = semantic_search_cache_get(&cache_key) {
+        return Ok(Json(cached_response));
+    }
+
     let results = state
         .rag_service
         .search(user.tenant_id, query, limit)
         .await
         .map_err(AppError::from)?;
 
-    Ok(Json(SemanticSearchResponse {
+    let response = SemanticSearchResponse {
         results: results
             .into_iter()
             .map(|r| SemanticSearchResult {
@@ -299,7 +501,11 @@ pub(crate) async fn semantic_search(
                 similarity: r.similarity,
             })
             .collect(),
-    }))
+    };
+
+    semantic_search_cache_insert(cache_key, response.clone());
+
+    Ok(Json(response))
 }
 
 /// RAG Q&A endpoint
@@ -330,7 +536,7 @@ pub(crate) async fn ask_question(
 
     let can_read = state
         .user_service
-        .has_permission(user.id, "articles:read")
+        .has_permission(user.tenant_id, user.id, "articles:read")
         .await
         .map_err(AppError::from)?;
     if !can_read {
@@ -373,4 +579,46 @@ pub(crate) async fn ask_question(
             .collect(),
         confidence: answer.confidence,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::thread;
+
+    #[test]
+    fn keyword_search_cache_key_includes_tenant() {
+        let query = "jurisdiction";
+        let key_a =
+            build_keyword_search_cache_key(Uuid::new_v4(), query, 10, 0, Some("cursor-token"));
+        let key_b =
+            build_keyword_search_cache_key(Uuid::new_v4(), query, 10, 999, Some("cursor-token"));
+
+        assert_ne!(key_a, key_b);
+    }
+
+    #[test]
+    fn ttl_cache_hits_then_expires() {
+        let mut cache = TtlLruCache::new(2, Duration::from_millis(10));
+        let key = "search-key".to_string();
+
+        cache.insert(key.clone(), 42_i32);
+        assert_eq!(cache.get(&key), Some(42));
+
+        thread::sleep(Duration::from_millis(20));
+        assert_eq!(cache.get(&key), None);
+    }
+
+    #[test]
+    fn cache_respects_capacity_limit() {
+        let mut cache = TtlLruCache::new(1, Duration::from_secs(1));
+        let key_a = "a".to_string();
+        let key_b = "b".to_string();
+
+        cache.insert(key_a.clone(), 1_i32);
+        cache.insert(key_b.clone(), 2_i32);
+
+        assert_eq!(cache.get(&key_a), None);
+        assert_eq!(cache.get(&key_b), Some(2));
+    }
 }

@@ -88,7 +88,7 @@ export function EmptyState({
 					config.iconBg,
 				)}
 			>
-				<Icon className={cn("h-8 w-8", config.iconColor)} />
+				<Icon aria-hidden="true" className={cn("h-8 w-8", config.iconColor)} />
 			</div>
 
 			{/* Title */}

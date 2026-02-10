@@ -36,6 +36,26 @@ impl CsrfLayer {
     fn is_safe_method(method: &Method) -> bool {
         matches!(method, &Method::GET | &Method::HEAD | &Method::OPTIONS)
     }
+
+    fn is_auth_path(path: &str) -> bool {
+        path == "/api/v1/auth" || path.starts_with("/api/v1/auth/")
+    }
+
+    fn should_enforce(req: &Request<Body>) -> bool {
+        if Self::is_safe_method(req.method()) {
+            return false;
+        }
+
+        let headers = req.headers();
+        let is_auth_path = Self::is_auth_path(req.uri().path());
+        let has_stateful_credentials = headers.contains_key(header::COOKIE);
+        let has_browser_context =
+            headers.contains_key(header::ORIGIN) || headers.contains_key(header::REFERER);
+
+        // CSRF protection only applies to browser-stateful writes
+        // (cookie + Origin/Referer) or any auth write path.
+        is_auth_path || (has_stateful_credentials && has_browser_context)
+    }
 }
 
 impl<S> Layer<S> for CsrfLayer {
@@ -73,18 +93,9 @@ where
         let mut inner = self.inner.clone();
 
         Box::pin(async move {
-            if CsrfLayer::is_safe_method(req.method()) {
-                return inner.call(req).await;
-            }
-
-            let path = req.uri().path();
-            let is_auth_path = path.starts_with("/api/v1/auth/");
-            let has_cookie = req.headers().contains_key(header::COOKIE);
-
-            // Only enforce CSRF when:
-            // - hitting auth endpoints (login/register/logout), OR
-            // - cookies are present (cookie-session authenticated browser requests)
-            if !is_auth_path && !has_cookie {
+            // Enforce CSRF for unsafe browser writes and all auth endpoints.
+            // This keeps machine-to-machine requests (no Origin/Referer/Cookie) backward-compatible.
+            if !CsrfLayer::should_enforce(&req) {
                 return inner.call(req).await;
             }
 
@@ -109,6 +120,94 @@ where
             )
                 .into_response())
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::convert::Infallible;
+    use tower::{service_fn, ServiceExt};
+
+    fn make_layer() -> CsrfLayer {
+        CsrfLayer::new(vec![HeaderValue::from_static("https://app.example.com")])
+    }
+
+    async fn call(req: Request<Body>) -> StatusCode {
+        let service = service_fn(|_req: Request<Body>| async move {
+            Ok::<_, Infallible>(
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+        });
+
+        make_layer()
+            .layer(service)
+            .oneshot(req)
+            .await
+            .unwrap()
+            .status()
+    }
+
+    #[tokio::test]
+    async fn machine_write_without_browser_headers_skips_csrf() {
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("/api/v1/audit")
+            .body(Body::empty())
+            .unwrap();
+
+        assert_eq!(call(req).await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn non_auth_browser_write_with_allowed_origin_is_permitted() {
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("/api/v1/audit")
+            .header(header::ORIGIN, "https://app.example.com")
+            .body(Body::empty())
+            .unwrap();
+
+        assert_eq!(call(req).await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn non_auth_browser_write_without_cookie_skips_csrf_even_with_untrusted_origin() {
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("/api/v1/audit")
+            .header(header::ORIGIN, "https://evil.example")
+            .body(Body::empty())
+            .unwrap();
+
+        assert_eq!(call(req).await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn non_auth_stateful_browser_write_with_untrusted_origin_is_rejected() {
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("/api/v1/audit")
+            .header(header::COOKIE, "sid=abc")
+            .header(header::ORIGIN, "https://evil.example")
+            .body(Body::empty())
+            .unwrap();
+
+        assert_eq!(call(req).await, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn auth_path_write_requires_origin_validation() {
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("/api/v1/auth/login")
+            .body(Body::empty())
+            .unwrap();
+
+        assert_eq!(call(req).await, StatusCode::FORBIDDEN);
     }
 }
 

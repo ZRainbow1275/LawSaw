@@ -260,7 +260,7 @@ export default function DataPage() {
 								<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 									<div className="flex flex-1 gap-4">
 										<div className="relative flex-1 max-w-md">
-											<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+											<Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
 											<Input
 												placeholder={t("Search title or summary...")}
 												className="pl-10"
@@ -317,7 +317,7 @@ export default function DataPage() {
 														: undefined
 												}
 											>
-												<Archive className="mr-1 h-3 w-3" />
+												<Archive aria-hidden="true" className="mr-1 h-3 w-3" />
 												{t("Archive")}
 											</Button>
 											<Button
@@ -347,7 +347,7 @@ export default function DataPage() {
 														: undefined
 												}
 											>
-												<CheckCircle className="mr-1 h-3 w-3" />
+												<CheckCircle aria-hidden="true" className="mr-1 h-3 w-3" />
 												{t("Publish")}
 											</Button>
 											<Button
@@ -375,7 +375,7 @@ export default function DataPage() {
 														: undefined
 												}
 											>
-												<Trash2 className="mr-1 h-3 w-3" />
+												<Trash2 aria-hidden="true" className="mr-1 h-3 w-3" />
 												{t("Delete")}
 											</Button>
 										</div>
@@ -388,7 +388,7 @@ export default function DataPage() {
 						<Card>
 							<CardHeader>
 								<CardTitle className="flex items-center gap-2">
-									<Database className="h-5 w-5 text-primary-500" />
+									<Database aria-hidden="true" className="h-5 w-5 text-primary-500" />
 									{t("Articles data")}
 									<Badge variant="outline">
 										{t("{count} items", { count: total })}
@@ -518,7 +518,7 @@ export default function DataPage() {
 																			router.push(`/articles/${article.id}`)
 																		}
 																	>
-																		<MoreHorizontal className="h-4 w-4" />
+																		<MoreHorizontal aria-hidden="true" className="h-4 w-4" />
 																	</Button>
 																</td>
 															</tr>
@@ -547,7 +547,7 @@ export default function DataPage() {
 												onClick={() => setPage((p) => Math.max(0, p - 1))}
 												disabled={page === 0}
 											>
-												<ChevronLeft className="h-4 w-4" />
+												<ChevronLeft aria-hidden="true" className="h-4 w-4" />
 												{t("Previous")}
 											</Button>
 											<span className="text-sm text-neutral-500">
@@ -562,7 +562,7 @@ export default function DataPage() {
 												disabled={page >= totalPages - 1}
 											>
 												{t("Next")}
-												<ChevronRight className="h-4 w-4" />
+												<ChevronRight aria-hidden="true" className="h-4 w-4" />
 											</Button>
 										</div>
 									</div>

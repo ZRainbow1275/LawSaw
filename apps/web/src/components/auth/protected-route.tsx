@@ -41,7 +41,14 @@ export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
 	}
 
 	if (!isAuthenticated) {
-		return null;
+		// 正在跳转到登录页，保持 spinner 避免白屏闪烁
+		return (
+			fallback ?? (
+				<div className="flex min-h-screen items-center justify-center">
+					<div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent" />
+				</div>
+			)
+		);
 	}
 
 	return <>{children}</>;

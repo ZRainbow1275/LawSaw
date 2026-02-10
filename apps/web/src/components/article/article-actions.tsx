@@ -215,9 +215,9 @@ function ShareMenu({ onCopyLink, copied, onClose }: ShareMenuProps) {
 					className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 rounded-lg hover:bg-neutral-50 transition-colors"
 				>
 					{copied ? (
-						<Check className="h-4 w-4 text-green-600" />
+						<Check aria-hidden="true" className="h-4 w-4 text-green-600" />
 					) : (
-						<Link2 className="h-4 w-4" />
+						<Link2 aria-hidden="true" className="h-4 w-4" />
 					)}
 					<span>{copied ? t("Copied") : t("Copy link")}</span>
 				</button>
@@ -260,7 +260,7 @@ export function MobileArticleActions({
 				{/* Contents */}
 				{tocItemCount > 0 && (
 					<MobileActionButton
-						icon={<MessageCircle className="h-5 w-5" />}
+						icon={<MessageCircle aria-hidden="true" className="h-5 w-5" />}
 						label={t("Contents")}
 						onClick={onOpenToc}
 					/>
@@ -273,8 +273,7 @@ export function MobileArticleActions({
 							className={cn(
 								"h-5 w-5",
 								isBookmarked && "fill-primary-500 text-primary-500",
-							)}
-						/>
+							)} aria-hidden="true" focusable="false" />
 					}
 					label={t("Bookmark")}
 					active={isBookmarked}
@@ -283,14 +282,14 @@ export function MobileArticleActions({
 
 				{/* Settings */}
 				<MobileActionButton
-					icon={<Settings2 className="h-5 w-5" />}
+					icon={<Settings2 className="h-5 w-5" aria-hidden="true" focusable="false" />}
 					label={t("Reading settings")}
 					onClick={onOpenSettings}
 				/>
 
 				{/* Share */}
 				<MobileActionButton
-					icon={<Share2 className="h-5 w-5" />}
+					icon={<Share2 aria-hidden="true" className="h-5 w-5" />}
 					label={t("Share")}
 					onClick={onShare}
 				/>

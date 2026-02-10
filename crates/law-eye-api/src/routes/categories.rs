@@ -64,7 +64,7 @@ pub(crate) async fn list_categories(
 
     let can_read = state
         .user_service
-        .has_permission(user.id, "categories:read")
+        .has_permission(user.tenant_id, user.id, "categories:read")
         .await
         .map_err(AppError::from)?;
     if !can_read {

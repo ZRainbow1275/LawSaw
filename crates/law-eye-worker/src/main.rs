@@ -1,17 +1,28 @@
 use anyhow::Context;
 use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
-use law_eye_ai::{AiService, ClassifyResult, RiskAssessment, SummaryResult, TagsResult};
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine;
+use hmac::{Hmac, Mac};
+use law_eye_ai::{
+    AiService, ClassifyResult, Entity, EntityType, RiskAssessment, RiskDimension, RiskLevel,
+    SummaryResult, TagsResult,
+};
 use law_eye_common::egress::{validate_outbound_url, OutboundUrlPolicy};
 use law_eye_common::AppConfig;
-use law_eye_core::{ArticleService, ObjectService, SourceService, OBJECT_KIND_USER_AVATAR};
+use law_eye_core::{
+    ArticleService, DomainEventInput, DomainEventService, ObjectService, SourceService,
+    OBJECT_KIND_USER_AVATAR,
+};
 use law_eye_crawler::{RssFetcher, SpiderConfig, WebSpider};
 use law_eye_db::{
     create_pool_with_session_role, create_pool_with_session_role_retry, CreateArticle,
 };
 use law_eye_queue::{
-    AiTask, AiTaskType, IngestTask, PushTask, ReservedTask, RetryableTask, TaskQueue,
+    AiTask, AiTaskType, IngestTask, OrderedTaskGate, PushTask, ReservedTask, RetryableTask,
+    TaskQueue,
 };
 use serde_json::json;
+use sha2::Sha256;
 use sqlx::{types::Json as DbJson, PgPool, Postgres, QueryBuilder};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,6 +42,12 @@ const MAINTENANCE_INTERVAL_SECS: u64 = 15;
 const MAINTENANCE_MAX_BATCH: usize = 200;
 const OUTBOX_FLUSH_MAX_BATCH: i64 = 500;
 const OUTBOX_LOCK_TIMEOUT_MS: i64 = 2 * 60 * 1_000;
+const WEBHOOK_FLUSH_MAX_BATCH: i64 = 200;
+const WEBHOOK_LOCK_TIMEOUT_MS: i64 = 2 * 60 * 1_000;
+const WEBHOOK_SIGNATURE_HEADER: &str = "X-LawEye-Signature";
+const WEBHOOK_SIGNATURE_TIMESTAMP_HEADER: &str = "X-LawEye-Signature-Timestamp";
+const WEBHOOK_EVENT_ID_HEADER: &str = "X-LawEye-Event-Id";
+const WEBHOOK_EVENT_TYPE_HEADER: &str = "X-LawEye-Event-Type";
 
 const DB_CONNECT_MAX_ATTEMPTS: u32 = 30;
 
@@ -38,10 +55,307 @@ const VISIBILITY_TIMEOUT_INGEST_MS: i64 = 10 * 60 * 1_000;
 const VISIBILITY_TIMEOUT_AI_MS: i64 = 20 * 60 * 1_000;
 const VISIBILITY_TIMEOUT_PUSH_MS: i64 = 5 * 60 * 1_000;
 
+const EVENT_VERSION_V1: i32 = 1;
+
 // Hard per-task execution budgets. These should be < visibility timeouts to allow retries.
 const TASK_TIMEOUT_INGEST_SECS: u64 = 8 * 60;
 const TASK_TIMEOUT_AI_SECS: u64 = 10 * 60;
 const TASK_TIMEOUT_PUSH_SECS: u64 = 60;
+
+fn contains_any_keyword(haystack: &str, keywords: &[&str]) -> bool {
+    keywords.iter().any(|keyword| haystack.contains(keyword))
+}
+
+fn truncate_chars(input: &str, max_chars: usize) -> String {
+    if input.chars().count() <= max_chars {
+        input.to_string()
+    } else {
+        format!("{}...", input.chars().take(max_chars).collect::<String>())
+    }
+}
+
+fn ai_fallback_classify(title: &str, content: &str) -> ClassifyResult {
+    let text = format!("{} {}", title, content).to_lowercase();
+
+    let (category_slug, confidence, reasoning) = if contains_any_keyword(
+        &text,
+        &["法律", "法规", "条例", "草案", "立法", "修订", "出台"],
+    ) {
+        ("legislation", 0.85, "匹配立法相关关键词")
+    } else if contains_any_keyword(
+        &text,
+        &["处罚", "监管", "约谈", "整改", "责令", "通报", "警示"],
+    ) {
+        ("regulation", 0.85, "匹配监管相关关键词")
+    } else if contains_any_keyword(&text, &["判决", "裁定", "案例", "起诉", "审判", "判刑"])
+    {
+        ("enforcement", 0.85, "匹配执法案例关键词")
+    } else if contains_any_keyword(
+        &text,
+        &[
+            "数据安全",
+            "个人信息",
+            "隐私",
+            "数据出境",
+            "跨境传输",
+            "数据保护",
+        ],
+    ) {
+        ("data", 0.85, "匹配数据合规关键词")
+    } else if contains_any_keyword(
+        &text,
+        &["网络安全", "漏洞", "攻击", "黑客", "安全事件", "勒索"],
+    ) {
+        ("security", 0.85, "匹配网络安全关键词")
+    } else if contains_any_keyword(
+        &text,
+        &["gdpr", "欧盟", "美国", "跨境", "国际", "海外", "境外"],
+    ) {
+        ("international", 0.80, "匹配国际法规关键词")
+    } else {
+        ("industry", 0.55, "未命中高置信规则，回落默认行业资讯")
+    };
+
+    ClassifyResult {
+        category_slug: category_slug.to_string(),
+        confidence,
+        sub_categories: vec![],
+        reasoning: format!("fallback_rule: {reasoning}"),
+    }
+}
+
+fn ai_fallback_summary(title: &str, content: &str) -> SummaryResult {
+    let normalized = content.split_whitespace().collect::<Vec<_>>().join(" ");
+    let abstract_text = truncate_chars(&normalized, 300);
+    let brief = if abstract_text.is_empty() {
+        truncate_chars(title, 100)
+    } else {
+        truncate_chars(&abstract_text, 100)
+    };
+
+    let mut key_points = Vec::new();
+    if !brief.is_empty() {
+        key_points.push(brief.clone());
+    }
+    let secondary = if normalized.is_empty() {
+        String::new()
+    } else {
+        truncate_chars(&normalized, 180)
+    };
+    if !secondary.is_empty() && secondary != brief {
+        key_points.push(secondary);
+    }
+
+    if key_points.is_empty() {
+        key_points.push("原文内容较短，摘要采用保守回退结果".to_string());
+    }
+
+    SummaryResult {
+        brief,
+        abstract_text,
+        key_points,
+        entities: vec![Entity {
+            name: title.to_string(),
+            entity_type: EntityType::LegalTerm,
+            context: "fallback_rule".to_string(),
+        }],
+    }
+}
+
+fn ai_fallback_risk(title: &str, content: &str) -> RiskAssessment {
+    let text = format!("{} {}", title, content).to_lowercase();
+
+    let mut score: u8 = 10;
+    for keyword in [
+        "处罚",
+        "罚款",
+        "违法",
+        "违规",
+        "责令",
+        "整改",
+        "约谈",
+        "警示",
+        "通报批评",
+    ] {
+        if text.contains(keyword) {
+            score = score.saturating_add(15);
+        }
+    }
+
+    for keyword in ["刑事", "拘留", "逮捕", "起诉", "判刑", "吊销", "关停"] {
+        if text.contains(keyword) {
+            score = score.saturating_add(25);
+        }
+    }
+
+    for keyword in ["整顿", "排查", "专项", "检查", "督查"] {
+        if text.contains(keyword) {
+            score = score.saturating_add(8);
+        }
+    }
+
+    let score = score.min(100);
+    let level = if score <= 25 {
+        RiskLevel::Low
+    } else if score <= 50 {
+        RiskLevel::Medium
+    } else if score <= 75 {
+        RiskLevel::High
+    } else {
+        RiskLevel::Critical
+    };
+
+    RiskAssessment {
+        score,
+        level,
+        dimensions: vec![RiskDimension {
+            name: "fallback_rule".to_string(),
+            score,
+            description: "基于规则关键词生成的降级风险评估".to_string(),
+        }],
+        recommendations: vec!["AI 服务不可用，当前结果由规则引擎生成，请人工复核".to_string()],
+    }
+}
+
+fn ai_fallback_tags(title: &str, content: &str) -> TagsResult {
+    let base = format!("{} {}", title, content);
+    let mut tags = Vec::<String>::new();
+
+    for (keyword, tag) in [
+        ("数据", "数据合规"),
+        ("隐私", "隐私保护"),
+        ("监管", "监管动态"),
+        ("处罚", "行政处罚"),
+        ("网络", "网络安全"),
+        ("立法", "立法前沿"),
+        ("国际", "国际合规"),
+    ] {
+        if base.contains(keyword) {
+            tags.push(tag.to_string());
+        }
+    }
+
+    if tags.is_empty() {
+        tags.push("法律资讯".to_string());
+    }
+
+    let keywords = base
+        .split(|c: char| c.is_whitespace() || [',', '，', '。', ';', '；'].contains(&c))
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .take(12)
+        .map(|part| truncate_chars(part, 20))
+        .collect::<Vec<_>>();
+
+    TagsResult { tags, keywords }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AiStageStatus {
+    Success,
+    Degraded,
+}
+
+impl AiStageStatus {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Success => "success",
+            Self::Degraded => "degraded",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct AiStageReport {
+    stage: &'static str,
+    status: AiStageStatus,
+    error_summary: Option<String>,
+}
+
+impl AiStageReport {
+    fn success(stage: &'static str) -> Self {
+        Self {
+            stage,
+            status: AiStageStatus::Success,
+            error_summary: None,
+        }
+    }
+
+    fn degraded(stage: &'static str, error_summary: String) -> Self {
+        Self {
+            stage,
+            status: AiStageStatus::Degraded,
+            error_summary: Some(error_summary),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct AiFullStageSummary {
+    full_status: &'static str,
+    partial_success: bool,
+    degraded: bool,
+    error_summary: Option<String>,
+    stage_status: serde_json::Value,
+    tasks: serde_json::Value,
+}
+
+fn summarize_ai_full_stages(stage_reports: &[AiStageReport]) -> AiFullStageSummary {
+    let mut stage_status = serde_json::Map::new();
+    let mut tasks = serde_json::Map::new();
+    let mut success_count = 0usize;
+    let mut degraded_count = 0usize;
+    let mut error_summaries = Vec::new();
+
+    for report in stage_reports {
+        stage_status.insert(
+            report.stage.to_string(),
+            json!({
+                "status": report.status.as_str(),
+                "error_summary": report.error_summary,
+            }),
+        );
+
+        tasks.insert(report.stage.to_string(), json!(true));
+
+        if let Some(error) = &report.error_summary {
+            error_summaries.push(format!("{}: {}", report.stage, error));
+        }
+
+        match report.status {
+            AiStageStatus::Success => success_count += 1,
+            AiStageStatus::Degraded => degraded_count += 1,
+        }
+    }
+
+    let full_status = if degraded_count > 0 {
+        "degraded"
+    } else {
+        "success"
+    };
+
+    tasks.insert("full".to_string(), json!(true));
+
+    let partial_success = success_count > 0 && degraded_count > 0;
+    let degraded = degraded_count > 0;
+    let error_summary = if error_summaries.is_empty() {
+        None
+    } else {
+        Some(truncate_chars(
+            &error_summaries.join(" | "),
+            WORKER_ERROR_MAX_CHARS,
+        ))
+    };
+
+    AiFullStageSummary {
+        full_status,
+        partial_success,
+        degraded,
+        error_summary,
+        stage_status: serde_json::Value::Object(stage_status),
+        tasks: serde_json::Value::Object(tasks),
+    }
+}
 
 #[derive(Clone)]
 struct WorkerHealthState {
@@ -135,6 +449,45 @@ fn is_ai_rate_limited_error(error_msg: &str) -> bool {
         || msg.contains("ai_rate_limited")
 }
 
+const WORKER_ERROR_MAX_CHARS: usize = 240;
+const WORKER_ERROR_REDACTED: &str = "internal error (details redacted)";
+
+fn sanitize_error_message(raw: impl AsRef<str>) -> String {
+    let collapsed = raw
+        .as_ref()
+        .chars()
+        .map(|ch| if ch.is_control() { ' ' } else { ch })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    if collapsed.is_empty() {
+        return "internal error".to_string();
+    }
+
+    let lowered = collapsed.to_ascii_lowercase();
+    if contains_any_keyword(
+        &lowered,
+        &[
+            "authorization",
+            "bearer ",
+            "api_key",
+            "apikey",
+            "secret",
+            "token",
+            "password",
+            "passwd",
+            "set-cookie",
+            "cookie:",
+        ],
+    ) {
+        return WORKER_ERROR_REDACTED.to_string();
+    }
+
+    truncate_chars(&collapsed, WORKER_ERROR_MAX_CHARS)
+}
+
 async fn validate_webhook_url(raw: &str, allow_internal: bool) -> anyhow::Result<reqwest::Url> {
     let policy = OutboundUrlPolicy::https_or_http_internal(allow_internal);
     let url = validate_outbound_url(raw, &policy)
@@ -185,6 +538,30 @@ struct QueueOutboxRow {
     attempts: i32,
 }
 
+#[derive(Debug, sqlx::FromRow)]
+struct WebhookDispatchRow {
+    id: uuid::Uuid,
+    endpoint_id: uuid::Uuid,
+    event_type: String,
+    payload: DbJson<serde_json::Value>,
+    occurred_at_unix: i64,
+    attempts: i32,
+    max_retries: i32,
+    url: String,
+    signing_secret: String,
+    timeout_ms: i32,
+}
+
+#[derive(Debug)]
+struct WebhookDispatchOutcome {
+    event_id: uuid::Uuid,
+    endpoint_id: uuid::Uuid,
+    attempts: i32,
+    max_retries: i32,
+    status_code: Option<i32>,
+    error: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 struct ObjectPurgeConfig {
     interval: Duration,
@@ -206,6 +583,33 @@ impl QueueOutboxEntry {
             queue: queue.to_string(),
             dedupe_key,
             payload: DbJson(payload),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct DomainEventRecord {
+    aggregate_type: String,
+    aggregate_id: uuid::Uuid,
+    aggregate_version: i64,
+    event_type: String,
+    dedupe_key: String,
+    payload: serde_json::Value,
+    metadata: serde_json::Value,
+}
+
+impl DomainEventRecord {
+    fn into_input(self) -> DomainEventInput {
+        DomainEventInput {
+            aggregate_type: self.aggregate_type,
+            aggregate_id: self.aggregate_id,
+            aggregate_version: self.aggregate_version,
+            event_type: self.event_type,
+            event_version: EVENT_VERSION_V1,
+            dedupe_key: self.dedupe_key,
+            payload: self.payload,
+            metadata: self.metadata,
+            occurred_at: None,
         }
     }
 }
@@ -315,6 +719,7 @@ impl Worker {
         }
 
         self.flush_queue_outbox_all_tenants().await?;
+        self.flush_webhook_events_all_tenants().await?;
 
         Ok(())
     }
@@ -626,6 +1031,24 @@ impl Worker {
         format!("ai:{article_id}:{task_type}")
     }
 
+    fn domain_event_dedupe_key(prefix: &str, aggregate_id: uuid::Uuid) -> String {
+        let timestamp_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_millis())
+            .unwrap_or(0);
+        format!("{}:{}:{}", prefix, aggregate_id, timestamp_ms)
+    }
+
+    async fn append_domain_event(
+        &self,
+        tenant_id: uuid::Uuid,
+        event: DomainEventRecord,
+    ) -> anyhow::Result<()> {
+        let service = DomainEventService::new(self.pool.clone());
+        let _ = service.append(tenant_id, event.into_input()).await?;
+        Ok(())
+    }
+
     fn outbox_retry_delay_ms(attempt: i32) -> i64 {
         const BASE_MS: i64 = 5_000;
         const MAX_MS: i64 = 60_000;
@@ -634,6 +1057,21 @@ impl Worker {
         let shift = attempt.saturating_sub(1).min(16);
         let delay = BASE_MS.saturating_mul(1i64 << shift);
         delay.min(MAX_MS)
+    }
+
+    fn webhook_signature(
+        signing_secret: &str,
+        timestamp_secs: i64,
+        body: &[u8],
+    ) -> anyhow::Result<String> {
+        let mut mac = Hmac::<Sha256>::new_from_slice(signing_secret.as_bytes())
+            .map_err(|e| anyhow::anyhow!("invalid webhook signing secret: {e}"))?;
+        mac.update(timestamp_secs.to_string().as_bytes());
+        mac.update(b".");
+        mac.update(body);
+
+        let signature = BASE64_STANDARD.encode(mac.finalize().into_bytes());
+        Ok(format!("sha256={signature}"))
     }
 
     async fn insert_queue_outbox_entries(
@@ -772,10 +1210,371 @@ impl Worker {
         Ok(())
     }
 
+    async fn flush_webhook_events_all_tenants(&self) -> anyhow::Result<()> {
+        let tenant_ids =
+            sqlx::query_scalar::<_, uuid::Uuid>("SELECT id FROM tenants ORDER BY created_at")
+                .fetch_all(&self.pool)
+                .await?;
+
+        for tenant_id in tenant_ids {
+            if let Err(err) = self.flush_webhook_events_for_tenant(tenant_id).await {
+                error!(%tenant_id, "Webhook events flush failed: {}", err);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn flush_webhook_events_for_tenant(&self, tenant_id: uuid::Uuid) -> anyhow::Result<()> {
+        let mut lock_tx = self.begin_tenant_tx(tenant_id).await?;
+        let rows = sqlx::query_as::<_, WebhookDispatchRow>(
+            r#"
+            WITH candidates AS (
+                SELECT we.id, we.endpoint_id
+                FROM webhook_events we
+                JOIN webhook_endpoints ep ON ep.id = we.endpoint_id
+                WHERE we.delivered_at IS NULL
+                  AND we.next_attempt_at <= NOW()
+                  AND we.attempts <= we.max_retries
+                  AND ep.deleted_at IS NULL
+                  AND ep.enabled = true
+                  AND (
+                    we.locked_at IS NULL
+                    OR we.locked_at < NOW() - ($1 * INTERVAL '1 millisecond')
+                  )
+                ORDER BY we.next_attempt_at, we.created_at
+                FOR UPDATE OF we SKIP LOCKED
+                LIMIT $2
+            )
+            UPDATE webhook_events we
+            SET locked_at = NOW(),
+                locked_by = $3
+            FROM candidates c
+            JOIN webhook_endpoints ep ON ep.id = c.endpoint_id
+            WHERE we.id = c.id
+            RETURNING
+                we.id,
+                we.endpoint_id,
+                we.event_type,
+                we.payload,
+                EXTRACT(EPOCH FROM we.occurred_at)::bigint AS occurred_at_unix,
+                we.attempts,
+                we.max_retries,
+                ep.url,
+                ep.signing_secret,
+                ep.timeout_ms
+            "#,
+        )
+        .bind(WEBHOOK_LOCK_TIMEOUT_MS)
+        .bind(WEBHOOK_FLUSH_MAX_BATCH)
+        .bind(self.worker_id)
+        .fetch_all(&mut *lock_tx)
+        .await?;
+        lock_tx.commit().await?;
+
+        if rows.is_empty() {
+            return Ok(());
+        }
+
+        let mut outcomes = Vec::with_capacity(rows.len());
+        for row in rows {
+            outcomes.push(self.dispatch_webhook_event(&row).await);
+        }
+
+        let mut update_tx = self.begin_tenant_tx(tenant_id).await?;
+        for outcome in outcomes {
+            match outcome.error {
+                None => {
+                    sqlx::query(
+                        r#"
+                        UPDATE webhook_events
+                        SET delivered_at = NOW(),
+                            last_error = NULL,
+                            locked_at = NULL,
+                            locked_by = NULL,
+                            updated_at = NOW()
+                        WHERE id = $1
+                        "#,
+                    )
+                    .bind(outcome.event_id)
+                    .execute(&mut *update_tx)
+                    .await?;
+
+                    sqlx::query(
+                        r#"
+                        UPDATE webhook_endpoints
+                        SET last_success_at = NOW(),
+                            last_status_code = $2,
+                            last_error = NULL,
+                            updated_at = NOW()
+                        WHERE id = $1
+                        "#,
+                    )
+                    .bind(outcome.endpoint_id)
+                    .bind(outcome.status_code)
+                    .execute(&mut *update_tx)
+                    .await?;
+                }
+                Some(error) => {
+                    let error_msg = error.chars().take(500).collect::<String>();
+                    let new_attempt = outcome.attempts.saturating_add(1);
+                    let should_retry = new_attempt <= outcome.max_retries;
+
+                    if should_retry {
+                        let delay_ms = Self::outbox_retry_delay_ms(new_attempt);
+                        sqlx::query(
+                            r#"
+                            UPDATE webhook_events
+                            SET attempts = attempts + 1,
+                                last_error = $2,
+                                next_attempt_at = NOW() + ($3 * INTERVAL '1 millisecond'),
+                                locked_at = NULL,
+                                locked_by = NULL,
+                                updated_at = NOW()
+                            WHERE id = $1
+                            "#,
+                        )
+                        .bind(outcome.event_id)
+                        .bind(&error_msg)
+                        .bind(delay_ms)
+                        .execute(&mut *update_tx)
+                        .await?;
+                    } else {
+                        sqlx::query(
+                            r#"
+                            UPDATE webhook_events
+                            SET attempts = attempts + 1,
+                                last_error = $2,
+                                next_attempt_at = NOW(),
+                                locked_at = NULL,
+                                locked_by = NULL,
+                                updated_at = NOW()
+                            WHERE id = $1
+                            "#,
+                        )
+                        .bind(outcome.event_id)
+                        .bind(&error_msg)
+                        .execute(&mut *update_tx)
+                        .await?;
+
+                        warn!(
+                            event_id = %outcome.event_id,
+                            endpoint_id = %outcome.endpoint_id,
+                            max_retries = outcome.max_retries,
+                            "Webhook event reached max retries"
+                        );
+                    }
+
+                    sqlx::query(
+                        r#"
+                        UPDATE webhook_endpoints
+                        SET last_failure_at = NOW(),
+                            last_status_code = $2,
+                            last_error = $3,
+                            updated_at = NOW()
+                        WHERE id = $1
+                        "#,
+                    )
+                    .bind(outcome.endpoint_id)
+                    .bind(outcome.status_code)
+                    .bind(&error_msg)
+                    .execute(&mut *update_tx)
+                    .await?;
+                }
+            }
+        }
+
+        update_tx.commit().await?;
+        Ok(())
+    }
+
+    async fn dispatch_webhook_event(&self, row: &WebhookDispatchRow) -> WebhookDispatchOutcome {
+        let webhook_url =
+            match validate_webhook_url(&row.url, self.allow_internal_webhook_urls).await {
+                Ok(url) => url,
+                Err(err) => {
+                    return WebhookDispatchOutcome {
+                        event_id: row.id,
+                        endpoint_id: row.endpoint_id,
+                        attempts: row.attempts,
+                        max_retries: row.max_retries,
+                        status_code: None,
+                        error: Some(sanitize_error_message(format!(
+                            "invalid webhook endpoint url: {err}"
+                        ))),
+                    };
+                }
+            };
+
+        let request_payload = json!({
+            "id": row.id,
+            "type": row.event_type,
+            "occurred_at": row.occurred_at_unix,
+            "payload": row.payload.0,
+        });
+
+        let body = match serde_json::to_vec(&request_payload) {
+            Ok(bytes) => bytes,
+            Err(err) => {
+                return WebhookDispatchOutcome {
+                    event_id: row.id,
+                    endpoint_id: row.endpoint_id,
+                    attempts: row.attempts,
+                    max_retries: row.max_retries,
+                    status_code: None,
+                    error: Some(sanitize_error_message(format!(
+                        "serialize webhook payload failed: {err}"
+                    ))),
+                };
+            }
+        };
+
+        let timestamp_secs = Self::unix_now_secs();
+        let signature = match Self::webhook_signature(&row.signing_secret, timestamp_secs, &body) {
+            Ok(sig) => sig,
+            Err(err) => {
+                return WebhookDispatchOutcome {
+                    event_id: row.id,
+                    endpoint_id: row.endpoint_id,
+                    attempts: row.attempts,
+                    max_retries: row.max_retries,
+                    status_code: None,
+                    error: Some(sanitize_error_message(err.to_string())),
+                };
+            }
+        };
+
+        let timeout_ms = row.timeout_ms.clamp(1_000, 60_000) as u64;
+
+        let result = self
+            .push_http_client
+            .post(webhook_url)
+            .timeout(Duration::from_millis(timeout_ms))
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .header(WEBHOOK_EVENT_ID_HEADER, row.id.to_string())
+            .header(WEBHOOK_EVENT_TYPE_HEADER, &row.event_type)
+            .header(
+                WEBHOOK_SIGNATURE_TIMESTAMP_HEADER,
+                timestamp_secs.to_string(),
+            )
+            .header(WEBHOOK_SIGNATURE_HEADER, signature)
+            .body(body)
+            .send()
+            .await;
+
+        match result {
+            Ok(response) => {
+                let status_code = i32::from(response.status().as_u16());
+                if response.status().is_success() {
+                    WebhookDispatchOutcome {
+                        event_id: row.id,
+                        endpoint_id: row.endpoint_id,
+                        attempts: row.attempts,
+                        max_retries: row.max_retries,
+                        status_code: Some(status_code),
+                        error: None,
+                    }
+                } else {
+                    let response_body = match response.text().await {
+                        Ok(body) => {
+                            let trimmed = body.trim();
+                            if trimmed.is_empty() {
+                                String::new()
+                            } else {
+                                format!("; body={}", truncate_chars(trimmed, 280))
+                            }
+                        }
+                        Err(err) => format!("; read_body_failed={err}"),
+                    };
+
+                    WebhookDispatchOutcome {
+                        event_id: row.id,
+                        endpoint_id: row.endpoint_id,
+                        attempts: row.attempts,
+                        max_retries: row.max_retries,
+                        status_code: Some(status_code),
+                        error: Some(sanitize_error_message(format!(
+                            "webhook request returned non-success status {status_code}{response_body}"
+                        ))),
+                    }
+                }
+            }
+            Err(err) => WebhookDispatchOutcome {
+                event_id: row.id,
+                endpoint_id: row.endpoint_id,
+                attempts: row.attempts,
+                max_retries: row.max_retries,
+                status_code: None,
+                error: Some(sanitize_error_message(format!(
+                    "webhook request failed: {err}"
+                ))),
+            },
+        }
+    }
+
     async fn handle_ingest_reserved(&self, reserved: ReservedTask<IngestTask>) {
         let queue = QUEUE_INGEST;
         let task = reserved.task;
         let task_id = task.id;
+        let ordering_key = task.ordering_key.clone();
+        let ordering_seq = task.ordering_seq;
+
+        match self
+            .task_queue
+            .try_acquire_ordering_gate(
+                queue,
+                task_id,
+                ordering_key.as_deref(),
+                ordering_seq,
+                VISIBILITY_TIMEOUT_INGEST_MS,
+            )
+            .await
+        {
+            Ok(OrderedTaskGate::Unordered | OrderedTaskGate::Acquired) => {}
+            Ok(OrderedTaskGate::Blocked) => {
+                if let Err(e) = self
+                    .task_queue
+                    .release_reserved_back_to_queue(queue, &reserved.raw_payload)
+                    .await
+                {
+                    error!(
+                        "Failed to release blocked ingest task {} back to queue: {}",
+                        task_id, e
+                    );
+                }
+                return;
+            }
+            Ok(OrderedTaskGate::Stale) => {
+                warn!(
+                    task_id = %task_id,
+                    ordering_key,
+                    ordering_seq,
+                    "Dropping stale ordered ingest task"
+                );
+                if let Err(e) = self.task_queue.mark_done(queue, task_id).await {
+                    error!("Failed to mark stale ingest task {} done: {}", task_id, e);
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .ack_reserved(queue, &reserved.raw_payload)
+                    .await
+                {
+                    error!("Failed to ack stale ingest task {}: {}", task_id, e);
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .await
+                {
+                    error!("Failed to release ingest ordering gate for {}: {}", task_id, e);
+                }
+                return;
+            }
+            Err(e) => {
+                error!("Failed to acquire ingest ordering gate for {}: {}", task_id, e);
+                return;
+            }
+        }
 
         match self.task_queue.is_done(queue, task_id).await {
             Ok(true) => {
@@ -786,11 +1585,28 @@ impl Worker {
                 {
                     error!("Failed to ack duplicate ingest task {}: {}", task_id, e);
                 }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, true)
+                    .await
+                {
+                    error!("Failed to release ingest ordering gate for {}: {}", task_id, e);
+                }
                 return;
             }
             Ok(false) => {}
             Err(e) => {
                 error!("Failed to check ingest task {} done: {}", task_id, e);
+                if let Err(release_err) = self
+                    .task_queue
+                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .await
+                {
+                    error!(
+                        "Failed to release ingest ordering gate after done-check error for {}: {}",
+                        task_id, release_err
+                    );
+                }
                 return;
             }
         }
@@ -814,10 +1630,18 @@ impl Worker {
                 {
                     error!("Failed to ack ingest task {}: {}", task_id, e);
                 }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, true)
+                    .await
+                {
+                    error!("Failed to release ingest ordering gate for {}: {}", task_id, e);
+                }
             }
             Ok(Err(e)) => {
-                let mut error_msg = e.to_string();
-                if is_ai_rate_limited_error(&error_msg) {
+                let raw_error_msg = e.to_string();
+                let mut error_msg = sanitize_error_message(&raw_error_msg);
+                if is_ai_rate_limited_error(&raw_error_msg) {
                     error_msg = format!("AI_RATE_LIMITED: {}", error_msg);
                 }
                 match self
@@ -840,6 +1664,13 @@ impl Worker {
                             task_id, e
                         );
                     }
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .await
+                {
+                    error!("Failed to release ingest ordering gate for {}: {}", task_id, e);
                 }
             }
             Err(_) => {
@@ -865,6 +1696,13 @@ impl Worker {
                         );
                     }
                 }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .await
+                {
+                    error!("Failed to release ingest ordering gate for {}: {}", task_id, e);
+                }
             }
         }
     }
@@ -873,6 +1711,65 @@ impl Worker {
         let queue = QUEUE_AI;
         let task = reserved.task;
         let task_id = task.id;
+        let ordering_key = task.ordering_key.clone();
+        let ordering_seq = task.ordering_seq;
+
+        match self
+            .task_queue
+            .try_acquire_ordering_gate(
+                queue,
+                task_id,
+                ordering_key.as_deref(),
+                ordering_seq,
+                VISIBILITY_TIMEOUT_AI_MS,
+            )
+            .await
+        {
+            Ok(OrderedTaskGate::Unordered | OrderedTaskGate::Acquired) => {}
+            Ok(OrderedTaskGate::Blocked) => {
+                if let Err(e) = self
+                    .task_queue
+                    .release_reserved_back_to_queue(queue, &reserved.raw_payload)
+                    .await
+                {
+                    error!(
+                        "Failed to release blocked AI task {} back to queue: {}",
+                        task_id, e
+                    );
+                }
+                return;
+            }
+            Ok(OrderedTaskGate::Stale) => {
+                warn!(
+                    task_id = %task_id,
+                    ordering_key,
+                    ordering_seq,
+                    "Dropping stale ordered AI task"
+                );
+                if let Err(e) = self.task_queue.mark_done(queue, task_id).await {
+                    error!("Failed to mark stale AI task {} done: {}", task_id, e);
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .ack_reserved(queue, &reserved.raw_payload)
+                    .await
+                {
+                    error!("Failed to ack stale AI task {}: {}", task_id, e);
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .await
+                {
+                    error!("Failed to release AI ordering gate for {}: {}", task_id, e);
+                }
+                return;
+            }
+            Err(e) => {
+                error!("Failed to acquire AI ordering gate for {}: {}", task_id, e);
+                return;
+            }
+        }
 
         match self.task_queue.is_done(queue, task_id).await {
             Ok(true) => {
@@ -883,11 +1780,28 @@ impl Worker {
                 {
                     error!("Failed to ack duplicate AI task {}: {}", task_id, e);
                 }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, true)
+                    .await
+                {
+                    error!("Failed to release AI ordering gate for {}: {}", task_id, e);
+                }
                 return;
             }
             Ok(false) => {}
             Err(e) => {
                 error!("Failed to check AI task {} done: {}", task_id, e);
+                if let Err(release_err) = self
+                    .task_queue
+                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .await
+                {
+                    error!(
+                        "Failed to release AI ordering gate after done-check error for {}: {}",
+                        task_id, release_err
+                    );
+                }
                 return;
             }
         }
@@ -911,9 +1825,16 @@ impl Worker {
                 {
                     error!("Failed to ack AI task {}: {}", task_id, e);
                 }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, true)
+                    .await
+                {
+                    error!("Failed to release AI ordering gate for {}: {}", task_id, e);
+                }
             }
             Ok(Err(e)) => {
-                let error_msg = e.to_string();
+                let error_msg = sanitize_error_message(e.to_string());
                 match self
                     .task_queue
                     .retry_or_dead_letter(queue, task, error_msg)
@@ -934,6 +1855,13 @@ impl Worker {
                             task_id, e
                         );
                     }
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .await
+                {
+                    error!("Failed to release AI ordering gate for {}: {}", task_id, e);
                 }
             }
             Err(_) => {
@@ -959,6 +1887,13 @@ impl Worker {
                         );
                     }
                 }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .await
+                {
+                    error!("Failed to release AI ordering gate for {}: {}", task_id, e);
+                }
             }
         }
     }
@@ -967,6 +1902,65 @@ impl Worker {
         let queue = QUEUE_PUSH;
         let task = reserved.task;
         let task_id = task.id;
+        let ordering_key = task.ordering_key.clone();
+        let ordering_seq = task.ordering_seq;
+
+        match self
+            .task_queue
+            .try_acquire_ordering_gate(
+                queue,
+                task_id,
+                ordering_key.as_deref(),
+                ordering_seq,
+                VISIBILITY_TIMEOUT_PUSH_MS,
+            )
+            .await
+        {
+            Ok(OrderedTaskGate::Unordered | OrderedTaskGate::Acquired) => {}
+            Ok(OrderedTaskGate::Blocked) => {
+                if let Err(e) = self
+                    .task_queue
+                    .release_reserved_back_to_queue(queue, &reserved.raw_payload)
+                    .await
+                {
+                    error!(
+                        "Failed to release blocked push task {} back to queue: {}",
+                        task_id, e
+                    );
+                }
+                return;
+            }
+            Ok(OrderedTaskGate::Stale) => {
+                warn!(
+                    task_id = %task_id,
+                    ordering_key,
+                    ordering_seq,
+                    "Dropping stale ordered push task"
+                );
+                if let Err(e) = self.task_queue.mark_done(queue, task_id).await {
+                    error!("Failed to mark stale push task {} done: {}", task_id, e);
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .ack_reserved(queue, &reserved.raw_payload)
+                    .await
+                {
+                    error!("Failed to ack stale push task {}: {}", task_id, e);
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .await
+                {
+                    error!("Failed to release push ordering gate for {}: {}", task_id, e);
+                }
+                return;
+            }
+            Err(e) => {
+                error!("Failed to acquire push ordering gate for {}: {}", task_id, e);
+                return;
+            }
+        }
 
         match self.task_queue.is_done(queue, task_id).await {
             Ok(true) => {
@@ -977,11 +1971,28 @@ impl Worker {
                 {
                     error!("Failed to ack duplicate push task {}: {}", task_id, e);
                 }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, true)
+                    .await
+                {
+                    error!("Failed to release push ordering gate for {}: {}", task_id, e);
+                }
                 return;
             }
             Ok(false) => {}
             Err(e) => {
                 error!("Failed to check push task {} done: {}", task_id, e);
+                if let Err(release_err) = self
+                    .task_queue
+                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .await
+                {
+                    error!(
+                        "Failed to release push ordering gate after done-check error for {}: {}",
+                        task_id, release_err
+                    );
+                }
                 return;
             }
         }
@@ -1005,9 +2016,16 @@ impl Worker {
                 {
                     error!("Failed to ack push task {}: {}", task_id, e);
                 }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, true)
+                    .await
+                {
+                    error!("Failed to release push ordering gate for {}: {}", task_id, e);
+                }
             }
             Ok(Err(e)) => {
-                let error_msg = e.to_string();
+                let error_msg = sanitize_error_message(e.to_string());
                 match self
                     .task_queue
                     .retry_or_dead_letter(queue, task, error_msg)
@@ -1028,6 +2046,13 @@ impl Worker {
                             task_id, e
                         );
                     }
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .await
+                {
+                    error!("Failed to release push ordering gate for {}: {}", task_id, e);
                 }
             }
             Err(_) => {
@@ -1052,6 +2077,13 @@ impl Worker {
                             task_id, e
                         );
                     }
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .await
+                {
+                    error!("Failed to release push ordering gate for {}: {}", task_id, e);
                 }
             }
         }
@@ -1078,7 +2110,8 @@ impl Worker {
                 let config: SpiderConfig = match serde_json::from_value(task.config) {
                     Ok(c) => c,
                     Err(e) => {
-                        let msg = format!("Failed to parse spider config: {}", e);
+                        let msg =
+                            sanitize_error_message(format!("Failed to parse spider config: {}", e));
                         error!("{}", msg);
                         let _ = source_service
                             .update_last_fetch(tenant_id, task.source_id, Some(msg.as_str()))
@@ -1169,6 +2202,31 @@ impl Worker {
                     error!(%tenant_id, "Failed to flush queue outbox after ingest: {}", e);
                 }
 
+                if let Err(err) = self
+                    .append_domain_event(
+                        tenant_id,
+                        DomainEventRecord {
+                            aggregate_type: "source".to_string(),
+                            aggregate_id: task.source_id,
+                            aggregate_version: 0,
+                            event_type: "ingest.completed".to_string(),
+                            dedupe_key: Self::domain_event_dedupe_key("ingest", task.source_id),
+                            payload: json!({
+                                "source_id": task.source_id,
+                                "article_ids": saved_article_ids,
+                                "article_count": saved_article_ids.len(),
+                            }),
+                            metadata: json!({
+                                "component": "worker",
+                                "task": "ingest",
+                            }),
+                        },
+                    )
+                    .await
+                {
+                    warn!(%tenant_id, source_id = %task.source_id, error = %err, "append ingest domain event failed");
+                }
+
                 info!(
                     "Upserted {} articles from source {}",
                     saved_article_ids.len(),
@@ -1180,8 +2238,7 @@ impl Worker {
                 Ok(())
             }
             Err(e) => {
-                let msg = e.to_string();
-                let msg = msg.chars().take(500).collect::<String>();
+                let msg = sanitize_error_message(e.to_string());
                 error!("Failed to fetch articles: {}", msg);
                 let _ = source_service
                     .update_last_fetch(tenant_id, task.source_id, Some(msg.as_str()))
@@ -1203,14 +2260,6 @@ impl Worker {
         }
         let tenant_id = self.resolve_tenant_id(tenant_id).await?;
 
-        let ai_service = match &self.ai_service {
-            Some(s) => s,
-            None => {
-                warn!("AI service not configured, cannot process AI task");
-                return Err(anyhow::anyhow!("AI service not configured"));
-            }
-        };
-
         let article_service = ArticleService::new(self.pool.clone());
 
         let article = match article_service.get_by_id(tenant_id, task.article_id).await {
@@ -1225,6 +2274,19 @@ impl Worker {
             }
         };
 
+        let ai_service = match &self.ai_service {
+            Some(s) => s,
+            None => {
+                warn!(
+                    article_id = %task.article_id,
+                    "AI service not configured, switching to rule-based fallback"
+                );
+                return self
+                    .process_ai_task_with_fallback(tenant_id, task, &article)
+                    .await;
+            }
+        };
+
         let content = article.content.as_deref().unwrap_or("").trim();
         if content.is_empty() {
             warn!(
@@ -1236,13 +2298,89 @@ impl Worker {
 
         match task.task_type {
             AiTaskType::Full => {
-                let (classify, summary, risk, tags) = tokio::try_join!(
-                    ai_service.classify(&article.title, content),
-                    ai_service.summarize(&article.title, content),
-                    ai_service.assess_risk(&article.title, content),
-                    ai_service.extract_tags(&article.title, content),
-                )
-                .map_err(|e| anyhow::anyhow!("AI full processing failed: {}", e))?;
+                let mut stage_reports = Vec::with_capacity(4);
+
+                let (classify, classify_stage) =
+                    match ai_service.classify(&article.title, content).await {
+                        Ok(classify) => (classify, AiStageReport::success("classify")),
+                        Err(err) => {
+                            warn!(
+                                article_id = %task.article_id,
+                                error = %err,
+                                "AI full classify failed, switching to fallback"
+                            );
+                            (
+                                ai_fallback_classify(&article.title, content),
+                                AiStageReport::degraded(
+                                    "classify",
+                                    sanitize_error_message(err.to_string()),
+                                ),
+                            )
+                        }
+                    };
+                stage_reports.push(classify_stage);
+
+                let (summary, summary_stage) =
+                    match ai_service.summarize(&article.title, content).await {
+                        Ok(summary) => (summary, AiStageReport::success("summarize")),
+                        Err(err) => {
+                            warn!(
+                                article_id = %task.article_id,
+                                error = %err,
+                                "AI full summarize failed, switching to fallback"
+                            );
+                            (
+                                ai_fallback_summary(&article.title, content),
+                                AiStageReport::degraded(
+                                    "summarize",
+                                    sanitize_error_message(err.to_string()),
+                                ),
+                            )
+                        }
+                    };
+                stage_reports.push(summary_stage);
+
+                let (risk, risk_stage) = match ai_service.assess_risk(&article.title, content).await
+                {
+                    Ok(risk) => (risk, AiStageReport::success("risk_assess")),
+                    Err(err) => {
+                        warn!(
+                            article_id = %task.article_id,
+                            error = %err,
+                            "AI full risk assessment failed, switching to fallback"
+                        );
+                        (
+                            ai_fallback_risk(&article.title, content),
+                            AiStageReport::degraded(
+                                "risk_assess",
+                                sanitize_error_message(err.to_string()),
+                            ),
+                        )
+                    }
+                };
+                stage_reports.push(risk_stage);
+
+                let (tags, tags_stage) =
+                    match ai_service.extract_tags(&article.title, content).await {
+                        Ok(tags) => (tags, AiStageReport::success("extract_tags")),
+                        Err(err) => {
+                            warn!(
+                                article_id = %task.article_id,
+                                error = %err,
+                                "AI full tag extraction failed, switching to fallback"
+                            );
+                            (
+                                ai_fallback_tags(&article.title, content),
+                                AiStageReport::degraded(
+                                    "extract_tags",
+                                    sanitize_error_message(err.to_string()),
+                                ),
+                            )
+                        }
+                    };
+                stage_reports.push(tags_stage);
+
+                let stage_summary = summarize_ai_full_stages(&stage_reports);
 
                 self.update_article_full(
                     tenant_id,
@@ -1251,6 +2389,7 @@ impl Worker {
                     &summary,
                     &risk,
                     &tags,
+                    &stage_summary,
                 )
                 .await?;
 
@@ -1264,37 +2403,63 @@ impl Worker {
                 }
 
                 info!(
-                    "AI full processing completed for article: {}",
-                    task.article_id
+                    article_id = %task.article_id,
+                    full_status = stage_summary.full_status,
+                    partial_success = stage_summary.partial_success,
+                    degraded = stage_summary.degraded,
+                    "AI full processing completed"
                 );
                 Ok(())
             }
             AiTaskType::Classify => {
-                let classify = ai_service
-                    .classify(&article.title, content)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("AI classify failed: {}", e))?;
-                self.update_article_classify(tenant_id, task.article_id, &classify)
+                let (classify, degraded) = match ai_service.classify(&article.title, content).await
+                {
+                    Ok(classify) => (classify, false),
+                    Err(err) => {
+                        warn!(
+                            article_id = %task.article_id,
+                            error = %err,
+                            "AI classify failed, switching to fallback"
+                        );
+                        (ai_fallback_classify(&article.title, content), true)
+                    }
+                };
+                self.update_article_classify(tenant_id, task.article_id, &classify, degraded)
                     .await?;
                 info!("AI classify completed for article: {}", task.article_id);
                 Ok(())
             }
             AiTaskType::Summarize => {
-                let summary = ai_service
-                    .summarize(&article.title, content)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("AI summarize failed: {}", e))?;
-                self.update_article_summary(tenant_id, task.article_id, &summary)
+                let (summary, degraded) = match ai_service.summarize(&article.title, content).await
+                {
+                    Ok(summary) => (summary, false),
+                    Err(err) => {
+                        warn!(
+                            article_id = %task.article_id,
+                            error = %err,
+                            "AI summarize failed, switching to fallback"
+                        );
+                        (ai_fallback_summary(&article.title, content), true)
+                    }
+                };
+                self.update_article_summary(tenant_id, task.article_id, &summary, degraded)
                     .await?;
                 info!("AI summarize completed for article: {}", task.article_id);
                 Ok(())
             }
             AiTaskType::RiskAssess => {
-                let risk = ai_service
-                    .assess_risk(&article.title, content)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("AI risk assessment failed: {}", e))?;
-                self.update_article_risk(tenant_id, task.article_id, &risk)
+                let (risk, degraded) = match ai_service.assess_risk(&article.title, content).await {
+                    Ok(risk) => (risk, false),
+                    Err(err) => {
+                        warn!(
+                            article_id = %task.article_id,
+                            error = %err,
+                            "AI risk assessment failed, switching to fallback"
+                        );
+                        (ai_fallback_risk(&article.title, content), true)
+                    }
+                };
+                self.update_article_risk(tenant_id, task.article_id, &risk, degraded)
                     .await?;
                 info!(
                     "AI risk assessment completed for article: {}",
@@ -1303,11 +2468,19 @@ impl Worker {
                 Ok(())
             }
             AiTaskType::ExtractTags => {
-                let tags = ai_service
-                    .extract_tags(&article.title, content)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("AI tag extraction failed: {}", e))?;
-                self.update_article_tags(tenant_id, task.article_id, &tags)
+                let (tags, degraded) = match ai_service.extract_tags(&article.title, content).await
+                {
+                    Ok(tags) => (tags, false),
+                    Err(err) => {
+                        warn!(
+                            article_id = %task.article_id,
+                            error = %err,
+                            "AI tag extraction failed, switching to fallback"
+                        );
+                        (ai_fallback_tags(&article.title, content), true)
+                    }
+                };
+                self.update_article_tags(tenant_id, task.article_id, &tags, degraded)
                     .await?;
                 info!(
                     "AI tag extraction completed for article: {}",
@@ -1330,6 +2503,66 @@ impl Worker {
         }
     }
 
+    async fn process_ai_task_with_fallback(
+        &self,
+        tenant_id: uuid::Uuid,
+        task: AiTask,
+        article: &law_eye_db::Article,
+    ) -> anyhow::Result<()> {
+        let content = article.content.as_deref().unwrap_or("").trim();
+        match task.task_type {
+            AiTaskType::Full => {
+                let classify = ai_fallback_classify(&article.title, content);
+                let summary = ai_fallback_summary(&article.title, content);
+                let risk = ai_fallback_risk(&article.title, content);
+                let tags = ai_fallback_tags(&article.title, content);
+                let stage_summary = summarize_ai_full_stages(&[
+                    AiStageReport::degraded("classify", "ai service unavailable".to_string()),
+                    AiStageReport::degraded("summarize", "ai service unavailable".to_string()),
+                    AiStageReport::degraded("risk_assess", "ai service unavailable".to_string()),
+                    AiStageReport::degraded("extract_tags", "ai service unavailable".to_string()),
+                ]);
+                self.update_article_full(
+                    tenant_id,
+                    task.article_id,
+                    &classify,
+                    &summary,
+                    &risk,
+                    &tags,
+                    &stage_summary,
+                )
+                .await
+            }
+            AiTaskType::Classify => {
+                let classify = ai_fallback_classify(&article.title, content);
+                self.update_article_classify(tenant_id, task.article_id, &classify, true)
+                    .await
+            }
+            AiTaskType::Summarize => {
+                let summary = ai_fallback_summary(&article.title, content);
+                self.update_article_summary(tenant_id, task.article_id, &summary, true)
+                    .await
+            }
+            AiTaskType::RiskAssess => {
+                let risk = ai_fallback_risk(&article.title, content);
+                self.update_article_risk(tenant_id, task.article_id, &risk, true)
+                    .await
+            }
+            AiTaskType::ExtractTags => {
+                let tags = ai_fallback_tags(&article.title, content);
+                self.update_article_tags(tenant_id, task.article_id, &tags, true)
+                    .await
+            }
+            AiTaskType::Embed => {
+                warn!(
+                    article_id = %task.article_id,
+                    "AI embed task skipped in fallback mode"
+                );
+                Ok(())
+            }
+        }
+    }
+
     async fn update_article_full(
         &self,
         tenant_id: uuid::Uuid,
@@ -1338,15 +2571,8 @@ impl Worker {
         summary: &SummaryResult,
         risk: &RiskAssessment,
         tags: &TagsResult,
+        stage_summary: &AiFullStageSummary,
     ) -> anyhow::Result<()> {
-        let tasks = json!({
-            "full": true,
-            "classify": true,
-            "summarize": true,
-            "risk_assess": true,
-            "extract_tags": true,
-        });
-
         let metadata_patch = json!({
             "category_confidence": classify.confidence,
             "sub_categories": &classify.sub_categories,
@@ -1357,7 +2583,12 @@ impl Worker {
             "recommendations": &risk.recommendations,
             "risk_level": format!("{:?}", risk.level).to_lowercase(),
             "abstract": &summary.abstract_text,
-            "tasks": tasks,
+            "full_status": stage_summary.full_status,
+            "partial_success": stage_summary.partial_success,
+            "degraded": stage_summary.degraded,
+            "degraded_reason": stage_summary.error_summary.as_deref(),
+            "stage_status": &stage_summary.stage_status,
+            "tasks": &stage_summary.tasks,
         });
 
         let mut tx = self.begin_tenant_tx(tenant_id).await?;
@@ -1409,11 +2640,14 @@ impl Worker {
         tenant_id: uuid::Uuid,
         article_id: uuid::Uuid,
         classify: &ClassifyResult,
+        degraded: bool,
     ) -> anyhow::Result<()> {
         let metadata_patch = json!({
             "category_confidence": classify.confidence,
             "sub_categories": &classify.sub_categories,
             "reasoning": &classify.reasoning,
+            "degraded": degraded,
+            "degraded_reason": if degraded { Some("rule-based fallback") } else { None },
         });
 
         let mut tx = self.begin_tenant_tx(tenant_id).await?;
@@ -1441,11 +2675,14 @@ impl Worker {
         tenant_id: uuid::Uuid,
         article_id: uuid::Uuid,
         summary: &SummaryResult,
+        degraded: bool,
     ) -> anyhow::Result<()> {
         let metadata_patch = json!({
             "key_points": &summary.key_points,
             "entities": &summary.entities,
             "abstract": &summary.abstract_text,
+            "degraded": degraded,
+            "degraded_reason": if degraded { Some("rule-based fallback") } else { None },
         });
 
         let mut tx = self.begin_tenant_tx(tenant_id).await?;
@@ -1473,11 +2710,14 @@ impl Worker {
         tenant_id: uuid::Uuid,
         article_id: uuid::Uuid,
         risk: &RiskAssessment,
+        degraded: bool,
     ) -> anyhow::Result<()> {
         let metadata_patch = json!({
             "risk_dimensions": &risk.dimensions,
             "recommendations": &risk.recommendations,
             "risk_level": format!("{:?}", risk.level).to_lowercase(),
+            "degraded": degraded,
+            "degraded_reason": if degraded { Some("rule-based fallback") } else { None },
         });
 
         let mut tx = self.begin_tenant_tx(tenant_id).await?;
@@ -1505,10 +2745,13 @@ impl Worker {
         tenant_id: uuid::Uuid,
         article_id: uuid::Uuid,
         tags: &TagsResult,
+        degraded: bool,
     ) -> anyhow::Result<()> {
         let metadata_patch = json!({
             "tags": &tags.tags,
             "keywords": &tags.keywords,
+            "degraded": degraded,
+            "degraded_reason": if degraded { Some("rule-based fallback") } else { None },
         });
 
         let mut tx = self.begin_tenant_tx(tenant_id).await?;
@@ -1656,6 +2899,32 @@ impl Worker {
         {
             Ok(resp) => {
                 if resp.status().is_success() {
+                    if let Some(first_article_id) = task.article_ids.first().copied() {
+                        if let Err(err) = self
+                            .append_domain_event(
+                                tenant_id,
+                                DomainEventRecord {
+                                    aggregate_type: "article".to_string(),
+                                    aggregate_id: first_article_id,
+                                    aggregate_version: 0,
+                                    event_type: "push.sent".to_string(),
+                                    dedupe_key: Self::domain_event_dedupe_key("push", first_article_id),
+                                    payload: json!({
+                                        "article_ids": task.article_ids,
+                                        "article_count": articles.len(),
+                                        "webhook_url": task.webhook_url,
+                                    }),
+                                    metadata: json!({
+                                        "component": "worker",
+                                        "task": "push",
+                                    }),
+                                },
+                            )
+                            .await
+                        {
+                            warn!(%tenant_id, error = %err, "append push domain event failed");
+                        }
+                    }
                     info!("Push sent successfully");
                     Ok(())
                 } else {
@@ -1674,6 +2943,19 @@ impl Worker {
     }
 }
 
+
+fn push_preview_limit() -> usize {
+    const DEFAULT_LIMIT: usize = 50;
+    const MAX_LIMIT: usize = 500;
+
+    std::env::var("LAW_EYE__PUSH__PREVIEW_LIMIT")
+        .ok()
+        .and_then(|raw| raw.trim().parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_LIMIT)
+        .min(MAX_LIMIT)
+}
+
 fn format_push_message(articles: &[law_eye_db::Article]) -> String {
     let mut msg = String::from(
         "📰 法眼资讯速递
@@ -1681,7 +2963,8 @@ fn format_push_message(articles: &[law_eye_db::Article]) -> String {
 ",
     );
 
-    for article in articles.iter().take(10) {
+    let preview_limit = push_preview_limit();
+    for article in articles.iter().take(preview_limit) {
         msg.push_str(&format!(
             "- {}
   {}
@@ -1691,11 +2974,11 @@ fn format_push_message(articles: &[law_eye_db::Article]) -> String {
         ));
     }
 
-    if articles.len() > 10 {
+    if articles.len() > preview_limit {
         msg.push_str(&format!(
             "... 及其他 {} 条资讯
 ",
-            articles.len() - 10
+            articles.len() - preview_limit
         ));
     }
 
@@ -1754,7 +3037,13 @@ async fn run_healthcheck() -> anyhow::Result<()> {
         .context("healthcheck: postgres query timed out")?
         .context("healthcheck: postgres query failed")?;
 
-    let task_queue = TaskQueue::new(&config.redis.url).context("healthcheck: init redis client")?;
+    let task_queue = TaskQueue::new_with_pool_timeouts(
+        &config.redis.url,
+        config.redis.pool_wait_timeout_ms,
+        config.redis.pool_create_timeout_ms,
+        config.redis.pool_recycle_timeout_ms,
+    )
+    .context("healthcheck: init redis client")?;
     timeout(check_timeout, task_queue.ping())
         .await
         .context("healthcheck: redis ping timed out")?
@@ -1803,7 +3092,12 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    let task_queue = TaskQueue::new(&config.redis.url)?;
+    let task_queue = TaskQueue::new_with_pool_timeouts(
+        &config.redis.url,
+        config.redis.pool_wait_timeout_ms,
+        config.redis.pool_create_timeout_ms,
+        config.redis.pool_recycle_timeout_ms,
+    )?;
     let task_queue_for_health = Arc::new(task_queue.clone());
 
     let ai_service = if !config.ai.api_key.is_empty() {
@@ -1814,6 +3108,9 @@ async fn main() -> anyhow::Result<()> {
             Some(&config.ai.model),
         ))
     } else {
+        if is_production {
+            anyhow::bail!("LAW_EYE__AI__API_KEY must be set in production");
+        }
         warn!("AI service not configured (missing api_key)");
         None
     };
@@ -1946,5 +3243,21 @@ mod webhook_url_tests {
                 .await
                 .is_err()
         );
+    }
+
+    #[test]
+    fn sanitize_error_message_redacts_sensitive_payload() {
+        let input = "request failed: Authorization: Bearer sk-live-very-secret-token";
+        let sanitized = sanitize_error_message(input);
+        assert_eq!(sanitized, WORKER_ERROR_REDACTED);
+        assert!(!sanitized.contains("sk-live-very-secret-token"));
+    }
+
+    #[test]
+    fn sanitize_error_message_truncates_and_normalizes_controls() {
+        let input = format!("line1\nline2\t{}", "x".repeat(600));
+        let sanitized = sanitize_error_message(input);
+        assert!(!sanitized.contains('\n'));
+        assert!(sanitized.len() <= WORKER_ERROR_MAX_CHARS + 3);
     }
 }

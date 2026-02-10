@@ -234,7 +234,7 @@ pub(crate) async fn get_source_stats(
 
     let can_read = state
         .user_service
-        .has_permission(user.id, "sources:read")
+        .has_permission(user.tenant_id, user.id, "sources:read")
         .await
         .map_err(AppError::from)?;
     if !can_read {
@@ -292,7 +292,7 @@ pub(crate) async fn list_sources(
 
     let can_read = state
         .user_service
-        .has_permission(user.id, "sources:read")
+        .has_permission(user.tenant_id, user.id, "sources:read")
         .await
         .map_err(AppError::from)?;
     if !can_read {
@@ -393,7 +393,7 @@ pub(crate) async fn get_source(
 
     let can_read = state
         .user_service
-        .has_permission(user.id, "sources:read")
+        .has_permission(user.tenant_id, user.id, "sources:read")
         .await
         .map_err(AppError::from)?;
     if !can_read {
@@ -436,7 +436,7 @@ pub(crate) async fn delete_source(
 
     let is_admin = state
         .user_service
-        .has_permission(user.id, "*")
+        .has_permission(user.tenant_id, user.id, "*")
         .await
         .map_err(AppError::from)?;
     if !is_admin {
@@ -527,7 +527,7 @@ pub(crate) async fn restore_source(
 
     let is_admin = state
         .user_service
-        .has_permission(user.id, "*")
+        .has_permission(user.tenant_id, user.id, "*")
         .await
         .map_err(AppError::from)?;
     if !is_admin {
@@ -618,7 +618,7 @@ pub(crate) async fn create_source(
 
     let is_admin = state
         .user_service
-        .has_permission(user.id, "*")
+        .has_permission(user.tenant_id, user.id, "*")
         .await
         .map_err(AppError::from)?;
     if !is_admin {
@@ -753,7 +753,7 @@ pub(crate) async fn trigger_fetch(
 
     let is_admin = state
         .user_service
-        .has_permission(user.id, "*")
+        .has_permission(user.tenant_id, user.id, "*")
         .await
         .map_err(AppError::from)?;
     if !is_admin {

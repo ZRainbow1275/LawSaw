@@ -6,11 +6,13 @@ use axum::{
     Json, Router,
 };
 use law_eye_common::Error;
+use law_eye_core::OAuthProviderIdentity;
 use law_eye_db::{CreateAuditLog, CreateUser};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::net::SocketAddr;
 use utoipa::ToSchema;
+use tower_sessions::Session;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -45,6 +47,30 @@ pub fn router() -> Router<AppState> {
             post(request_password_reset).layer(RateLimitLayer::password_reset()),
         )
         .route("/password-reset/confirm", post(confirm_password_reset))
+        .route(
+            "/oauth/start",
+            post(oauth_start).layer(RateLimitLayer::login()),
+        )
+        .route(
+            "/oauth/callback",
+            post(oauth_callback).layer(RateLimitLayer::login()),
+        )
+        .route(
+            "/mfa/totp/setup",
+            post(mfa_totp_setup).layer(RateLimitLayer::login()),
+        )
+        .route(
+            "/mfa/totp/confirm",
+            post(mfa_totp_confirm).layer(RateLimitLayer::login()),
+        )
+        .route(
+            "/mfa/totp/disable",
+            post(mfa_totp_disable).layer(RateLimitLayer::login()),
+        )
+        .route(
+            "/mfa/verify",
+            post(mfa_verify).layer(RateLimitLayer::login()),
+        )
         .route("/logout", post(logout))
         .route("/me", get(get_current_user))
 }
@@ -66,6 +92,74 @@ pub struct AuthResponse {
     pub success: bool,
     pub message: String,
     pub user: Option<UserResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mfa_required: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mfa_challenge: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct OAuthStartResponse {
+    pub success: bool,
+    pub provider: String,
+    pub tenant_slug: String,
+    pub state: String,
+    pub state_expires_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct OAuthStartRequest {
+    pub provider: String,
+    pub tenant_slug: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct OAuthCallbackRequest {
+    pub provider: String,
+    pub state: String,
+    pub provider_user_id: String,
+    pub email: String,
+    pub display_name: Option<String>,
+    pub tenant_slug: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MfaTotpSetupRequest {
+    pub account_label: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MfaTotpSetupResponse {
+    pub success: bool,
+    pub issuer: String,
+    pub account_label: String,
+    pub secret: String,
+    pub provisioning_uri: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MfaTotpConfirmRequest {
+    pub code: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MfaTotpStatusResponse {
+    pub success: bool,
+    pub enabled: bool,
+    pub verified_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub last_used_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MfaVerifyRequest {
+    pub email: String,
+    pub challenge: String,
+    pub code: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -173,6 +267,7 @@ impl From<law_eye_db::User> for UserResponse {
 pub(crate) async fn register(
     State(state): State<AppState>,
     mut auth_session: AuthSession,
+    session: Session,
     headers: HeaderMap,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     ApiJson(req): ApiJson<RegisterRequest>,
@@ -252,6 +347,7 @@ pub(crate) async fn register(
         .login(&auth_user)
         .await
         .map_err(|e| AppError::internal(format!("Session error: {}", e)))?;
+    bind_session_tenant_mapping(&state, &session, user.tenant_id, user.id).await?;
 
     let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
     state
@@ -283,6 +379,8 @@ pub(crate) async fn register(
             success: true,
             message: "Registration successful".to_string(),
             user: Some(user.into()),
+            mfa_required: Some(false),
+            mfa_challenge: None,
         }),
     ))
 }
@@ -301,6 +399,7 @@ pub(crate) async fn register(
 pub(crate) async fn login(
     State(state): State<AppState>,
     mut auth_session: AuthSession,
+    session: Session,
     headers: HeaderMap,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     ApiJson(creds): ApiJson<Credentials>,
@@ -311,10 +410,54 @@ pub(crate) async fn login(
         .map_err(|e| AppError::internal(format!("Auth backend error: {}", e)))?
         .ok_or_else(|| AppError::unauthorized("Invalid email or password"))?;
 
+    let mfa_status = state
+        .mfa_totp_service
+        .get_totp_status(user.tenant_id, user.id)
+        .await
+        .map_err(AppError::from)?;
+
+    if mfa_status.as_ref().is_some_and(|m| m.enabled) {
+        let challenge = state
+            .mfa_totp_service
+            .issue_login_challenge(user.tenant_id, user.id, mfa_challenge_ttl_seconds(&state))
+            .await
+            .map_err(AppError::from)?;
+
+        let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+        state
+            .audit_service
+            .log(
+                user.tenant_id,
+                CreateAuditLog {
+                    user_id: Some(user.id),
+                    action: "auth.mfa.challenge_issued".to_string(),
+                    resource: "auth".to_string(),
+                    resource_id: Some(user.id),
+                    old_value: None,
+                    new_value: Some(json!({
+                        "challenge_expires_at": challenge.token.expires_at,
+                    })),
+                    ip_address,
+                    user_agent,
+                },
+            )
+            .await
+            .map_err(AppError::from)?;
+
+        return Ok(Json(AuthResponse {
+            success: true,
+            message: "MFA verification required".to_string(),
+            user: None,
+            mfa_required: Some(true),
+            mfa_challenge: Some(challenge.raw_challenge),
+        }));
+    }
+
     auth_session
         .login(&user)
         .await
         .map_err(|e| AppError::internal(format!("Session error: {}", e)))?;
+    bind_session_tenant_mapping(&state, &session, user.tenant_id, user.id).await?;
 
     let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
     state
@@ -341,6 +484,8 @@ pub(crate) async fn login(
         success: true,
         message: "Login successful".to_string(),
         user: Some(user.into()),
+        mfa_required: Some(false),
+        mfa_challenge: None,
     }))
 }
 
@@ -355,6 +500,7 @@ pub(crate) async fn login(
 pub(crate) async fn logout(
     State(state): State<AppState>,
     mut auth_session: AuthSession,
+    session: Session,
     headers: HeaderMap,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
 ) -> ApiResult<Json<AuthResponse>> {
@@ -364,6 +510,8 @@ pub(crate) async fn logout(
         .logout()
         .await
         .map_err(|e| AppError::internal(format!("Session error: {}", e)))?;
+
+    unbind_session_tenant_mapping(&state, &session).await?;
 
     if let Some(user) = user {
         let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
@@ -390,6 +538,8 @@ pub(crate) async fn logout(
         success: true,
         message: "Logout successful".to_string(),
         user: None,
+        mfa_required: Some(false),
+        mfa_challenge: None,
     }))
 }
 
@@ -414,7 +564,42 @@ pub(crate) async fn get_current_user(auth_session: AuthSession) -> ApiResult<Jso
         success: true,
         message: "Authenticated".to_string(),
         user: Some(user.into()),
+        mfa_required: Some(false),
+        mfa_challenge: None,
     }))
+}
+
+async fn bind_session_tenant_mapping(
+    state: &AppState,
+    session: &Session,
+    tenant_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+) -> ApiResult<()> {
+    let Some(session_id) = session.id().map(|value| value.to_string()) else {
+        return Ok(());
+    };
+
+    state
+        .tenant_service
+        .bind_session_tenant(&session_id, tenant_id, Some(user_id))
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(())
+}
+
+async fn unbind_session_tenant_mapping(state: &AppState, session: &Session) -> ApiResult<()> {
+    let Some(session_id) = session.id().map(|value| value.to_string()) else {
+        return Ok(());
+    };
+
+    state
+        .tenant_service
+        .unbind_session_tenant(&session_id)
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(())
 }
 
 fn validate_password_policy(password: &str) -> Result<(), AppError> {
@@ -473,6 +658,534 @@ fn email_verification_ttl_seconds() -> u64 {
         .filter(|v| *v > 0)
         .unwrap_or(DEFAULT_TTL_SECS)
         .min(MAX_TTL_SECS)
+}
+
+fn oauth_state_ttl_seconds(state: &AppState) -> u64 {
+    state.auth_oauth_state_ttl_seconds.min(1800).max(30)
+}
+
+fn mfa_challenge_ttl_seconds(state: &AppState) -> u64 {
+    state
+        .auth_mfa_login_challenge_ttl_seconds
+        .min(1800)
+        .max(30)
+}
+
+fn normalize_provider_or_err(state: &AppState, provider: &str) -> Result<String, AppError> {
+    let provider = provider.trim().to_ascii_lowercase();
+    if provider.is_empty() {
+        return Err(AppError::validation("Invalid oauth provider"));
+    }
+
+    if !state
+        .auth_oauth_enabled_providers
+        .iter()
+        .any(|p| p == &provider)
+    {
+        return Err(AppError::validation("Unsupported oauth provider"));
+    }
+
+    Ok(provider)
+}
+
+fn normalize_tenant_slug_or_default(tenant_slug: Option<String>) -> Result<String, AppError> {
+    let tenant_slug_re = TENANT_SLUG_RE.as_ref().ok_or_else(|| {
+        AppError::internal_with_code("REGEX_INIT_FAILED", "Internal server error")
+    })?;
+
+    let tenant_slug = tenant_slug.unwrap_or_else(|| "default".to_string());
+    let tenant_slug = tenant_slug.trim().to_ascii_lowercase();
+    if !tenant_slug_re.is_match(&tenant_slug) {
+        return Err(AppError::validation(
+            "Invalid tenant_slug (expected: ^[a-z][a-z0-9-]{2,31}$)",
+        ));
+    }
+
+    Ok(tenant_slug)
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/oauth/start",
+    request_body = OAuthStartRequest,
+    responses(
+        (status = 200, description = "OAuth start issued", body = OAuthStartResponse),
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
+    )
+)]
+pub(crate) async fn oauth_start(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    ApiJson(req): ApiJson<OAuthStartRequest>,
+) -> ApiResult<Json<OAuthStartResponse>> {
+    let provider = normalize_provider_or_err(&state, &req.provider)?;
+    let tenant_slug = normalize_tenant_slug_or_default(req.tenant_slug)?;
+    let tenant = state
+        .tenant_service
+        .get_by_slug(&tenant_slug)
+        .await
+        .map_err(AppError::from)?;
+
+    let issued = state
+        .oauth_identity_service
+        .issue_state_token(
+            tenant.id,
+            &provider,
+            oauth_state_ttl_seconds(&state),
+        )
+        .await
+        .map_err(AppError::from)?;
+
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    state
+        .audit_service
+        .log(
+            tenant.id,
+            CreateAuditLog {
+                user_id: None,
+                action: "auth.oauth.start".to_string(),
+                resource: "auth".to_string(),
+                resource_id: None,
+                old_value: None,
+                new_value: Some(json!({
+                    "provider": provider.clone(),
+                    "tenant_slug": tenant_slug.clone(),
+                    "state_expires_at": issued.token.expires_at,
+                })),
+                ip_address,
+                user_agent,
+            },
+        )
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(Json(OAuthStartResponse {
+        success: true,
+        provider: issued.token.provider,
+        tenant_slug,
+        state: issued.raw_state,
+        state_expires_at: issued.token.expires_at,
+    }))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/oauth/callback",
+    request_body = OAuthCallbackRequest,
+    responses(
+        (status = 200, description = "OAuth login successful", body = AuthResponse),
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 401, description = "Unauthorized", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
+    )
+)]
+pub(crate) async fn oauth_callback(
+    State(state): State<AppState>,
+    mut auth_session: AuthSession,
+    session: Session,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    ApiJson(req): ApiJson<OAuthCallbackRequest>,
+) -> ApiResult<Json<AuthResponse>> {
+    let email_re = EMAIL_RE.as_ref().ok_or_else(|| {
+        AppError::internal_with_code("REGEX_INIT_FAILED", "Internal server error")
+    })?;
+
+    let provider = normalize_provider_or_err(&state, &req.provider)?;
+    let tenant_slug = normalize_tenant_slug_or_default(req.tenant_slug)?;
+    let tenant = state
+        .tenant_service
+        .get_by_slug(&tenant_slug)
+        .await
+        .map_err(AppError::from)?;
+
+    if req.email.trim().is_empty() || !email_re.is_match(req.email.trim()) {
+        return Err(AppError::validation("Invalid email address"));
+    }
+
+    state
+        .oauth_identity_service
+        .consume_state_token(tenant.id, &provider, &req.state)
+        .await
+        .map_err(|e| match e {
+            Error::Unauthorized(_) => AppError::unauthorized("Invalid or expired OAuth state"),
+            other => AppError::from(other),
+        })?;
+
+    let identity = OAuthProviderIdentity {
+        provider: provider.clone(),
+        provider_user_id: req.provider_user_id.clone(),
+        provider_email: req.email.clone(),
+    };
+
+    let mut user = state
+        .oauth_identity_service
+        .find_user_by_identity(tenant.id, &identity)
+        .await
+        .map_err(AppError::from)?;
+
+    if user.is_none() {
+        user = state
+            .oauth_identity_service
+            .get_user_by_email(tenant.id, &req.email)
+            .await
+            .map_err(AppError::from)?;
+    }
+
+    let mut provisioned_role: Option<String> = None;
+    let user = match user {
+        Some(user) => user,
+        None => {
+            let existing_users = state
+                .user_service
+                .count_by_tenant(tenant.id)
+                .await
+                .map_err(AppError::from)?;
+
+            let create_user = CreateUser {
+                tenant_id: tenant.id,
+                email: req.email.clone(),
+                password: format!("oauth:{}:{}", provider, uuid::Uuid::new_v4()),
+                display_name: req.display_name.clone(),
+            };
+
+            let created = match state.user_service.create(create_user).await {
+                Ok(user) => user,
+                Err(Error::Validation(msg)) if msg.contains("already exists") => state
+                    .oauth_identity_service
+                    .get_user_by_email(tenant.id, &req.email)
+                    .await
+                    .map_err(AppError::from)?
+                    .ok_or_else(|| AppError::conflict("Email already registered"))?,
+                Err(err) => return Err(AppError::from(err)),
+            };
+
+            let default_role = if existing_users == 0 { "admin" } else { "viewer" };
+            state
+                .user_service
+                .assign_role(created.id, default_role, None)
+                .await
+                .map_err(AppError::from)?;
+            provisioned_role = Some(default_role.to_string());
+            created
+        }
+    };
+
+    state
+        .oauth_identity_service
+        .link_identity(tenant.id, user.id, &identity)
+        .await
+        .map_err(AppError::from)?;
+
+    let auth_user = AuthenticatedUser::from_db_user(&user);
+    auth_session
+        .login(&auth_user)
+        .await
+        .map_err(|e| AppError::internal(format!("Session error: {}", e)))?;
+    bind_session_tenant_mapping(&state, &session, tenant.id, user.id).await?;
+
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    state
+        .audit_service
+        .log(
+            tenant.id,
+            CreateAuditLog {
+                user_id: Some(user.id),
+                action: "auth.oauth.callback".to_string(),
+                resource: "auth".to_string(),
+                resource_id: Some(user.id),
+                old_value: None,
+                new_value: Some(json!({
+                    "provider": provider.clone(),
+                    "provider_user_id": req.provider_user_id,
+                    "email": user.email,
+                    "provisioned_role": provisioned_role,
+                })),
+                ip_address,
+                user_agent,
+            },
+        )
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(Json(AuthResponse {
+        success: true,
+        message: "OAuth login successful".to_string(),
+        user: Some(user.into()),
+        mfa_required: Some(false),
+        mfa_challenge: None,
+    }))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/mfa/totp/setup",
+    security(("session" = [])),
+    request_body = MfaTotpSetupRequest,
+    responses(
+        (status = 200, description = "MFA setup prepared", body = MfaTotpSetupResponse),
+        (status = 401, description = "Unauthorized", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
+    )
+)]
+pub(crate) async fn mfa_totp_setup(
+    State(state): State<AppState>,
+    auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    ApiJson(req): ApiJson<MfaTotpSetupRequest>,
+) -> ApiResult<Json<MfaTotpSetupResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+
+    let account_label = req.account_label.unwrap_or_else(|| user.email.clone());
+    let account_label = account_label.trim().to_string();
+    if account_label.is_empty() {
+        return Err(AppError::validation("Invalid account label"));
+    }
+
+    let provisioning = state
+        .mfa_totp_service
+        .setup_totp(
+            user.tenant_id,
+            user.id,
+            &state.auth_mfa_totp_issuer,
+            &account_label,
+        )
+        .await
+        .map_err(AppError::from)?;
+
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    state
+        .audit_service
+        .log(
+            user.tenant_id,
+            CreateAuditLog {
+                user_id: Some(user.id),
+                action: "auth.mfa.setup".to_string(),
+                resource: "auth".to_string(),
+                resource_id: Some(user.id),
+                old_value: None,
+                new_value: Some(json!({
+                    "issuer": state.auth_mfa_totp_issuer.clone(),
+                    "account_label": account_label.clone(),
+                })),
+                ip_address,
+                user_agent,
+            },
+        )
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(Json(MfaTotpSetupResponse {
+        success: true,
+        issuer: state.auth_mfa_totp_issuer.clone(),
+        account_label,
+        secret: provisioning.secret,
+        provisioning_uri: provisioning.provisioning_uri,
+    }))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/mfa/totp/confirm",
+    security(("session" = [])),
+    request_body = MfaTotpConfirmRequest,
+    responses(
+        (status = 200, description = "MFA enabled", body = MfaTotpStatusResponse),
+        (status = 401, description = "Unauthorized", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
+    )
+)]
+pub(crate) async fn mfa_totp_confirm(
+    State(state): State<AppState>,
+    auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    ApiJson(req): ApiJson<MfaTotpConfirmRequest>,
+) -> ApiResult<Json<MfaTotpStatusResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+
+    let updated = state
+        .mfa_totp_service
+        .confirm_totp(user.tenant_id, user.id, &req.code)
+        .await
+        .map_err(AppError::from)?;
+
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    state
+        .audit_service
+        .log(
+            user.tenant_id,
+            CreateAuditLog {
+                user_id: Some(user.id),
+                action: "auth.mfa.confirm".to_string(),
+                resource: "auth".to_string(),
+                resource_id: Some(user.id),
+                old_value: None,
+                new_value: Some(json!({
+                    "enabled": updated.enabled,
+                    "verified_at": updated.verified_at,
+                })),
+                ip_address,
+                user_agent,
+            },
+        )
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(Json(MfaTotpStatusResponse {
+        success: true,
+        enabled: updated.enabled,
+        verified_at: updated.verified_at,
+        last_used_at: updated.last_used_at,
+    }))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/mfa/totp/disable",
+    security(("session" = [])),
+    responses(
+        (status = 200, description = "MFA disabled", body = AuthResponse),
+        (status = 401, description = "Unauthorized", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
+    )
+)]
+pub(crate) async fn mfa_totp_disable(
+    State(state): State<AppState>,
+    auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+) -> ApiResult<Json<AuthResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+
+    state
+        .mfa_totp_service
+        .disable_totp(user.tenant_id, user.id)
+        .await
+        .map_err(AppError::from)?;
+
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    state
+        .audit_service
+        .log(
+            user.tenant_id,
+            CreateAuditLog {
+                user_id: Some(user.id),
+                action: "auth.mfa.disable".to_string(),
+                resource: "auth".to_string(),
+                resource_id: Some(user.id),
+                old_value: None,
+                new_value: Some(json!({
+                    "enabled": false,
+                })),
+                ip_address,
+                user_agent,
+            },
+        )
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(Json(AuthResponse {
+        success: true,
+        message: "MFA disabled".to_string(),
+        user: None,
+        mfa_required: Some(false),
+        mfa_challenge: None,
+    }))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/mfa/verify",
+    request_body = MfaVerifyRequest,
+    responses(
+        (status = 200, description = "MFA verified", body = AuthResponse),
+        (status = 401, description = "Unauthorized", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
+    )
+)]
+pub(crate) async fn mfa_verify(
+    State(state): State<AppState>,
+    mut auth_session: AuthSession,
+    session: Session,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    ApiJson(req): ApiJson<MfaVerifyRequest>,
+) -> ApiResult<Json<AuthResponse>> {
+    let email_re = EMAIL_RE.as_ref().ok_or_else(|| {
+        AppError::internal_with_code("REGEX_INIT_FAILED", "Internal server error")
+    })?;
+
+    if req.email.trim().is_empty() || !email_re.is_match(req.email.trim()) {
+        return Err(AppError::validation("Invalid email address"));
+    }
+
+    let db_user = state
+        .user_service
+        .get_by_email(&req.email)
+        .await
+        .map_err(|e| match e {
+            Error::NotFound(_) => AppError::unauthorized("Invalid MFA challenge or code"),
+            other => AppError::from(other),
+        })?;
+
+    let challenge_user_id = state
+        .mfa_totp_service
+        .consume_login_challenge_and_verify(db_user.tenant_id, &req.challenge, &req.code)
+        .await
+        .map_err(|e| match e {
+            Error::Unauthorized(_) => AppError::unauthorized("Invalid MFA challenge or code"),
+            other => AppError::from(other),
+        })?;
+
+    if challenge_user_id != db_user.id {
+        return Err(AppError::unauthorized("Invalid MFA challenge or code"));
+    }
+
+    let auth_user = AuthenticatedUser::from_db_user(&db_user);
+    auth_session
+        .login(&auth_user)
+        .await
+        .map_err(|e| AppError::internal(format!("Session error: {}", e)))?;
+    bind_session_tenant_mapping(&state, &session, db_user.tenant_id, db_user.id).await?;
+
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    state
+        .audit_service
+        .log(
+            db_user.tenant_id,
+            CreateAuditLog {
+                user_id: Some(db_user.id),
+                action: "auth.mfa.verify".to_string(),
+                resource: "auth".to_string(),
+                resource_id: Some(db_user.id),
+                old_value: None,
+                new_value: Some(json!({
+                    "email": db_user.email,
+                })),
+                ip_address,
+                user_agent,
+            },
+        )
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(Json(AuthResponse {
+        success: true,
+        message: "Login successful".to_string(),
+        user: Some(db_user.into()),
+        mfa_required: Some(false),
+        mfa_challenge: None,
+    }))
 }
 
 /// 请求邮箱验证（生产环境应通过邮件等渠道交付 token；本实现默认仅在非生产返回 debug_token）
@@ -653,6 +1366,8 @@ pub(crate) async fn confirm_email_verification(
             success: true,
             message: "Email already verified".to_string(),
             user: None,
+            mfa_required: Some(false),
+            mfa_challenge: None,
         }));
     }
 
@@ -707,6 +1422,8 @@ pub(crate) async fn confirm_email_verification(
         success: true,
         message: "Email verified".to_string(),
         user: None,
+        mfa_required: Some(false),
+        mfa_challenge: None,
     }))
 }
 
@@ -869,5 +1586,7 @@ pub(crate) async fn confirm_password_reset(
         success: true,
         message: "Password reset successful".to_string(),
         user: None,
+        mfa_required: Some(false),
+        mfa_challenge: None,
     }))
 }

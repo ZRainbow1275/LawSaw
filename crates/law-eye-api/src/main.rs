@@ -17,7 +17,7 @@ use axum::response::{IntoResponse, Response};
 use axum_login::AuthManagerLayerBuilder;
 use law_eye_ai::{AiService, LlmGateway};
 use law_eye_common::vault::{PlaintextCipher, SensitiveStringCipher, VaultTransitCipher};
-use law_eye_common::AppConfig;
+use law_eye_common::{AppConfig, ConfigRuntime};
 use law_eye_core::ObjectService;
 use law_eye_db::{create_pool_retry, create_pool_with_session_role_retry};
 use law_eye_queue::TaskQueue;
@@ -304,6 +304,17 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("load application config (file/env + optional Vault secrets)")?;
 
+    let config_runtime = ConfigRuntime::new(config.clone());
+    let _config_reload_task = if config.config_reload.enabled {
+        info!(
+            interval_seconds = config.config_reload.interval_seconds,
+            "Configuration hot reload is enabled"
+        );
+        Some(config_runtime.spawn_auto_reload(config.config_reload.interval_seconds))
+    } else {
+        None
+    };
+
     let metrics_handle = PrometheusBuilder::new()
         .install_recorder()
         .context("install prometheus metrics recorder")?;
@@ -333,7 +344,12 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    let task_queue = TaskQueue::new(&config.redis.url)?;
+    let task_queue = TaskQueue::new_with_pool_timeouts(
+        &config.redis.url,
+        config.redis.pool_wait_timeout_ms,
+        config.redis.pool_create_timeout_ms,
+        config.redis.pool_recycle_timeout_ms,
+    )?;
 
     // Initialize Redis client for sessions
     info!("Connecting to Redis for session storage...");
@@ -369,6 +385,9 @@ async fn main() -> anyhow::Result<()> {
             Some(gateway),
         )
     } else {
+        if is_production {
+            anyhow::bail!("LAW_EYE__AI__API_KEY must be set in production");
+        }
         warn!("AI service not configured (missing api_key)");
         (None, None)
     };
@@ -430,7 +449,13 @@ async fn main() -> anyhow::Result<()> {
         metrics_handle,
         config.metrics.token.clone(),
         config.security.allow_internal_source_urls,
+        config.security.allow_internal_webhook_urls,
+        config.auth.oauth.state_ttl_seconds,
+        config.auth.oauth.enabled_providers.clone(),
+        config.auth.mfa.totp_issuer.clone(),
+        config.auth.mfa.login_challenge_ttl_seconds,
         feedback_cipher,
+        Some(config_runtime.clone()),
     );
 
     // CORS configuration - use predicate for dynamic origin validation

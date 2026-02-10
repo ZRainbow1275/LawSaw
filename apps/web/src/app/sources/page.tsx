@@ -34,9 +34,9 @@ import {
 import { useState } from "react";
 
 const sourceTypeIcons: Record<Source["source_type"], React.ReactNode> = {
-	rss: <Rss className="h-4 w-4" />,
-	spider: <Globe className="h-4 w-4" />,
-	api: <Database className="h-4 w-4" />,
+	rss: <Rss aria-hidden="true" className="h-4 w-4" />,
+	spider: <Globe aria-hidden="true" className="h-4 w-4" />,
+	api: <Database aria-hidden="true" className="h-4 w-4" />,
 };
 
 const sourceTypeLabels: Record<Source["source_type"], string> = {
@@ -201,7 +201,7 @@ export default function SourcesPage() {
 								disabled={!isAdmin}
 								title={!isAdmin ? t("Admin permission required") : undefined}
 							>
-								<Plus className="mr-2 h-4 w-4" />
+								<Plus aria-hidden="true" className="mr-2 h-4 w-4" />
 								{t("Add source")}
 							</Button>
 						</div>
@@ -212,7 +212,7 @@ export default function SourcesPage() {
 								<CardContent className="p-4">
 									<div className="flex items-center gap-3">
 										<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-100">
-											<Rss className="h-5 w-5 text-primary-600" />
+											<Rss aria-hidden="true" className="h-5 w-5 text-primary-600" />
 										</div>
 										<div>
 											<p className="text-2xl font-bold">
@@ -229,7 +229,7 @@ export default function SourcesPage() {
 								<CardContent className="p-4">
 									<div className="flex items-center gap-3">
 										<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success-light">
-											<CheckCircle2 className="h-5 w-5 text-success" />
+											<CheckCircle2 aria-hidden="true" className="h-5 w-5 text-success" />
 										</div>
 										<div>
 											<p className="text-2xl font-bold">{activeCount}</p>
@@ -244,7 +244,7 @@ export default function SourcesPage() {
 								<CardContent className="p-4">
 									<div className="flex items-center gap-3">
 										<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
-											<AlertCircle className="h-5 w-5 text-destructive" />
+											<AlertCircle aria-hidden="true" className="h-5 w-5 text-destructive" />
 										</div>
 										<div>
 											<p className="text-2xl font-bold">{errorCount}</p>
@@ -268,7 +268,7 @@ export default function SourcesPage() {
 											size="icon"
 											onClick={() => setShowAddForm(false)}
 										>
-											<X className="h-4 w-4" />
+											<X aria-hidden="true" className="h-4 w-4" />
 										</Button>
 									</CardTitle>
 								</CardHeader>
@@ -495,7 +495,7 @@ export default function SourcesPage() {
 						<Card>
 							<CardHeader>
 								<CardTitle className="flex items-center gap-2">
-									<Rss className="h-5 w-5 text-primary-500" />
+									<Rss aria-hidden="true" className="h-5 w-5 text-primary-500" />
 									{t("Sources list")}
 								</CardTitle>
 							</CardHeader>
@@ -556,7 +556,7 @@ export default function SourcesPage() {
 													</p>
 													<div className="mt-2 flex items-center gap-4 text-xs text-neutral-500">
 														<span className="flex items-center gap-1">
-															<Clock className="h-3 w-3" />
+															<Clock aria-hidden="true" className="h-3 w-3" />
 															{t("Last fetch: ")}
 															{formatTime(locale, source.last_fetch)}
 														</span>
@@ -591,8 +591,7 @@ export default function SourcesPage() {
 														<RefreshCw
 															className={`mr-1 h-3 w-3 ${
 																triggerFetch.isPending ? "animate-spin" : ""
-															}`}
-														/>
+															}`} aria-hidden="true" focusable="false" />
 														{t("Fetch")}
 													</Button>
 												</div>

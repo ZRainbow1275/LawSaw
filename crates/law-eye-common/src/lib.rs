@@ -5,5 +5,5 @@ pub mod error;
 pub mod vault;
 
 pub use circuit_breaker::{CircuitBreaker, CircuitBreakerCheck, CircuitBreakerConfig};
-pub use config::AppConfig;
+pub use config::{AppConfig, AuthConfig, AuthMfaConfig, AuthOAuthConfig, ConfigReloadConfig, ConfigRuntime};
 pub use error::{Error, Result};

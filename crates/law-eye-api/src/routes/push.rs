@@ -18,9 +18,12 @@ use web_push_native::{
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
-use crate::{ApiError, ApiJson, ApiResult, AppError};
+use crate::{ApiError, ApiJson, ApiQuery, ApiResult, AppError};
 use law_eye_db::{CreateAuditLog, CreateWebPushSubscription, WebPushSubscription};
 use std::net::SocketAddr;
+
+const TEST_PUSH_DEFAULT_LIMIT: i64 = 20;
+const TEST_PUSH_MAX_LIMIT: i64 = 200;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -62,11 +65,21 @@ pub struct SubscribeResponse {
     pub id: Uuid,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TestPushQuery {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct TestPushResponse {
     pub delivered: usize,
     pub failed: usize,
     pub total: usize,
+    pub available_total: usize,
+    pub limit: i64,
+    pub offset: i64,
 }
 
 fn env_required(name: &str) -> Result<String, AppError> {
@@ -367,9 +380,14 @@ async fn send_web_push(
 #[utoipa::path(
     post,
     path = "/api/v1/push/test",
+    params(
+        ("limit" = Option<i64>, Query, description = "Page size (default 20, max 200)"),
+        ("offset" = Option<i64>, Query, description = "Page offset (default 0)")
+    ),
     security(("session" = [])),
     responses(
         (status = 200, description = "Test push result", body = TestPushResponse),
+        (status = 400, description = "Validation error", body = ApiError),
         (status = 401, description = "Not authenticated", body = ApiError),
         (status = 503, description = "Not configured", body = ApiError),
         (status = 500, description = "Server error", body = ApiError)
@@ -378,10 +396,22 @@ async fn send_web_push(
 pub(crate) async fn test_push(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    ApiQuery(query): ApiQuery<TestPushQuery>,
 ) -> ApiResult<Json<TestPushResponse>> {
     let user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+
+    let limit = query.limit.unwrap_or(TEST_PUSH_DEFAULT_LIMIT);
+    if limit < 1 {
+        return Err(AppError::validation("limit must be >= 1"));
+    }
+    let limit = limit.min(TEST_PUSH_MAX_LIMIT);
+
+    let offset = query.offset.unwrap_or(0);
+    if offset < 0 {
+        return Err(AppError::validation("offset must be >= 0"));
+    }
 
     let key_pair = load_vapid_keypair()?;
     let subject = env_required("WEB_PUSH_SUBJECT")?;
@@ -392,9 +422,15 @@ pub(crate) async fn test_push(
         .map_err(|e| AppError::internal(format!("Failed to build http client: {e}")))?;
 
     let tenant_id = user.tenant_id;
+    let available_total = state
+        .web_push_subscription_service
+        .count_by_user(tenant_id, user.id)
+        .await
+        .map_err(AppError::from)? as usize;
+
     let subs = state
         .web_push_subscription_service
-        .list_by_user(tenant_id, user.id)
+        .list_by_user_paginated(tenant_id, user.id, limit, offset)
         .await
         .map_err(AppError::from)?;
 
@@ -403,6 +439,9 @@ pub(crate) async fn test_push(
             delivered: 0,
             failed: 0,
             total: 0,
+            available_total,
+            limit,
+            offset,
         }));
     }
 
@@ -415,7 +454,7 @@ pub(crate) async fn test_push(
     let mut delivered = 0usize;
     let mut failed = 0usize;
 
-    for sub in subs.iter().take(10) {
+    for sub in &subs {
         match send_web_push(&http, sub, payload.clone(), &key_pair, &subject).await {
             Ok(resp) => {
                 if resp.status().is_success() {
@@ -439,6 +478,9 @@ pub(crate) async fn test_push(
     Ok(Json(TestPushResponse {
         delivered,
         failed,
-        total: subs.len().min(10),
+        total: subs.len(),
+        available_total,
+        limit,
+        offset,
     }))
 }

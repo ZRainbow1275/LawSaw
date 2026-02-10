@@ -1,17 +1,22 @@
 use axum::{
-    extract::{Path, State},
-    http::StatusCode,
+    extract::{ConnectInfo, Path, State},
+    http::{HeaderMap, StatusCode},
     routing::{get, post},
     Json, Router,
 };
+use law_eye_db::CreateAuditLog;
 use law_eye_queue::{AiTask, AiTaskType};
 use serde::Serialize;
+use serde_json::json;
+use std::net::SocketAddr;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
 use crate::{ApiError, ApiResult, AppError};
+
+const DEGRADED_REASON_RULE_BASED_FALLBACK: &str = "rule-based fallback";
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -28,6 +33,9 @@ pub struct AiProcessResponse {
     pub message: String,
     pub article_id: Uuid,
     pub task_type: String,
+    pub degraded: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub degraded_reason: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -42,6 +50,64 @@ pub struct AiStatusResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AiAvailabilityResponse {
     pub available: bool,
+    pub degraded: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub degraded_reason: Option<String>,
+}
+
+fn degraded_reason_from_flag(degraded: bool) -> Option<String> {
+    degraded.then(|| DEGRADED_REASON_RULE_BASED_FALLBACK.to_string())
+}
+
+fn build_process_response(article_id: Uuid, task_type: &str, degraded: bool) -> AiProcessResponse {
+    let message = if degraded {
+        format!("AI task enqueued in degraded mode (rule-based fallback): {task_type}")
+    } else {
+        format!("AI processing task enqueued: {task_type}")
+    };
+
+    AiProcessResponse {
+        message,
+        article_id,
+        task_type: task_type.to_string(),
+        degraded,
+        degraded_reason: degraded_reason_from_flag(degraded),
+    }
+}
+
+
+async fn audit_ai_enqueue(
+    state: &AppState,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    action: &str,
+    article_id: Uuid,
+    degraded: bool,
+    ip_address: Option<String>,
+    user_agent: Option<String>,
+) -> Result<(), AppError> {
+    state
+        .audit_service
+        .log(
+            tenant_id,
+            CreateAuditLog {
+                user_id: Some(user_id),
+                action: action.to_string(),
+                resource: "ai_tasks".to_string(),
+                resource_id: Some(article_id),
+                old_value: None,
+                new_value: Some(json!({
+                    "article_id": article_id,
+                    "degraded": degraded,
+                })),
+                ip_address,
+                user_agent,
+            },
+        )
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(())
 }
 
 /// AI 服务是否可用（仅检测 API 侧配置，不做外部 LLM 探测）
@@ -68,15 +134,20 @@ pub(crate) async fn get_ai_availability(
 
     let can_read = state
         .user_service
-        .has_permission(user.id, "articles:read")
+        .has_permission(user.tenant_id, user.id, "articles:read")
         .await
         .map_err(AppError::from)?;
     if !can_read {
         return Err(AppError::forbidden("Permission denied"));
     }
 
+    let available = state.ai_service.is_some();
+    let degraded = !available;
+
     Ok(Json(AiAvailabilityResponse {
-        available: state.ai_service.is_some(),
+        available,
+        degraded,
+        degraded_reason: degraded_reason_from_flag(degraded),
     }))
 }
 
@@ -93,13 +164,14 @@ pub(crate) async fn get_ai_availability(
         (status = 401, description = "Not authenticated", body = ApiError),
         (status = 403, description = "Permission denied", body = ApiError),
         (status = 404, description = "Article not found", body = ApiError),
-        (status = 500, description = "Failed to enqueue task", body = ApiError),
-        (status = 503, description = "AI service not available", body = ApiError)
+        (status = 500, description = "Failed to enqueue task", body = ApiError)
     )
 )]
 pub(crate) async fn process_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(article_id): Path<Uuid>,
 ) -> ApiResult<(StatusCode, Json<AiProcessResponse>)> {
     let user = auth_session
@@ -108,7 +180,7 @@ pub(crate) async fn process_article(
 
     let can_write = state
         .user_service
-        .has_permission(user.id, "articles:write")
+        .has_permission(user.tenant_id, user.id, "articles:write")
         .await
         .map_err(AppError::from)?;
     if !can_write {
@@ -122,9 +194,7 @@ pub(crate) async fn process_article(
         .await
         .map_err(AppError::from)?;
 
-    if state.ai_service.is_none() {
-        return Err(AppError::service_unavailable("AI service not available"));
-    }
+    let degraded = state.ai_service.is_none();
 
     // Enqueue AI task
     let task = AiTask {
@@ -139,13 +209,22 @@ pub(crate) async fn process_article(
         .await
         .map_err(AppError::from)?;
 
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    audit_ai_enqueue(
+        &state,
+        user.tenant_id,
+        user.id,
+        "ai.enqueue.full",
+        article_id,
+        degraded,
+        ip_address,
+        user_agent,
+    )
+    .await?;
+
     Ok((
         StatusCode::ACCEPTED,
-        Json(AiProcessResponse {
-            message: "AI processing task enqueued".to_string(),
-            article_id,
-            task_type: "full".to_string(),
-        }),
+        Json(build_process_response(article_id, "full", degraded)),
     ))
 }
 
@@ -162,13 +241,14 @@ pub(crate) async fn process_article(
         (status = 401, description = "Not authenticated", body = ApiError),
         (status = 403, description = "Permission denied", body = ApiError),
         (status = 404, description = "Article not found", body = ApiError),
-        (status = 500, description = "Failed to enqueue task", body = ApiError),
-        (status = 503, description = "AI service not available", body = ApiError)
+        (status = 500, description = "Failed to enqueue task", body = ApiError)
     )
 )]
 pub(crate) async fn classify_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(article_id): Path<Uuid>,
 ) -> ApiResult<(StatusCode, Json<AiProcessResponse>)> {
     let user = auth_session
@@ -177,7 +257,7 @@ pub(crate) async fn classify_article(
 
     let can_write = state
         .user_service
-        .has_permission(user.id, "articles:write")
+        .has_permission(user.tenant_id, user.id, "articles:write")
         .await
         .map_err(AppError::from)?;
     if !can_write {
@@ -190,9 +270,7 @@ pub(crate) async fn classify_article(
         .await
         .map_err(AppError::from)?;
 
-    if state.ai_service.is_none() {
-        return Err(AppError::service_unavailable("AI service not available"));
-    }
+    let degraded = state.ai_service.is_none();
 
     let task = AiTask {
         tenant_id: user.tenant_id,
@@ -206,13 +284,22 @@ pub(crate) async fn classify_article(
         .await
         .map_err(AppError::from)?;
 
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    audit_ai_enqueue(
+        &state,
+        user.tenant_id,
+        user.id,
+        "ai.enqueue.classify",
+        article_id,
+        degraded,
+        ip_address,
+        user_agent,
+    )
+    .await?;
+
     Ok((
         StatusCode::ACCEPTED,
-        Json(AiProcessResponse {
-            message: "Classification task enqueued".to_string(),
-            article_id,
-            task_type: "classify".to_string(),
-        }),
+        Json(build_process_response(article_id, "classify", degraded)),
     ))
 }
 
@@ -229,13 +316,14 @@ pub(crate) async fn classify_article(
         (status = 401, description = "Not authenticated", body = ApiError),
         (status = 403, description = "Permission denied", body = ApiError),
         (status = 404, description = "Article not found", body = ApiError),
-        (status = 500, description = "Failed to enqueue task", body = ApiError),
-        (status = 503, description = "AI service not available", body = ApiError)
+        (status = 500, description = "Failed to enqueue task", body = ApiError)
     )
 )]
 pub(crate) async fn summarize_article(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(article_id): Path<Uuid>,
 ) -> ApiResult<(StatusCode, Json<AiProcessResponse>)> {
     let user = auth_session
@@ -244,7 +332,7 @@ pub(crate) async fn summarize_article(
 
     let can_write = state
         .user_service
-        .has_permission(user.id, "articles:write")
+        .has_permission(user.tenant_id, user.id, "articles:write")
         .await
         .map_err(AppError::from)?;
     if !can_write {
@@ -257,9 +345,7 @@ pub(crate) async fn summarize_article(
         .await
         .map_err(AppError::from)?;
 
-    if state.ai_service.is_none() {
-        return Err(AppError::service_unavailable("AI service not available"));
-    }
+    let degraded = state.ai_service.is_none();
 
     let task = AiTask {
         tenant_id: user.tenant_id,
@@ -273,13 +359,22 @@ pub(crate) async fn summarize_article(
         .await
         .map_err(AppError::from)?;
 
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    audit_ai_enqueue(
+        &state,
+        user.tenant_id,
+        user.id,
+        "ai.enqueue.summarize",
+        article_id,
+        degraded,
+        ip_address,
+        user_agent,
+    )
+    .await?;
+
     Ok((
         StatusCode::ACCEPTED,
-        Json(AiProcessResponse {
-            message: "Summarization task enqueued".to_string(),
-            article_id,
-            task_type: "summarize".to_string(),
-        }),
+        Json(build_process_response(article_id, "summarize", degraded)),
     ))
 }
 
@@ -296,13 +391,14 @@ pub(crate) async fn summarize_article(
         (status = 401, description = "Not authenticated", body = ApiError),
         (status = 403, description = "Permission denied", body = ApiError),
         (status = 404, description = "Article not found", body = ApiError),
-        (status = 500, description = "Failed to enqueue task", body = ApiError),
-        (status = 503, description = "AI service not available", body = ApiError)
+        (status = 500, description = "Failed to enqueue task", body = ApiError)
     )
 )]
 pub(crate) async fn assess_risk(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(article_id): Path<Uuid>,
 ) -> ApiResult<(StatusCode, Json<AiProcessResponse>)> {
     let user = auth_session
@@ -311,7 +407,7 @@ pub(crate) async fn assess_risk(
 
     let can_write = state
         .user_service
-        .has_permission(user.id, "articles:write")
+        .has_permission(user.tenant_id, user.id, "articles:write")
         .await
         .map_err(AppError::from)?;
     if !can_write {
@@ -324,9 +420,7 @@ pub(crate) async fn assess_risk(
         .await
         .map_err(AppError::from)?;
 
-    if state.ai_service.is_none() {
-        return Err(AppError::service_unavailable("AI service not available"));
-    }
+    let degraded = state.ai_service.is_none();
 
     let task = AiTask {
         tenant_id: user.tenant_id,
@@ -340,13 +434,22 @@ pub(crate) async fn assess_risk(
         .await
         .map_err(AppError::from)?;
 
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    audit_ai_enqueue(
+        &state,
+        user.tenant_id,
+        user.id,
+        "ai.enqueue.risk_assess",
+        article_id,
+        degraded,
+        ip_address,
+        user_agent,
+    )
+    .await?;
+
     Ok((
         StatusCode::ACCEPTED,
-        Json(AiProcessResponse {
-            message: "Risk assessment task enqueued".to_string(),
-            article_id,
-            task_type: "risk_assess".to_string(),
-        }),
+        Json(build_process_response(article_id, "risk_assess", degraded)),
     ))
 }
 
@@ -377,7 +480,7 @@ pub(crate) async fn get_ai_status(
 
     let can_read = state
         .user_service
-        .has_permission(user.id, "articles:read")
+        .has_permission(user.tenant_id, user.id, "articles:read")
         .await
         .map_err(AppError::from)?;
     if !can_read {
@@ -407,4 +510,45 @@ pub(crate) async fn get_ai_status(
         risk_score: article.risk_score,
         summary: article.summary,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn degraded_reason_matches_flag() {
+        assert_eq!(degraded_reason_from_flag(false), None);
+        assert_eq!(
+            degraded_reason_from_flag(true),
+            Some("rule-based fallback".to_string())
+        );
+    }
+
+    #[test]
+    fn build_process_response_sets_degraded_fields() {
+        let article_id = Uuid::new_v4();
+        let response = build_process_response(article_id, "summarize", true);
+
+        assert_eq!(response.article_id, article_id);
+        assert_eq!(response.task_type, "summarize");
+        assert!(response.degraded);
+        assert_eq!(
+            response.degraded_reason.as_deref(),
+            Some("rule-based fallback")
+        );
+        assert!(response.message.contains("degraded mode"));
+    }
+
+    #[test]
+    fn build_process_response_clears_degraded_fields() {
+        let article_id = Uuid::new_v4();
+        let response = build_process_response(article_id, "classify", false);
+
+        assert_eq!(response.article_id, article_id);
+        assert_eq!(response.task_type, "classify");
+        assert!(!response.degraded);
+        assert_eq!(response.degraded_reason, None);
+        assert_eq!(response.message, "AI processing task enqueued: classify");
+    }
 }

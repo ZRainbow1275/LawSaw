@@ -65,7 +65,7 @@ export function ParagraphAnchor({
 				title={t("Copy paragraph link")}
 				aria-label={t("Copy paragraph link")}
 			>
-				<Link2 className="h-3.5 w-3.5" />
+				<Link2 aria-hidden="true" className="h-3.5 w-3.5" />
 			</button>
 
 			{/* Content */}

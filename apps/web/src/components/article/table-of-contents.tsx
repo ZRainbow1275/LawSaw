@@ -157,7 +157,7 @@ export function TOCDrawer({
 								size="icon"
 								onClick={() => onOpenChange(false)}
 							>
-								<X className="h-4 w-4" />
+								<X aria-hidden="true" className="h-4 w-4" />
 							</Button>
 						</div>
 
@@ -188,8 +188,7 @@ export function TOCDrawer({
 												className={cn(
 													"h-3 w-3 shrink-0 transition-transform",
 													activeId === item.id && "text-primary-500",
-												)}
-											/>
+												)} aria-hidden="true" focusable="false" />
 											<span className="line-clamp-2">{item.text}</span>
 										</button>
 									</li>
@@ -224,7 +223,7 @@ export function TOCTrigger({ onClick, itemCount, className }: TOCTriggerProps) {
 			onClick={onClick}
 			className={cn("gap-2", className)}
 		>
-			<List className="h-4 w-4" />
+			<List aria-hidden="true" className="h-4 w-4" />
 			<span>{t("Contents")}</span>
 			<span className="text-xs text-neutral-400">({itemCount})</span>
 		</Button>

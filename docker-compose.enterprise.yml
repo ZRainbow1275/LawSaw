@@ -164,6 +164,65 @@ services:
       - law-eye-network
     restart: unless-stopped
 
+
+  vault-rotate-cron:
+    image: ${VAULT_IMAGE:-hashicorp/vault:1.15.6@sha256:0450896c43b13879b19442b204ce29dd19b5a10fce43d5cf38af17da20f56f4d}
+    container_name: law-eye-vault-rotate-cron
+    entrypoint: ["/bin/sh", "/scripts/enterprise/vault-rotate-cron.sh"]
+    environment:
+      LAW_EYE_VAULT_ROTATE_INTERVAL_SECONDS: ${LAW_EYE_VAULT_ROTATE_INTERVAL_SECONDS:-2592000}
+      VAULT_ADDR: "https://vault:8200"
+      VAULT_CACERT: "/etc/vault/pki/ca.crt"
+      VAULT_CLIENT_CERT: "/etc/vault/pki/vault-api-client.crt"
+      VAULT_CLIENT_KEY: "/etc/vault/pki/vault-api-client.key"
+    volumes:
+      - ./scripts/enterprise:/scripts/enterprise:ro
+      - ${LAW_EYE_ENTERPRISE_PKI_DIR:?missing LAW_EYE_ENTERPRISE_PKI_DIR}:/etc/vault/pki:ro
+    depends_on:
+      vault:
+        condition: service_started
+    networks:
+      - law-eye-network
+    restart: unless-stopped
+
+  backup-cron:
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
+    container_name: law-eye-backup-cron
+    entrypoint: ["/bin/sh", "-c", "while true; do /scripts/enterprise/backup-encrypted.sh; sleep ${LAW_EYE_BACKUP_INTERVAL_SECONDS:-86400}; done"]
+    environment:
+      LAW_EYE__DATABASE__URL: ${LAW_EYE__DATABASE__URL:?LAW_EYE__DATABASE__URL is required}
+      LAW_EYE_BACKUP_PASSPHRASE: ${LAW_EYE_BACKUP_PASSPHRASE:?LAW_EYE_BACKUP_PASSPHRASE is required}
+      LAW_EYE_BACKUP_DIR: /var/backups/law-eye
+      LAW_EYE_BACKUP_RETENTION_DAYS: ${LAW_EYE_BACKUP_RETENTION_DAYS:-30}
+    volumes:
+      - ./scripts/enterprise:/scripts/enterprise:ro
+      - backup_data:/var/backups/law-eye
+    depends_on:
+      postgres:
+        condition: service_started
+    networks:
+      - law-eye-network
+    restart: unless-stopped
+
+  audit-report-cron:
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
+    container_name: law-eye-audit-report-cron
+    entrypoint: ["/bin/sh", "-c", "while true; do /scripts/enterprise/audit-report.sh; sleep ${LAW_EYE_AUDIT_REPORT_INTERVAL_SECONDS:-604800}; done"]
+    environment:
+      LAW_EYE__DATABASE__URL: ${LAW_EYE__DATABASE__URL:?LAW_EYE__DATABASE__URL is required}
+      LAW_EYE_AUDIT_REPORT_DIR: /var/reports/law-eye
+      LAW_EYE_AUDIT_REPORT_RETENTION_DAYS: ${LAW_EYE_AUDIT_REPORT_RETENTION_DAYS:-90}
+      LAW_EYE_AUDIT_LOG_RETENTION_DAYS: ${LAW_EYE_AUDIT_LOG_RETENTION_DAYS:-365}
+    volumes:
+      - ./scripts/enterprise:/scripts/enterprise:ro
+      - audit_report_data:/var/reports/law-eye
+    depends_on:
+      postgres:
+        condition: service_started
+    networks:
+      - law-eye-network
+    restart: unless-stopped
+
 volumes:
   caddy_data:
   caddy_config:
@@ -171,3 +230,5 @@ volumes:
   caddy_api_mtls_config:
   vault_data:
   minio_data:
+  backup_data:
+  audit_report_data:

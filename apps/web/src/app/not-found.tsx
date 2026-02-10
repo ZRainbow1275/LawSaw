@@ -17,7 +17,7 @@ export default function NotFound() {
 				<Card>
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2">
-							<Compass className="h-5 w-5 text-primary-500" />
+							<Compass aria-hidden="true" className="h-5 w-5 text-primary-500" />
 							{t("Page not found")}
 						</CardTitle>
 					</CardHeader>
@@ -32,7 +32,7 @@ export default function NotFound() {
 								href={withLocalePath(locale, "/")}
 								className={buttonVariants({ className: "w-full sm:w-auto" })}
 							>
-								<Home className="h-4 w-4" />
+								<Home aria-hidden="true" className="h-4 w-4" />
 								{t("Back to home")}
 							</Link>
 							<Link
@@ -42,7 +42,7 @@ export default function NotFound() {
 									className: "w-full sm:w-auto",
 								})}
 							>
-								<Search className="h-4 w-4" />
+								<Search aria-hidden="true" className="h-4 w-4" />
 								{t("Go to search")}
 							</Link>
 						</div>

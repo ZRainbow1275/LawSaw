@@ -92,11 +92,40 @@ impl WebPushSubscriptionService {
         .map_err(|err| Error::Database(err.to_string()))
     }
 
-    pub async fn list_by_user(
+    /// 返回当前用户有效订阅总数。
+    pub async fn count_by_user(&self, tenant_id: Uuid, user_id: Uuid) -> Result<i64> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let total = sqlx::query_scalar::<_, i64>(
+                    r#"
+                    SELECT COUNT(*)::BIGINT
+                    FROM web_push_subscriptions
+                    WHERE user_id = $1
+                      AND deleted_at IS NULL
+                    "#,
+                )
+                .bind(user_id)
+                .fetch_one(tx.as_mut())
+                .await
+                .map_err(|err| Error::Database(err.to_string()))?;
+
+                Ok(total)
+            })
+        })
+        .await
+    }
+
+    /// 分页读取当前用户的有效 Push 订阅。
+    pub async fn list_by_user_paginated(
         &self,
         tenant_id: Uuid,
         user_id: Uuid,
+        limit: i64,
+        offset: i64,
     ) -> Result<Vec<WebPushSubscription>> {
+        let limit = limit.clamp(1, 500);
+        let offset = offset.max(0);
+
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
                 let rows = sqlx::query_as::<_, WebPushSubscription>(
@@ -117,10 +146,13 @@ impl WebPushSubscriptionService {
                     WHERE user_id = $1
                       AND deleted_at IS NULL
                     ORDER BY updated_at DESC
-                    LIMIT 50
+                    LIMIT $2
+                    OFFSET $3
                     "#,
                 )
                 .bind(user_id)
+                .bind(limit)
+                .bind(offset)
                 .fetch_all(tx.as_mut())
                 .await
                 .map_err(|err| Error::Database(err.to_string()))?;
@@ -129,6 +161,14 @@ impl WebPushSubscriptionService {
             })
         })
         .await
+    }
+
+    pub async fn list_by_user(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Vec<WebPushSubscription>> {
+        self.list_by_user_paginated(tenant_id, user_id, 50, 0).await
     }
 
     pub async fn soft_delete_by_endpoint(

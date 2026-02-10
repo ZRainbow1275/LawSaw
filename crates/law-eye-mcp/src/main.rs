@@ -39,8 +39,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let base_url = std::env::var("OPENAI_BASE_URL").ok();
     let gateway = Arc::new(LlmGateway::new(&api_key, base_url.as_deref(), None));
 
+    let mcp_auth_token = std::env::var("LAW_EYE_MCP_AUTH_TOKEN").map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "LAW_EYE_MCP_AUTH_TOKEN must be set",
+        )
+    })?;
+    if mcp_auth_token.trim().is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "LAW_EYE_MCP_AUTH_TOKEN must not be empty",
+        )
+        .into());
+    }
+
     // 创建 MCP 服务器
-    let server = McpServer::new(pool, gateway);
+    let server = McpServer::new(pool, gateway, mcp_auth_token.trim().to_string());
 
     // 使用 stdio 进行 MCP 通信
     let stdin = std::io::stdin();

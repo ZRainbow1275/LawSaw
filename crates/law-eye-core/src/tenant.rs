@@ -48,6 +48,43 @@ impl TenantService {
             .map_err(|e| Error::Database(e.to_string()))?
             .ok_or_else(|| Error::NotFound(format!("Tenant {} not found", tenant_id)))
     }
+
+
+    pub async fn bind_session_tenant(
+        &self,
+        session_id: &str,
+        tenant_id: Uuid,
+        user_id: Option<Uuid>,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO session_tenants (session_id, tenant_id, user_id, updated_at)
+            VALUES ($1, $2, $3, NOW())
+            ON CONFLICT (session_id) DO UPDATE SET
+                tenant_id = EXCLUDED.tenant_id,
+                user_id = EXCLUDED.user_id,
+                updated_at = NOW()
+            "#,
+        )
+        .bind(session_id)
+        .bind(tenant_id)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        Ok(())
+    }
+
+    pub async fn unbind_session_tenant(&self, session_id: &str) -> Result<()> {
+        sqlx::query("DELETE FROM session_tenants WHERE session_id = $1")
+            .bind(session_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
+        Ok(())
+    }
 }
 
 pub async fn with_tenant_tx<'a, T, F>(pool: &'a PgPool, tenant_id: Uuid, f: F) -> Result<T>

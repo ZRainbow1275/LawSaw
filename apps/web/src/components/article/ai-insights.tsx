@@ -171,7 +171,7 @@ export function AiInsightsCard({
 				className="w-full flex items-center justify-between p-4 hover:bg-neutral-50/50 transition-colors"
 			>
 				<div className="flex items-center gap-2">
-					<Sparkles className="h-5 w-5 text-primary-500" />
+					<Sparkles aria-hidden="true" className="h-5 w-5 text-primary-500" />
 					<span className="font-semibold text-neutral-900">
 						{t("AI insights")}
 					</span>
@@ -189,9 +189,9 @@ export function AiInsightsCard({
 						<span>{t(riskConfig.labelKey)}</span>
 					</div>
 					{isExpanded ? (
-						<ChevronUp className="h-4 w-4 text-neutral-400" />
+						<ChevronUp aria-hidden="true" className="h-4 w-4 text-neutral-400" />
 					) : (
-						<ChevronDown className="h-4 w-4 text-neutral-400" />
+						<ChevronDown aria-hidden="true" className="h-4 w-4 text-neutral-400" />
 					)}
 				</div>
 			</button>
@@ -221,7 +221,7 @@ export function AiInsightsCard({
 							{keyPoints.length > 0 && (
 								<div>
 									<h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-										<Lightbulb className="h-3.5 w-3.5" />
+										<Lightbulb aria-hidden="true" className="h-3.5 w-3.5" />
 										{t("Key points")}
 									</h4>
 									<ul className="space-y-1.5">
@@ -260,7 +260,7 @@ export function AiInsightsCard({
 													)}
 													title={`${t(entityTypeLabelKeys[entity.entity_type])}: ${entity.context || entity.name}`}
 												>
-													<Icon className="h-3 w-3" />
+													<Icon aria-hidden="true" className="h-3 w-3" />
 													<span>{entity.name}</span>
 												</button>
 											);
@@ -282,7 +282,7 @@ export function AiInsightsCard({
 								insights.risk_dimensions.length > 0 && (
 									<div>
 										<h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-											<AlertTriangle className="h-3.5 w-3.5" />
+											<AlertTriangle aria-hidden="true" className="h-3.5 w-3.5" />
 											{t("Risk dimensions")}
 										</h4>
 										<div className="space-y-2">
@@ -322,7 +322,7 @@ export function AiInsightsCard({
 							{recommendations.length > 0 && (
 								<div>
 									<h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-										<Shield className="h-3.5 w-3.5" />
+										<Shield aria-hidden="true" className="h-3.5 w-3.5" />
 										{t("Compliance recommendations")}
 									</h4>
 									<ul className="space-y-1.5">
@@ -384,7 +384,7 @@ export function AiInsightsBrief({
 				className,
 			)}
 		>
-			<Sparkles className="h-4 w-4 text-primary-400 mt-0.5 shrink-0" />
+			<Sparkles aria-hidden="true" className="h-4 w-4 text-primary-400 mt-0.5 shrink-0" />
 			<div className="flex-1 min-w-0">
 				<p className="text-sm text-neutral-600 line-clamp-2">{summary}</p>
 			</div>

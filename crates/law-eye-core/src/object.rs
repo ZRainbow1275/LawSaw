@@ -4,7 +4,10 @@ use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::operation::create_bucket::CreateBucketError;
 use aws_sdk_s3::operation::head_bucket::HeadBucketError;
 use aws_sdk_s3::primitives::ByteStream;
-use aws_sdk_s3::types::{BucketLocationConstraint, CreateBucketConfiguration};
+use aws_sdk_s3::types::{
+    BucketLocationConstraint, CreateBucketConfiguration, ServerSideEncryption,
+    ServerSideEncryptionByDefault, ServerSideEncryptionConfiguration, ServerSideEncryptionRule,
+};
 use aws_types::region::Region;
 use law_eye_common::{Error, Result};
 use law_eye_db::{CreateAuditLog, Object, User};
@@ -54,6 +57,7 @@ pub struct ObjectService {
     pool: PgPool,
     bucket: String,
     region: String,
+    sse_enabled: bool,
     client: aws_sdk_s3::Client,
 }
 
@@ -109,6 +113,7 @@ impl ObjectService {
             pool,
             bucket: cfg.bucket.trim().to_string(),
             region: cfg.region.trim().to_string(),
+            sse_enabled: cfg.sse_enabled,
             client,
         };
 
@@ -119,6 +124,17 @@ impl ObjectService {
 
     pub fn bucket(&self) -> &str {
         &self.bucket
+    }
+
+    pub async fn health_check(&self) -> Result<()> {
+        self.client
+            .head_bucket()
+            .bucket(&self.bucket)
+            .send()
+            .await
+            .map_err(|err| Error::Http(format!("Object storage health check failed: {err}")))?;
+
+        Ok(())
     }
 
     fn is_bucket_not_found(err: &SdkError<HeadBucketError>) -> bool {
@@ -144,7 +160,10 @@ impl ObjectService {
     async fn ensure_bucket(&self) -> Result<()> {
         for attempt in 1..=ENSURE_BUCKET_MAX_ATTEMPTS {
             match self.client.head_bucket().bucket(&self.bucket).send().await {
-                Ok(_) => return Ok(()),
+                Ok(_) => {
+                    self.ensure_bucket_sse().await?;
+                    return Ok(());
+                }
                 Err(err) if Self::is_bucket_not_found(&err) => break,
                 Err(err) => {
                     if attempt == ENSURE_BUCKET_MAX_ATTEMPTS {
@@ -172,8 +191,14 @@ impl ObjectService {
             }
 
             match req.send().await {
-                Ok(_) => return Ok(()),
-                Err(err) if Self::is_bucket_already_exists(&err) => return Ok(()),
+                Ok(_) => {
+                    self.ensure_bucket_sse().await?;
+                    return Ok(());
+                }
+                Err(err) if Self::is_bucket_already_exists(&err) => {
+                    self.ensure_bucket_sse().await?;
+                    return Ok(());
+                }
                 Err(err) => {
                     if attempt == ENSURE_BUCKET_MAX_ATTEMPTS {
                         return Err(Error::Http(format!("Create bucket failed: {err:?}")));
@@ -185,6 +210,37 @@ impl ObjectService {
                 }
             }
         }
+
+        self.ensure_bucket_sse().await?;
+        Ok(())
+    }
+
+    async fn ensure_bucket_sse(&self) -> Result<()> {
+        if !self.sse_enabled {
+            return Ok(());
+        }
+
+        let default_rule = ServerSideEncryptionByDefault::builder()
+            .sse_algorithm(ServerSideEncryption::Aes256)
+            .build()
+            .map_err(|err| Error::Http(err.to_string()))?;
+
+        let rule = ServerSideEncryptionRule::builder()
+            .apply_server_side_encryption_by_default(default_rule)
+            .build();
+
+        let config = ServerSideEncryptionConfiguration::builder()
+            .rules(rule)
+            .build()
+            .map_err(|err| Error::Http(err.to_string()))?;
+
+        self.client
+            .put_bucket_encryption()
+            .bucket(&self.bucket)
+            .server_side_encryption_configuration(config)
+            .send()
+            .await
+            .map_err(|err| Error::Http(err.to_string()))?;
 
         Ok(())
     }
@@ -233,12 +289,17 @@ impl ObjectService {
         let object_key =
             format!("tenants/{tenant_id}/users/{target_user_id}/avatars/{object_id}.{ext}");
 
-        self.client
+        let mut put_req = self
+            .client
             .put_object()
             .bucket(&self.bucket)
             .key(&object_key)
             .content_type(&content_type)
-            .body(ByteStream::from(bytes))
+            .body(ByteStream::from(bytes));
+        if self.sse_enabled {
+            put_req = put_req.server_side_encryption(ServerSideEncryption::Aes256);
+        }
+        put_req
             .send()
             .await
             .map_err(|e| Error::Http(format!("Put object failed: {e:?}")))?;
@@ -305,12 +366,34 @@ impl ObjectService {
                         "content_type": content_type,
                         "byte_size": object.byte_size,
                     })),
-                    ip_address,
-                    user_agent,
+                    ip_address: ip_address.clone(),
+                    user_agent: user_agent.clone(),
                 };
 
                 audit_service
                     .log_tx(tenant_id, tx, audit_input)
+                    .await?;
+
+                let object_audit_input = CreateAuditLog {
+                    user_id: Some(actor_user_id),
+                    action: "objects.upload".to_string(),
+                    resource: "objects".to_string(),
+                    resource_id: Some(object.id),
+                    old_value: None,
+                    new_value: Some(json!({
+                        "kind": object.kind,
+                        "bucket": object.bucket,
+                        "object_key": object.object_key,
+                        "content_type": object.content_type,
+                        "byte_size": object.byte_size,
+                        "owner_user_id": object.owner_user_id,
+                    })),
+                    ip_address: ip_address.clone(),
+                    user_agent: user_agent.clone(),
+                };
+
+                audit_service
+                    .log_tx(tenant_id, tx, object_audit_input)
                     .await?;
 
                 Ok((user, object))

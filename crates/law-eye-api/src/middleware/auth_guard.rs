@@ -81,7 +81,7 @@ where
         let allowed = auth_session
             .backend
             .user_service()
-            .has_permission(user.id, required)
+            .has_permission(user.tenant_id, user.id, required)
             .await
             .map_err(|e| AppError::from(e).into_response())?;
 

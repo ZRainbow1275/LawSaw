@@ -1,12 +1,16 @@
 use axum::{
-    extract::{Path, State},
-    http::StatusCode,
+    extract::{ConnectInfo, Path, State},
+    http::{HeaderMap, StatusCode},
     routing::{delete, get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use utoipa::ToSchema;
 use uuid::Uuid;
+
+use law_eye_db::CreateAuditLog;
+use std::net::SocketAddr;
 
 use crate::auth::AuthSession;
 use crate::state::AppState;
@@ -203,6 +207,8 @@ pub(crate) async fn list_keys(
 pub(crate) async fn create_key(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     ApiJson(mut req): ApiJson<CreateKeyRequest>,
 ) -> ApiResult<(StatusCode, Json<CreateKeyResponse>)> {
     let user = auth_session
@@ -265,6 +271,30 @@ pub(crate) async fn create_key(
         .await
         .map_err(AppError::from)?;
 
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    state
+        .audit_service
+        .log(
+            user.tenant_id,
+            CreateAuditLog {
+                user_id: Some(user.id),
+                action: "apikeys.create".to_string(),
+                resource: "apikeys".to_string(),
+                resource_id: Some(key.id),
+                old_value: None,
+                new_value: Some(json!({
+                    "name": key.name,
+                    "key_prefix": key.key_prefix,
+                    "permissions": key.permissions,
+                    "rate_limit": key.rate_limit,
+                })),
+                ip_address,
+                user_agent,
+            },
+        )
+        .await
+        .map_err(AppError::from)?;
+
     Ok((
         StatusCode::CREATED,
         Json(CreateKeyResponse {
@@ -301,6 +331,8 @@ pub(crate) async fn create_key(
 pub(crate) async fn revoke_key(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<SuccessResponse>> {
     let user = auth_session
@@ -310,6 +342,25 @@ pub(crate) async fn revoke_key(
     state
         .apikey_service
         .revoke(id, user.id)
+        .await
+        .map_err(AppError::from)?;
+
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    state
+        .audit_service
+        .log(
+            user.tenant_id,
+            CreateAuditLog {
+                user_id: Some(user.id),
+                action: "apikeys.revoke".to_string(),
+                resource: "apikeys".to_string(),
+                resource_id: Some(id),
+                old_value: None,
+                new_value: Some(json!({ "key_id": id })),
+                ip_address,
+                user_agent,
+            },
+        )
         .await
         .map_err(AppError::from)?;
 
@@ -337,6 +388,8 @@ pub(crate) async fn revoke_key(
 pub(crate) async fn delete_key(
     State(state): State<AppState>,
     auth_session: AuthSession,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<SuccessResponse>> {
     let user = auth_session
@@ -346,6 +399,25 @@ pub(crate) async fn delete_key(
     state
         .apikey_service
         .delete(id, user.id)
+        .await
+        .map_err(AppError::from)?;
+
+    let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
+    state
+        .audit_service
+        .log(
+            user.tenant_id,
+            CreateAuditLog {
+                user_id: Some(user.id),
+                action: "apikeys.delete".to_string(),
+                resource: "apikeys".to_string(),
+                resource_id: Some(id),
+                old_value: Some(json!({ "key_id": id })),
+                new_value: None,
+                ip_address,
+                user_agent,
+            },
+        )
         .await
         .map_err(AppError::from)?;
 

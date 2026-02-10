@@ -12,17 +12,20 @@ pub mod push;
 pub mod search;
 pub mod sources;
 pub mod users;
+pub mod webhooks;
 
 use axum::{
     body::Body,
     extract::{MatchedPath, State},
-    http::{header, HeaderMap, HeaderValue, Request, StatusCode},
+    http::{header, HeaderMap, HeaderValue, Method, Request, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::get,
     Extension, Router,
 };
+use chrono::Utc;
 use metrics::{counter, histogram};
+use sha2::{Digest, Sha256};
 use std::net::{IpAddr, SocketAddr};
 use std::time::Instant;
 
@@ -78,19 +81,141 @@ async fn track_metrics(req: Request<Body>, next: Next) -> Response {
 
     counter!(
         "http_requests_total",
-        1,
         "method" => method.clone(),
         "path" => route.clone(),
         "status" => status.clone(),
-    );
+    )
+    .increment(1);
 
     histogram!(
         "http_request_duration_seconds",
-        start.elapsed().as_secs_f64(),
         "method" => method,
         "path" => route,
         "status" => status,
-    );
+    )
+    .record(start.elapsed().as_secs_f64());
+
+    response
+}
+
+const DEFAULT_CACHE_CONTROL_HEADER: &str = "private, max-age=30, must-revalidate";
+
+fn build_weak_etag_signature(path_and_query: &str, response: &Response) -> Option<String> {
+    let content_length = response
+        .headers()
+        .get(header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("0");
+    let content_type = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("application/octet-stream");
+
+    if content_length == "0" {
+        return None;
+    }
+
+    let mut hasher = Sha256::new();
+    hasher.update(path_and_query.as_bytes());
+    hasher.update(b"|");
+    hasher.update(content_type.as_bytes());
+    hasher.update(b"|");
+    hasher.update(content_length.as_bytes());
+    let digest = hasher.finalize();
+
+    Some(format!("W/\"{:x}\"", digest))
+}
+
+fn if_none_match_matches(headers: &HeaderMap, etag: &HeaderValue) -> bool {
+    let Some(raw_if_none_match) = headers.get(header::IF_NONE_MATCH) else {
+        return false;
+    };
+
+    let Ok(current_etag) = etag.to_str() else {
+        return false;
+    };
+
+    let Ok(raw) = raw_if_none_match.to_str() else {
+        return false;
+    };
+
+    raw.split(',').map(str::trim).any(|candidate| {
+        if candidate == "*" {
+            return true;
+        }
+
+        let candidate = candidate.strip_prefix("W/").unwrap_or(candidate).trim();
+        let current = current_etag
+            .strip_prefix("W/")
+            .unwrap_or(current_etag)
+            .trim();
+        candidate == current
+    })
+}
+
+async fn apply_conditional_cache_headers(req: Request<Body>, next: Next) -> Response {
+    let method = req.method().clone();
+    let headers = req.headers().clone();
+    let path_and_query = req
+        .uri()
+        .path_and_query()
+        .map(|value| value.as_str().to_string())
+        .unwrap_or_else(|| req.uri().path().to_string());
+
+    let mut response = next.run(req).await;
+
+    if !matches!(method, Method::GET | Method::HEAD)
+        || (!path_and_query.starts_with("/api/v1") && !path_and_query.starts_with("/api/v2"))
+    {
+        return response;
+    }
+
+    if !response.status().is_success() {
+        return response;
+    }
+
+    if !response.headers().contains_key(header::CACHE_CONTROL) {
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static(DEFAULT_CACHE_CONTROL_HEADER),
+        );
+    }
+
+    if !response.headers().contains_key(header::LAST_MODIFIED) {
+        if let Ok(last_modified) = HeaderValue::from_str(&Utc::now().to_rfc2822()) {
+            response
+                .headers_mut()
+                .insert(header::LAST_MODIFIED, last_modified);
+        }
+    }
+
+    if !response.headers().contains_key(header::ETAG) {
+        if let Some(signature) = build_weak_etag_signature(&path_and_query, &response) {
+            if let Ok(etag) = HeaderValue::from_str(&signature) {
+                response.headers_mut().insert(header::ETAG, etag);
+            }
+        }
+    }
+
+    let maybe_etag = response.headers().get(header::ETAG).cloned();
+    if let Some(etag) = maybe_etag {
+        if if_none_match_matches(&headers, &etag) {
+            let mut not_modified = StatusCode::NOT_MODIFIED.into_response();
+            not_modified.headers_mut().insert(header::ETAG, etag);
+            if let Some(last_modified) = response.headers().get(header::LAST_MODIFIED).cloned() {
+                not_modified
+                    .headers_mut()
+                    .insert(header::LAST_MODIFIED, last_modified);
+            }
+            if let Some(cache_control) = response.headers().get(header::CACHE_CONTROL).cloned() {
+                not_modified
+                    .headers_mut()
+                    .insert(header::CACHE_CONTROL, cache_control);
+            }
+            return not_modified;
+        }
+    }
 
     response
 }
@@ -204,6 +329,10 @@ pub fn create_router(state: AppState) -> Router {
         )
         .nest("/users", require_permission(users::router(), "users:read"))
         .nest(
+            "/webhooks",
+            require_permission(webhooks::router(), "users:read"),
+        )
+        .nest(
             "/objects",
             require_permission(objects::router(), "objects:read"),
         )
@@ -229,8 +358,93 @@ pub fn create_router(state: AppState) -> Router {
         .merge(openapi::router())
         .route("/metrics", get(metrics_endpoint))
         .nest("/api/v1/auth", auth::router())
-        .nest("/api/v1", protected_api)
+        .nest("/api/v2/auth", auth::router())
+        .nest("/api/v1", protected_api.clone())
+        .nest("/api/v2", protected_api)
         .nest("/health", health::router())
         .route_layer(middleware::from_fn(track_metrics))
+        .route_layer(middleware::from_fn(apply_conditional_cache_headers))
         .with_state(state)
+}
+
+#[cfg(test)]
+mod contract_tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::{header, Method, Request, StatusCode};
+    use law_eye_ai::LlmGateway;
+    use law_eye_common::vault::PlaintextCipher;
+    use law_eye_queue::TaskQueue;
+    use metrics_exporter_prometheus::PrometheusBuilder;
+    use sqlx::postgres::PgPoolOptions;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    fn test_state() -> AppState {
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect_lazy("postgres://postgres:postgres@localhost/law_eye")
+            .expect("lazy postgres pool");
+        let queue = TaskQueue::new("redis://127.0.0.1/").expect("redis pool config");
+        let recorder = PrometheusBuilder::new().build_recorder();
+        let metrics_handle = recorder.handle();
+
+        AppState::new(
+            pool,
+            queue,
+            None,
+            Some(LlmGateway::new("", None, None)),
+            None,
+            metrics_handle,
+            None,
+            false,
+            false,
+            300,
+            vec!["google".to_string()],
+            "LawSaw".to_string(),
+            300,
+            Arc::new(PlaintextCipher),
+            None,
+        )
+    }
+
+    async fn request_status(
+        app: Router,
+        method: Method,
+        path: &str,
+        json_body: &str,
+    ) -> StatusCode {
+        let request = Request::builder()
+            .method(method)
+            .uri(path)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(json_body.to_string()))
+            .expect("request");
+
+        app.oneshot(request).await.expect("response").status()
+    }
+
+    #[tokio::test]
+    async fn auth_login_contract_is_consistent_between_v1_and_v2() {
+        let app = create_router(test_state());
+
+        let v1 = request_status(app.clone(), Method::POST, "/api/v1/auth/login", "{}").await;
+        let v2 = request_status(app, Method::POST, "/api/v2/auth/login", "{}").await;
+
+        assert_ne!(v1, StatusCode::NOT_FOUND);
+        assert_ne!(v2, StatusCode::NOT_FOUND);
+        assert_eq!(v1, v2, "v1/v2 login contract status should stay aligned");
+    }
+
+    #[tokio::test]
+    async fn protected_article_route_exists_for_v1_and_v2() {
+        let app = create_router(test_state());
+
+        let v1 = request_status(app.clone(), Method::GET, "/api/v1/articles", "").await;
+        let v2 = request_status(app, Method::GET, "/api/v2/articles", "").await;
+
+        assert_ne!(v1, StatusCode::NOT_FOUND);
+        assert_ne!(v2, StatusCode::NOT_FOUND);
+        assert_eq!(v1, v2, "v1/v2 protected route status should stay aligned");
+    }
 }

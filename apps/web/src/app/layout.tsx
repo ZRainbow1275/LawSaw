@@ -1,5 +1,8 @@
 import { AuthProvider } from "@/components/providers/auth-provider";
+import { KeyboardViewportAdapter } from "@/components/providers/keyboard-viewport-adapter";
+import { NetworkStatusIndicator } from "@/components/providers/network-status-indicator";
 import { QueryProvider } from "@/components/providers/query-provider";
+import { RouteTransitionProvider } from "@/components/providers/route-transition-provider";
 import { ToastProvider } from "@/components/ui/toast";
 import {
 	DEFAULT_LOCALE,
@@ -57,9 +60,16 @@ export default async function RootLayout({
 	return (
 		<html lang={bcp47(locale)} suppressHydrationWarning>
 			<body className="min-h-screen bg-background antialiased">
+				<a href="#main-content" className="skip-link">
+					{t(locale, "Skip to main content")}
+				</a>
 				<QueryProvider>
 					<AuthProvider>
-						<ToastProvider>{children}</ToastProvider>
+						<ToastProvider>
+							<KeyboardViewportAdapter />
+							<NetworkStatusIndicator />
+							<RouteTransitionProvider>{children}</RouteTransitionProvider>
+						</ToastProvider>
 					</AuthProvider>
 				</QueryProvider>
 			</body>

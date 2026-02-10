@@ -53,7 +53,7 @@ export const swipeActionPresets = {
 	bookmark: (onClick: () => void, isBookmarked = false): SwipeAction => ({
 		id: "bookmark",
 		icon: (
-			<Bookmark className={cn("h-5 w-5", isBookmarked && "fill-current")} />
+			<Bookmark aria-hidden="true" className={cn("h-5 w-5", isBookmarked && "fill-current")} />
 		),
 		label: isBookmarked ? "Remove bookmark" : "Bookmark",
 		color: "text-white",
@@ -62,7 +62,7 @@ export const swipeActionPresets = {
 	}),
 	share: (onClick: () => void): SwipeAction => ({
 		id: "share",
-		icon: <Share2 className="h-5 w-5" />,
+		icon: <Share2 aria-hidden="true" className="h-5 w-5" />,
 		label: "Share",
 		color: "text-white",
 		bgColor: "bg-blue-500",
@@ -70,7 +70,7 @@ export const swipeActionPresets = {
 	}),
 	delete: (onClick: () => void): SwipeAction => ({
 		id: "delete",
-		icon: <Trash2 className="h-5 w-5" />,
+		icon: <Trash2 aria-hidden="true" className="h-5 w-5" />,
 		label: "Delete",
 		color: "text-white",
 		bgColor: "bg-red-500",
@@ -78,7 +78,7 @@ export const swipeActionPresets = {
 	}),
 	more: (onClick: () => void): SwipeAction => ({
 		id: "more",
-		icon: <MoreHorizontal className="h-5 w-5" />,
+		icon: <MoreHorizontal aria-hidden="true" className="h-5 w-5" />,
 		label: "More",
 		color: "text-white",
 		bgColor: "bg-neutral-500",

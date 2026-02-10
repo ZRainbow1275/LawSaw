@@ -1,16 +1,21 @@
 "use client";
 
+import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { stripLocalePrefix, withLocalePath } from "@/lib/i18n";
+import { readIndexedDbJson, writeIndexedDbJson } from "@/lib/indexeddb-kv";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { useSidebarStore } from "@/stores/sidebar-store";
 import { Bell, Globe, LogOut, Menu, Search, Settings } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+const SEARCH_HISTORY_KEY = "header.search.history";
+const MAX_SEARCH_HISTORY_ITEMS = 10;
 
 export function Header() {
 	const router = useRouter();
@@ -23,13 +28,40 @@ export function Header() {
 	const { toggleMobile } = useSidebarStore();
 	const [showMenu, setShowMenu] = useState(false);
 	const [searchQuery, setSearchQuery] = useState("");
+	const [recentSearches, setRecentSearches] = useState<string[]>([]);
+
+	useEffect(() => {
+		let mounted = true;
+		void readIndexedDbJson<string[]>(SEARCH_HISTORY_KEY).then((history) => {
+			if (!mounted || !Array.isArray(history)) return;
+			setRecentSearches(
+				history
+					.filter((item): item is string => typeof item === "string")
+					.slice(0, MAX_SEARCH_HISTORY_ITEMS),
+			);
+		});
+
+		return () => {
+			mounted = false;
+		};
+	}, []);
 
 	const handleSearch = (e: React.FormEvent) => {
 		e.preventDefault();
 		if (searchQuery.trim()) {
+			const query = searchQuery.trim();
 			router.push(
-				withLocalePath(locale, `/search?q=${encodeURIComponent(searchQuery)}`),
+				withLocalePath(locale, `/search?q=${encodeURIComponent(query)}`),
 			);
+
+			setRecentSearches((prev) => {
+				const next = [query, ...prev.filter((item) => item !== query)].slice(
+					0,
+					MAX_SEARCH_HISTORY_ITEMS,
+				);
+				void writeIndexedDbJson(SEARCH_HISTORY_KEY, next);
+				return next;
+			});
 		}
 	};
 
@@ -55,8 +87,9 @@ export function Header() {
 	};
 
 	return (
-		<header className="sticky top-0 z-20 flex h-16 items-center gap-4 px-4 md:px-6 glass border-b border-neutral-100/50">
-			<div className="flex flex-1 items-center gap-3 min-w-0">
+		<header className="sticky top-0 z-20 glass border-b border-neutral-100/50">
+			<div className="flex h-16 items-center gap-4 px-4 md:px-6">
+				<div className="flex flex-1 items-center gap-3 min-w-0">
 				<Button
 					type="button"
 					variant="ghost"
@@ -65,7 +98,7 @@ export function Header() {
 					aria-label={t("Open navigation")}
 					onClick={() => toggleMobile()}
 				>
-					<Menu className="h-5 w-5" />
+					<Menu aria-hidden="true" className="h-5 w-5" />
 				</Button>
 
 				{/* Search */}
@@ -73,15 +106,21 @@ export function Header() {
 					onSubmit={handleSearch}
 					className="relative w-full min-w-0 md:max-w-md"
 				>
-					<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+					<Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
 					<Input
 						type="search"
 						aria-label={t("Global search keywords")}
 						placeholder={t("Search news, regulations, keywords...")}
 						className="pl-10 pr-10"
+						list="global-search-history"
 						value={searchQuery}
 						onChange={(e) => setSearchQuery(e.target.value)}
 					/>
+					<datalist id="global-search-history">
+						{recentSearches.map((item) => (
+							<option key={item} value={item} />
+						))}
+					</datalist>
 					<Button
 						type="submit"
 						variant="ghost"
@@ -90,7 +129,7 @@ export function Header() {
 						aria-label={t("Run search")}
 						disabled={!searchQuery.trim()}
 					>
-						<Search className="h-4 w-4" />
+						<Search aria-hidden="true" className="h-4 w-4" />
 					</Button>
 				</form>
 			</div>
@@ -105,7 +144,7 @@ export function Header() {
 					aria-label={t("Switch language")}
 					onClick={handleToggleLocale}
 				>
-					<Globe className="h-5 w-5" />
+					<Globe aria-hidden="true" className="h-5 w-5" />
 				</Button>
 
 				{/* Notifications */}
@@ -118,7 +157,7 @@ export function Header() {
 						router.push(withLocalePath(locale, "/settings?tab=notifications"))
 					}
 				>
-					<Bell className="h-5 w-5" />
+					<Bell aria-hidden="true" className="h-5 w-5" />
 				</Button>
 
 				{/* User Menu */}
@@ -158,7 +197,7 @@ export function Header() {
 									router.push(withLocalePath(locale, "/settings"));
 								}}
 							>
-								<Settings className="h-4 w-4" />
+								<Settings aria-hidden="true" className="h-4 w-4" />
 								{t("Settings")}
 							</button>
 							<button
@@ -169,12 +208,16 @@ export function Header() {
 									handleLogout();
 								}}
 							>
-								<LogOut className="h-4 w-4" />
+								<LogOut aria-hidden="true" className="h-4 w-4" />
 								{t("Sign out")}
 							</button>
 						</div>
 					)}
 				</div>
+			</div>
+			</div>
+			<div className="border-t border-neutral-100/50 px-4 py-2 md:px-6">
+				<Breadcrumbs pathname={pathname || "/"} />
 			</div>
 		</header>
 	);

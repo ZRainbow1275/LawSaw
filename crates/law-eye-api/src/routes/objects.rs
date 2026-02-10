@@ -148,7 +148,7 @@ pub(crate) async fn get_object(
 
     let is_admin = state
         .user_service
-        .has_permission(user.id, "*")
+        .has_permission(user.tenant_id, user.id, "*")
         .await
         .map_err(AppError::from)?;
 

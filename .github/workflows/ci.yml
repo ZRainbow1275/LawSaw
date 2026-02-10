@@ -50,6 +50,9 @@ jobs:
       - name: Lint (clippy)
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
+      - name: Complexity check (clippy cognitive complexity)
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -A warnings -W clippy::cognitive_complexity
+
       - name: Test
         run: cargo test --workspace --all-features --locked
 
@@ -75,6 +78,46 @@ jobs:
         uses: actions-rust-lang/audit@v1
         with:
           createIssues: false
+
+  dependency-policy:
+    name: Dependency Policy (cargo-deny)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@cargo-deny
+
+      - name: Resolve dependency graph (cycle guard)
+        run: cargo metadata --locked --all-features > /dev/null
+
+      - name: Dependency policy check (cargo-deny)
+        run: cargo deny check --all-features bans sources advisories
+
+  container-security:
+    name: Container Security (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build -f Dockerfile.api -t law-eye-api:ci .
+
+      - name: Vulnerability scan (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          image-ref: law-eye-api:ci
+          format: table
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
 
   web:
     name: Web
@@ -121,8 +164,8 @@ jobs:
           path: apps/web/coverage
           if-no-files-found: ignore
 
-      - name: Security audit (pnpm audit)
-        run: pnpm audit --audit-level high
+      - name: Security audit (pnpm audit script)
+        run: pnpm run audit
 
       - name: Build
         run: pnpm build

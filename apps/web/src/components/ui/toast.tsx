@@ -105,7 +105,7 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
 			<div className="p-4">
 				<div className="flex items-start gap-3">
 					{/* Icon */}
-					<Icon className={cn("h-5 w-5 shrink-0 mt-0.5", styles.iconColor)} />
+					<Icon aria-hidden="true" className={cn("h-5 w-5 shrink-0 mt-0.5", styles.iconColor)} />
 
 					{/* Content */}
 					<div className="flex-1 min-w-0">
@@ -134,7 +134,7 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
 						onClick={() => onDismiss(toast.id)}
 						className="shrink-0 rounded-lg p-1 text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 transition-colors"
 					>
-						<X className="h-4 w-4" />
+						<X aria-hidden="true" className="h-4 w-4" />
 						<span className="sr-only">Close</span>
 					</button>
 				</div>

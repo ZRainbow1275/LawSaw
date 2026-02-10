@@ -206,6 +206,35 @@ impl LlmGateway {
             .map(|bpe| bpe.encode_with_special_tokens(text).len())
             .unwrap_or(text.len() / 4)
     }
+
+    pub async fn health_check(&self) -> Result<()> {
+        let breaker_check = self.circuit_breaker.check().await;
+        if !breaker_check.allowed {
+            let retry_after = breaker_check.retry_after_seconds.unwrap_or(30);
+            return Err(Error::Http(format!(
+                "AI_CIRCUIT_OPEN retry_after_seconds={}: circuit open",
+                retry_after
+            )));
+        }
+
+        let _permit = self
+            .request_semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to acquire AI semaphore: {}", e)))?;
+
+        match self.client.models().list().await {
+            Ok(_) => {
+                self.circuit_breaker.record_success().await;
+                Ok(())
+            }
+            Err(err) => {
+                self.circuit_breaker.record_failure().await;
+                Err(map_openai_error(err))
+            }
+        }
+    }
 }
 
 fn env_u32(name: &str) -> Option<u32> {

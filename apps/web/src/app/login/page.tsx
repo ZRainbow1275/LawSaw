@@ -70,7 +70,7 @@ export default function LoginPage() {
 						whileHover={{ scale: 1.05, rotate: 5 }}
 						whileTap={{ scale: 0.95 }}
 					>
-						<Eye className="h-8 w-8 text-white" />
+						<Eye aria-hidden="true" className="h-8 w-8 text-white" />
 						<motion.div
 							className="absolute -right-1 -top-1"
 							animate={{ rotate: [0, 15, -15, 0] }}
@@ -80,7 +80,7 @@ export default function LoginPage() {
 								ease: "easeInOut",
 							}}
 						>
-							<Sparkles className="h-4 w-4 text-primary-300" />
+							<Sparkles aria-hidden="true" className="h-4 w-4 text-primary-300" />
 						</motion.div>
 					</motion.div>
 					<motion.h1

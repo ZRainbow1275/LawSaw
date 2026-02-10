@@ -9,6 +9,8 @@ pub struct JsonRpcRequest {
     pub method: String,
     #[serde(default)]
     pub params: Option<Value>,
+    #[serde(default, alias = "authToken")]
+    pub auth_token: Option<String>,
 }
 
 /// JSON-RPC 响应

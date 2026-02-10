@@ -10,7 +10,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use law_eye_common::Error;
-use law_eye_core::UploadUserAvatarInput;
+use law_eye_core::{AuditFilters, UploadUserAvatarInput};
 use law_eye_db::{CreateAuditLog, UpdateUser};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -27,6 +27,7 @@ pub fn router() -> Router<AppState> {
         .route("/", get(list_users))
         .route("/{id}", get(get_user))
         .route("/{id}", patch(update_user))
+        .route("/{id}/permissions/audit", get(list_permission_audits))
         .route("/{id}/avatar", post(upload_user_avatar))
         .route("/{id}/roles", patch(update_user_roles))
 }
@@ -144,9 +145,70 @@ pub struct SuccessResponse {
     pub version: i64,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PermissionAuditQuery {
+    #[serde(default = "default_limit")]
+    pub limit: i64,
+    #[serde(default)]
+    pub offset: i64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PermissionAuditEntry {
+    pub id: Uuid,
+    pub seq: i64,
+    pub action: String,
+    pub actor_user_id: Option<Uuid>,
+    pub target_user_id: Option<Uuid>,
+    pub before_roles: Vec<String>,
+    pub after_roles: Vec<String>,
+    pub requested_add_roles: Vec<String>,
+    pub requested_remove_roles: Vec<String>,
+    pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PermissionAuditListResponse {
+    pub items: Vec<PermissionAuditEntry>,
+    pub total: i64,
+    pub limit: i64,
+    pub offset: i64,
+}
+
+fn json_array_to_strings(value: Option<&serde_json::Value>) -> Vec<String> {
+    value
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|item| item.as_str())
+                .map(|item| item.to_string())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn json_object_array_field_to_strings(
+    value: Option<&serde_json::Value>,
+    field: &str,
+) -> Vec<String> {
+    value
+        .and_then(|v| v.as_object())
+        .map(|map| json_array_to_strings(map.get(field)))
+        .unwrap_or_default()
+}
 /// 检查用户是否有管理员权限
-async fn check_admin_permission(state: &AppState, user_id: Uuid) -> Result<bool, AppError> {
-    Ok(state.user_service.has_permission(user_id, "*").await?)
+async fn check_admin_permission(
+    state: &AppState,
+    tenant_id: Uuid,
+    user_id: Uuid,
+) -> Result<bool, AppError> {
+    Ok(state
+        .user_service
+        .has_permission(tenant_id, user_id, "*")
+        .await?)
 }
 
 /// 获取用户列表 (需要管理员权限)
@@ -183,7 +245,7 @@ pub(crate) async fn list_users(
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let is_admin = check_admin_permission(&state, user.id).await?;
+    let is_admin = check_admin_permission(&state, user.tenant_id, user.id).await?;
     if !is_admin {
         return Err(AppError::forbidden("Admin permission required"));
     }
@@ -268,7 +330,7 @@ pub(crate) async fn get_user(
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
     // Allow users to view their own profile, or admins to view any
-    let is_admin = check_admin_permission(&state, current_user.id).await?;
+    let is_admin = check_admin_permission(&state, current_user.tenant_id, current_user.id).await?;
     if current_user.id != id && !is_admin {
         return Err(AppError::forbidden("Access denied"));
     }
@@ -285,12 +347,12 @@ pub(crate) async fn get_user(
 
     let roles = state
         .user_service
-        .get_user_roles(id)
+        .get_user_roles(current_user.tenant_id, id)
         .await
         .map_err(AppError::from)?;
     let permissions = state
         .user_service
-        .get_user_permissions(id)
+        .get_user_permissions(current_user.tenant_id, id)
         .await
         .map_err(AppError::from)?;
 
@@ -337,7 +399,7 @@ pub(crate) async fn update_user(
     let expected_version = require_if_match_version(&headers)?;
 
     // Allow users to update their own profile, or admins to update any
-    let is_admin = check_admin_permission(&state, current_user.id).await?;
+    let is_admin = check_admin_permission(&state, current_user.tenant_id, current_user.id).await?;
     if current_user.id != id && !is_admin {
         return Err(AppError::forbidden("Access denied"));
     }
@@ -459,7 +521,7 @@ pub(crate) async fn upload_user_avatar(
 
     let expected_version = require_if_match_version(&headers)?;
 
-    let is_admin = check_admin_permission(&state, current_user.id).await?;
+    let is_admin = check_admin_permission(&state, current_user.tenant_id, current_user.id).await?;
     if current_user.id != id && !is_admin {
         return Err(AppError::forbidden("Access denied"));
     }
@@ -545,6 +607,107 @@ pub(crate) async fn upload_user_avatar(
     Ok(response)
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/users/{id}/permissions/audit",
+    params(
+        ("id" = Uuid, Path, description = "User ID"),
+        ("limit" = Option<i64>, Query, description = "Limit (1-100)"),
+        ("offset" = Option<i64>, Query, description = "Offset")
+    ),
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "Permission audit list", body = PermissionAuditListResponse),
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Forbidden", body = ApiError),
+        (status = 404, description = "User not found", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
+    )
+)]
+pub(crate) async fn list_permission_audits(
+    State(state): State<AppState>,
+    auth_session: AuthSession,
+    Path(id): Path<Uuid>,
+    ApiQuery(query): ApiQuery<PermissionAuditQuery>,
+) -> ApiResult<Json<PermissionAuditListResponse>> {
+    let current_user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+
+    let is_admin = check_admin_permission(&state, current_user.tenant_id, current_user.id).await?;
+    if !is_admin {
+        return Err(AppError::forbidden("Admin permission required"));
+    }
+
+    let target_user = state
+        .user_service
+        .get_by_id(id)
+        .await
+        .map_err(AppError::from)?;
+    if target_user.tenant_id != current_user.tenant_id {
+        return Err(AppError::not_found("User not found"));
+    }
+
+    if query.offset < 0 {
+        return Err(AppError::validation("offset must be >= 0"));
+    }
+    let limit = query.limit.clamp(1, 100);
+
+    let filters = AuditFilters {
+        user_id: None,
+        resource: Some("users".to_string()),
+        resource_id: Some(id),
+        action: Some("users.roles.update".to_string()),
+        limit,
+        offset: query.offset,
+    };
+
+    let total = state
+        .audit_service
+        .count(current_user.tenant_id, filters.clone())
+        .await
+        .map_err(AppError::from)?;
+
+    let logs = state
+        .audit_service
+        .list(current_user.tenant_id, filters)
+        .await
+        .map_err(AppError::from)?;
+
+    let items = logs
+        .into_iter()
+        .map(|log| PermissionAuditEntry {
+            id: log.id,
+            seq: log.seq,
+            action: log.action,
+            actor_user_id: log.user_id,
+            target_user_id: log.resource_id,
+            before_roles: json_object_array_field_to_strings(log.old_value.as_ref(), "roles"),
+            after_roles: json_object_array_field_to_strings(log.new_value.as_ref(), "roles"),
+            requested_add_roles: json_object_array_field_to_strings(
+                log.new_value.as_ref(),
+                "requested_add_roles",
+            ),
+            requested_remove_roles: json_object_array_field_to_strings(
+                log.new_value.as_ref(),
+                "requested_remove_roles",
+            ),
+            ip_address: log.ip_address,
+            user_agent: log.user_agent,
+            created_at: log.created_at,
+        })
+        .collect::<Vec<_>>();
+
+    Ok(Json(PermissionAuditListResponse {
+        items,
+        total,
+        limit,
+        offset: query.offset,
+    }))
+}
 /// 更新用户角色 (需要管理员权限)
 #[utoipa::path(
     patch,
@@ -591,7 +754,7 @@ pub(crate) async fn update_user_roles(
 
     let expected_version = require_if_match_version(&headers)?;
 
-    let is_admin = check_admin_permission(&state, current_user.id).await?;
+    let is_admin = check_admin_permission(&state, current_user.tenant_id, current_user.id).await?;
     if !is_admin {
         return Err(AppError::forbidden("Admin permission required"));
     }
@@ -638,13 +801,13 @@ pub(crate) async fn update_user_roles(
     let all_role_names: Vec<String> = add_set.union(&remove_set).cloned().collect();
     state
         .user_service
-        .validate_roles_exist_tx(&mut tx, &all_role_names)
+        .validate_roles_exist_for_tenant_tx(&mut tx, current_user.tenant_id, &all_role_names)
         .await
         .map_err(AppError::from)?;
 
     let before_roles = state
         .user_service
-        .get_user_roles_tx(&mut tx, id)
+        .get_user_roles_tx(&mut tx, current_user.tenant_id, id)
         .await
         .map_err(AppError::from)?;
 
@@ -666,12 +829,17 @@ pub(crate) async fn update_user_roles(
 
     let after_roles = state
         .user_service
-        .get_user_roles_tx(&mut tx, id)
+        .get_user_roles_tx(&mut tx, current_user.tenant_id, id)
         .await
         .map_err(AppError::from)?;
 
     let before_role_names: Vec<String> = before_roles.into_iter().map(|r| r.name).collect();
     let after_role_names: Vec<String> = after_roles.into_iter().map(|r| r.name).collect();
+
+    let before_roles_for_audit = before_role_names.clone();
+    let after_roles_for_audit = after_role_names.clone();
+    let add_roles_for_audit = add_roles.clone();
+    let remove_roles_for_audit = remove_roles.clone();
 
     let roles_changed = {
         use std::collections::BTreeSet;
@@ -716,12 +884,12 @@ pub(crate) async fn update_user_roles(
         resource: "users".to_string(),
         resource_id: Some(id),
         old_value: Some(serde_json::json!({
-            "roles": before_role_names,
+            "roles": before_roles_for_audit,
         })),
         new_value: Some(serde_json::json!({
-            "roles": after_role_names,
-            "requested_add_roles": add_roles,
-            "requested_remove_roles": remove_roles,
+            "roles": after_roles_for_audit,
+            "requested_add_roles": add_roles_for_audit,
+            "requested_remove_roles": remove_roles_for_audit,
         })),
         ip_address,
         user_agent,
@@ -732,6 +900,31 @@ pub(crate) async fn update_user_roles(
         .log_tx(current_user.tenant_id, &mut tx, audit_input)
         .await
         .map_err(AppError::from)?;
+
+    if roles_changed {
+        let dedupe_key = format!("users.roles.updated:{id}:v{user_version}");
+        let webhook_payload = serde_json::json!({
+            "user_id": id,
+            "before_roles": &before_role_names,
+            "after_roles": &after_role_names,
+            "requested_add_roles": &add_roles,
+            "requested_remove_roles": &remove_roles,
+            "version": user_version,
+            "actor_user_id": current_user.id,
+        });
+
+        state
+            .webhook_service
+            .enqueue_event_tx(
+                current_user.tenant_id,
+                &mut tx,
+                "users.roles.updated",
+                &webhook_payload,
+                &dedupe_key,
+            )
+            .await
+            .map_err(AppError::from)?;
+    }
 
     tx.commit()
         .await
