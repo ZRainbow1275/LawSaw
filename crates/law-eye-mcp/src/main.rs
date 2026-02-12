@@ -22,9 +22,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting Law Eye MCP Server...");
 
     // 连接数据库
-    let database_url = std::env::var("DATABASE_URL").map_err(|_| {
-        std::io::Error::new(std::io::ErrorKind::InvalidInput, "DATABASE_URL must be set")
-    })?;
+    let database_url = std::env::var("LAW_EYE__DATABASE__URL")
+        .or_else(|_| std::env::var("DATABASE_URL"))
+        .map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "LAW_EYE__DATABASE__URL or DATABASE_URL must be set",
+            )
+        })?;
 
     let pool = law_eye_db::create_pool_with_session_role(
         &database_url,

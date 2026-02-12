@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::tenant::with_tenant_tx;
+
 // ── Region code -> name mapping (GB/T 2260) ─────────────────────────
 
 pub const REGION_MAP: &[(&str, &str)] = &[
@@ -245,76 +247,83 @@ impl StatisticsService {
         tenant_id: Uuid,
         query: &StatisticsQuery,
     ) -> Result<RegionalDistribution> {
-        let rows: Vec<(String, i64)> = sqlx::query_as(
-            r#"
-            SELECT region_code, COUNT(*)::bigint AS count
-            FROM articles
-            WHERE tenant_id = $1
-              AND deleted_at IS NULL
-              AND region_code IS NOT NULL
-              AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
-              AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
-            GROUP BY region_code
-            ORDER BY count DESC
-            "#,
-        )
-        .bind(tenant_id)
-        .bind(query.date_from)
-        .bind(query.date_to)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        let date_from = query.date_from;
+        let date_to = query.date_to;
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let rows: Vec<(String, i64)> = sqlx::query_as(
+                    r#"
+                    SELECT region_code, COUNT(*)::bigint AS count
+                    FROM articles
+                    WHERE tenant_id = $1
+                      AND deleted_at IS NULL
+                      AND region_code IS NOT NULL
+                      AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
+                      AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
+                    GROUP BY region_code
+                    ORDER BY count DESC
+                    "#,
+                )
+                .bind(tenant_id)
+                .bind(date_from)
+                .bind(date_to)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-        let total_row: (i64, i64) = sqlx::query_as(
-            r#"
-            SELECT
-                COUNT(*)::bigint AS total,
-                COUNT(*) FILTER (WHERE region_code IS NOT NULL)::bigint AS with_region
-            FROM articles
-            WHERE tenant_id = $1 AND deleted_at IS NULL
-              AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
-              AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
-            "#,
-        )
-        .bind(tenant_id)
-        .bind(query.date_from)
-        .bind(query.date_to)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+                let total_row: (i64, i64) = sqlx::query_as(
+                    r#"
+                    SELECT
+                        COUNT(*)::bigint AS total,
+                        COUNT(*) FILTER (WHERE region_code IS NOT NULL)::bigint AS with_region
+                    FROM articles
+                    WHERE tenant_id = $1 AND deleted_at IS NULL
+                      AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
+                      AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
+                    "#,
+                )
+                .bind(tenant_id)
+                .bind(date_from)
+                .bind(date_to)
+                .fetch_one(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-        let total = total_row.0;
-        let with_region = total_row.1;
-        let sum: i64 = rows.iter().map(|(_, c)| c).sum();
+                let total = total_row.0;
+                let with_region = total_row.1;
+                let sum: i64 = rows.iter().map(|(_, c)| c).sum();
 
-        let items = rows
-            .into_iter()
-            .map(|(code, count)| {
-                let percentage = if sum > 0 {
-                    count as f64 / sum as f64
+                let items = rows
+                    .into_iter()
+                    .map(|(code, count)| {
+                        let percentage = if sum > 0 {
+                            count as f64 / sum as f64
+                        } else {
+                            0.0
+                        };
+                        RegionalCount {
+                            region_name: region_code_to_name(&code).to_string(),
+                            region_code: code,
+                            count,
+                            percentage,
+                        }
+                    })
+                    .collect();
+
+                let coverage_rate = if total > 0 {
+                    with_region as f64 / total as f64
                 } else {
                     0.0
                 };
-                RegionalCount {
-                    region_name: region_code_to_name(&code).to_string(),
-                    region_code: code,
-                    count,
-                    percentage,
-                }
+
+                Ok(RegionalDistribution {
+                    items,
+                    total: with_region,
+                    coverage_rate,
+                })
             })
-            .collect();
-
-        let coverage_rate = if total > 0 {
-            with_region as f64 / total as f64
-        } else {
-            0.0
-        };
-
-        Ok(RegionalDistribution {
-            items,
-            total: with_region,
-            coverage_rate,
         })
+        .await
     }
 
     pub async fn industry_distribution(
@@ -323,114 +332,121 @@ impl StatisticsService {
         query: &StatisticsQuery,
         include_sub: bool,
     ) -> Result<IndustryDistribution> {
-        let rows: Vec<(String, i64)> = sqlx::query_as(
-            r#"
-            SELECT domain_root, COUNT(*)::bigint AS count
-            FROM articles
-            WHERE tenant_id = $1
-              AND deleted_at IS NULL
-              AND domain_root IS NOT NULL
-              AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
-              AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
-            GROUP BY domain_root
-            ORDER BY count DESC
-            "#,
-        )
-        .bind(tenant_id)
-        .bind(query.date_from)
-        .bind(query.date_to)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        let date_from = query.date_from;
+        let date_to = query.date_to;
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let rows: Vec<(String, i64)> = sqlx::query_as(
+                    r#"
+                    SELECT domain_root, COUNT(*)::bigint AS count
+                    FROM articles
+                    WHERE tenant_id = $1
+                      AND deleted_at IS NULL
+                      AND domain_root IS NOT NULL
+                      AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
+                      AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
+                    GROUP BY domain_root
+                    ORDER BY count DESC
+                    "#,
+                )
+                .bind(tenant_id)
+                .bind(date_from)
+                .bind(date_to)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-        let total_row: (i64, i64) = sqlx::query_as(
-            r#"
-            SELECT
-                COUNT(*)::bigint AS total,
-                COUNT(*) FILTER (WHERE domain_root IS NOT NULL)::bigint AS with_domain
-            FROM articles
-            WHERE tenant_id = $1 AND deleted_at IS NULL
-              AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
-              AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
-            "#,
-        )
-        .bind(tenant_id)
-        .bind(query.date_from)
-        .bind(query.date_to)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+                let total_row: (i64, i64) = sqlx::query_as(
+                    r#"
+                    SELECT
+                        COUNT(*)::bigint AS total,
+                        COUNT(*) FILTER (WHERE domain_root IS NOT NULL)::bigint AS with_domain
+                    FROM articles
+                    WHERE tenant_id = $1 AND deleted_at IS NULL
+                      AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
+                      AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
+                    "#,
+                )
+                .bind(tenant_id)
+                .bind(date_from)
+                .bind(date_to)
+                .fetch_one(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-        let total = total_row.0;
-        let with_domain = total_row.1;
-        let sum: i64 = rows.iter().map(|(_, c)| c).sum();
+                let total = total_row.0;
+                let with_domain = total_row.1;
+                let sum: i64 = rows.iter().map(|(_, c)| c).sum();
 
-        // Optionally load sub-domain breakdown
-        let sub_map: std::collections::HashMap<String, Vec<SubDomainCount>> = if include_sub {
-            let sub_rows: Vec<(String, String, i64)> = sqlx::query_as(
-                r#"
-                SELECT domain_root, domain_sub, COUNT(*)::bigint AS count
-                FROM articles
-                WHERE tenant_id = $1
-                  AND deleted_at IS NULL
-                  AND domain_root IS NOT NULL
-                  AND domain_sub IS NOT NULL
-                  AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
-                  AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
-                GROUP BY domain_root, domain_sub
-                ORDER BY domain_root, count DESC
-                "#,
-            )
-            .bind(tenant_id)
-            .bind(query.date_from)
-            .bind(query.date_to)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+                // Optionally load sub-domain breakdown
+                let sub_map: std::collections::HashMap<String, Vec<SubDomainCount>> = if include_sub {
+                    let sub_rows: Vec<(String, String, i64)> = sqlx::query_as(
+                        r#"
+                        SELECT domain_root, domain_sub, COUNT(*)::bigint AS count
+                        FROM articles
+                        WHERE tenant_id = $1
+                          AND deleted_at IS NULL
+                          AND domain_root IS NOT NULL
+                          AND domain_sub IS NOT NULL
+                          AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
+                          AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
+                        GROUP BY domain_root, domain_sub
+                        ORDER BY domain_root, count DESC
+                        "#,
+                    )
+                    .bind(tenant_id)
+                    .bind(date_from)
+                    .bind(date_to)
+                    .fetch_all(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?;
 
-            let mut map: std::collections::HashMap<String, Vec<SubDomainCount>> =
-                std::collections::HashMap::new();
-            for (root, sub, count) in sub_rows {
-                map.entry(root).or_default().push(SubDomainCount {
-                    domain_sub: sub,
-                    count,
-                });
-            }
-            map
-        } else {
-            std::collections::HashMap::new()
-        };
+                    let mut map: std::collections::HashMap<String, Vec<SubDomainCount>> =
+                        std::collections::HashMap::new();
+                    for (root, sub, count) in sub_rows {
+                        map.entry(root).or_default().push(SubDomainCount {
+                            domain_sub: sub,
+                            count,
+                        });
+                    }
+                    map
+                } else {
+                    std::collections::HashMap::new()
+                };
 
-        let items = rows
-            .into_iter()
-            .map(|(root, count)| {
-                let percentage = if sum > 0 {
-                    count as f64 / sum as f64
+                let items = rows
+                    .into_iter()
+                    .map(|(root, count)| {
+                        let percentage = if sum > 0 {
+                            count as f64 / sum as f64
+                        } else {
+                            0.0
+                        };
+                        let sub_domains = sub_map.get(&root).cloned();
+                        DomainCount {
+                            label: domain_root_label(&root).to_string(),
+                            domain_root: root,
+                            count,
+                            percentage,
+                            sub_domains,
+                        }
+                    })
+                    .collect();
+
+                let coverage_rate = if total > 0 {
+                    with_domain as f64 / total as f64
                 } else {
                     0.0
                 };
-                let sub_domains = sub_map.get(&root).cloned();
-                DomainCount {
-                    label: domain_root_label(&root).to_string(),
-                    domain_root: root,
-                    count,
-                    percentage,
-                    sub_domains,
-                }
+
+                Ok(IndustryDistribution {
+                    items,
+                    total: with_domain,
+                    coverage_rate,
+                })
             })
-            .collect();
-
-        let coverage_rate = if total > 0 {
-            with_domain as f64 / total as f64
-        } else {
-            0.0
-        };
-
-        Ok(IndustryDistribution {
-            items,
-            total: with_domain,
-            coverage_rate,
         })
+        .await
     }
 
     pub async fn importance_distribution(
@@ -438,66 +454,73 @@ impl StatisticsService {
         tenant_id: Uuid,
         query: &StatisticsQuery,
     ) -> Result<ImportanceDistribution> {
-        let rows: Vec<(i32, i64)> = sqlx::query_as(
-            r#"
-            SELECT importance, COUNT(*)::bigint AS count
-            FROM articles
-            WHERE tenant_id = $1
-              AND deleted_at IS NULL
-              AND importance IS NOT NULL
-              AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
-              AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
-            GROUP BY importance
-            ORDER BY importance
-            "#,
-        )
-        .bind(tenant_id)
-        .bind(query.date_from)
-        .bind(query.date_to)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        let date_from = query.date_from;
+        let date_to = query.date_to;
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let rows: Vec<(i32, i64)> = sqlx::query_as(
+                    r#"
+                    SELECT importance, COUNT(*)::bigint AS count
+                    FROM articles
+                    WHERE tenant_id = $1
+                      AND deleted_at IS NULL
+                      AND importance IS NOT NULL
+                      AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
+                      AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
+                    GROUP BY importance
+                    ORDER BY importance
+                    "#,
+                )
+                .bind(tenant_id)
+                .bind(date_from)
+                .bind(date_to)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-        let agg_row: (Option<f64>, i64, i64) = sqlx::query_as(
-            r#"
-            SELECT
-                AVG(importance)::float8 AS average,
-                COUNT(*) FILTER (WHERE importance IS NOT NULL)::bigint AS with_importance,
-                COUNT(*)::bigint AS total
-            FROM articles
-            WHERE tenant_id = $1 AND deleted_at IS NULL
-              AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
-              AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
-            "#,
-        )
-        .bind(tenant_id)
-        .bind(query.date_from)
-        .bind(query.date_to)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+                let agg_row: (Option<f64>, i64, i64) = sqlx::query_as(
+                    r#"
+                    SELECT
+                        AVG(importance)::float8 AS average,
+                        COUNT(*) FILTER (WHERE importance IS NOT NULL)::bigint AS with_importance,
+                        COUNT(*)::bigint AS total
+                    FROM articles
+                    WHERE tenant_id = $1 AND deleted_at IS NULL
+                      AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
+                      AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
+                    "#,
+                )
+                .bind(tenant_id)
+                .bind(date_from)
+                .bind(date_to)
+                .fetch_one(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-        let mut levels = [0i64; 5];
-        for (level, count) in &rows {
-            let idx = (*level as usize).saturating_sub(1).min(4);
-            levels[idx] += count;
-        }
+                let mut levels = [0i64; 5];
+                for (level, count) in &rows {
+                    let idx = (*level as usize).saturating_sub(1).min(4);
+                    levels[idx] += count;
+                }
 
-        let total = agg_row.2;
-        let with_importance = agg_row.1;
-        let average = agg_row.0.unwrap_or(0.0);
-        let coverage_rate = if total > 0 {
-            with_importance as f64 / total as f64
-        } else {
-            0.0
-        };
+                let total = agg_row.2;
+                let with_importance = agg_row.1;
+                let average = agg_row.0.unwrap_or(0.0);
+                let coverage_rate = if total > 0 {
+                    with_importance as f64 / total as f64
+                } else {
+                    0.0
+                };
 
-        Ok(ImportanceDistribution {
-            levels,
-            total: with_importance,
-            average,
-            coverage_rate,
+                Ok(ImportanceDistribution {
+                    levels,
+                    total: with_importance,
+                    average,
+                    coverage_rate,
+                })
+            })
         })
+        .await
     }
 
     pub async fn authority_distribution(
@@ -505,76 +528,83 @@ impl StatisticsService {
         tenant_id: Uuid,
         query: &StatisticsQuery,
     ) -> Result<AuthorityDistribution> {
-        let rows: Vec<(i32, i64)> = sqlx::query_as(
-            r#"
-            SELECT authority_level, COUNT(*)::bigint AS count
-            FROM articles
-            WHERE tenant_id = $1
-              AND deleted_at IS NULL
-              AND authority_level IS NOT NULL
-              AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
-              AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
-            GROUP BY authority_level
-            ORDER BY authority_level
-            "#,
-        )
-        .bind(tenant_id)
-        .bind(query.date_from)
-        .bind(query.date_to)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        let date_from = query.date_from;
+        let date_to = query.date_to;
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let rows: Vec<(i32, i64)> = sqlx::query_as(
+                    r#"
+                    SELECT authority_level, COUNT(*)::bigint AS count
+                    FROM articles
+                    WHERE tenant_id = $1
+                      AND deleted_at IS NULL
+                      AND authority_level IS NOT NULL
+                      AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
+                      AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
+                    GROUP BY authority_level
+                    ORDER BY authority_level
+                    "#,
+                )
+                .bind(tenant_id)
+                .bind(date_from)
+                .bind(date_to)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-        let total_row: (i64, i64) = sqlx::query_as(
-            r#"
-            SELECT
-                COUNT(*)::bigint AS total,
-                COUNT(*) FILTER (WHERE authority_level IS NOT NULL)::bigint AS with_authority
-            FROM articles
-            WHERE tenant_id = $1 AND deleted_at IS NULL
-              AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
-              AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
-            "#,
-        )
-        .bind(tenant_id)
-        .bind(query.date_from)
-        .bind(query.date_to)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+                let total_row: (i64, i64) = sqlx::query_as(
+                    r#"
+                    SELECT
+                        COUNT(*)::bigint AS total,
+                        COUNT(*) FILTER (WHERE authority_level IS NOT NULL)::bigint AS with_authority
+                    FROM articles
+                    WHERE tenant_id = $1 AND deleted_at IS NULL
+                      AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
+                      AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
+                    "#,
+                )
+                .bind(tenant_id)
+                .bind(date_from)
+                .bind(date_to)
+                .fetch_one(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-        let total = total_row.0;
-        let with_authority = total_row.1;
-        let sum: i64 = rows.iter().map(|(_, c)| c).sum();
+                let total = total_row.0;
+                let with_authority = total_row.1;
+                let sum: i64 = rows.iter().map(|(_, c)| c).sum();
 
-        let levels = rows
-            .into_iter()
-            .map(|(level, count)| {
-                let percentage = if sum > 0 {
-                    count as f64 / sum as f64
+                let levels = rows
+                    .into_iter()
+                    .map(|(level, count)| {
+                        let percentage = if sum > 0 {
+                            count as f64 / sum as f64
+                        } else {
+                            0.0
+                        };
+                        AuthorityLevelCount {
+                            level,
+                            label: authority_level_label(level).to_string(),
+                            count,
+                            percentage,
+                        }
+                    })
+                    .collect();
+
+                let coverage_rate = if total > 0 {
+                    with_authority as f64 / total as f64
                 } else {
                     0.0
                 };
-                AuthorityLevelCount {
-                    level,
-                    label: authority_level_label(level).to_string(),
-                    count,
-                    percentage,
-                }
+
+                Ok(AuthorityDistribution {
+                    levels,
+                    total: with_authority,
+                    coverage_rate,
+                })
             })
-            .collect();
-
-        let coverage_rate = if total > 0 {
-            with_authority as f64 / total as f64
-        } else {
-            0.0
-        };
-
-        Ok(AuthorityDistribution {
-            levels,
-            total: with_authority,
-            coverage_rate,
         })
+        .await
     }
 
     pub async fn issuer_distribution(
@@ -583,70 +613,77 @@ impl StatisticsService {
         query: &StatisticsQuery,
         limit: i64,
     ) -> Result<IssuerDistribution> {
-        let rows: Vec<(String, i64)> = sqlx::query_as(
-            r#"
-            SELECT issuer, COUNT(*)::bigint AS count
-            FROM articles
-            WHERE tenant_id = $1
-              AND deleted_at IS NULL
-              AND issuer IS NOT NULL
-              AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
-              AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
-            GROUP BY issuer
-            ORDER BY count DESC
-            LIMIT $4
-            "#,
-        )
-        .bind(tenant_id)
-        .bind(query.date_from)
-        .bind(query.date_to)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        let date_from = query.date_from;
+        let date_to = query.date_to;
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let rows: Vec<(String, i64)> = sqlx::query_as(
+                    r#"
+                    SELECT issuer, COUNT(*)::bigint AS count
+                    FROM articles
+                    WHERE tenant_id = $1
+                      AND deleted_at IS NULL
+                      AND issuer IS NOT NULL
+                      AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
+                      AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
+                    GROUP BY issuer
+                    ORDER BY count DESC
+                    LIMIT $4
+                    "#,
+                )
+                .bind(tenant_id)
+                .bind(date_from)
+                .bind(date_to)
+                .bind(limit)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-        let agg_row: (i64, i64) = sqlx::query_as(
-            r#"
-            SELECT
-                COUNT(*) FILTER (WHERE issuer IS NOT NULL)::bigint AS total_with_issuer,
-                COUNT(DISTINCT issuer)::bigint AS unique_issuers
-            FROM articles
-            WHERE tenant_id = $1 AND deleted_at IS NULL
-              AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
-              AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
-            "#,
-        )
-        .bind(tenant_id)
-        .bind(query.date_from)
-        .bind(query.date_to)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+                let agg_row: (i64, i64) = sqlx::query_as(
+                    r#"
+                    SELECT
+                        COUNT(*) FILTER (WHERE issuer IS NOT NULL)::bigint AS total_with_issuer,
+                        COUNT(DISTINCT issuer)::bigint AS unique_issuers
+                    FROM articles
+                    WHERE tenant_id = $1 AND deleted_at IS NULL
+                      AND ($2::date IS NULL OR created_at >= $2::date::timestamptz)
+                      AND ($3::date IS NULL OR created_at < ($3::date + 1)::timestamptz)
+                    "#,
+                )
+                .bind(tenant_id)
+                .bind(date_from)
+                .bind(date_to)
+                .fetch_one(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-        let total = agg_row.0;
-        let unique_issuers = agg_row.1;
+                let total = agg_row.0;
+                let unique_issuers = agg_row.1;
 
-        let items = rows
-            .into_iter()
-            .map(|(issuer, count)| {
-                let percentage = if total > 0 {
-                    count as f64 / total as f64
-                } else {
-                    0.0
-                };
-                IssuerCount {
-                    issuer,
-                    count,
-                    percentage,
-                }
+                let items = rows
+                    .into_iter()
+                    .map(|(issuer, count)| {
+                        let percentage = if total > 0 {
+                            count as f64 / total as f64
+                        } else {
+                            0.0
+                        };
+                        IssuerCount {
+                            issuer,
+                            count,
+                            percentage,
+                        }
+                    })
+                    .collect();
+
+                Ok(IssuerDistribution {
+                    items,
+                    total,
+                    unique_issuers,
+                })
             })
-            .collect();
-
-        Ok(IssuerDistribution {
-            items,
-            total,
-            unique_issuers,
         })
+        .await
     }
 
     pub async fn cross_dimensional(
@@ -657,6 +694,10 @@ impl StatisticsService {
         let col_x = Self::dimension_to_column(&query.dimension_x)?;
         let col_y = Self::dimension_to_column(&query.dimension_y)?;
         let limit = query.limit.unwrap_or(200).clamp(1, 1000);
+        let date_from = query.date_from;
+        let date_to = query.date_to;
+        let dimension_x = query.dimension_x.clone();
+        let dimension_y = query.dimension_y.clone();
 
         // We need to use a dynamic query since column names can't be parameterized
         let sql = format!(
@@ -678,29 +719,34 @@ impl StatisticsService {
             "#,
         );
 
-        let rows: Vec<(String, String, i64)> = sqlx::query_as(&sql)
-            .bind(tenant_id)
-            .bind(query.date_from)
-            .bind(query.date_to)
-            .bind(limit)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let rows: Vec<(String, String, i64)> = sqlx::query_as(&sql)
+                    .bind(tenant_id)
+                    .bind(date_from)
+                    .bind(date_to)
+                    .bind(limit)
+                    .fetch_all(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?;
 
-        let cells = rows
-            .into_iter()
-            .map(|(x, y, count)| CrossDimensionalCell {
-                x_value: x,
-                y_value: y,
-                count,
+                let cells = rows
+                    .into_iter()
+                    .map(|(x, y, count)| CrossDimensionalCell {
+                        x_value: x,
+                        y_value: y,
+                        count,
+                    })
+                    .collect();
+
+                Ok(CrossDimensionalResult {
+                    dimension_x,
+                    dimension_y,
+                    cells,
+                })
             })
-            .collect();
-
-        Ok(CrossDimensionalResult {
-            dimension_x: query.dimension_x.clone(),
-            dimension_y: query.dimension_y.clone(),
-            cells,
         })
+        .await
     }
 
     pub async fn timeline_by_dimension(
@@ -734,16 +780,6 @@ impl StatisticsService {
             "#,
         );
 
-        let top_values: Vec<(String,)> = sqlx::query_as(&top_values_sql)
-            .bind(tenant_id)
-            .bind(days)
-            .bind(top_n as i64)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
-
-        let top_dim_values: Vec<String> = top_values.into_iter().map(|(v,)| v).collect();
-
         // Then get timeline data for those values
         let timeline_sql = format!(
             r#"
@@ -771,85 +807,108 @@ impl StatisticsService {
             "#,
         );
 
-        let rows: Vec<(NaiveDate, String, i64)> = sqlx::query_as(&timeline_sql)
-            .bind(tenant_id)
-            .bind(days)
-            .bind(&top_dim_values)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+        let dimension = query.dimension.clone();
+        let granularity_owned = granularity.to_string();
 
-        // Group into series
-        let mut series_map: std::collections::HashMap<String, Vec<TimelinePoint>> =
-            std::collections::HashMap::new();
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let top_values: Vec<(String,)> = sqlx::query_as(&top_values_sql)
+                    .bind(tenant_id)
+                    .bind(days)
+                    .bind(top_n as i64)
+                    .fetch_all(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?;
 
-        for (date, dim_val, count) in rows {
-            if dim_val.is_empty() {
-                continue;
-            }
-            series_map
-                .entry(dim_val)
-                .or_default()
-                .push(TimelinePoint { date, count });
-        }
+                let top_dim_values: Vec<String> = top_values.into_iter().map(|(v,)| v).collect();
 
-        let series = series_map
-            .into_iter()
-            .map(|(dim_val, points)| {
-                let label = match query.dimension.as_str() {
-                    "domain" => domain_root_label(&dim_val).to_string(),
-                    "region" => region_code_to_name(&dim_val).to_string(),
-                    "authority" => {
-                        if let Ok(level) = dim_val.parse::<i32>() {
-                            authority_level_label(level).to_string()
-                        } else {
-                            dim_val.clone()
-                        }
+                let rows: Vec<(NaiveDate, String, i64)> = sqlx::query_as(&timeline_sql)
+                    .bind(tenant_id)
+                    .bind(days)
+                    .bind(&top_dim_values)
+                    .fetch_all(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?;
+
+                // Group into series
+                let mut series_map: std::collections::HashMap<String, Vec<TimelinePoint>> =
+                    std::collections::HashMap::new();
+
+                for (date, dim_val, count) in rows {
+                    if dim_val.is_empty() {
+                        continue;
                     }
-                    _ => dim_val.clone(),
-                };
-                TimelineSeries {
-                    dimension_value: dim_val,
-                    label,
-                    points,
+                    series_map
+                        .entry(dim_val)
+                        .or_default()
+                        .push(TimelinePoint { date, count });
                 }
-            })
-            .collect();
 
-        Ok(TimelineByDimension {
-            dimension: query.dimension.clone(),
-            granularity: granularity.to_string(),
-            series,
+                let series = series_map
+                    .into_iter()
+                    .map(|(dim_val, points)| {
+                        let label = match dimension.as_str() {
+                            "domain" => domain_root_label(&dim_val).to_string(),
+                            "region" => region_code_to_name(&dim_val).to_string(),
+                            "authority" => {
+                                if let Ok(level) = dim_val.parse::<i32>() {
+                                    authority_level_label(level).to_string()
+                                } else {
+                                    dim_val.clone()
+                                }
+                            }
+                            _ => dim_val.clone(),
+                        };
+                        TimelineSeries {
+                            dimension_value: dim_val,
+                            label,
+                            points,
+                        }
+                    })
+                    .collect();
+
+                Ok(TimelineByDimension {
+                    dimension,
+                    granularity: granularity_owned,
+                    series,
+                })
+            })
         })
+        .await
     }
 
     pub async fn overview(&self, tenant_id: Uuid) -> Result<StatisticsOverview> {
-        let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
-            r#"
-            SELECT
-                COUNT(*)::bigint AS total,
-                COUNT(*) FILTER (WHERE region_code IS NOT NULL)::bigint AS with_region,
-                COUNT(*) FILTER (WHERE domain_root IS NOT NULL)::bigint AS with_domain,
-                COUNT(*) FILTER (WHERE importance IS NOT NULL)::bigint AS with_importance,
-                COUNT(*) FILTER (WHERE authority_level IS NOT NULL)::bigint AS with_authority,
-                COUNT(*) FILTER (WHERE issuer IS NOT NULL)::bigint AS with_issuer
-            FROM articles
-            WHERE tenant_id = $1 AND deleted_at IS NULL
-            "#,
-        )
-        .bind(tenant_id)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+                    r#"
+                    SELECT
+                        COUNT(*)::bigint AS total,
+                        COUNT(*) FILTER (WHERE region_code IS NOT NULL)::bigint AS with_region,
+                        COUNT(*) FILTER (WHERE domain_root IS NOT NULL)::bigint AS with_domain,
+                        COUNT(*) FILTER (WHERE importance IS NOT NULL)::bigint AS with_importance,
+                        COUNT(*) FILTER (WHERE authority_level IS NOT NULL)::bigint AS with_authority,
+                        COUNT(*) FILTER (WHERE issuer IS NOT NULL)::bigint AS with_issuer
+                    FROM articles
+                    WHERE tenant_id = $1 AND deleted_at IS NULL
+                    "#,
+                )
+                .bind(tenant_id)
+                .fetch_one(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-        Ok(StatisticsOverview {
-            total_articles: row.0,
-            with_region: row.1,
-            with_domain: row.2,
-            with_importance: row.3,
-            with_authority: row.4,
-            with_issuer: row.5,
+                Ok(StatisticsOverview {
+                    total_articles: row.0,
+                    with_region: row.1,
+                    with_domain: row.2,
+                    with_importance: row.3,
+                    with_authority: row.4,
+                    with_issuer: row.5,
+                })
+            })
         })
+        .await
     }
 
     /// Map a dimension name to its SQL column, with whitelist for safety.

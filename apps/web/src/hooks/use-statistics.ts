@@ -26,13 +26,11 @@ export interface RegionalDistribution {
 
 export interface SubDomainCount {
 	domain_sub: string;
-	label: string;
 	count: number;
 }
 
 export interface DomainCount {
 	domain_root: string;
-	domain_sub: string | null;
 	label: string;
 	count: number;
 	percentage: number;
@@ -157,9 +155,7 @@ export function useIndustryStats(params?: { includeSub?: boolean }) {
 	return useQuery({
 		queryKey: ["statistics", "industry", params],
 		queryFn: () =>
-			apiClient.get<IndustryDistribution>(
-				`/api/v1/statistics/industry${qs}`,
-			),
+			apiClient.get<IndustryDistribution>(`/api/v1/statistics/industry${qs}`),
 		staleTime: 60_000,
 	});
 }
@@ -168,9 +164,7 @@ export function useImportanceStats() {
 	return useQuery({
 		queryKey: ["statistics", "importance"],
 		queryFn: () =>
-			apiClient.get<ImportanceDistribution>(
-				"/api/v1/statistics/importance",
-			),
+			apiClient.get<ImportanceDistribution>("/api/v1/statistics/importance"),
 		staleTime: 60_000,
 	});
 }
@@ -179,9 +173,7 @@ export function useAuthorityStats() {
 	return useQuery({
 		queryKey: ["statistics", "authority"],
 		queryFn: () =>
-			apiClient.get<AuthorityDistribution>(
-				"/api/v1/statistics/authority",
-			),
+			apiClient.get<AuthorityDistribution>("/api/v1/statistics/authority"),
 		staleTime: 60_000,
 	});
 }
@@ -192,9 +184,7 @@ export function useIssuerStats(limit?: number) {
 	return useQuery({
 		queryKey: ["statistics", "issuer", limit],
 		queryFn: () =>
-			apiClient.get<IssuerDistribution>(
-				`/api/v1/statistics/issuer${qs}`,
-			),
+			apiClient.get<IssuerDistribution>(`/api/v1/statistics/issuer${qs}`),
 		staleTime: 60_000,
 	});
 }
@@ -204,7 +194,7 @@ export function useCrossDimensional(dimX: string, dimY: string) {
 		queryKey: ["statistics", "cross", dimX, dimY],
 		queryFn: () =>
 			apiClient.get<CrossDimensionalResult>(
-				`/api/v1/statistics/cross?dim_x=${encodeURIComponent(dimX)}&dim_y=${encodeURIComponent(dimY)}`,
+				`/api/v1/statistics/cross?dimension_x=${encodeURIComponent(dimX)}&dimension_y=${encodeURIComponent(dimY)}`,
 			),
 		staleTime: 60_000,
 		enabled: !!dimX && !!dimY,
@@ -232,5 +222,27 @@ export function useTimelineByDimension(
 			),
 		staleTime: 60_000,
 		enabled: !!dimension,
+	});
+}
+
+// ---------------------------------------------------------------------------
+// Type definitions — Overview
+// ---------------------------------------------------------------------------
+
+export interface StatisticsOverview {
+	total_articles: number;
+	with_region: number;
+	with_domain: number;
+	with_importance: number;
+	with_authority: number;
+	with_issuer: number;
+}
+
+export function useStatisticsOverview() {
+	return useQuery({
+		queryKey: ["statistics", "overview"],
+		queryFn: () =>
+			apiClient.get<StatisticsOverview>("/api/v1/statistics/overview"),
+		staleTime: 60_000,
 	});
 }

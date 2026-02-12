@@ -3,6 +3,14 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+/// 输入验证常量
+pub const REPORT_TITLE_MAX_LEN: usize = 200;
+#[allow(dead_code)] // Reserved for future content-size validation
+pub const REPORT_CONTENT_MAX_BYTES: usize = 5 * 1024 * 1024; // 5 MB
+pub const TEMPLATE_NAME_MAX_LEN: usize = 100;
+pub const TEMPLATE_BODY_MAX_LEN: usize = 100_000; // 100 KB
+pub const TEMPLATE_CSS_MAX_LEN: usize = 50_000; // 50 KB
+
 // ══════════════════════════════════════════════════════════════
 // Request DTOs
 // ══════════════════════════════════════════════════════════════

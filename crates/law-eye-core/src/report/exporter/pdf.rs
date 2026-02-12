@@ -19,9 +19,12 @@ impl PdfExporter {
         }
     }
 
-    /// 从环境变量构造
+    /// 从环境变量构造。
+    /// 优先读取 `LAW_EYE__BROWSERLESS__URL`（与 docker-compose 对齐），
+    /// 回退读取 `BROWSERLESS_URL`，最终默认 `http://localhost:3000`。
     pub fn from_env() -> Result<Self> {
-        let url = std::env::var("BROWSERLESS_URL")
+        let url = std::env::var("LAW_EYE__BROWSERLESS__URL")
+            .or_else(|_| std::env::var("BROWSERLESS_URL"))
             .unwrap_or_else(|_| "http://localhost:3000".to_string());
         Ok(Self::new(&url))
     }
@@ -74,7 +77,7 @@ impl PdfExporter {
             }
         });
 
-        let url = format!("{}/pdf", self.browserless_url);
+        let url = format!("{}/chromium/pdf", self.browserless_url);
         let response = self
             .http_client
             .post(&url)

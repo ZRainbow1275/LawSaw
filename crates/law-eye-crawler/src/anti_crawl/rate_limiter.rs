@@ -95,7 +95,10 @@ impl DomainRateLimiter {
     /// Wait until a token is available for `domain`, then consume it.
     pub async fn wait(&self, domain: &str) {
         let wait_duration = {
-            let mut buckets = self.buckets.lock().expect("rate limiter lock poisoned");
+            let mut buckets = self.buckets.lock().unwrap_or_else(|poisoned| {
+                tracing::warn!("rate limiter buckets mutex was poisoned, recovering");
+                poisoned.into_inner()
+            });
             let bucket = buckets
                 .entry(domain.to_string())
                 .or_insert_with(|| {
@@ -126,7 +129,10 @@ impl DomainRateLimiter {
 
     /// Number of tracked domains.
     pub fn tracked_domains(&self) -> usize {
-        self.buckets.lock().expect("lock").len()
+        self.buckets.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("rate limiter buckets mutex was poisoned, recovering");
+            poisoned.into_inner()
+        }).len()
     }
 }
 

@@ -11,13 +11,9 @@ import { DomainPieChart } from "./domain-pie-chart";
 
 export function IndustryPanel() {
 	const t = useT();
-	const {
-		data,
-		isLoading,
-		isError,
-		error,
-		refetch,
-	} = useIndustryStats({ includeSub: true });
+	const { data, isLoading, isError, error, refetch } = useIndustryStats({
+		includeSub: true,
+	});
 
 	if (isLoading) {
 		return (
@@ -65,10 +61,7 @@ export function IndustryPanel() {
 		<div className="space-y-6">
 			{/* Coverage info */}
 			<div className="flex items-center gap-4 rounded-lg bg-primary-50 px-4 py-2">
-				<Briefcase
-					className="h-5 w-5 text-primary-500"
-					aria-hidden="true"
-				/>
+				<Briefcase className="h-5 w-5 text-primary-500" aria-hidden="true" />
 				<div className="text-sm">
 					<span className="font-medium text-primary-700">
 						{t("Domain coverage")}: {(data.coverage_rate * 100).toFixed(1)}%
@@ -125,8 +118,7 @@ export function IndustryPanel() {
 						<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 							{data.items
 								.filter(
-									(item) =>
-										item.sub_domains && item.sub_domains.length > 0,
+									(item) => item.sub_domains && item.sub_domains.length > 0,
 								)
 								.map((item) => (
 									<div
@@ -143,7 +135,7 @@ export function IndustryPanel() {
 													className="flex items-center justify-between text-sm"
 												>
 													<span className="text-neutral-600">
-														{sub.label}
+														{sub.domain_sub}
 													</span>
 													<span className="font-medium text-neutral-800">
 														{sub.count}

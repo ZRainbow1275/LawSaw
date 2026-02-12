@@ -35,7 +35,6 @@ pub struct AppBootstrapDeps {
 
 #[derive(Clone)]
 pub struct AppState {
-    #[allow(dead_code)]
     pub pool: PgPool,
     pub article_service: Arc<ArticleService>,
     pub source_service: Arc<SourceService>,
@@ -51,10 +50,8 @@ pub struct AppState {
     pub object_service: Option<Arc<ObjectService>>,
     pub task_queue: Arc<TaskQueue>,
     pub cache_service: Option<Arc<CacheService>>,
-    #[allow(dead_code)]
     pub ai_service: Option<Arc<AiService>>,
     pub rag_service: Arc<RagService>,
-    #[allow(dead_code)]
     pub knowledge_service: Arc<KnowledgeService>,
     pub apikey_service: Arc<ApiKeyService>,
     pub webhook_service: Arc<WebhookService>,

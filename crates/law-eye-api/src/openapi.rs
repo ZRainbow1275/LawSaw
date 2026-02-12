@@ -134,7 +134,16 @@ impl Modify for SecurityAddon {
         crate::routes::reports::create_template,
         crate::routes::reports::get_template,
         crate::routes::reports::update_template,
-        crate::routes::reports::delete_template
+        crate::routes::reports::delete_template,
+        crate::routes::tenants::list_tenants,
+        crate::routes::tenants::create_tenant,
+        crate::routes::tenants::get_tenant,
+        crate::routes::tenants::update_tenant,
+        crate::routes::tenants::delete_tenant,
+        crate::routes::tenants::get_tenant_config,
+        crate::routes::tenants::update_tenant_config,
+        crate::routes::tenants::get_tenant_usage,
+        crate::routes::tenants::refresh_tenant_usage
     ),
     tags(
         (name = "health", description = "Health"),
@@ -153,7 +162,8 @@ impl Modify for SecurityAddon {
         (name = "knowledge", description = "Knowledge graph"),
         (name = "statistics", description = "Statistics & analytics"),
         (name = "reports", description = "Reports"),
-        (name = "report-templates", description = "Report templates")
+        (name = "report-templates", description = "Report templates"),
+        (name = "tenants", description = "Tenant management")
     )
 )]
 pub struct ApiDoc;

@@ -24,6 +24,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
     networks:
       - law-eye-network
     restart: unless-stopped
@@ -84,6 +92,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     networks:
       - law-eye-network
     restart: unless-stopped
@@ -126,6 +142,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     networks:
       - law-eye-network
     restart: unless-stopped
@@ -150,6 +174,14 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
     networks:
       - law-eye-network
     restart: unless-stopped
@@ -180,9 +212,14 @@ services:
       LAW_EYE__OBJECT_STORAGE__SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
       LAW_EYE__OBJECT_STORAGE__FORCE_PATH_STYLE: "true"
       LAW_EYE__OBJECT_STORAGE__SSE_ENABLED: true
+      WEB_PUSH_VAPID_PUBLIC_KEY: "${WEB_PUSH_VAPID_PUBLIC_KEY:-}"
+      WEB_PUSH_VAPID_PRIVATE_KEY: "${WEB_PUSH_VAPID_PRIVATE_KEY:-}"
+      WEB_PUSH_SUBJECT: "${WEB_PUSH_SUBJECT:-mailto:admin@lawsaw.io}"
+      PRODUCTION: "${PRODUCTION:-false}"
+      LAW_EYE__METRICS__TOKEN: "${LAW_EYE__METRICS__TOKEN:-}"
       RUST_LOG: info
     ports:
-      - "${API_HOST_PORT:-3001}:3001"
+      - "127.0.0.1:${API_HOST_PORT:-3001}:3001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -196,6 +233,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
     networks:
       - law-eye-network
     restart: unless-stopped
@@ -227,6 +272,8 @@ services:
       # Browserless dynamic rendering (when crawler profile is active)
       LAW_EYE__BROWSERLESS__URL: "http://browserless:3000"
       LAW_EYE__BROWSERLESS__TIMEOUT_MS: "30000"
+      PRODUCTION: "${PRODUCTION:-false}"
+      LAW_EYE__PUSH__PREVIEW_LIMIT: "${LAW_EYE__PUSH__PREVIEW_LIMIT:-3}"
       RUST_LOG: info
     depends_on:
       postgres:
@@ -237,12 +284,23 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      browserless:
+        condition: service_healthy
+        required: false
     healthcheck:
       test: ["CMD", "/app/law-eye-worker", "--healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
     networks:
       - law-eye-network
     restart: unless-stopped
@@ -255,7 +313,7 @@ services:
       LAW_EYE_API_PROXY_TARGET: http://api:3001
       NEXT_TELEMETRY_DISABLED: "1"
     ports:
-      - "${WEB_HOST_PORT:-8849}:8849"
+      - "127.0.0.1:${WEB_HOST_PORT:-8849}:8849"
     depends_on:
       api:
         condition: service_healthy
@@ -271,6 +329,14 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     networks:
       - law-eye-network
     restart: unless-stopped
@@ -289,19 +355,34 @@ services:
       - EMAIL_FROM=${EMAIL_FROM:-noreply@laweye.com}
       - EMAIL_TO=${EMAIL_TO:-}
     ports:
-      - "${N8N_HOST_PORT:-5678}:5678"
+      - "127.0.0.1:${N8N_HOST_PORT:-5678}:5678"
     volumes:
       - n8n_data:/home/node/.n8n
       - ./n8n/workflows:/home/node/workflows:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     networks:
       - law-eye-network
     restart: unless-stopped
 
   browserless:
     image: ${BROWSERLESS_IMAGE:-ghcr.io/browserless/chromium:v2.24.2}
-    profiles: ["crawler"]
+    profiles: ["crawler", "worker", "report"]
     environment:
       MAX_CONCURRENT_SESSIONS: ${BROWSERLESS_MAX_CONCURRENT:-5}
       CONNECTION_TIMEOUT: ${BROWSERLESS_CONNECTION_TIMEOUT:-60000}
@@ -315,6 +396,14 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
     networks:
       - law-eye-network
     restart: unless-stopped

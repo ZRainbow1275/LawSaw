@@ -1,5 +1,4 @@
 use metrics::{counter, gauge, histogram};
-use std::time::Instant;
 
 /// Crawler business metrics emitted via the `metrics` crate.
 ///
@@ -88,62 +87,9 @@ impl CrawlMetrics {
     }
 }
 
-/// A timing guard that records duration on drop.
-///
-/// Usage:
-/// ```ignore
-/// let _timer = CrawlTimer::start("my_source", "fetch");
-/// // ... do work ...
-/// // duration is recorded when `_timer` is dropped
-/// ```
-#[allow(dead_code)]
-pub struct CrawlTimer {
-    source: String,
-    stage: String,
-    start: Instant,
-}
-
-#[allow(dead_code)]
-impl CrawlTimer {
-    /// Start a new timer for a named stage.
-    pub fn start(source: impl Into<String>, stage: impl Into<String>) -> Self {
-        Self {
-            source: source.into(),
-            stage: stage.into(),
-            start: Instant::now(),
-        }
-    }
-
-    /// Elapsed time since timer was started.
-    pub fn elapsed(&self) -> std::time::Duration {
-        self.start.elapsed()
-    }
-}
-
-impl Drop for CrawlTimer {
-    fn drop(&mut self) {
-        let elapsed = self.start.elapsed();
-        histogram!(
-            "crawler_pipeline_duration_seconds",
-            "source" => self.source.clone(),
-            "stage" => self.stage.clone()
-        )
-        .record(elapsed.as_secs_f64());
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn crawl_timer_records_elapsed() {
-        let timer = CrawlTimer::start("test_source", "test_stage");
-        std::thread::sleep(std::time::Duration::from_millis(10));
-        let elapsed = timer.elapsed();
-        assert!(elapsed >= std::time::Duration::from_millis(5));
-        // Timer is dropped here — metric recorded (no-op without a recorder installed)
-    }
 
     #[test]
     fn metrics_calls_do_not_panic_without_recorder() {

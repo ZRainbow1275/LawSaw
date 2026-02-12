@@ -22,7 +22,7 @@ use law_eye_core::report::{
     CreateReportInput, ExportFormat, ListReportsQuery, ReportStatus,
     UpdateReportInput,
 };
-use law_eye_queue::ReportExportTask;
+use law_eye_queue::{ReportExportTask, ReportGenerateTask};
 
 // ══════════════════════════════════════════════════════════════
 // Report handlers
@@ -84,6 +84,12 @@ pub(crate) async fn create_report(
     if title.is_empty() {
         return Err(AppError::validation("title cannot be empty"));
     }
+    if title.len() > super::dto::REPORT_TITLE_MAX_LEN {
+        return Err(AppError::validation(format!(
+            "title must be at most {} characters",
+            super::dto::REPORT_TITLE_MAX_LEN
+        )));
+    }
 
     let input = CreateReportInput {
         title: title.to_string(),
@@ -143,6 +149,14 @@ pub(crate) async fn update_report(
     let title = req.title.as_deref().map(str::trim);
     if matches!(title, Some("")) {
         return Err(AppError::validation("title cannot be empty"));
+    }
+    if let Some(t) = title {
+        if t.len() > super::dto::REPORT_TITLE_MAX_LEN {
+            return Err(AppError::validation(format!(
+                "title must be at most {} characters",
+                super::dto::REPORT_TITLE_MAX_LEN
+            )));
+        }
     }
 
     let has_changes = title.is_some() || req.content.is_some();
@@ -265,17 +279,17 @@ pub(crate) async fn generate_report(
         .map_err(AppError::from)?;
 
     // Enqueue AI generation task
-    let task = serde_json::json!({
-        "tenant_id": user.tenant_id,
-        "report_id": id,
-        "task_type": "generate_report",
-        "requested_by": user.id,
-        "requested_at": Utc::now(),
-    });
+    let task = ReportGenerateTask {
+        tenant_id: user.tenant_id,
+        report_id: id,
+        task_type: Some("generate_report".to_string()),
+        requested_by: Some(user.id),
+        requested_at: Some(Utc::now().to_rfc3339()),
+    };
 
     state
         .task_queue
-        .enqueue("queue:report", &task)
+        .enqueue_retryable("queue:report", task)
         .await
         .map_err(|e| AppError::internal_with_code("ENQUEUE_ERROR", e.to_string()))?;
 
@@ -297,7 +311,7 @@ pub(crate) async fn export_report(
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
     // Validate export format
-    let format = ExportFormat::from_str(&req.format).ok_or_else(|| {
+    let format: ExportFormat = req.format.parse().map_err(|_| {
         AppError::validation(format!(
             "Invalid export format: {}. Valid values: pdf, docx, html",
             req.format
@@ -329,7 +343,7 @@ pub(crate) async fn export_report(
 
     state
         .task_queue
-        .enqueue("queue:report-export", &task)
+        .enqueue_retryable("queue:report-export", task)
         .await
         .map_err(|e| AppError::internal_with_code("ENQUEUE_ERROR", e.to_string()))?;
 
@@ -380,6 +394,26 @@ pub(crate) async fn create_template(
     let name = req.name.trim();
     if name.is_empty() {
         return Err(AppError::validation("name cannot be empty"));
+    }
+    if name.len() > super::dto::TEMPLATE_NAME_MAX_LEN {
+        return Err(AppError::validation(format!(
+            "name must be at most {} characters",
+            super::dto::TEMPLATE_NAME_MAX_LEN
+        )));
+    }
+    if req.template_body.len() > super::dto::TEMPLATE_BODY_MAX_LEN {
+        return Err(AppError::validation(format!(
+            "template_body must be at most {} bytes",
+            super::dto::TEMPLATE_BODY_MAX_LEN
+        )));
+    }
+    if let Some(css) = &req.css_styles {
+        if css.len() > super::dto::TEMPLATE_CSS_MAX_LEN {
+            return Err(AppError::validation(format!(
+                "css_styles must be at most {} bytes",
+                super::dto::TEMPLATE_CSS_MAX_LEN
+            )));
+        }
     }
 
     let input = law_eye_db::CreateReportTemplate {

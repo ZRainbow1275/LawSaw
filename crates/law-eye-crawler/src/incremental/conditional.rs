@@ -34,7 +34,10 @@ impl ConditionalRequest {
     /// Returns a list of `(header_name, header_value)` pairs to add to the
     /// outgoing request.
     pub fn headers_for(&self, url: &str) -> Vec<(&'static str, String)> {
-        let state = self.state.lock().expect("conditional state lock");
+        let state = self.state.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("conditional state mutex was poisoned, recovering");
+            poisoned.into_inner()
+        });
         let Some(entry) = state.get(url) else {
             return Vec::new();
         };
@@ -54,7 +57,10 @@ impl ConditionalRequest {
         if etag.is_none() && last_modified.is_none() {
             return;
         }
-        let mut state = self.state.lock().expect("conditional state lock");
+        let mut state = self.state.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("conditional state mutex was poisoned, recovering");
+            poisoned.into_inner()
+        });
         let entry = state.entry(url.to_string()).or_default();
         if let Some(e) = etag {
             entry.etag = Some(e);
@@ -66,17 +72,26 @@ impl ConditionalRequest {
 
     /// Check whether we have any conditional state for `url`.
     pub fn has_state(&self, url: &str) -> bool {
-        self.state.lock().expect("lock").contains_key(url)
+        self.state.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("conditional state mutex was poisoned, recovering");
+            poisoned.into_inner()
+        }).contains_key(url)
     }
 
     /// Number of tracked URLs.
     pub fn tracked_urls(&self) -> usize {
-        self.state.lock().expect("lock").len()
+        self.state.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("conditional state mutex was poisoned, recovering");
+            poisoned.into_inner()
+        }).len()
     }
 
     /// Remove state for a specific URL.
     pub fn remove(&self, url: &str) {
-        self.state.lock().expect("lock").remove(url);
+        self.state.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("conditional state mutex was poisoned, recovering");
+            poisoned.into_inner()
+        }).remove(url);
     }
 }
 

@@ -13,7 +13,9 @@ export interface Article {
 	risk_score: number | null;
 	importance: number | null;
 	sentiment: "positive" | "negative" | "neutral" | "mixed" | null;
-	ai_metadata?: Record<string, unknown>;
+	tags: string[];
+	keywords: string[];
+	ai_metadata: Record<string, unknown>;
 	// Crawler enhancement: legal domain metadata
 	domain_root: string | null;
 	domain_sub: string | null;
@@ -71,7 +73,7 @@ export interface Source {
 	id: string;
 	name: string;
 	url: string;
-	source_type: "rss" | "spider" | "api";
+	source_type: string;
 	config: Record<string, unknown>;
 	schedule: string | null;
 	priority: number;
@@ -103,10 +105,12 @@ export interface Category {
 
 export interface User {
 	id: string;
+	tenant_id: string;
 	email: string;
 	display_name: string | null;
 	avatar_url: string | null;
 	is_active: boolean;
+	email_verified_at?: string | null;
 	version?: number;
 	// Returned by some endpoints (e.g. `/api/v1/users/*`). `/api/v1/auth/*` may omit it.
 	last_login?: string | null;
@@ -117,6 +121,8 @@ export interface AuthResponse {
 	success: boolean;
 	message: string;
 	user: User | null;
+	mfa_required?: boolean;
+	mfa_challenge?: string;
 }
 
 export interface DeleteResponse {
@@ -579,6 +585,9 @@ export function assertUser(
 	const id = getRequired(value, "id", path);
 	assertString(id, `${path}.id`);
 
+	const tenantId = getRequired(value, "tenant_id", path);
+	assertString(tenantId, `${path}.tenant_id`);
+
 	const email = getRequired(value, "email", path);
 	assertString(email, `${path}.email`);
 
@@ -590,6 +599,11 @@ export function assertUser(
 
 	const isActive = getRequired(value, "is_active", path);
 	assertBoolean(isActive, `${path}.is_active`);
+
+	const emailVerifiedAt = getOptional(value, "email_verified_at");
+	assertOptional(emailVerifiedAt, `${path}.email_verified_at`, (v, p) =>
+		assertNullable(v, p, assertString),
+	);
 
 	const lastLogin = getOptional(value, "last_login");
 	assertOptional(lastLogin, `${path}.last_login`, (v, p) =>
@@ -706,6 +720,12 @@ export function assertAuthResponse(
 
 	const user = getRequired(value, "user", path);
 	assertNullable(user, `${path}.user`, assertUser);
+
+	const mfaRequired = getOptional(value, "mfa_required");
+	assertOptional(mfaRequired, `${path}.mfa_required`, assertBoolean);
+
+	const mfaChallenge = getOptional(value, "mfa_challenge");
+	assertOptional(mfaChallenge, `${path}.mfa_challenge`, assertString);
 }
 
 export function assertArticle(
@@ -759,10 +779,14 @@ export function assertArticle(
 		assertOneOf(sentiment, `${path}.sentiment`, SENTIMENTS);
 	}
 
-	const aiMetadata = getOptional(value, "ai_metadata");
-	if (aiMetadata !== undefined) {
-		assertRecord(aiMetadata, `${path}.ai_metadata`);
-	}
+	const tags = getRequired(value, "tags", path);
+	assertArray(tags, `${path}.tags`, assertString);
+
+	const keywords = getRequired(value, "keywords", path);
+	assertArray(keywords, `${path}.keywords`, assertString);
+
+	const aiMetadata = getRequired(value, "ai_metadata", path);
+	assertRecord(aiMetadata, `${path}.ai_metadata`);
 
 	// Crawler enhancement: legal domain metadata
 	assertNullable(
@@ -1047,11 +1071,7 @@ export function assertSource(
 	assertString(getRequired(value, "id", path), `${path}.id`);
 	assertString(getRequired(value, "name", path), `${path}.name`);
 	assertString(getRequired(value, "url", path), `${path}.url`);
-	assertOneOf(getRequired(value, "source_type", path), `${path}.source_type`, [
-		"rss",
-		"spider",
-		"api",
-	]);
+	assertString(getRequired(value, "source_type", path), `${path}.source_type`);
 
 	const config = getRequired(value, "config", path);
 	assertRecord(config, `${path}.config`);
@@ -1074,7 +1094,12 @@ export function assertSource(
 		assertString,
 	);
 	// Crawler enhancement: health monitoring fields
-	const HEALTH_STATUSES = ["healthy", "degraded", "unhealthy", "unknown"] as const;
+	const HEALTH_STATUSES = [
+		"healthy",
+		"degraded",
+		"unhealthy",
+		"unknown",
+	] as const;
 	assertOneOf(
 		getRequired(value, "health_status", path),
 		`${path}.health_status`,
@@ -1387,4 +1412,112 @@ export function assertKnowledgeBackfillResponse(
 		getRequired(value, "relations_upserted", path),
 		`${path}.relations_upserted`,
 	);
+}
+
+// ── Reports ─────────────────────────────────────────────────────────
+
+export interface Report {
+	id: string;
+	tenant_id: string;
+	report_number: string;
+	title: string;
+	template_id: string | null;
+	author_id: string;
+	period_type: string;
+	period_start: string;
+	period_end: string;
+	status: string;
+	content: Record<string, unknown>;
+	export_pdf_key: string | null;
+	export_docx_key: string | null;
+	export_html_key: string | null;
+	article_count: number;
+	ai_model: string | null;
+	ai_generated_at: string | null;
+	version: number;
+	published_at: string | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface ReportListResponse {
+	data: Report[];
+	total: number;
+	limit: number;
+	offset: number;
+}
+
+export interface ReportTemplate {
+	id: string;
+	tenant_id: string;
+	name: string;
+	description: string | null;
+	period_type: string;
+	template_body: string;
+	css_styles: string | null;
+	page_config: Record<string, unknown>;
+	sections_config: unknown;
+	is_builtin: boolean;
+	is_active: boolean;
+	version: number;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface ReportTaskEnqueuedResponse {
+	message: string;
+	report_id: string;
+}
+
+// ── Tenants ─────────────────────────────────────────────────────────
+
+export interface Tenant {
+	id: string;
+	slug: string;
+	name: string;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface TenantConfig {
+	tenant_id: string;
+	max_users: number;
+	max_articles: number;
+	max_sources: number;
+	max_storage_mb: number;
+	max_reports_per_month: number;
+	feature_ai_enabled: boolean;
+	feature_knowledge_graph: boolean;
+	feature_report_generation: boolean;
+	feature_webhook: boolean;
+	logo_url: string | null;
+	primary_color: string | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface TenantUsage {
+	tenant_id: string;
+	current_users: number;
+	current_articles: number;
+	current_sources: number;
+	current_storage_mb: number;
+	current_reports_this_month: number;
+	last_refreshed_at: string;
+}
+
+export interface TenantDetail extends Tenant {
+	config: TenantConfig;
+	usage: TenantUsage;
+}
+
+// ── Statistics Overview ─────────────────────────────────────────────
+
+export interface StatisticsOverview {
+	total_articles: number;
+	with_region: number;
+	with_domain: number;
+	with_importance: number;
+	with_authority: number;
+	with_issuer: number;
 }

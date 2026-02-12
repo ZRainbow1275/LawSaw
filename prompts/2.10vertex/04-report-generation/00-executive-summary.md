@@ -11,7 +11,23 @@
 ## 实施完成状态
 
 > **最后更新**: 2026-02-13
-> **总体进度**: Phase 1 基础设施层 + Phase 2 API 层 **已完成**
+> **总体进度**: Phase 1 基础设施层 + Phase 2 API 层 + AI 生成管线 + 导出管线 + 审计修复 **全部完成**
+
+### 完成度总览
+
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| 数据库层 (033_reports.sql) | **已完成** | 报告 + 模板表, RLS, 5 索引 |
+| 核心服务层 (ReportService) | **已完成** | CRUD + 状态机 + 数据聚合 + `ReportAggregatedData` 强类型 |
+| 模板服务 (ReportTemplateService) | **已完成** | 模板 CRUD, 内置模板保护 |
+| 数据聚合器 (ReportDataAggregator) | **已完成** | 6 维聚合, 使用 `crate::statistics::domain_root_label` |
+| 导出引擎 (ExportEngine) | **已完成** | HTML/PDF/DOCX 三格式, 使用 `enqueue_retryable` |
+| AI 生成管线 | **已完成** | `ReportGenerateTask` + queue:report 消费者 + worker 完整流程 |
+| API 路由层 | **已完成** | 15 个端点 (报告 CRUD + 状态转换 + 生成 + 导出 + 模板 CRUD) |
+| OpenAPI 注册 | **已完成** | 15 端点 + 2 tag (reports, report-templates) |
+| 报告编号并发安全 | **已完成** | `pg_advisory_xact_lock` 事务级锁 |
+| 风险阈值统一 | **已完成** | 80/60 (high/medium/low), 中文标签 |
+| 跨维度统计参数修复 | **已完成** | `dim_x` 重命名为 `dimension_x` (DTO + handler) |
 
 ### 已完成交付物
 
@@ -25,18 +41,30 @@
 
 #### 核心服务层 (law-eye-core/src/report/)
 - **ReportService** (`service.rs`) -- CRUD + 状态机 + 数据聚合
-  - `create_report()` -- 自动生成 RPT-YYYYMMDD-XXXX 编号
+  - `create_report()` -- 自动生成 RPT-YYYYMMDD-XXXX 编号, 使用 `pg_advisory_xact_lock(hashtext($1))` 防止并发竞态
   - `get_report_by_id()` / `list_reports()` -- 分页查询, 支持 status/period_type/author_id/date_from/date_to 过滤
   - `update_report()` -- 乐观锁, 仅 draft 状态可编辑
   - `transition_status()` -- 状态机转换, 乐观锁
   - `delete_report()` -- 软删除
   - `set_export_key()` -- 更新导出文件路径
   - `update_ai_content()` -- worker 回写 AI 生成内容
-  - `aggregate_period_data()` -- 6 维数据聚合 (overview/domain/region/highlights/risk/calendar)
+  - `aggregate_period_data()` -- 6 维数据聚合, 返回强类型 `ReportAggregatedData` (overview/domain/region/highlights/risk/calendar)
 - **ReportTemplateService** (`template_service.rs`) -- 模板 CRUD
   - `list()` / `get_by_id()` / `create()` / `deactivate()`
   - 内置模板不可删除
 - **ReportDataAggregator** (`aggregator.rs`) -- 独立聚合器, 直接查询 articles 表
+  - 已删除本地重复的 `domain_root_label`, 改用 `crate::statistics::domain_root_label` 导入
+- **风险阈值统一**: score >= 80 为 "高风险", >= 60 为 "中风险", < 60 为 "低风险" (中文标签)
+
+#### AI 生成管线 (queue-based 异步处理)
+- **ReportGenerateTask** (`law-eye-queue/src/lib.rs`) -- 报告 AI 生成任务类型定义
+- **queue:report 消费者** (`law-eye-worker/src/main.rs`) -- worker 主循环监听 `queue:report`
+- **`process_report_generate_task`** -- 完整处理流程:
+  1. 调用 `aggregate_period_data()` 聚合 6 维数据
+  2. 调用 AI 服务生成摘要内容
+  3. `update_ai_content()` 回写报告内容
+  4. `transition_status()` 从 generating 转换到 review
+  5. 失败时自动回退状态
 
 #### 导出引擎层 (law-eye-core/src/report/exporter/)
 - **ExportEngine** trait (`mod.rs`) -- 统一导出接口
@@ -46,11 +74,13 @@
 - **PdfExporter** (`pdf.rs`) -- browserless HTTP API (HTML -> PDF)
   - 可配置 page_size / margin / orientation / printBackground
   - 超时 120s, 错误处理完整
+  - 导出任务使用 `enqueue_retryable` 入队, 支持自动重试 + DLQ
 - **DocxExporter** (`docx.rs`) -- docx-rs 纯 Rust 生成 Word
   - 标题/副标题/概览统计/重点文章/风险提示/合规日历 全章节
   - 支持彩色标签、风险等级色码
 - **ChartRenderer** (`chart.rs`) -- plotters SVG 图表
   - 法规领域分布柱状图 + 地区分布柱状图
+- **导出入队前校验**: `report.content != json!({})` 内容非空检查
 
 #### API 路由层 (law-eye-api/src/routes/reports/)
 - **报告 CRUD API**:
@@ -61,15 +91,20 @@
   - `DELETE /api/v1/reports/{id}` -- 软删除
 - **状态转换 + 生成 + 导出**:
   - `POST /api/v1/reports/{id}/transition` -- 状态机转换
-  - `POST /api/v1/reports/{id}/generate` -- 触发 AI 生成
-  - `POST /api/v1/reports/{id}/export` -- 触发导出 (PDF/DOCX/HTML)
+  - `POST /api/v1/reports/{id}/generate` -- 触发 AI 生成 (入队 ReportGenerateTask)
+  - `POST /api/v1/reports/{id}/export` -- 触发导出 (PDF/DOCX/HTML), 使用 `enqueue_retryable`
 - **模板 CRUD API**:
   - `GET    /api/v1/report-templates` -- 列表 (按 period_type 过滤)
   - `POST   /api/v1/report-templates` -- 创建
   - `GET    /api/v1/report-templates/{id}` -- 详情
   - `PUT    /api/v1/report-templates/{id}` -- 更新
   - `DELETE /api/v1/report-templates/{id}` -- 停用
-- 所有端点均带 utoipa OpenAPI 注解
+- 所有端点均带 utoipa OpenAPI 注解, 已注册到 OpenAPI spec (15 端点 + 2 tag)
+- 输入校验: title/content 非空检查, 内置模板不可修改
+
+#### 跨维度统计参数修复
+- `dim_x` 参数已统一重命名为 `dimension_x` (涉及 `statistics/dto.rs` + `statistics/handlers.rs`)
+- 前端 `use-statistics.ts` 同步更新
 
 #### 服务注册
 - `ReportService` 和 `ReportTemplateService` 已在 `state.rs` 的 `AppState` 中注册
@@ -83,8 +118,8 @@ draft -> generating -> review -> approved -> published -> archived
 ```
 
 - `draft`: 草稿, 可编辑内容
-- `generating`: AI 生成中, 不可编辑
-- `review`: 待审核
+- `generating`: AI 生成中, 不可编辑 (queue:report 异步处理)
+- `review`: 待审核 (AI 生成完成后自动转入)
 - `approved`: 已审批
 - `published`: 已发布 (设置 published_at)
 - `archived`: 已归档
@@ -92,7 +127,28 @@ draft -> generating -> review -> approved -> published -> archived
 ### 架构流程
 
 ```
-Tera 模板 + 聚合数据
+用户触发 /generate
+       |
+       v
+  enqueue ReportGenerateTask --> queue:report
+       |
+       v (worker 消费)
+  aggregate_period_data() --> 6 维聚合数据 (ReportAggregatedData)
+       |
+       v
+  AI 服务生成摘要 --> update_ai_content()
+       |
+       v
+  transition_status(generating -> review)
+
+
+用户触发 /export
+       |
+       v
+  enqueue_retryable ExportTask --> queue:export
+       |
+       v (worker 消费)
+  Tera 模板 + 聚合数据
        |
        v
    HtmlExporter (渲染 HTML)
@@ -100,6 +156,9 @@ Tera 模板 + 聚合数据
        +---> PdfExporter (browserless /pdf API) --> PDF bytes
        |
        +---> DocxExporter (docx-rs) --> DOCX bytes
+       |
+       v
+  set_export_key() --> 更新报告导出路径
 ```
 
 ### 新增/修改文件清单
@@ -109,18 +168,23 @@ Tera 模板 + 聚合数据
 | `crates/law-eye-db/migrations/033_reports.sql` | 新增 | 数据库迁移 |
 | `crates/law-eye-db/src/models.rs` | 修改 | Report + ReportTemplate 模型 |
 | `crates/law-eye-core/src/report/mod.rs` | 新增 | 报告模块入口 |
-| `crates/law-eye-core/src/report/service.rs` | 新增 | ReportService (CRUD + 状态机 + 数据聚合) |
+| `crates/law-eye-core/src/report/service.rs` | 新增 | ReportService (CRUD + 状态机 + 数据聚合 + advisory lock) |
 | `crates/law-eye-core/src/report/template_service.rs` | 新增 | ReportTemplateService |
-| `crates/law-eye-core/src/report/types.rs` | 新增 | 类型定义 |
-| `crates/law-eye-core/src/report/aggregator.rs` | 新增 | ReportDataAggregator |
+| `crates/law-eye-core/src/report/types.rs` | 新增 | 类型定义 (含 `ReportAggregatedData`) |
+| `crates/law-eye-core/src/report/aggregator.rs` | 新增 | ReportDataAggregator (使用 crate::statistics 导入) |
 | `crates/law-eye-core/src/report/exporter/mod.rs` | 新增 | ExportEngine trait |
 | `crates/law-eye-core/src/report/exporter/html.rs` | 新增 | HtmlExporter (Tera) |
 | `crates/law-eye-core/src/report/exporter/pdf.rs` | 新增 | PdfExporter (browserless) |
 | `crates/law-eye-core/src/report/exporter/docx.rs` | 新增 | DocxExporter (docx-rs) |
 | `crates/law-eye-core/src/report/exporter/chart.rs` | 新增 | ChartRenderer (plotters SVG) |
 | `crates/law-eye-api/src/routes/reports/mod.rs` | 新增 | API 路由 + utoipa 注解 |
-| `crates/law-eye-api/src/routes/reports/handlers.rs` | 新增 | 处理器实现 |
+| `crates/law-eye-api/src/routes/reports/handlers.rs` | 新增 | 处理器实现 (含 enqueue_retryable + 内容非空校验) |
 | `crates/law-eye-api/src/routes/reports/dto.rs` | 新增 | DTO 定义 |
+| `crates/law-eye-api/src/openapi.rs` | 修改 | 注册 15 个报告端点 + 2 个 tag |
+| `crates/law-eye-queue/src/lib.rs` | 修改 | 新增 `ReportGenerateTask` 类型定义 |
+| `crates/law-eye-worker/src/main.rs` | 修改 | 添加 queue:report 消费者 + process_report_generate_task |
+| `crates/law-eye-api/src/routes/statistics/dto.rs` | 修改 | `dim_x` 重命名为 `dimension_x` |
+| `crates/law-eye-api/src/routes/statistics/handlers.rs` | 修改 | 参数映射同步更新 |
 | `crates/law-eye-api/src/state.rs` | 修改 | 注册 ReportService + ReportTemplateService |
 
 ### 待办项 (Phase 3-4)
@@ -130,21 +194,30 @@ Tera 模板 + 聚合数据
 - [ ] 导出对话框 + 下载
 - [ ] 定时报告调度 (cron)
 - [x] ~~ReportTask 异步任务处理器 (law-eye-worker)~~ **已在审计修复中完成**
+- [x] ~~AI 生成管线 (ReportGenerateTask + 消费者)~~ **已完成**
+- [x] ~~报告编号并发安全 (advisory lock)~~ **已完成**
+- [x] ~~风险阈值统一 (80/60)~~ **已完成**
+- [x] ~~导出入队改用 enqueue_retryable~~ **已完成**
+- [x] ~~跨维度统计参数修复 (dim_x -> dimension_x)~~ **已完成**
+- [x] ~~OpenAPI 注册 (15 端点)~~ **已完成**
 - [ ] MinIO 快照存储集成
 - [ ] 预置法律行业模板 (月报/季报/风险简报/行业动态)
 
-### 审计修复记录 (2026-02-13 第二轮)
+### 审计修复记录 (2026-02-13 R1-R6)
 
 以下问题由深度审计发现并已修复:
 
-| 问题 | 严重度 | 修复内容 | 文件 |
-|------|--------|----------|------|
-| Worker 缺少 `queue:report` AI 生成消费者 | P0 | 添加 `ReportGenerateTask` 到 queue 模块; 在 worker 主循环添加 `queue:report` 消费者; 实现 `process_report_generate_task` 完整流程 (聚合数据→AI摘要→更新内容→状态转换) | `law-eye-queue/src/lib.rs`, `law-eye-worker/src/main.rs` |
-| 报告编号 `next_report_number` 并发竞态 | P1 | 添加 `pg_advisory_xact_lock(hashtext($1))` 事务级锁; 将 `COUNT(*)` 改为 `MAX(SUBSTRING(...) AS bigint)` | `law-eye-core/src/report/service.rs` |
-| 风险阈值不一致 (service 76/51 vs aggregator 80/60) | P1 | 统一为 80/60 (high/medium/low); 统一中文标签 | `law-eye-core/src/report/service.rs` |
-| aggregator.rs 重复 `domain_root_label` 函数 | P2 | 删除本地副本, 改用 `crate::statistics::domain_root_label` 导入 | `law-eye-core/src/report/aggregator.rs` |
-| export_report 未检查内容非空 | P3 | 入队前检查 `report.content != json!({})` | `law-eye-api/src/routes/reports/handlers.rs` |
-| Reports/Templates 未注册到 OpenAPI | P2 | 注册 15 个端点 + 2 个 tag 到 utoipa spec | `law-eye-api/src/openapi.rs` |
+| # | 问题 | 严重度 | 修复内容 | 文件 |
+|---|------|--------|----------|------|
+| 1 | Worker 缺少 `queue:report` AI 生成消费者 | P0 | 添加 `ReportGenerateTask` 到 queue 模块; 在 worker 主循环添加 `queue:report` 消费者; 实现 `process_report_generate_task` 完整流程 (聚合数据->AI摘要->更新内容->状态转换) | `law-eye-queue/src/lib.rs`, `law-eye-worker/src/main.rs` |
+| 2 | 报告编号 `next_report_number` 并发竞态 | P1 | 添加 `pg_advisory_xact_lock(hashtext($1))` 事务级锁; 将 `COUNT(*)` 改为 `MAX(SUBSTRING(...) AS bigint)` | `law-eye-core/src/report/service.rs` |
+| 3 | 风险阈值不一致 (service 76/51 vs aggregator 80/60) | P1 | 统一为 80/60 (high/medium/low); 统一中文标签 ("高风险"/"中风险"/"低风险") | `law-eye-core/src/report/service.rs` |
+| 4 | aggregator.rs 重复 `domain_root_label` 函数 | P2 | 删除本地副本, 改用 `crate::statistics::domain_root_label` 导入 | `law-eye-core/src/report/aggregator.rs` |
+| 5 | export_report 未检查内容非空 | P3 | 入队前检查 `report.content != json!({})` | `law-eye-api/src/routes/reports/handlers.rs` |
+| 6 | Reports/Templates 未注册到 OpenAPI | P2 | 注册 15 个端点 + 2 个 tag 到 utoipa spec | `law-eye-api/src/openapi.rs` |
+| 7 | 导出使用 enqueue 而非 enqueue_retryable | P2 | 改用 `enqueue_retryable` 支持自动重试 + DLQ | `law-eye-api/src/routes/reports/handlers.rs` |
+| 8 | 跨维度统计查询参数命名不一致 | P2 | `dim_x` 重命名为 `dimension_x` (DTO + handler + 前端) | `statistics/dto.rs`, `statistics/handlers.rs`, `use-statistics.ts` |
+| 9 | 数据聚合返回值无强类型 | P2 | 引入 `ReportAggregatedData` 强类型结构体 | `law-eye-core/src/report/types.rs` |
 
 ---
 

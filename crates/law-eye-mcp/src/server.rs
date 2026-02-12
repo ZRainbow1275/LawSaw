@@ -515,10 +515,15 @@ impl McpServer {
                     };
 
                 let users_total: (i64,) =
-                    match sqlx::query_as("SELECT COUNT(*) FROM users WHERE tenant_id = $1")
-                        .bind(tenant_id)
-                        .fetch_one(&self.pool)
-                        .await
+                    match law_eye_core::with_tenant_tx(&self.pool, tenant_id, |tx| {
+                        Box::pin(async move {
+                            sqlx::query_as("SELECT COUNT(*) FROM users")
+                                .fetch_one(tx.as_mut())
+                                .await
+                                .map_err(|e| law_eye_common::Error::Database(e.to_string()))
+                        })
+                    })
+                    .await
                     {
                         Ok(v) => v,
                         Err(e) => {

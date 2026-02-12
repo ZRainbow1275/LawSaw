@@ -361,6 +361,7 @@ async fn main() -> anyhow::Result<()> {
     let session_store = RedisStore::new(redis_client);
     let session_layer = SessionManagerLayer::new(session_store)
         .with_secure(is_production) // Secure cookie in production
+        .with_http_only(true)
         .with_same_site(tower_sessions::cookie::SameSite::Lax) // CSRF protection
         .with_expiry(Expiry::OnInactivity(time::Duration::hours(24)));
 

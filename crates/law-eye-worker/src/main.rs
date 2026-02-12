@@ -555,7 +555,7 @@ struct QueueOutboxRow {
     attempts: i32,
 }
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(sqlx::FromRow)]
 struct WebhookDispatchRow {
     id: uuid::Uuid,
     endpoint_id: uuid::Uuid,
@@ -567,6 +567,23 @@ struct WebhookDispatchRow {
     url: String,
     signing_secret: String,
     timeout_ms: i32,
+}
+
+impl std::fmt::Debug for WebhookDispatchRow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WebhookDispatchRow")
+            .field("id", &self.id)
+            .field("endpoint_id", &self.endpoint_id)
+            .field("event_type", &self.event_type)
+            .field("payload", &self.payload)
+            .field("occurred_at_unix", &self.occurred_at_unix)
+            .field("attempts", &self.attempts)
+            .field("max_retries", &self.max_retries)
+            .field("url", &self.url)
+            .field("signing_secret", &"[REDACTED]")
+            .field("timeout_ms", &self.timeout_ms)
+            .finish()
+    }
 }
 
 #[derive(Debug)]
@@ -3371,8 +3388,8 @@ impl Worker {
 
         let tenant_id = task.tenant_id;
         let report_id = task.report_id;
-        let format = ExportFormat::from_str(&task.format).ok_or_else(|| {
-            anyhow::anyhow!("Invalid export format: {}", task.format)
+        let format: ExportFormat = task.format.parse().map_err(|e| {
+            anyhow::anyhow!("Invalid export format '{}': {}", task.format, e)
         })?;
 
         info!(

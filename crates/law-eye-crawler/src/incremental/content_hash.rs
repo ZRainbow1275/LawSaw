@@ -31,7 +31,10 @@ impl IncrementalChecker {
     /// Seed the checker with hashes already present in the database.
     /// Call this once at startup to avoid re-processing known articles.
     pub fn seed(&self, entries: Vec<(String, String)>) {
-        let mut hashes = self.known_hashes.lock().expect("lock");
+        let mut hashes = self.known_hashes.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("content_hash known_hashes mutex was poisoned, recovering");
+            poisoned.into_inner()
+        });
         for (hash, url) in entries {
             hashes.insert(hash, KnownEntry { url });
         }
@@ -42,7 +45,10 @@ impl IncrementalChecker {
     pub fn is_known(&self, content_hash: &str) -> bool {
         self.known_hashes
             .lock()
-            .expect("lock")
+            .unwrap_or_else(|poisoned| {
+                tracing::warn!("content_hash known_hashes mutex was poisoned, recovering");
+                poisoned.into_inner()
+            })
             .contains_key(content_hash)
     }
 
@@ -50,18 +56,27 @@ impl IncrementalChecker {
     pub fn record(&self, content_hash: String, url: String) {
         self.known_hashes
             .lock()
-            .expect("lock")
+            .unwrap_or_else(|poisoned| {
+                tracing::warn!("content_hash known_hashes mutex was poisoned, recovering");
+                poisoned.into_inner()
+            })
             .insert(content_hash, KnownEntry { url });
     }
 
     /// Number of known hashes.
     pub fn known_count(&self) -> usize {
-        self.known_hashes.lock().expect("lock").len()
+        self.known_hashes.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("content_hash known_hashes mutex was poisoned, recovering");
+            poisoned.into_inner()
+        }).len()
     }
 
     /// Remove a hash (e.g. when an article is deleted from DB).
     pub fn remove(&self, content_hash: &str) {
-        self.known_hashes.lock().expect("lock").remove(content_hash);
+        self.known_hashes.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("content_hash known_hashes mutex was poisoned, recovering");
+            poisoned.into_inner()
+        }).remove(content_hash);
     }
 }
 

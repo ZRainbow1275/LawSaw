@@ -75,7 +75,6 @@ impl AuthBackend {
         }
     }
 
-    #[allow(dead_code)]
     pub fn user_service(&self) -> &Arc<UserService> {
         &self.user_service
     }
@@ -110,10 +109,3 @@ impl AuthnBackend for AuthBackend {
 }
 
 pub type AuthSession = axum_login::AuthSession<AuthBackend>;
-
-// Response type for auth errors
-#[allow(dead_code)]
-#[derive(Debug, Serialize)]
-pub struct AuthError {
-    pub error: String,
-}

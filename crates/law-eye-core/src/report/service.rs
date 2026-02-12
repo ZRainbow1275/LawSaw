@@ -7,9 +7,10 @@ use law_eye_db::Report;
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use super::exporter::chart::ChartRenderer;
 use super::types::{
     CreateReportInput, DomainBreakdown, ExportFormat, ListReportsQuery, RegionBreakdown,
-    ReportAggregatedData, ReportArticleSummary, ReportCalendarEvent, ReportChart, ReportOverview,
+    ReportAggregatedData, ReportArticleSummary, ReportCalendarEvent, ReportOverview,
     ReportRiskItem, ReportStatus,
     UpdateReportInput,
 };
@@ -727,8 +728,9 @@ impl ReportService {
                     })
                     .collect();
 
-                // Charts 为空数组 -- SVG 图表由前端或 worker 后续生成
-                let charts: Vec<ReportChart> = Vec::new();
+                // Charts: 使用 ChartRenderer 渲染 SVG 图表
+                let charts = ChartRenderer::render_charts(&overview)
+                    .unwrap_or_else(|_| Vec::new());
 
                 Ok(ReportAggregatedData {
                     overview,

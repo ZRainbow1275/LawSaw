@@ -825,10 +825,9 @@ pub(crate) mod command {
         .await
         .map_err(AppError::from)?;
 
-        // Invalidate statistics and overview caches after article update
+        // Invalidate statistics caches after article update
         if let Some(ref cache) = state.cache_service {
             let _ = cache.invalidate_resource(tenant_id, "statistics").await;
-            let _ = cache.invalidate_resource(tenant_id, "overview").await;
         }
 
         let body: ArticleResponse = article.into();
@@ -926,10 +925,9 @@ pub(crate) mod command {
             _ => AppError::internal_with_code("DELETE_ERROR", e.to_string()),
         })?;
 
-        // Invalidate statistics and overview caches after article deletion
+        // Invalidate statistics caches after article deletion
         if let Some(ref cache) = state.cache_service {
             let _ = cache.invalidate_resource(tenant_id, "statistics").await;
-            let _ = cache.invalidate_resource(tenant_id, "overview").await;
         }
 
         Ok(Json(DeleteResponse {
@@ -1020,10 +1018,9 @@ pub(crate) mod command {
             _ => AppError::internal_with_code("RESTORE_ERROR", e.to_string()),
         })?;
 
-        // Invalidate statistics and overview caches after article restore
+        // Invalidate statistics caches after article restore
         if let Some(ref cache) = state.cache_service {
             let _ = cache.invalidate_resource(tenant_id, "statistics").await;
-            let _ = cache.invalidate_resource(tenant_id, "overview").await;
         }
 
         let body: ArticleResponse = article.into();
@@ -1142,10 +1139,9 @@ pub(crate) mod command {
             _ => AppError::internal_with_code("PUBLISH_ERROR", e.to_string()),
         })?;
 
-        // Invalidate statistics and overview caches after article publish
+        // Invalidate statistics caches after article publish
         if let Some(ref cache) = state.cache_service {
             let _ = cache.invalidate_resource(tenant_id, "statistics").await;
-            let _ = cache.invalidate_resource(tenant_id, "overview").await;
         }
 
         let body: ArticleResponse = article.into();
@@ -1238,10 +1234,9 @@ pub(crate) mod command {
             _ => AppError::internal_with_code("ARCHIVE_ERROR", e.to_string()),
         })?;
 
-        // Invalidate statistics and overview caches after article archive
+        // Invalidate statistics caches after article archive
         if let Some(ref cache) = state.cache_service {
             let _ = cache.invalidate_resource(tenant_id, "statistics").await;
-            let _ = cache.invalidate_resource(tenant_id, "overview").await;
         }
 
         let body: ArticleResponse = article.into();
@@ -1418,10 +1413,9 @@ pub(crate) mod command {
             });
         }
 
-        // Invalidate statistics and overview caches after batch status update
+        // Invalidate statistics caches after batch status update
         if let Some(ref cache) = state.cache_service {
             let _ = cache.invalidate_resource(tenant_id, "statistics").await;
-            let _ = cache.invalidate_resource(tenant_id, "overview").await;
         }
 
         Ok(Json(BatchStatusResponse {

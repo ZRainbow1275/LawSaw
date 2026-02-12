@@ -46,7 +46,7 @@ pub fn router() -> Router<AppState> {
             "/password-reset/request",
             post(request_password_reset).layer(RateLimitLayer::password_reset()),
         )
-        .route("/password-reset/confirm", post(confirm_password_reset))
+        .route("/password-reset/confirm", post(confirm_password_reset).layer(RateLimitLayer::password_reset()))
         .route(
             "/oauth/start",
             post(oauth_start).layer(RateLimitLayer::login()),
@@ -342,6 +342,7 @@ pub(crate) async fn register(
         .await
         .map_err(AppError::from)?;
 
+    session.cycle_id().await.map_err(|e| AppError::internal(format!("Session cycle error: {}", e)))?;
     let auth_user = AuthenticatedUser::from_db_user(&user);
     auth_session
         .login(&auth_user)
@@ -453,6 +454,7 @@ pub(crate) async fn login(
         }));
     }
 
+    session.cycle_id().await.map_err(|e| AppError::internal(format!("Session cycle error: {}", e)))?;
     auth_session
         .login(&user)
         .await
@@ -511,7 +513,7 @@ pub(crate) async fn logout(
         .await
         .map_err(|e| AppError::internal(format!("Session error: {}", e)))?;
 
-    unbind_session_tenant_mapping(&state, &session).await?;
+    unbind_session_tenant_mapping(&state, &session, user.as_ref().map(|u| u.tenant_id).unwrap_or_default()).await?;
 
     if let Some(user) = user {
         let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
@@ -588,14 +590,18 @@ async fn bind_session_tenant_mapping(
     Ok(())
 }
 
-async fn unbind_session_tenant_mapping(state: &AppState, session: &Session) -> ApiResult<()> {
+async fn unbind_session_tenant_mapping(
+    state: &AppState,
+    session: &Session,
+    tenant_id: uuid::Uuid,
+) -> ApiResult<()> {
     let Some(session_id) = session.id().map(|value| value.to_string()) else {
         return Ok(());
     };
 
     state
         .tenant_service
-        .unbind_session_tenant(&session_id)
+        .unbind_session_tenant(&session_id, tenant_id)
         .await
         .map_err(AppError::from)?;
 
@@ -878,6 +884,7 @@ pub(crate) async fn oauth_callback(
         .await
         .map_err(AppError::from)?;
 
+    session.cycle_id().await.map_err(|e| AppError::internal(format!("Session cycle error: {}", e)))?;
     let auth_user = AuthenticatedUser::from_db_user(&user);
     auth_session
         .login(&auth_user)
@@ -1150,6 +1157,7 @@ pub(crate) async fn mfa_verify(
         return Err(AppError::unauthorized("Invalid MFA challenge or code"));
     }
 
+    session.cycle_id().await.map_err(|e| AppError::internal(format!("Session cycle error: {}", e)))?;
     let auth_user = AuthenticatedUser::from_db_user(&db_user);
     auth_session
         .login(&auth_user)

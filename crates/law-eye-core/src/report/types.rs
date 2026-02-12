@@ -1,7 +1,7 @@
 // crates/law-eye-core/src/report/types.rs
 // 报告模块的类型定义
 
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -105,14 +105,19 @@ impl ExportFormat {
             Self::Html => "html",
         }
     }
+}
 
-    #[allow(clippy::should_implement_trait)]
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for ExportFormat {
+    type Err = law_eye_common::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "pdf" => Some(Self::Pdf),
-            "docx" => Some(Self::Docx),
-            "html" => Some(Self::Html),
-            _ => None,
+            "pdf" => Ok(Self::Pdf),
+            "docx" | "word" => Ok(Self::Docx),
+            "html" => Ok(Self::Html),
+            _ => Err(law_eye_common::Error::Validation(format!(
+                "Unknown export format: {s}"
+            ))),
         }
     }
 }
@@ -272,12 +277,3 @@ pub struct ReportCalendarEvent {
     pub event_type: String,
 }
 
-/// 导出任务（入队 Redis）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ReportExportTask {
-    pub tenant_id: Uuid,
-    pub report_id: Uuid,
-    pub format: String,
-    pub requested_by: Uuid,
-    pub requested_at: DateTime<Utc>,
-}

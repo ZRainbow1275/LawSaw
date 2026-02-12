@@ -114,7 +114,10 @@ impl RobotsChecker {
 
         // Check cache first
         {
-            let cache = self.cache.lock().expect("robots cache lock");
+            let cache = self.cache.lock().unwrap_or_else(|poisoned| {
+                tracing::warn!("robots cache mutex was poisoned, recovering");
+                poisoned.into_inner()
+            });
             if let Some(rules) = cache.get(&origin) {
                 if !rules.is_expired(self.cache_ttl) {
                     return rules.is_path_allowed(path);
@@ -139,7 +142,10 @@ impl RobotsChecker {
 
         // Update cache
         {
-            let mut cache = self.cache.lock().expect("robots cache lock");
+            let mut cache = self.cache.lock().unwrap_or_else(|poisoned| {
+                tracing::warn!("robots cache mutex was poisoned, recovering");
+                poisoned.into_inner()
+            });
             cache.insert(origin, rules);
         }
 
@@ -157,7 +163,10 @@ impl RobotsChecker {
 
         // Check cache
         {
-            let cache = self.cache.lock().expect("robots cache lock");
+            let cache = self.cache.lock().unwrap_or_else(|poisoned| {
+                tracing::warn!("robots cache mutex was poisoned, recovering");
+                poisoned.into_inner()
+            });
             if let Some(rules) = cache.get(&origin) {
                 if !rules.is_expired(self.cache_ttl) {
                     return rules.crawl_delay_secs.map(Duration::from_secs_f64);
@@ -168,7 +177,10 @@ impl RobotsChecker {
         // Fetch
         if let Ok(rules) = self.fetch_and_parse(&origin).await {
             let delay = rules.crawl_delay_secs.map(Duration::from_secs_f64);
-            let mut cache = self.cache.lock().expect("robots cache lock");
+            let mut cache = self.cache.lock().unwrap_or_else(|poisoned| {
+                tracing::warn!("robots cache mutex was poisoned, recovering");
+                poisoned.into_inner()
+            });
             cache.insert(origin, rules);
             delay
         } else {
@@ -178,7 +190,10 @@ impl RobotsChecker {
 
     /// Number of cached domains.
     pub fn cached_domains(&self) -> usize {
-        self.cache.lock().expect("lock").len()
+        self.cache.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("robots cache mutex was poisoned, recovering");
+            poisoned.into_inner()
+        }).len()
     }
 
     async fn fetch_and_parse(&self, origin: &str) -> Result<RobotsRules> {
