@@ -868,7 +868,32 @@ pub enum AiTaskType {
     RiskAssess,
     ExtractTags,
     Embed,
+    ExtractEntities,
     Full,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ReportExportTask {
+    #[serde(default)]
+    pub tenant_id: uuid::Uuid,
+    pub report_id: uuid::Uuid,
+    /// 导出格式: pdf / docx / html
+    pub format: String,
+    pub requested_by: uuid::Uuid,
+    pub requested_at: i64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ReportGenerateTask {
+    #[serde(default)]
+    pub tenant_id: uuid::Uuid,
+    pub report_id: uuid::Uuid,
+    #[serde(default)]
+    pub task_type: Option<String>,
+    #[serde(default)]
+    pub requested_by: Option<uuid::Uuid>,
+    #[serde(default)]
+    pub requested_at: Option<String>,
 }
 
 #[cfg(test)]

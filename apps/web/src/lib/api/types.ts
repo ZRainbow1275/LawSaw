@@ -14,6 +14,17 @@ export interface Article {
 	importance: number | null;
 	sentiment: "positive" | "negative" | "neutral" | "mixed" | null;
 	ai_metadata?: Record<string, unknown>;
+	// Crawler enhancement: legal domain metadata
+	domain_root: string | null;
+	domain_sub: string | null;
+	authority_level: number | null;
+	issuer: string | null;
+	doc_number: string | null;
+	effective_date: string | null;
+	region_code: string | null;
+	content_hash: string | null;
+	summary_struct: Record<string, unknown> | null;
+	source_ref: string | null;
 	status: "pending" | "processing" | "published" | "archived" | "rejected";
 	version: number;
 	created_at: string;
@@ -67,6 +78,13 @@ export interface Source {
 	is_active: boolean;
 	last_fetch: string | null;
 	last_error: string | null;
+	// Crawler enhancement: health monitoring fields
+	health_status: "healthy" | "degraded" | "unhealthy" | "unknown";
+	consecutive_failures: number;
+	total_articles_fetched: number;
+	avg_fetch_duration_ms: number | null;
+	render_mode: "static" | "dynamic";
+	encoding: string | null;
 	created_at: string;
 	updated_at: string;
 }
@@ -383,6 +401,62 @@ export interface KnowledgeBackfillResponse {
 	relations_upserted: number;
 }
 
+export interface KnowledgeLlmBackfillResponse {
+	articles_enqueued: number;
+}
+
+export interface KnowledgeSemanticSearchResult {
+	id: string;
+	name: string;
+	entity_type: string;
+	aliases: string[];
+	properties: Record<string, unknown>;
+	mention_count: number;
+	first_seen: string;
+	last_seen: string;
+	created_at: string;
+	updated_at: string;
+	similarity: number;
+}
+
+export interface KnowledgeDuplicateCandidatePair {
+	entity1: KnowledgeEntity;
+	entity2: KnowledgeEntity;
+	similarity: number;
+}
+
+export interface KnowledgeMergeEntitiesResponse {
+	message: string;
+}
+
+export interface KnowledgeDegreeCentrality {
+	entity: KnowledgeEntity;
+	out_degree: number;
+	in_degree: number;
+	total_degree: number;
+}
+
+export interface KnowledgeCooccurrenceEdge {
+	entity1_id: string;
+	entity1_name: string;
+	entity2_id: string;
+	entity2_name: string;
+	cooccurrence_count: number;
+}
+
+export interface KnowledgeTypeDistribution {
+	entity_type: string;
+	count: number;
+}
+
+export interface KnowledgeGraphStats {
+	entity_count: number;
+	relation_count: number;
+	article_entity_count: number;
+	entities_with_embedding: number;
+	type_distribution: KnowledgeTypeDistribution[];
+}
+
 type JsonRecord = Record<string, unknown>;
 
 const ARTICLE_STATUSES = [
@@ -690,6 +764,57 @@ export function assertArticle(
 		assertRecord(aiMetadata, `${path}.ai_metadata`);
 	}
 
+	// Crawler enhancement: legal domain metadata
+	assertNullable(
+		getRequired(value, "domain_root", path),
+		`${path}.domain_root`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "domain_sub", path),
+		`${path}.domain_sub`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "authority_level", path),
+		`${path}.authority_level`,
+		assertNumber,
+	);
+	assertNullable(
+		getRequired(value, "issuer", path),
+		`${path}.issuer`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "doc_number", path),
+		`${path}.doc_number`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "effective_date", path),
+		`${path}.effective_date`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "region_code", path),
+		`${path}.region_code`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "content_hash", path),
+		`${path}.content_hash`,
+		assertString,
+	);
+	const summaryStruct = getRequired(value, "summary_struct", path);
+	if (summaryStruct !== null) {
+		assertRecord(summaryStruct, `${path}.summary_struct`);
+	}
+	assertNullable(
+		getRequired(value, "source_ref", path),
+		`${path}.source_ref`,
+		assertString,
+	);
+
 	assertOneOf(
 		getRequired(value, "status", path),
 		`${path}.status`,
@@ -946,6 +1071,37 @@ export function assertSource(
 	assertNullable(
 		getRequired(value, "last_error", path),
 		`${path}.last_error`,
+		assertString,
+	);
+	// Crawler enhancement: health monitoring fields
+	const HEALTH_STATUSES = ["healthy", "degraded", "unhealthy", "unknown"] as const;
+	assertOneOf(
+		getRequired(value, "health_status", path),
+		`${path}.health_status`,
+		HEALTH_STATUSES,
+	);
+	assertNumber(
+		getRequired(value, "consecutive_failures", path),
+		`${path}.consecutive_failures`,
+	);
+	assertNumber(
+		getRequired(value, "total_articles_fetched", path),
+		`${path}.total_articles_fetched`,
+	);
+	assertNullable(
+		getRequired(value, "avg_fetch_duration_ms", path),
+		`${path}.avg_fetch_duration_ms`,
+		assertNumber,
+	);
+	const RENDER_MODES = ["static", "dynamic"] as const;
+	assertOneOf(
+		getRequired(value, "render_mode", path),
+		`${path}.render_mode`,
+		RENDER_MODES,
+	);
+	assertNullable(
+		getRequired(value, "encoding", path),
+		`${path}.encoding`,
 		assertString,
 	);
 	assertString(getRequired(value, "created_at", path), `${path}.created_at`);

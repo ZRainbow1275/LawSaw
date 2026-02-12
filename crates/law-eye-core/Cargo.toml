@@ -26,6 +26,11 @@ hmac.workspace = true
 sha1 = "0.10"
 regex = "1.11"
 urlencoding = "2.1"
+reqwest.workspace = true
+tera.workspace = true
+docx-rs.workspace = true
+plotters.workspace = true
+plotters-svg.workspace = true
 
 [dev-dependencies]
 async-trait.workspace = true

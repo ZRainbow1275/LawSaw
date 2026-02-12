@@ -661,14 +661,13 @@ fn email_verification_ttl_seconds() -> u64 {
 }
 
 fn oauth_state_ttl_seconds(state: &AppState) -> u64 {
-    state.auth_oauth_state_ttl_seconds.min(1800).max(30)
+    state.auth_oauth_state_ttl_seconds.clamp(30, 1800)
 }
 
 fn mfa_challenge_ttl_seconds(state: &AppState) -> u64 {
     state
         .auth_mfa_login_challenge_ttl_seconds
-        .min(1800)
-        .max(30)
+        .clamp(30, 1800)
 }
 
 fn normalize_provider_or_err(state: &AppState, provider: &str) -> Result<String, AppError> {

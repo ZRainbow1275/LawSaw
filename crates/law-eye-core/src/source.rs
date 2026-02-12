@@ -4,6 +4,15 @@ use law_eye_db::{CreateSource, Source};
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
+/// Statistics from a crawl run, used to update source health monitoring.
+#[derive(Debug, Clone)]
+pub struct CrawlFetchStats {
+    /// Number of articles fetched in this run.
+    pub articles_fetched: i32,
+    /// Duration of the crawl run in milliseconds.
+    pub duration_ms: Option<i32>,
+}
+
 #[derive(Debug, Clone)]
 pub struct SourceStats {
     pub total: i64,
@@ -320,24 +329,65 @@ impl SourceService {
         .map_err(|e| Error::Database(e.to_string()))
     }
 
+    /// Update source after a crawl run, including health monitoring fields.
     pub async fn update_last_fetch(
         &self,
         tenant_id: Uuid,
         id: Uuid,
         error: Option<&str>,
     ) -> Result<()> {
+        self.update_last_fetch_with_stats(tenant_id, id, error, None).await
+    }
+
+    /// Update source after a crawl run with full crawl statistics.
+    ///
+    /// `stats` contains articles_fetched and duration_ms for health monitoring.
+    pub async fn update_last_fetch_with_stats(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        error: Option<&str>,
+        stats: Option<CrawlFetchStats>,
+    ) -> Result<()> {
+        let is_failure = error.is_some();
+        let articles_fetched = stats.as_ref().map(|s| s.articles_fetched).unwrap_or(0);
+        let duration_ms = stats.as_ref().and_then(|s| s.duration_ms);
+
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
                 sqlx::query(
                     r#"
                 UPDATE sources
-                SET last_fetch = NOW(), last_error = $2
+                SET last_fetch = NOW(),
+                    last_error = $2,
+                    health_status = CASE
+                        WHEN $3 THEN
+                            CASE WHEN consecutive_failures + 1 >= 3 THEN 'unhealthy'
+                                 ELSE 'degraded'
+                            END
+                        ELSE 'healthy'
+                    END,
+                    consecutive_failures = CASE
+                        WHEN $3 THEN consecutive_failures + 1
+                        ELSE 0
+                    END,
+                    total_articles_fetched = total_articles_fetched + $4::bigint,
+                    avg_fetch_duration_ms = CASE
+                        WHEN $5::int IS NOT NULL THEN
+                            CASE WHEN avg_fetch_duration_ms IS NULL THEN $5::int
+                                 ELSE (avg_fetch_duration_ms * 7 + $5::int * 3) / 10
+                            END
+                        ELSE avg_fetch_duration_ms
+                    END
                 WHERE id = $1
                   AND deleted_at IS NULL
                 "#,
                 )
                 .bind(id)
                 .bind(error)
+                .bind(is_failure)
+                .bind(articles_fetched as i64)
+                .bind(duration_ms)
                 .execute(tx.as_mut())
                 .await
                 .map_err(|e| Error::Database(e.to_string()))?;

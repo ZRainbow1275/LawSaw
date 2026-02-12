@@ -1,4 +1,7 @@
-use crate::{Classifier, Embedder, LlmGateway, RiskAssessor, Summarizer, TagExtractor};
+use crate::{
+    AuthorityDetector, Classifier, DomainClassifier, Embedder, ImportanceAssessor, LlmGateway,
+    RiskAssessor, Summarizer, TagExtractor,
+};
 use law_eye_common::Result;
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -138,6 +141,9 @@ pub struct AiService {
     risk_assessor: RiskAssessor,
     tag_extractor: TagExtractor,
     embedder: Embedder,
+    importance_assessor: ImportanceAssessor,
+    domain_classifier: DomainClassifier,
+    authority_detector: AuthorityDetector,
     gateway: LlmGateway,
     cache: Mutex<AiResultCache>,
 }
@@ -169,6 +175,9 @@ impl AiService {
             risk_assessor: RiskAssessor::new(gateway.clone()),
             tag_extractor: TagExtractor::new(gateway.clone()),
             embedder: Embedder::new(gateway_arc),
+            importance_assessor: ImportanceAssessor,
+            domain_classifier: DomainClassifier,
+            authority_detector: AuthorityDetector,
             gateway,
             cache: Mutex::new(AiResultCache::new(cache_ttl, cache_max_entries)),
         }
@@ -176,6 +185,17 @@ impl AiService {
 
     /// 完整的 AI 处理流程
     pub async fn process_article(&self, title: &str, content: &str) -> Result<ArticleAiResult> {
+        self.process_article_with_metadata(title, content, None, None).await
+    }
+
+    /// 完整的 AI 处理流程 (含文章元数据, 用于 importance/domain/authority 评估)
+    pub async fn process_article_with_metadata(
+        &self,
+        title: &str,
+        content: &str,
+        issuer: Option<&str>,
+        existing_authority_level: Option<i32>,
+    ) -> Result<ArticleAiResult> {
         let cache_key = build_cache_key(title, content);
         if let Some(cached_result) = self.get_cached_result(&cache_key).await {
             info!(article_hash = %cache_key, "AI result cache hit");
@@ -199,6 +219,19 @@ impl AiService {
 
         info!("AI processing completed for article: {}", title);
 
+        // Run rule-based assessors (no LLM call needed)
+        let authority_level = self
+            .authority_detector
+            .detect(title, issuer);
+        let importance = self.importance_assessor.rule_assess(
+            title,
+            existing_authority_level.or_else(|| authority_level.map(|v| v as i32)),
+            issuer,
+        );
+        let domain = self
+            .domain_classifier
+            .classify(&classify_result.category_slug, title);
+
         let result = ArticleAiResult {
             category_slug: classify_result.category_slug,
             category_confidence: classify_result.confidence,
@@ -214,6 +247,10 @@ impl AiService {
             keywords: tags_result.keywords,
             embedding: embedding_result.vector,
             token_count: embedding_result.token_count,
+            importance,
+            domain_root: Some(domain.domain_root),
+            domain_sub: domain.domain_sub,
+            authority_level,
         };
 
         self.store_cached_result(cache_key, result.clone()).await;
@@ -261,6 +298,11 @@ impl AiService {
         self.embedder.embed_chunks(text).await
     }
 
+    /// Expose the underlying LLM gateway (e.g. for KnowledgeService).
+    pub fn gateway(&self) -> Arc<LlmGateway> {
+        Arc::new(self.gateway.clone())
+    }
+
     /// AI 上游健康检查（不改变业务状态，仅用于健康探针）。
     pub async fn health_check(&self) -> Result<()> {
         self.gateway.health_check().await
@@ -284,6 +326,14 @@ pub struct ArticleAiResult {
     pub keywords: Vec<String>,
     pub embedding: Vec<f32>,
     pub token_count: usize,
+    /// Importance score (1-5), rule-based.
+    pub importance: u8,
+    /// Primary domain classification.
+    pub domain_root: Option<String>,
+    /// Secondary domain classification.
+    pub domain_sub: Option<String>,
+    /// Legal authority level (1-10).
+    pub authority_level: Option<u8>,
 }
 
 impl ArticleAiResult {
@@ -296,6 +346,10 @@ impl ArticleAiResult {
             "risk_dimensions": self.risk_dimensions,
             "recommendations": self.recommendations,
             "abstract": self.abstract_text,
+            "importance": self.importance,
+            "domain_root": self.domain_root,
+            "domain_sub": self.domain_sub,
+            "authority_level": self.authority_level,
         })
     }
 }
@@ -320,6 +374,10 @@ mod tests {
             keywords: vec![label.to_string()],
             embedding: vec![0.1, 0.2],
             token_count: 2,
+            importance: 3,
+            domain_root: Some("industry".to_string()),
+            domain_sub: None,
+            authority_level: Some(8),
         }
     }
 

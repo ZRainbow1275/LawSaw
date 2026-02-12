@@ -1,3 +1,6 @@
+use crate::anti_crawl::RandomizedHeaders;
+use crate::browser::BrowserlessClient;
+use crate::encoding;
 use crate::RawArticle;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use law_eye_common::egress::{validate_outbound_url, OutboundUrlPolicy};
@@ -44,21 +47,47 @@ pub struct SpiderConfig {
     pub content_selector: Option<String>,
     pub date_selector: Option<String>,
     pub delay_ms: Option<u64>,
+    /// Page rendering mode: "static" (default) or "dynamic" (headless browser).
+    pub render_mode: Option<String>,
+    /// CSS selector to wait for before extracting content (dynamic mode only).
+    pub wait_for_selector: Option<String>,
+    /// Maximum wait time in milliseconds for dynamic rendering.
+    pub wait_timeout_ms: Option<u64>,
+    /// Explicit character encoding override (e.g. "gbk", "gb2312").
+    /// When set, bypasses auto-detection. Useful for sources with known encoding.
+    pub encoding: Option<String>,
 }
 
 pub struct WebSpider {
     client: Client,
+    /// Generates randomized headers for each request to reduce fingerprinting.
+    randomized_headers: RandomizedHeaders,
 }
 
 impl WebSpider {
     pub fn new() -> Result<Self> {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(30))
-            .user_agent("LawEye/1.0")
+        // Do NOT set a fixed user_agent on the client — we inject a random one per request.
+        let mut builder = Client::builder()
+            .timeout(Duration::from_secs(30));
+
+        // Honour LAW_EYE__SPIDER__NO_PROXY=1 to bypass system proxy.
+        // Also bypass when NO_PROXY / no_proxy covers all ("*").
+        let force_no_proxy = std::env::var("LAW_EYE__SPIDER__NO_PROXY")
+            .ok()
+            .map(|v| v.trim() == "1" || v.trim().eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        if force_no_proxy {
+            builder = builder.no_proxy();
+        }
+
+        let client = builder
             .build()
             .map_err(|e| Error::Config(format!("Failed to create HTTP client: {}", e)))?;
 
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            randomized_headers: RandomizedHeaders::new(),
+        })
     }
 
     pub async fn fetch(
@@ -74,9 +103,29 @@ impl WebSpider {
 
         info!("Spidering page: {}", page_url);
 
-        let html = self
-            .fetch_html_with_retry(page_url.as_str(), "list")
-            .await?;
+        let encoding_hint = config.encoding.as_deref();
+        let is_dynamic = config
+            .render_mode
+            .as_deref()
+            .map(|m| m.eq_ignore_ascii_case("dynamic"))
+            .unwrap_or(false);
+
+        let html = if is_dynamic {
+            // Dynamic rendering via Browserless headless browser
+            let browser = BrowserlessClient::new()?;
+            info!(url = %page_url, "Using dynamic rendering (Browserless)");
+            browser
+                .fetch_rendered_html(
+                    page_url.as_str(),
+                    config.wait_for_selector.as_deref(),
+                    config.wait_timeout_ms,
+                )
+                .await?
+        } else {
+            // Static rendering via reqwest
+            self.fetch_html_with_retry(page_url.as_str(), "list", encoding_hint)
+                .await?
+        };
 
         let document = Html::parse_document(&html);
 
@@ -132,6 +181,7 @@ impl WebSpider {
                                 content_selector.as_ref(),
                                 date_selector.as_ref(),
                                 allow_internal,
+                                encoding_hint,
                             )
                             .await
                         {
@@ -149,13 +199,10 @@ impl WebSpider {
                         (None, None)
                     };
 
-                articles.push(RawArticle {
-                    title,
-                    link: full_link,
-                    content,
-                    author: None,
-                    published_at,
-                });
+                let mut article = RawArticle::new(title, full_link);
+                article.content = content;
+                article.published_at = published_at;
+                articles.push(article);
             }
         }
 
@@ -163,7 +210,7 @@ impl WebSpider {
         Ok(articles)
     }
 
-    async fn fetch_html_with_retry(&self, url: &str, context: &str) -> Result<String> {
+    async fn fetch_html_with_retry(&self, url: &str, context: &str, encoding_hint: Option<&str>) -> Result<String> {
         let max_retries = spider_http_max_retries();
         let base_delay_ms = spider_http_retry_base_delay_ms();
         let max_delay_ms = spider_http_retry_max_delay_ms();
@@ -172,14 +219,33 @@ impl WebSpider {
         loop {
             attempt = attempt.saturating_add(1);
 
-            match self.client.get(url).send().await {
+            // Inject randomized headers and UA per request to reduce fingerprinting
+            let headers = self.randomized_headers.generate();
+            let ua = self.randomized_headers.random_user_agent();
+
+            match self.client.get(url)
+                .header(reqwest::header::USER_AGENT, ua)
+                .headers(headers)
+                .send()
+                .await
+            {
                 Ok(response) => {
                     let status = response.status();
                     if status.is_success() {
-                        return response
-                            .text()
+                        let content_type = response
+                            .headers()
+                            .get(reqwest::header::CONTENT_TYPE)
+                            .and_then(|v| v.to_str().ok())
+                            .map(|s| s.to_string());
+                        let bytes = response
+                            .bytes()
                             .await
-                            .map_err(|e| Error::Http(e.to_string()));
+                            .map_err(|e| Error::Http(e.to_string()))?;
+                        return Ok(encoding::detect_and_decode(
+                            &bytes,
+                            content_type.as_deref(),
+                            encoding_hint,
+                        ));
                     }
 
                     let can_retry = status == reqwest::StatusCode::TOO_MANY_REQUESTS
@@ -242,6 +308,7 @@ impl WebSpider {
         content_selector: Option<&Selector>,
         date_selector: Option<&Selector>,
         allow_internal: bool,
+        encoding_hint: Option<&str>,
     ) -> Result<(Option<String>, Option<DateTime<Utc>>)> {
         let policy = OutboundUrlPolicy::http_and_https(allow_internal);
         let detail_url = validate_outbound_url(url, &policy)
@@ -249,7 +316,7 @@ impl WebSpider {
             .map_err(|e| Error::Validation(format!("{}: {}", e.code(), e)))?;
 
         let html = self
-            .fetch_html_with_retry(detail_url.as_str(), "detail")
+            .fetch_html_with_retry(detail_url.as_str(), "detail", encoding_hint)
             .await?;
 
         let document = Html::parse_document(&html);
@@ -279,9 +346,7 @@ fn parse_required_selector(raw: &str) -> Result<Selector> {
 }
 
 fn parse_optional_selector(raw: Option<&str>, selector_name: &str) -> Option<Selector> {
-    let Some(raw) = raw.map(str::trim).filter(|value| !value.is_empty()) else {
-        return None;
-    };
+    let raw = raw.map(str::trim).filter(|value| !value.is_empty())?;
 
     match Selector::parse(raw) {
         Ok(selector) => Some(selector),
@@ -387,7 +452,7 @@ fn parse_datetime(raw: &str) -> Option<DateTime<Utc>> {
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use std::io::{BufRead, Read, Write};
+    use std::io::{Read, Write};
     use std::net::{TcpListener, TcpStream};
     use std::sync::mpsc::{self, Sender};
     use std::thread::{self, JoinHandle};
@@ -402,30 +467,52 @@ mod tests {
     impl TestServer {
         fn spawn(routes: &[(&str, &str)]) -> Self {
             let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
-            listener
-                .set_nonblocking(true)
-                .expect("set nonblocking listener");
-
             let address = listener.local_addr().expect("read local address");
-            let route_map: HashMap<String, String> = routes
-                .iter()
-                .map(|(path, body)| ((*path).to_string(), (*body).to_string()))
-                .collect();
+
+            // Use a short accept timeout so the server loop can check for shutdown.
+            listener
+                .set_nonblocking(false)
+                .expect("set blocking listener");
+
+            let route_map: std::sync::Arc<HashMap<String, String>> =
+                std::sync::Arc::new(
+                    routes
+                        .iter()
+                        .map(|(path, body)| ((*path).to_string(), (*body).to_string()))
+                        .collect(),
+                );
 
             let (shutdown_sender, shutdown_receiver) = mpsc::channel::<()>();
 
-            let handle = thread::spawn(move || loop {
-                if shutdown_receiver.try_recv().is_ok() {
-                    break;
-                }
+            let handle = thread::spawn(move || {
+                // Set a short SO timeout on the listener so accept() doesn't block forever.
+                let _ = listener.set_nonblocking(false);
+                let _ = listener
+                    .set_nonblocking(false);
 
-                match listener.accept() {
-                    Ok((mut stream, _)) => handle_connection(&mut stream, &route_map),
-                    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
-                        std::thread::sleep(Duration::from_millis(5));
+                loop {
+                    // Use nonblocking check for shutdown, then blocking accept with timeout.
+                    if shutdown_receiver.try_recv().is_ok() {
+                        break;
                     }
-                    Err(_) => {
-                        std::thread::sleep(Duration::from_millis(5));
+
+                    // Temporarily set nonblocking to do a quick accept attempt.
+                    let _ = listener.set_nonblocking(true);
+                    match listener.accept() {
+                        Ok((stream, _)) => {
+                            let _ = listener.set_nonblocking(true);
+                            let routes = std::sync::Arc::clone(&route_map);
+                            // Handle each connection in a dedicated thread to avoid blocking.
+                            thread::spawn(move || {
+                                handle_connection(stream, &routes);
+                            });
+                        }
+                        Err(ref err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                            std::thread::sleep(Duration::from_millis(2));
+                        }
+                        Err(_) => {
+                            std::thread::sleep(Duration::from_millis(2));
+                        }
                     }
                 }
             });
@@ -446,26 +533,53 @@ mod tests {
                 let _ = sender.send(());
             }
 
+            // Connect once to unblock accept() if it's waiting.
+            let _ = TcpStream::connect_timeout(
+                &self.base_url.trim_start_matches("http://").parse().unwrap(),
+                Duration::from_millis(50),
+            );
+
             if let Some(handle) = self.handle.take() {
                 let _ = handle.join();
             }
         }
     }
 
-    fn handle_connection(stream: &mut TcpStream, routes: &HashMap<String, String>) {
-        let _ = stream.set_read_timeout(Some(Duration::from_millis(200)));
-        let mut reader = std::io::BufReader::new(stream);
-        let mut request_line = String::new();
-        let read_size = match reader.read_line(&mut request_line) {
-            Ok(size) => size,
-            Err(_) => return,
-        };
+    fn handle_connection(mut stream: TcpStream, routes: &HashMap<String, String>) {
+        let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+        let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
+        let _ = stream.set_nodelay(true);
 
-        if read_size == 0 {
+        // Read the full HTTP request into a buffer (headers only, up to 4KB).
+        let mut buf = [0u8; 4096];
+        let mut filled = 0usize;
+
+        // Keep reading until we see the end-of-headers marker "\r\n\r\n".
+        loop {
+            if filled >= buf.len() {
+                break;
+            }
+            match stream.read(&mut buf[filled..]) {
+                Ok(0) => break,
+                Ok(n) => {
+                    filled += n;
+                    // Check if we have received the full headers.
+                    if buf[..filled].windows(4).any(|w| w == b"\r\n\r\n") {
+                        break;
+                    }
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => break,
+                Err(_) => return,
+            }
+        }
+
+        if filled == 0 {
             return;
         }
 
-        let path = request_line
+        let request_str = String::from_utf8_lossy(&buf[..filled]);
+        let path = request_str
             .lines()
             .next()
             .and_then(|line| line.split_whitespace().nth(1))
@@ -482,24 +596,37 @@ mod tests {
             body
         );
 
-        let stream = reader.get_mut();
         let _ = stream.write_all(response.as_bytes());
         let _ = stream.flush();
+        // Shut down the write half to signal we're done.
+        let _ = stream.shutdown(std::net::Shutdown::Write);
     }
 
     fn wait_for_server_ready(address: std::net::SocketAddr) {
-        for _ in 0..40 {
-            if let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_millis(25))
+        for _ in 0..80 {
+            if let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_millis(50))
             {
+                let _ = stream.set_write_timeout(Some(Duration::from_millis(200)));
+                let _ = stream.set_read_timeout(Some(Duration::from_millis(200)));
                 let _ = stream.write_all(
                     b"GET /__ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
                 );
+                let _ = stream.flush();
                 let mut probe = [0_u8; 64];
                 let _ = stream.read(&mut probe);
                 return;
             }
             std::thread::sleep(Duration::from_millis(10));
         }
+    }
+
+    /// Create a WebSpider that bypasses system proxy for testing.
+    /// On Windows, system proxy settings (e.g. Clash at 127.0.0.1:2080) cause
+    /// reqwest to route requests through the proxy, which returns 502 for our
+    /// localhost test server.
+    fn new_test_spider() -> WebSpider {
+        std::env::set_var("LAW_EYE__SPIDER__NO_PROXY", "1");
+        WebSpider::new().expect("create test web spider")
     }
 
     fn build_config(
@@ -514,6 +641,10 @@ mod tests {
             content_selector: content_selector.map(str::to_string),
             date_selector: date_selector.map(str::to_string),
             delay_ms,
+            render_mode: None,
+            wait_for_selector: None,
+            wait_timeout_ms: None,
+            encoding: None,
         }
     }
 
@@ -526,7 +657,7 @@ mod tests {
         "#;
 
         let server = TestServer::spawn(&[("/list", list_html)]);
-        let spider = WebSpider::new().expect("create web spider");
+        let spider = new_test_spider();
 
         let articles = spider
             .fetch(
@@ -558,7 +689,7 @@ mod tests {
         "#;
 
         let server = TestServer::spawn(&[("/list", list_html), ("/detail-ok", detail_html)]);
-        let spider = WebSpider::new().expect("create web spider");
+        let spider = new_test_spider();
 
         let articles = spider
             .fetch(
@@ -594,7 +725,7 @@ mod tests {
         "#;
 
         let server = TestServer::spawn(&[("/list", list_html), ("/detail", detail_html)]);
-        let spider = WebSpider::new().expect("create web spider");
+        let spider = new_test_spider();
 
         let articles = spider
             .fetch(
@@ -644,7 +775,7 @@ mod tests {
         "#;
 
         let server = TestServer::spawn(&[("/list", list_html)]);
-        let spider = WebSpider::new().expect("create web spider");
+        let spider = new_test_spider();
 
         let configured_delay_ms = 75_u64;
         let started_at = Instant::now();

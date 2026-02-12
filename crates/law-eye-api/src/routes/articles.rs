@@ -32,6 +32,20 @@ pub struct ArticleResponse {
     pub risk_score: Option<i32>,
     pub importance: Option<i32>,
     pub sentiment: Option<String>,
+    // Crawler enhancement: legal domain metadata
+    pub domain_root: Option<String>,
+    pub domain_sub: Option<String>,
+    pub authority_level: Option<i32>,
+    pub issuer: Option<String>,
+    pub doc_number: Option<String>,
+    pub effective_date: Option<chrono::NaiveDate>,
+    pub region_code: Option<String>,
+    pub content_hash: Option<String>,
+    pub summary_struct: Option<serde_json::Value>,
+    pub source_ref: Option<String>,
+    pub tags: Vec<String>,
+    pub keywords: Vec<String>,
+    pub ai_metadata: serde_json::Value,
     pub status: String,
     pub version: i64,
     pub created_at: DateTime<Utc>,
@@ -53,6 +67,19 @@ impl From<law_eye_db::Article> for ArticleResponse {
             risk_score: a.risk_score,
             importance: a.importance,
             sentiment: a.sentiment,
+            domain_root: a.domain_root,
+            domain_sub: a.domain_sub,
+            authority_level: a.authority_level,
+            issuer: a.issuer,
+            doc_number: a.doc_number,
+            effective_date: a.effective_date,
+            region_code: a.region_code,
+            content_hash: a.content_hash,
+            summary_struct: a.summary_struct,
+            source_ref: a.source_ref,
+            tags: a.tags,
+            keywords: a.keywords,
+            ai_metadata: a.ai_metadata,
             status: a.status,
             version: a.version,
             created_at: a.created_at,
@@ -798,6 +825,12 @@ pub(crate) mod command {
         .await
         .map_err(AppError::from)?;
 
+        // Invalidate statistics and overview caches after article update
+        if let Some(ref cache) = state.cache_service {
+            let _ = cache.invalidate_resource(tenant_id, "statistics").await;
+            let _ = cache.invalidate_resource(tenant_id, "overview").await;
+        }
+
         let body: ArticleResponse = article.into();
         let etag = etag_for_version(body.version)?;
         let mut response = Json(body).into_response();
@@ -893,6 +926,12 @@ pub(crate) mod command {
             _ => AppError::internal_with_code("DELETE_ERROR", e.to_string()),
         })?;
 
+        // Invalidate statistics and overview caches after article deletion
+        if let Some(ref cache) = state.cache_service {
+            let _ = cache.invalidate_resource(tenant_id, "statistics").await;
+            let _ = cache.invalidate_resource(tenant_id, "overview").await;
+        }
+
         Ok(Json(DeleteResponse {
             success: true,
             message: "Article deleted".to_string(),
@@ -980,6 +1019,12 @@ pub(crate) mod command {
             Error::NotFound(_) | Error::Validation(_) => AppError::from(e),
             _ => AppError::internal_with_code("RESTORE_ERROR", e.to_string()),
         })?;
+
+        // Invalidate statistics and overview caches after article restore
+        if let Some(ref cache) = state.cache_service {
+            let _ = cache.invalidate_resource(tenant_id, "statistics").await;
+            let _ = cache.invalidate_resource(tenant_id, "overview").await;
+        }
 
         let body: ArticleResponse = article.into();
         let etag = etag_for_version(body.version)?;
@@ -1097,6 +1142,12 @@ pub(crate) mod command {
             _ => AppError::internal_with_code("PUBLISH_ERROR", e.to_string()),
         })?;
 
+        // Invalidate statistics and overview caches after article publish
+        if let Some(ref cache) = state.cache_service {
+            let _ = cache.invalidate_resource(tenant_id, "statistics").await;
+            let _ = cache.invalidate_resource(tenant_id, "overview").await;
+        }
+
         let body: ArticleResponse = article.into();
         let etag = etag_for_version(body.version)?;
         let mut response = Json(body).into_response();
@@ -1186,6 +1237,12 @@ pub(crate) mod command {
             Error::NotFound(_) | Error::Conflict(_) => AppError::from(e),
             _ => AppError::internal_with_code("ARCHIVE_ERROR", e.to_string()),
         })?;
+
+        // Invalidate statistics and overview caches after article archive
+        if let Some(ref cache) = state.cache_service {
+            let _ = cache.invalidate_resource(tenant_id, "statistics").await;
+            let _ = cache.invalidate_resource(tenant_id, "overview").await;
+        }
 
         let body: ArticleResponse = article.into();
         let etag = etag_for_version(body.version)?;
@@ -1359,6 +1416,12 @@ pub(crate) mod command {
                         "missing_ids": missing_ids,
                     })),
             });
+        }
+
+        // Invalidate statistics and overview caches after batch status update
+        if let Some(ref cache) = state.cache_service {
+            let _ = cache.invalidate_resource(tenant_id, "statistics").await;
+            let _ = cache.invalidate_resource(tenant_id, "overview").await;
         }
 
         Ok(Json(BatchStatusResponse {

@@ -33,6 +33,8 @@ export function EntityPalette({
 	onSelect,
 	onBackfill,
 	backfillPending,
+	onLlmBackfill,
+	llmBackfillPending,
 	className,
 }: {
 	items: KnowledgeEntity[];
@@ -45,6 +47,8 @@ export function EntityPalette({
 	onSelect: (id: string) => void;
 	onBackfill: (() => void) | null;
 	backfillPending: boolean;
+	onLlmBackfill?: (() => void) | null;
+	llmBackfillPending?: boolean;
 	className?: string;
 }) {
 	const t = useT();
@@ -145,6 +149,21 @@ export function EntityPalette({
 											{backfillPending
 												? t("Initializing...")
 												: t("Initialize knowledge graph")}
+										</Button>
+									)}
+									{onLlmBackfill && (
+										<Button
+											type="button"
+											variant="outline"
+											size="sm"
+											className="mt-2"
+											onClick={onLlmBackfill}
+											disabled={llmBackfillPending}
+											data-testid="knowledge-llm-backfill"
+										>
+											{llmBackfillPending
+												? t("Extracting entities...")
+												: t("AI entity extraction")}
 										</Button>
 									)}
 								</div>

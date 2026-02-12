@@ -54,13 +54,11 @@ impl RssFetcher {
                     .or_else(|| entry.content.and_then(|c| c.body));
                 let published_at = entry.published.or(entry.updated);
 
-                Some(RawArticle {
-                    title,
-                    link,
-                    content,
-                    author: entry.authors.first().map(|a| a.name.clone()),
-                    published_at,
-                })
+                let mut article = RawArticle::new(title, link);
+                article.content = content;
+                article.author = entry.authors.first().map(|a| a.name.clone());
+                article.published_at = published_at;
+                Some(article)
             })
             .collect();
 

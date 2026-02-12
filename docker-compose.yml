@@ -224,6 +224,9 @@ services:
       LAW_EYE__OBJECT_STORAGE__SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
       LAW_EYE__OBJECT_STORAGE__FORCE_PATH_STYLE: "true"
       LAW_EYE__OBJECT_STORAGE__SSE_ENABLED: true
+      # Browserless dynamic rendering (when crawler profile is active)
+      LAW_EYE__BROWSERLESS__URL: "http://browserless:3000"
+      LAW_EYE__BROWSERLESS__TIMEOUT_MS: "30000"
       RUST_LOG: info
     depends_on:
       postgres:
@@ -292,6 +295,26 @@ services:
       - ./n8n/workflows:/home/node/workflows:ro
     depends_on:
       - api
+    networks:
+      - law-eye-network
+    restart: unless-stopped
+
+  browserless:
+    image: ${BROWSERLESS_IMAGE:-ghcr.io/browserless/chromium:v2.24.2}
+    profiles: ["crawler"]
+    environment:
+      MAX_CONCURRENT_SESSIONS: ${BROWSERLESS_MAX_CONCURRENT:-5}
+      CONNECTION_TIMEOUT: ${BROWSERLESS_CONNECTION_TIMEOUT:-60000}
+      PREBOOT_CHROME: "true"
+      TOKEN: ${BROWSERLESS_TOKEN:-}
+    ports:
+      - "127.0.0.1:${BROWSERLESS_HOST_PORT:-3003}:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/json/version"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - law-eye-network
     restart: unless-stopped

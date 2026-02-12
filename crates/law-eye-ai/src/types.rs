@@ -118,5 +118,6 @@ pub enum AiTaskType {
     RiskAssess,
     ExtractTags,
     Embed,
+    ExtractEntities,
     Full,
 }

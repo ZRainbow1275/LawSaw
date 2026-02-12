@@ -22,6 +22,10 @@ async fn main() -> anyhow::Result<()> {
         content_selector: None,
         date_selector: None,
         delay_ms: None,
+        render_mode: None,
+        wait_for_selector: None,
+        wait_timeout_ms: None,
+        encoding: None,
     };
 
     match spider
@@ -57,6 +61,10 @@ async fn main() -> anyhow::Result<()> {
         content_selector: Some("p.col-9".to_string()),
         date_selector: None,
         delay_ms: None,
+        render_mode: None,
+        wait_for_selector: None,
+        wait_timeout_ms: None,
+        encoding: None,
     };
 
     match spider
@@ -87,6 +95,10 @@ async fn main() -> anyhow::Result<()> {
         content_selector: None,
         date_selector: Some("span".to_string()),
         delay_ms: None,
+        render_mode: None,
+        wait_for_selector: None,
+        wait_timeout_ms: None,
+        encoding: None,
     };
 
     match spider

@@ -465,6 +465,30 @@ impl ObjectService {
         Ok(resp.body)
     }
 
+    /// 上传原始字节到对象存储（通用方法，供报告导出等场景使用）
+    pub async fn upload_raw_bytes(
+        &self,
+        object_key: &str,
+        content_type: &str,
+        bytes: Vec<u8>,
+    ) -> Result<()> {
+        let mut put_req = self
+            .client
+            .put_object()
+            .bucket(&self.bucket)
+            .key(object_key)
+            .content_type(content_type)
+            .body(ByteStream::from(bytes));
+        if self.sse_enabled {
+            put_req = put_req.server_side_encryption(ServerSideEncryption::Aes256);
+        }
+        put_req
+            .send()
+            .await
+            .map_err(|e| Error::Http(format!("Put object failed: {e:?}")))?;
+        Ok(())
+    }
+
     pub async fn delete_object_key(&self, object_key: &str) -> Result<()> {
         self.client
             .delete_object()

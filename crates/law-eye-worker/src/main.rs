@@ -10,16 +10,23 @@ use law_eye_ai::{
 use law_eye_common::egress::{validate_outbound_url, OutboundUrlPolicy};
 use law_eye_common::AppConfig;
 use law_eye_core::{
-    ArticleService, DomainEventInput, DomainEventService, ObjectService, SourceService,
-    OBJECT_KIND_USER_AVATAR,
+    ArticleService, CrawlLogService, DomainEventInput, DomainEventService, KnowledgeService,
+    ObjectService, ReportService, ReportTemplateService, SourceService, OBJECT_KIND_USER_AVATAR,
+    source::CrawlFetchStats,
 };
-use law_eye_crawler::{RssFetcher, SpiderConfig, WebSpider};
+use law_eye_crawler::{
+    CrawlJobConfig, CrawlOrchestrator, CrawlOutcome,
+    AdapterRegistry, DomainRateLimiter, RateLimiterConfig,
+    ConcurrencyController, ConcurrencyConfig, RobotsChecker,
+    IncrementalChecker,
+};
 use law_eye_db::{
     create_pool_with_session_role, create_pool_with_session_role_retry, CreateArticle,
+    CreateCrawlLog, FinishCrawlLog,
 };
 use law_eye_queue::{
-    AiTask, AiTaskType, IngestTask, OrderedTaskGate, PushTask, ReservedTask, RetryableTask,
-    TaskQueue,
+    AiTask, AiTaskType, IngestTask, OrderedTaskGate, PushTask, ReportExportTask,
+    ReportGenerateTask, ReservedTask, RetryableTask, TaskQueue,
 };
 use serde_json::json;
 use sha2::Sha256;
@@ -37,9 +44,12 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 const QUEUE_INGEST: &str = "queue:ingest";
 const QUEUE_AI: &str = "queue:ai";
 const QUEUE_PUSH: &str = "queue:push";
+const QUEUE_REPORT_EXPORT: &str = "queue:report-export";
+const QUEUE_REPORT_GENERATE: &str = "queue:report";
 
 const MAINTENANCE_INTERVAL_SECS: u64 = 15;
 const MAINTENANCE_MAX_BATCH: usize = 200;
+const SCHEDULER_INTERVAL_SECS: u64 = 60;
 const OUTBOX_FLUSH_MAX_BATCH: i64 = 500;
 const OUTBOX_LOCK_TIMEOUT_MS: i64 = 2 * 60 * 1_000;
 const WEBHOOK_FLUSH_MAX_BATCH: i64 = 200;
@@ -54,6 +64,8 @@ const DB_CONNECT_MAX_ATTEMPTS: u32 = 30;
 const VISIBILITY_TIMEOUT_INGEST_MS: i64 = 10 * 60 * 1_000;
 const VISIBILITY_TIMEOUT_AI_MS: i64 = 20 * 60 * 1_000;
 const VISIBILITY_TIMEOUT_PUSH_MS: i64 = 5 * 60 * 1_000;
+const VISIBILITY_TIMEOUT_REPORT_EXPORT_MS: i64 = 15 * 60 * 1_000;
+const VISIBILITY_TIMEOUT_REPORT_GENERATE_MS: i64 = 20 * 60 * 1_000;
 
 const EVENT_VERSION_V1: i32 = 1;
 
@@ -61,6 +73,8 @@ const EVENT_VERSION_V1: i32 = 1;
 const TASK_TIMEOUT_INGEST_SECS: u64 = 8 * 60;
 const TASK_TIMEOUT_AI_SECS: u64 = 10 * 60;
 const TASK_TIMEOUT_PUSH_SECS: u64 = 60;
+const TASK_TIMEOUT_REPORT_EXPORT_SECS: u64 = 10 * 60;
+const TASK_TIMEOUT_REPORT_GENERATE_SECS: u64 = 15 * 60;
 
 fn contains_any_keyword(haystack: &str, keywords: &[&str]) -> bool {
     keywords.iter().any(|keyword| haystack.contains(keyword))
@@ -499,10 +513,12 @@ async fn validate_webhook_url(raw: &str, allow_internal: bool) -> anyhow::Result
 struct Worker {
     pool: PgPool,
     task_queue: Arc<TaskQueue>,
-    rss_fetcher: RssFetcher,
-    web_spider: WebSpider,
+    orchestrator: CrawlOrchestrator,
     ai_service: Option<AiService>,
+    knowledge_service: Option<KnowledgeService>,
     object_service: Option<ObjectService>,
+    report_service: ReportService,
+    report_template_service: ReportTemplateService,
     push_http_client: reqwest::Client,
     allow_internal_source_urls: bool,
     allow_internal_webhook_urls: bool,
@@ -515,6 +531,7 @@ struct WorkerInit {
     pool: PgPool,
     task_queue: TaskQueue,
     ai_service: Option<AiService>,
+    knowledge_service: Option<KnowledgeService>,
     object_service: Option<ObjectService>,
     shutdown: Arc<AtomicBool>,
     allow_internal_source_urls: bool,
@@ -616,12 +633,41 @@ impl DomainEventRecord {
 
 impl Worker {
     fn new(init: WorkerInit) -> anyhow::Result<Self> {
+        // --- Build CrawlOrchestrator ---
+        let registry = AdapterRegistry::with_defaults()
+            .map_err(|e| anyhow::anyhow!("create adapter registry: {}", e))?;
+        let rate_limiter = std::sync::Arc::new(DomainRateLimiter::new(RateLimiterConfig {
+            burst_size: 5,
+            tokens_per_second: 2.0,
+        }));
+        let concurrency = std::sync::Arc::new(ConcurrencyController::new(ConcurrencyConfig::default()));
+        let mut orchestrator = CrawlOrchestrator::new(registry, rate_limiter, concurrency);
+
+        // Optionally configure robots.txt checker
+        match RobotsChecker::new() {
+            Ok(checker) => {
+                orchestrator = orchestrator.with_robots_checker(std::sync::Arc::new(checker));
+            }
+            Err(e) => {
+                warn!("Failed to create RobotsChecker, proceeding without robots.txt checking: {}", e);
+            }
+        }
+
+        // Note: AI enrichment runs via the separate AI queue (process_ai_task),
+        // not in-pipeline, so we intentionally do NOT attach AiService to the orchestrator.
+
+        // Configure incremental checker for cross-session content deduplication
+        let incremental_checker = Arc::new(IncrementalChecker::new());
+        orchestrator = orchestrator.with_incremental_checker(incremental_checker);
+
         Ok(Self {
+            report_service: ReportService::new(init.pool.clone()),
+            report_template_service: ReportTemplateService::new(init.pool.clone()),
             pool: init.pool,
             task_queue: Arc::new(init.task_queue),
-            rss_fetcher: RssFetcher::new().context("create RSS fetcher")?,
-            web_spider: WebSpider::new().context("create web spider")?,
+            orchestrator,
             ai_service: init.ai_service,
+            knowledge_service: init.knowledge_service,
             object_service: init.object_service,
             push_http_client: init.push_http_client,
             allow_internal_source_urls: init.allow_internal_source_urls,
@@ -637,6 +683,9 @@ impl Worker {
 
         let maintenance_interval = Duration::from_secs(MAINTENANCE_INTERVAL_SECS);
         let mut last_maintenance = Instant::now() - maintenance_interval;
+
+        let scheduler_interval = Duration::from_secs(SCHEDULER_INTERVAL_SECS);
+        let mut last_scheduler = Instant::now() - scheduler_interval;
 
         let object_purge_interval = self.object_purge.as_ref().map(|cfg| cfg.interval);
         let mut last_object_purge = Instant::now();
@@ -659,6 +708,14 @@ impl Worker {
                     }
                     last_object_purge = Instant::now();
                 }
+            }
+
+            // Scheduled source crawl trigger
+            if last_scheduler.elapsed() >= scheduler_interval {
+                if let Err(e) = self.run_scheduler().await {
+                    error!("Scheduler run failed: {}", e);
+                }
+                last_scheduler = Instant::now();
             }
 
             if let Some(reserved) = self
@@ -692,6 +749,32 @@ impl Worker {
             {
                 self.handle_push_reserved(reserved).await;
             }
+
+            if self.shutdown.load(Ordering::Relaxed) {
+                break;
+            }
+
+            // 报告导出队列
+            if let Some(reserved) = self
+                .task_queue
+                .reserve_retryable::<ReportExportTask>(QUEUE_REPORT_EXPORT, 1)
+                .await?
+            {
+                self.handle_report_export_reserved(reserved).await;
+            }
+
+            if self.shutdown.load(Ordering::Relaxed) {
+                break;
+            }
+
+            // 报告 AI 生成队列
+            if let Some(reserved) = self
+                .task_queue
+                .reserve_retryable::<ReportGenerateTask>(QUEUE_REPORT_GENERATE, 1)
+                .await?
+            {
+                self.handle_report_generate_reserved(reserved).await;
+            }
         }
 
         info!("Worker shutting down gracefully...");
@@ -703,6 +786,8 @@ impl Worker {
             (QUEUE_INGEST, VISIBILITY_TIMEOUT_INGEST_MS),
             (QUEUE_AI, VISIBILITY_TIMEOUT_AI_MS),
             (QUEUE_PUSH, VISIBILITY_TIMEOUT_PUSH_MS),
+            (QUEUE_REPORT_EXPORT, VISIBILITY_TIMEOUT_REPORT_EXPORT_MS),
+            (QUEUE_REPORT_GENERATE, VISIBILITY_TIMEOUT_REPORT_GENERATE_MS),
         ];
 
         for (queue, visibility_timeout_ms) in queues {
@@ -720,6 +805,109 @@ impl Worker {
 
         self.flush_queue_outbox_all_tenants().await?;
         self.flush_webhook_events_all_tenants().await?;
+
+        Ok(())
+    }
+
+    /// Periodically check active sources with cron schedules and enqueue
+    /// IngestTasks for those that are due.
+    async fn run_scheduler(&self) -> anyhow::Result<()> {
+        let tenant_ids =
+            sqlx::query_scalar::<_, uuid::Uuid>("SELECT id FROM tenants ORDER BY created_at")
+                .fetch_all(&self.pool)
+                .await?;
+
+        let mut enqueued = 0u32;
+
+        for tenant_id in tenant_ids {
+            let source_service = SourceService::new(self.pool.clone());
+
+            // Use SourceService (handles RLS) and filter in-memory
+            let sources = match source_service.list_active(tenant_id).await {
+                Ok(s) => s,
+                Err(e) => {
+                    warn!(%tenant_id, "scheduler: failed to list active sources: {}", e);
+                    continue;
+                }
+            };
+
+            let now = chrono::Utc::now();
+
+            for source in sources {
+                // Skip sources without schedule, or in unhealthy state
+                let schedule_str = match &source.schedule {
+                    Some(s) if !s.is_empty() && source.health_status != "unhealthy" => s.as_str(),
+                    _ => continue,
+                };
+
+                // Parse cron expression
+                let schedule = match schedule_str.parse::<cron::Schedule>() {
+                    Ok(s) => s,
+                    Err(e) => {
+                        warn!(
+                            source_id = %source.id,
+                            schedule = %schedule_str,
+                            "scheduler: invalid cron expression: {}", e
+                        );
+                        continue;
+                    }
+                };
+
+                // Determine if this source is due for a crawl.
+                // A source is due when:
+                //   - It has never been fetched (last_fetch IS NULL), OR
+                //   - The most recent scheduled fire time before `now` is after `last_fetch`
+                let is_due = match source.last_fetch {
+                    None => true,
+                    Some(last) => {
+                        // Find the most recent fire time <= now
+                        schedule
+                            .after(&last)
+                            .take_while(|t| *t <= now)
+                            .last()
+                            .is_some()
+                    }
+                };
+
+                if !is_due {
+                    continue;
+                }
+
+                // Enqueue an IngestTask
+                let task = IngestTask {
+                    tenant_id: source.tenant_id,
+                    source_id: source.id,
+                    source_type: source.source_type.clone(),
+                    url: source.url.clone(),
+                    config: source.config.clone(),
+                };
+
+                match self
+                    .task_queue
+                    .enqueue_retryable(QUEUE_INGEST, task)
+                    .await
+                {
+                    Ok(_) => {
+                        enqueued += 1;
+                        info!(
+                            source_id = %source.id,
+                            source_name = %source.name,
+                            "scheduler: enqueued ingest task"
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            source_id = %source.id,
+                            "scheduler: failed to enqueue ingest task: {}", e
+                        );
+                    }
+                }
+            }
+        }
+
+        if enqueued > 0 {
+            info!(count = enqueued, "scheduler: enqueued due source crawls");
+        }
 
         Ok(())
     }
@@ -1026,6 +1214,7 @@ impl Worker {
             AiTaskType::RiskAssess => "risk_assess",
             AiTaskType::ExtractTags => "extract_tags",
             AiTaskType::Embed => "embed",
+            AiTaskType::ExtractEntities => "extract_entities",
             AiTaskType::Full => "full",
         };
         format!("ai:{article_id}:{task_type}")
@@ -2099,42 +2288,47 @@ impl Worker {
         let tenant_id = self.resolve_tenant_id(tenant_id).await?;
 
         let source_service = SourceService::new(self.pool.clone());
+        let crawl_log_service = CrawlLogService::new(self.pool.clone());
 
-        let articles = match task.source_type.as_str() {
-            "rss" => {
-                self.rss_fetcher
-                    .fetch(&task.url, self.allow_internal_source_urls)
-                    .await
-            }
-            "spider" => {
-                let config: SpiderConfig = match serde_json::from_value(task.config) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        let msg =
-                            sanitize_error_message(format!("Failed to parse spider config: {}", e));
-                        error!("{}", msg);
-                        let _ = source_service
-                            .update_last_fetch(tenant_id, task.source_id, Some(msg.as_str()))
-                            .await;
-                        return Err(anyhow::anyhow!(msg));
-                    }
-                };
-                self.web_spider
-                    .fetch(&task.url, &config, self.allow_internal_source_urls)
-                    .await
-            }
-            _ => {
-                let msg = format!("Unknown source type: {}", task.source_type);
-                error!("{}", msg);
-                let _ = source_service
-                    .update_last_fetch(tenant_id, task.source_id, Some(msg.as_str()))
-                    .await;
-                return Err(anyhow::anyhow!(msg));
-            }
+        // Fetch source record for encoding/render_mode metadata
+        let source = source_service
+            .get_by_id(tenant_id, task.source_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to fetch source {}: {}", task.source_id, e))?;
+
+        // Build CrawlJobConfig from IngestTask + source record
+        let job = CrawlJobConfig {
+            tenant_id,
+            source_id: task.source_id,
+            kind: task.source_type.clone(),
+            source_name: source.name.clone(),
+            url: task.url.clone(),
+            config: task.config.clone(),
+            encoding: source.encoding.clone(),
+            render_mode: Some(source.render_mode.clone()),
+            allow_internal: self.allow_internal_source_urls,
+            enable_ai: false,  // AI runs via separate queue, not in-pipeline
+            respect_robots: true,
         };
 
-        match articles {
-            Ok(articles) => {
+        // Start crawl log entry (non-critical, failures are not fatal)
+        let crawl_log_id = crawl_log_service
+            .start(tenant_id, CreateCrawlLog {
+                tenant_id,
+                source_id: task.source_id,
+            })
+            .await
+            .ok();
+
+        let crawl_start = Instant::now();
+        let result = self.orchestrator.run_job(&job).await;
+        let crawl_duration_ms = crawl_start.elapsed().as_millis() as i32;
+
+        // Map CrawlJobResult to the existing article processing flow
+        match result.outcome {
+            CrawlOutcome::Success | CrawlOutcome::Partial => {
+                let articles = result.articles;
+
                 let article_service = ArticleService::new(self.pool.clone());
                 let mut seen_links = HashSet::with_capacity(articles.len());
                 let mut create_articles = Vec::with_capacity(articles.len());
@@ -2169,6 +2363,11 @@ impl Worker {
                         content,
                         author,
                         published_at,
+                        issuer: article.extracted_issuer,
+                        doc_number: article.extracted_doc_number,
+                        effective_date: article.extracted_effective_date,
+                        region_code: article.extracted_region_code,
+                        content_hash: article.content_hash,
                     });
                 }
 
@@ -2228,21 +2427,79 @@ impl Worker {
                 }
 
                 info!(
-                    "Upserted {} articles from source {}",
+                    "Upserted {} articles from source {} (crawl outcome: {})",
                     saved_article_ids.len(),
-                    task.source_id
+                    task.source_id,
+                    result.outcome,
                 );
+
+                // Update source health monitoring with crawl statistics
+                let fetch_stats = CrawlFetchStats {
+                    articles_fetched: result.stats.articles_found,
+                    duration_ms: Some(crawl_duration_ms),
+                };
                 let _ = source_service
-                    .update_last_fetch(tenant_id, task.source_id, None)
+                    .update_last_fetch_with_stats(
+                        tenant_id,
+                        task.source_id,
+                        None,
+                        Some(fetch_stats),
+                    )
                     .await;
+
+                // Finish crawl log entry
+                if let Some(log_id) = crawl_log_id {
+                    let _ = crawl_log_service
+                        .finish(tenant_id, log_id, FinishCrawlLog {
+                            status: "completed".to_string(),
+                            articles_found: result.stats.articles_found,
+                            articles_new: result.stats.articles_new,
+                            articles_updated: result.stats.articles_updated,
+                            articles_skipped: result.stats.articles_skipped,
+                            error_message: None,
+                            duration_ms: crawl_duration_ms,
+                            metadata: None,
+                        })
+                        .await;
+                }
+
                 Ok(())
             }
-            Err(e) => {
-                let msg = sanitize_error_message(e.to_string());
-                error!("Failed to fetch articles: {}", msg);
+            CrawlOutcome::Failed => {
+                let error_msg = result.stats.errors.join("; ");
+                let msg = sanitize_error_message(&error_msg);
+                error!("Crawl job failed for source {}: {}", task.source_id, msg);
+
+                // Update source health monitoring with failure
+                let fetch_stats = CrawlFetchStats {
+                    articles_fetched: 0,
+                    duration_ms: Some(crawl_duration_ms),
+                };
                 let _ = source_service
-                    .update_last_fetch(tenant_id, task.source_id, Some(msg.as_str()))
+                    .update_last_fetch_with_stats(
+                        tenant_id,
+                        task.source_id,
+                        Some(msg.as_str()),
+                        Some(fetch_stats),
+                    )
                     .await;
+
+                // Finish crawl log entry with failure
+                if let Some(log_id) = crawl_log_id {
+                    let _ = crawl_log_service
+                        .finish(tenant_id, log_id, FinishCrawlLog {
+                            status: "failed".to_string(),
+                            articles_found: result.stats.articles_found,
+                            articles_new: 0,
+                            articles_updated: 0,
+                            articles_skipped: 0,
+                            error_message: Some(msg.clone()),
+                            duration_ms: crawl_duration_ms,
+                            metadata: None,
+                        })
+                        .await;
+                }
+
                 Err(anyhow::anyhow!(msg))
             }
         }
@@ -2380,6 +2637,35 @@ impl Worker {
                     };
                 stage_reports.push(tags_stage);
 
+                // Knowledge graph: extract entities and relations
+                if let Some(ref ks) = self.knowledge_service {
+                    let entities_stage = match ks
+                        .process_article(tenant_id, task.article_id, &article.title, content)
+                        .await
+                    {
+                        Ok(ids) => {
+                            info!(
+                                article_id = %task.article_id,
+                                entity_count = ids.len(),
+                                "Entity extraction succeeded"
+                            );
+                            AiStageReport::success("extract_entities")
+                        }
+                        Err(err) => {
+                            warn!(
+                                article_id = %task.article_id,
+                                error = %err,
+                                "AI full entity extraction failed, degraded"
+                            );
+                            AiStageReport::degraded(
+                                "extract_entities",
+                                sanitize_error_message(err.to_string()),
+                            )
+                        }
+                    };
+                    stage_reports.push(entities_stage);
+                }
+
                 let stage_summary = summarize_ai_full_stages(&stage_reports);
 
                 self.update_article_full(
@@ -2500,6 +2786,34 @@ impl Worker {
                 info!("AI embedding completed for article: {}", task.article_id);
                 Ok(())
             }
+            AiTaskType::ExtractEntities => {
+                let ks = self.knowledge_service.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "KnowledgeService not configured, cannot process ExtractEntities task"
+                    )
+                })?;
+                match ks
+                    .process_article(tenant_id, task.article_id, &article.title, content)
+                    .await
+                {
+                    Ok(ids) => {
+                        info!(
+                            article_id = %task.article_id,
+                            entity_count = ids.len(),
+                            "Entity extraction completed"
+                        );
+                        Ok(())
+                    }
+                    Err(err) => {
+                        error!(
+                            article_id = %task.article_id,
+                            error = %err,
+                            "Entity extraction failed"
+                        );
+                        Err(anyhow::anyhow!("Entity extraction failed: {}", err))
+                    }
+                }
+            }
         }
     }
 
@@ -2560,9 +2874,17 @@ impl Worker {
                 );
                 Ok(())
             }
+            AiTaskType::ExtractEntities => {
+                warn!(
+                    article_id = %task.article_id,
+                    "AI entity extraction skipped in fallback mode"
+                );
+                Ok(())
+            }
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn update_article_full(
         &self,
         tenant_id: uuid::Uuid,
@@ -2941,6 +3263,553 @@ impl Worker {
             }
         }
     }
+
+    // ══════════════════════════════════════════════════════════════
+    // 报告导出队列处理
+    // ══════════════════════════════════════════════════════════════
+
+    async fn handle_report_export_reserved(&self, reserved: ReservedTask<ReportExportTask>) {
+        let queue = QUEUE_REPORT_EXPORT;
+        let task = reserved.task;
+        let task_id = task.id;
+
+        // 无需 ordering gate，报告导出不需要顺序保证
+        match self.task_queue.is_done(queue, task_id).await {
+            Ok(true) => {
+                if let Err(e) = self
+                    .task_queue
+                    .ack_reserved(queue, &reserved.raw_payload)
+                    .await
+                {
+                    error!("Failed to ack duplicate report export task {}: {}", task_id, e);
+                }
+                return;
+            }
+            Ok(false) => {}
+            Err(e) => {
+                error!("Failed to check report export task {} done: {}", task_id, e);
+                return;
+            }
+        }
+
+        let payload = task.payload.clone();
+        let result = timeout(
+            Duration::from_secs(TASK_TIMEOUT_REPORT_EXPORT_SECS),
+            self.process_report_export_task(payload),
+        )
+        .await;
+
+        match result {
+            Ok(Ok(())) => {
+                if let Err(e) = self.task_queue.mark_done(queue, task_id).await {
+                    error!("Failed to mark report export task {} done: {}", task_id, e);
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .ack_reserved(queue, &reserved.raw_payload)
+                    .await
+                {
+                    error!("Failed to ack report export task {}: {}", task_id, e);
+                }
+            }
+            Ok(Err(e)) => {
+                let error_msg = sanitize_error_message(e.to_string());
+                match self
+                    .task_queue
+                    .retry_or_dead_letter(queue, task, error_msg)
+                    .await
+                {
+                    Ok(_) => {
+                        if let Err(e) = self
+                            .task_queue
+                            .ack_reserved(queue, &reserved.raw_payload)
+                            .await
+                        {
+                            error!("Failed to ack failed report export task {}: {}", task_id, e);
+                        }
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to schedule retry/DLQ for report export task {}: {}",
+                            task_id, e
+                        );
+                    }
+                }
+            }
+            Err(_) => {
+                let error_msg = format!("TASK_TIMEOUT after {}s", TASK_TIMEOUT_REPORT_EXPORT_SECS);
+                match self
+                    .task_queue
+                    .retry_or_dead_letter(queue, task, error_msg)
+                    .await
+                {
+                    Ok(_) => {
+                        if let Err(e) = self
+                            .task_queue
+                            .ack_reserved(queue, &reserved.raw_payload)
+                            .await
+                        {
+                            error!("Failed to ack timed out report export task {}: {}", task_id, e);
+                        }
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to schedule retry/DLQ for timed out report export task {}: {}",
+                            task_id, e
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// 处理报告导出任务：获取报告 → 获取模板 → 聚合数据 → 渲染 → 上传到对象存储 → 更新报告
+    async fn process_report_export_task(&self, task: ReportExportTask) -> anyhow::Result<()> {
+        use law_eye_core::report::{
+            ExportFormat, HtmlExporter, PdfExporter, DocxExporter,
+        };
+
+        let tenant_id = task.tenant_id;
+        let report_id = task.report_id;
+        let format = ExportFormat::from_str(&task.format).ok_or_else(|| {
+            anyhow::anyhow!("Invalid export format: {}", task.format)
+        })?;
+
+        info!(
+            %report_id,
+            %tenant_id,
+            format = %task.format,
+            "Processing report export task"
+        );
+
+        // 1. 获取报告详情
+        let report = self
+            .report_service
+            .get_report_by_id(tenant_id, report_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("获取报告失败: {}", e))?;
+
+        // 2. 获取模板（如果报告关联了模板）
+        let template = if let Some(template_id) = report.template_id {
+            Some(
+                self.report_template_service
+                    .get_by_id(tenant_id, template_id)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("获取模板失败: {}", e))?,
+            )
+        } else {
+            None
+        };
+
+        // 3. 聚合报告期间数据
+        let aggregated = self
+            .report_service
+            .aggregate_period_data(tenant_id, report.period_start, report.period_end)
+            .await
+            .map_err(|e| anyhow::anyhow!("聚合数据失败: {}", e))?;
+
+        let period_start_str = report.period_start.to_string();
+        let period_end_str = report.period_end.to_string();
+
+        // 4. 根据格式渲染导出
+        let (bytes, content_type) = match format {
+            ExportFormat::Html => {
+                let template = template.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("HTML 导出需要报告模板")
+                })?;
+                let html = HtmlExporter::render(
+                    template,
+                    &report.title,
+                    &report.report_number,
+                    &period_start_str,
+                    &period_end_str,
+                    &aggregated,
+                )
+                .map_err(|e| anyhow::anyhow!("HTML 渲染失败: {}", e))?;
+                (html.into_bytes(), "text/html; charset=utf-8")
+            }
+            ExportFormat::Pdf => {
+                // 先渲染 HTML，再转 PDF
+                let template = template.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("PDF 导出需要报告模板")
+                })?;
+                let html = HtmlExporter::render(
+                    template,
+                    &report.title,
+                    &report.report_number,
+                    &period_start_str,
+                    &period_end_str,
+                    &aggregated,
+                )
+                .map_err(|e| anyhow::anyhow!("HTML 渲染失败: {}", e))?;
+
+                let pdf_exporter = PdfExporter::from_env()
+                    .map_err(|e| anyhow::anyhow!("PDF 导出器初始化失败: {}", e))?;
+                let page_config = template.page_config.clone();
+                let pdf_bytes = pdf_exporter
+                    .html_to_pdf(&html, &page_config)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("PDF 生成失败: {}", e))?;
+                (pdf_bytes, "application/pdf")
+            }
+            ExportFormat::Docx => {
+                let docx_bytes = DocxExporter::generate(
+                    &report.title,
+                    &report.report_number,
+                    &period_start_str,
+                    &period_end_str,
+                    &aggregated,
+                )
+                .map_err(|e| anyhow::anyhow!("DOCX 生成失败: {}", e))?;
+                (
+                    docx_bytes,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            }
+        };
+
+        let byte_size = bytes.len();
+        let ext = format.extension();
+        let object_key = format!(
+            "tenants/{}/reports/{}/export_{}.{}",
+            tenant_id, report_id, chrono::Utc::now().format("%Y%m%d%H%M%S"), ext
+        );
+
+        // 5. 上传到对象存储
+        if let Some(ref object_service) = self.object_service {
+            object_service
+                .upload_raw_bytes(&object_key, content_type, bytes)
+                .await
+                .map_err(|e| anyhow::anyhow!("上传导出文件失败: {}", e))?;
+
+            info!(
+                %report_id,
+                %object_key,
+                byte_size,
+                "Report export uploaded to object storage"
+            );
+        } else {
+            warn!(
+                %report_id,
+                "Object storage not configured, skipping upload"
+            );
+        }
+
+        // 6. 更新报告中的导出路径
+        self.report_service
+            .set_export_key(tenant_id, report_id, format, &object_key)
+            .await
+            .map_err(|e| anyhow::anyhow!("更新导出路径失败: {}", e))?;
+
+        info!(
+            %report_id,
+            %tenant_id,
+            format = %task.format,
+            %object_key,
+            "Report export task completed successfully"
+        );
+
+        Ok(())
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // 报告 AI 生成队列处理
+    // ══════════════════════════════════════════════════════════════
+
+    async fn handle_report_generate_reserved(&self, reserved: ReservedTask<ReportGenerateTask>) {
+        let queue = QUEUE_REPORT_GENERATE;
+        let task = reserved.task;
+        let task_id = task.id;
+
+        // 幂等检查
+        match self.task_queue.is_done(queue, task_id).await {
+            Ok(true) => {
+                if let Err(e) = self
+                    .task_queue
+                    .ack_reserved(queue, &reserved.raw_payload)
+                    .await
+                {
+                    error!("Failed to ack duplicate report generate task {}: {}", task_id, e);
+                }
+                return;
+            }
+            Ok(false) => {}
+            Err(e) => {
+                error!("Failed to check report generate task {} done: {}", task_id, e);
+                return;
+            }
+        }
+
+        let payload = task.payload.clone();
+        let result = timeout(
+            Duration::from_secs(TASK_TIMEOUT_REPORT_GENERATE_SECS),
+            self.process_report_generate_task(payload),
+        )
+        .await;
+
+        match result {
+            Ok(Ok(())) => {
+                if let Err(e) = self.task_queue.mark_done(queue, task_id).await {
+                    error!("Failed to mark report generate task {} done: {}", task_id, e);
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .ack_reserved(queue, &reserved.raw_payload)
+                    .await
+                {
+                    error!("Failed to ack report generate task {}: {}", task_id, e);
+                }
+            }
+            Ok(Err(e)) => {
+                let error_msg = sanitize_error_message(e.to_string());
+                error!(
+                    %task_id,
+                    %error_msg,
+                    "Report generate task failed"
+                );
+                // 失败时回退状态到 draft，以允许用户重新触发生成
+                if let Err(rollback_err) = self.rollback_report_status_to_draft(&task.payload).await
+                {
+                    error!(
+                        %task_id,
+                        error = %rollback_err,
+                        "Failed to rollback report status to draft after generate failure"
+                    );
+                }
+                match self
+                    .task_queue
+                    .retry_or_dead_letter(queue, task, error_msg)
+                    .await
+                {
+                    Ok(_) => {
+                        if let Err(e) = self
+                            .task_queue
+                            .ack_reserved(queue, &reserved.raw_payload)
+                            .await
+                        {
+                            error!("Failed to ack failed report generate task {}: {}", task_id, e);
+                        }
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to schedule retry/DLQ for report generate task {}: {}",
+                            task_id, e
+                        );
+                    }
+                }
+            }
+            Err(_) => {
+                let error_msg =
+                    format!("TASK_TIMEOUT after {}s", TASK_TIMEOUT_REPORT_GENERATE_SECS);
+                error!(
+                    %task_id,
+                    %error_msg,
+                    "Report generate task timed out"
+                );
+                if let Err(rollback_err) = self.rollback_report_status_to_draft(&task.payload).await
+                {
+                    error!(
+                        %task_id,
+                        error = %rollback_err,
+                        "Failed to rollback report status to draft after generate timeout"
+                    );
+                }
+                match self
+                    .task_queue
+                    .retry_or_dead_letter(queue, task, error_msg)
+                    .await
+                {
+                    Ok(_) => {
+                        if let Err(e) = self
+                            .task_queue
+                            .ack_reserved(queue, &reserved.raw_payload)
+                            .await
+                        {
+                            error!(
+                                "Failed to ack timed out report generate task {}: {}",
+                                task_id, e
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to schedule retry/DLQ for timed out report generate task {}: {}",
+                            task_id, e
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// 报告生成失败时回退状态到 draft，防止报告卡在 generating 状态
+    async fn rollback_report_status_to_draft(&self, task: &ReportGenerateTask) -> anyhow::Result<()> {
+        use law_eye_core::report::ReportStatus;
+
+        let report = self
+            .report_service
+            .get_report_by_id(task.tenant_id, task.report_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("获取报告失败: {}", e))?;
+
+        let current_status = ReportStatus::from_db_str(&report.status);
+        if matches!(current_status, Some(ReportStatus::Generating)) {
+            self.report_service
+                .transition_status(
+                    task.tenant_id,
+                    task.report_id,
+                    ReportStatus::Draft,
+                    report.version,
+                )
+                .await
+                .map_err(|e| anyhow::anyhow!("回退状态失败: {}", e))?;
+            warn!(
+                report_id = %task.report_id,
+                "Rolled back report status from generating to draft after failure"
+            );
+        }
+
+        Ok(())
+    }
+
+    /// 处理报告 AI 生成任务：获取报告 → 聚合数据 → (可选) AI 摘要 → 更新报告内容 → 转换到 review
+    async fn process_report_generate_task(&self, task: ReportGenerateTask) -> anyhow::Result<()> {
+        use law_eye_core::report::ReportStatus;
+
+        let tenant_id = task.tenant_id;
+        let report_id = task.report_id;
+
+        info!(
+            %report_id,
+            %tenant_id,
+            "Processing report generate task"
+        );
+
+        // 1. 获取报告详情
+        let report = self
+            .report_service
+            .get_report_by_id(tenant_id, report_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("获取报告失败: {}", e))?;
+
+        // 校验报告状态必须是 generating
+        let current_status = ReportStatus::from_db_str(&report.status).ok_or_else(|| {
+            anyhow::anyhow!("Unknown report status: {}", report.status)
+        })?;
+        if current_status != ReportStatus::Generating {
+            return Err(anyhow::anyhow!(
+                "Report {} is in '{}' status, expected 'generating'",
+                report_id,
+                report.status
+            ));
+        }
+
+        // 2. 聚合期间数据
+        let aggregated = self
+            .report_service
+            .aggregate_period_data(tenant_id, report.period_start, report.period_end)
+            .await
+            .map_err(|e| anyhow::anyhow!("聚合数据失败: {}", e))?;
+
+        // 3. (可选) 如果有 AI 服务，生成摘要
+        let ai_summary = if let Some(ref ai_service) = self.ai_service {
+            let overview_json = serde_json::to_string(&aggregated.overview)
+                .unwrap_or_else(|_| "{}".to_string());
+            let highlight_titles: Vec<&str> = aggregated
+                .highlights
+                .iter()
+                .take(5)
+                .map(|h| h.title.as_str())
+                .collect();
+
+            let system_prompt = "你是法规监测报告的摘要生成助手。根据提供的数据生成简洁的中文执行摘要。";
+            let user_prompt = format!(
+                "根据以下法规监测报告数据，生成一段100-200字的中文执行摘要。\n\n\
+                 报告期间: {} 至 {}\n\
+                 概览: {}\n\
+                 重点文章标题: {}\n\
+                 风险项数量: {}\n\n\
+                 请直接输出摘要内容，不要添加任何前缀或标题。",
+                report.period_start,
+                report.period_end,
+                overview_json,
+                highlight_titles.join(", "),
+                aggregated.risk_items.len(),
+            );
+
+            let gateway = ai_service.gateway();
+            match gateway.chat(system_prompt, &user_prompt).await {
+                Ok(summary_text) => {
+                    info!(
+                        %report_id,
+                        "AI summary generated successfully"
+                    );
+                    Some(summary_text)
+                }
+                Err(e) => {
+                    warn!(
+                        %report_id,
+                        error = %e,
+                        "AI summary generation failed, proceeding without summary"
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        // 4. 构建报告内容 JSON
+        let mut content = serde_json::to_value(&aggregated)
+            .map_err(|e| anyhow::anyhow!("序列化聚合数据失败: {}", e))?;
+
+        // 注入 AI 摘要到 overview.ai_summary
+        if let Some(ref summary) = ai_summary {
+            if let Some(overview) = content.get_mut("overview") {
+                overview["ai_summary"] = serde_json::Value::String(summary.clone());
+            }
+        }
+
+        let article_count = aggregated.overview.total_articles as i32;
+        let ai_model = if self.ai_service.is_some() {
+            "ai-assisted"
+        } else {
+            "data-only"
+        };
+
+        // 5. 更新报告内容（update_ai_content 会将 status 设回 draft）
+        self.report_service
+            .update_ai_content(tenant_id, report_id, content, article_count, ai_model)
+            .await
+            .map_err(|e| anyhow::anyhow!("更新 AI 内容失败: {}", e))?;
+
+        // 6. 获取更新后的报告，转换状态到 review
+        let updated_report = self
+            .report_service
+            .get_report_by_id(tenant_id, report_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("获取更新后报告失败: {}", e))?;
+
+        self.report_service
+            .transition_status(
+                tenant_id,
+                report_id,
+                ReportStatus::Review,
+                updated_report.version,
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("转换状态到 review 失败: {}", e))?;
+
+        info!(
+            %report_id,
+            %tenant_id,
+            article_count,
+            has_ai_summary = ai_summary.is_some(),
+            "Report generate task completed successfully"
+        );
+
+        Ok(())
+    }
 }
 
 
@@ -3191,10 +4060,15 @@ async fn main() -> anyhow::Result<()> {
         .build()
         .context("build webhook http client")?;
 
+    let knowledge_service = ai_service.as_ref().map(|ai| {
+        KnowledgeService::new(pool.clone(), ai.gateway())
+    });
+
     let worker = Worker::new(WorkerInit {
         pool,
         task_queue,
         ai_service,
+        knowledge_service,
         object_service,
         shutdown,
         allow_internal_source_urls: config.security.allow_internal_source_urls,
@@ -3259,5 +4133,115 @@ mod webhook_url_tests {
         let sanitized = sanitize_error_message(input);
         assert!(!sanitized.contains('\n'));
         assert!(sanitized.len() <= WORKER_ERROR_MAX_CHARS + 3);
+    }
+}
+
+#[cfg(test)]
+mod crawler_integration_tests {
+    use super::*;
+
+    #[test]
+    fn create_article_has_all_legal_metadata_fields() {
+        let article = CreateArticle {
+            source_id: uuid::Uuid::new_v4(),
+            title: "国务院关于数据安全的通知".to_string(),
+            link: "https://gov.cn/123".to_string(),
+            content: Some("正文内容".to_string()),
+            author: None,
+            published_at: None,
+            issuer: Some("国务院".to_string()),
+            doc_number: Some("国发〔2026〕1号".to_string()),
+            effective_date: Some(chrono::NaiveDate::from_ymd_opt(2026, 3, 1).unwrap()),
+            region_code: Some("000000".to_string()),
+            content_hash: Some("abc123".to_string()),
+        };
+
+        assert_eq!(article.issuer.as_deref(), Some("国务院"));
+        assert_eq!(article.doc_number.as_deref(), Some("国发〔2026〕1号"));
+        assert!(article.effective_date.is_some());
+        assert_eq!(article.region_code.as_deref(), Some("000000"));
+        assert_eq!(article.content_hash.as_deref(), Some("abc123"));
+    }
+
+    #[test]
+    fn crawl_fetch_stats_construction() {
+        let stats = CrawlFetchStats {
+            articles_fetched: 42,
+            duration_ms: Some(1500),
+        };
+        assert_eq!(stats.articles_fetched, 42);
+        assert_eq!(stats.duration_ms, Some(1500));
+
+        let stats_no_duration = CrawlFetchStats {
+            articles_fetched: 0,
+            duration_ms: None,
+        };
+        assert_eq!(stats_no_duration.articles_fetched, 0);
+        assert!(stats_no_duration.duration_ms.is_none());
+    }
+
+    #[test]
+    fn finish_crawl_log_construction() {
+        let finish = FinishCrawlLog {
+            status: "completed".to_string(),
+            articles_found: 10,
+            articles_new: 5,
+            articles_updated: 3,
+            articles_skipped: 2,
+            error_message: None,
+            duration_ms: 4500,
+            metadata: None,
+        };
+        assert_eq!(finish.status, "completed");
+        assert_eq!(finish.articles_found, 10);
+        assert_eq!(finish.articles_new, 5);
+        assert!(finish.error_message.is_none());
+
+        let failed = FinishCrawlLog {
+            status: "failed".to_string(),
+            articles_found: 0,
+            articles_new: 0,
+            articles_updated: 0,
+            articles_skipped: 0,
+            error_message: Some("connection timeout".to_string()),
+            duration_ms: 30000,
+            metadata: None,
+        };
+        assert_eq!(failed.status, "failed");
+        assert!(failed.error_message.is_some());
+    }
+
+    #[test]
+    fn scheduler_constant_is_reasonable() {
+        assert!(SCHEDULER_INTERVAL_SECS >= 30, "Scheduler should not run more often than every 30s");
+        assert!(SCHEDULER_INTERVAL_SECS <= 300, "Scheduler should run at least every 5 minutes");
+    }
+
+    #[test]
+    fn cron_schedule_parsing_six_field_format() {
+        // Verify the 6-field cron format used in migration 031
+        let expr = "0 0 6 * * *"; // Every day at 06:00:00
+        let schedule: cron::Schedule = expr.parse().expect("Should parse 6-field cron");
+        let next = schedule.upcoming(chrono::Utc).next();
+        assert!(next.is_some(), "Schedule should produce future fire times");
+    }
+
+    #[test]
+    fn cron_schedule_with_day_of_week() {
+        let expr = "0 0 9 * * 1"; // Every Monday at 09:00:00
+        let schedule: cron::Schedule = expr.parse().expect("Should parse cron with DOW");
+        let next = schedule.upcoming(chrono::Utc).next();
+        assert!(next.is_some());
+    }
+
+    #[test]
+    fn cron_schedule_with_multiple_days() {
+        let expr = "0 0 9 * * 2,5"; // Tuesday and Friday at 09:00:00
+        let schedule: cron::Schedule = expr.parse().expect("Should parse cron with multi-DOW");
+        // Should produce multiple fire times
+        let mut iter = schedule.upcoming(chrono::Utc);
+        let first = iter.next().unwrap();
+        let second = iter.next().unwrap();
+        assert!(second > first);
     }
 }

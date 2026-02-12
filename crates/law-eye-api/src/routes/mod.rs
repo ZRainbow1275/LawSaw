@@ -9,8 +9,11 @@ pub mod knowledge;
 pub mod objects;
 pub mod openapi;
 pub mod push;
+pub mod reports;
 pub mod search;
 pub mod sources;
+pub mod statistics;
+pub mod tenants;
 pub mod users;
 pub mod webhooks;
 
@@ -349,6 +352,22 @@ pub fn create_router(state: AppState) -> Router {
             "/knowledge",
             require_permission(knowledge::router(), "articles:read"),
         )
+        .nest(
+            "/statistics",
+            require_permission(statistics::router(), "articles:read"),
+        )
+        .nest(
+            "/reports",
+            require_permission(reports::router(), "articles:read"),
+        )
+        .nest(
+            "/report-templates",
+            require_permission(reports::template_router(), "articles:read"),
+        )
+        .nest(
+            "/tenants",
+            require_permission(tenants::router(), "tenants:manage"),
+        )
         // Default deny: everything under /api/v1 requires an authenticated session,
         // except routes explicitly mounted outside this protected router (e.g. /api/v1/auth/*).
         .layer(middleware::from_extractor::<RequireAuth>())
@@ -392,6 +411,7 @@ mod contract_tests {
         AppState::new(
             pool,
             queue,
+            None,
             None,
             Some(LlmGateway::new("", None, None)),
             None,

@@ -58,6 +58,10 @@ async fn main() -> anyhow::Result<()> {
         content_selector: None,
         date_selector: None,
         delay_ms: None,
+        render_mode: None,
+        wait_for_selector: None,
+        wait_timeout_ms: None,
+        encoding: None,
     };
 
     match spider
@@ -85,19 +89,22 @@ async fn main() -> anyhow::Result<()> {
 
     // 测试 HTML 清洗
     let test_articles = vec![
-        law_eye_crawler::RawArticle {
-            title: "  测试标题需要Trim  ".to_string(),
-            link: "https://example.com/test".to_string(),
-            content: Some("<p>这是<br/>一段<b>HTML</b>内容</p>".to_string()),
-            author: Some("测试作者".to_string()),
-            published_at: None,
+        {
+            let mut a = law_eye_crawler::RawArticle::new(
+                "  测试标题需要Trim  ",
+                "https://example.com/test",
+            );
+            a.content = Some("<p>这是<br/>一段<b>HTML</b>内容</p>".to_string());
+            a.author = Some("测试作者".to_string());
+            a
         },
-        law_eye_crawler::RawArticle {
-            title: "中文法律法规：《民法典》解读".to_string(),
-            link: "https://example.com/law".to_string(),
-            content: Some("纯文本内容，无需处理".to_string()),
-            author: None,
-            published_at: None,
+        {
+            let mut a = law_eye_crawler::RawArticle::new(
+                "中文法律法规：《民法典》解读",
+                "https://example.com/law",
+            );
+            a.content = Some("纯文本内容，无需处理".to_string());
+            a
         },
     ];
 

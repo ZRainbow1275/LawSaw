@@ -76,6 +76,7 @@ fn build_process_response(article_id: Uuid, task_type: &str, degraded: bool) -> 
 }
 
 
+#[allow(clippy::too_many_arguments)]
 async fn audit_ai_enqueue(
     state: &AppState,
     tenant_id: Uuid,

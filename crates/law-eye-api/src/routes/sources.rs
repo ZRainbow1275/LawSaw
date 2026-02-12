@@ -127,6 +127,13 @@ pub struct SourceResponse {
     pub is_active: bool,
     pub last_fetch: Option<DateTime<Utc>>,
     pub last_error: Option<String>,
+    // Crawler enhancement: health monitoring fields
+    pub health_status: String,
+    pub consecutive_failures: i32,
+    pub total_articles_fetched: i64,
+    pub avg_fetch_duration_ms: Option<i32>,
+    pub render_mode: String,
+    pub encoding: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -170,6 +177,12 @@ impl From<law_eye_db::Source> for SourceResponse {
             is_active: source.is_active,
             last_fetch: source.last_fetch,
             last_error: source.last_error,
+            health_status: source.health_status,
+            consecutive_failures: source.consecutive_failures,
+            total_articles_fetched: source.total_articles_fetched,
+            avg_fetch_duration_ms: source.avg_fetch_duration_ms,
+            render_mode: source.render_mode,
+            encoding: source.encoding,
             created_at: source.created_at,
             updated_at: source.updated_at,
         }
@@ -639,6 +652,9 @@ pub(crate) async fn create_source(
                 "API source type is not supported yet (worker does not implement it)",
             ));
         }
+        // Government site adapters and future adapter types are accepted
+        // without config validation — the adapter registry validates at crawl time.
+        other if !other.is_empty() => {}
         _ => return Err(AppError::validation("Invalid source type")),
     }
 

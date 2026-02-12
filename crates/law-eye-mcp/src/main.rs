@@ -1,6 +1,5 @@
 use law_eye_ai::LlmGateway;
 use law_eye_mcp::{JsonRpcRequest, McpServer};
-use sqlx::postgres::PgPoolOptions;
 use std::io::{BufRead, BufReader, Write};
 use std::sync::Arc;
 use tracing::{error, info};
@@ -27,10 +26,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::io::Error::new(std::io::ErrorKind::InvalidInput, "DATABASE_URL must be set")
     })?;
 
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&database_url)
-        .await?;
+    let pool = law_eye_db::create_pool_with_session_role(
+        &database_url,
+        5,
+        Some("law_eye_app"),
+    )
+    .await?;
 
     info!("Connected to database");
 

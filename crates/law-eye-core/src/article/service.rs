@@ -189,8 +189,8 @@ impl ArticleService {
             Box::pin(async move {
                 sqlx::query_as::<_, Article>(
                     r#"
-                INSERT INTO articles (source_id, title, link, content, author, published_at)
-                VALUES ($1, $2, $3, $4, $5, $6)
+                INSERT INTO articles (source_id, title, link, content, author, published_at, issuer, doc_number, effective_date, region_code, content_hash)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 RETURNING *
                 "#,
                 )
@@ -200,6 +200,11 @@ impl ArticleService {
                 .bind(&input.content)
                 .bind(&input.author)
                 .bind(input.published_at)
+                .bind(&input.issuer)
+                .bind(&input.doc_number)
+                .bind(input.effective_date)
+                .bind(&input.region_code)
+                .bind(&input.content_hash)
                 .fetch_one(tx.as_mut())
                 .await
                 .map_err(|e| Error::Database(e.to_string()))
@@ -235,9 +240,21 @@ impl ArticleService {
             }
         }
 
+        // PG max bind params = 65535; each row uses 11 params → safe batch = 500
+        const UPSERT_BATCH_SIZE: usize = 500;
+
+        if inputs.len() > UPSERT_BATCH_SIZE {
+            let mut all_ids = Vec::with_capacity(inputs.len());
+            for chunk in inputs.chunks(UPSERT_BATCH_SIZE) {
+                let mut chunk_ids = self.upsert_many_batch(tx, chunk).await?;
+                all_ids.append(&mut chunk_ids);
+            }
+            return Ok(all_ids);
+        }
+
         let mut qb: QueryBuilder<'_, Postgres> = QueryBuilder::new(
             r#"
-                    INSERT INTO articles (source_id, title, link, content, author, published_at)
+                    INSERT INTO articles (source_id, title, link, content, author, published_at, issuer, doc_number, effective_date, region_code, content_hash)
                     "#,
         );
 
@@ -247,7 +264,12 @@ impl ArticleService {
                 .push_bind(&input.link)
                 .push_bind(&input.content)
                 .push_bind(&input.author)
-                .push_bind(input.published_at);
+                .push_bind(input.published_at)
+                .push_bind(&input.issuer)
+                .push_bind(&input.doc_number)
+                .push_bind(input.effective_date)
+                .push_bind(&input.region_code)
+                .push_bind(&input.content_hash);
         });
 
         qb.push(
@@ -258,6 +280,11 @@ impl ArticleService {
                         content = COALESCE(EXCLUDED.content, articles.content),
                         author = COALESCE(EXCLUDED.author, articles.author),
                         published_at = COALESCE(EXCLUDED.published_at, articles.published_at),
+                        issuer = COALESCE(EXCLUDED.issuer, articles.issuer),
+                        doc_number = COALESCE(EXCLUDED.doc_number, articles.doc_number),
+                        effective_date = COALESCE(EXCLUDED.effective_date, articles.effective_date),
+                        region_code = COALESCE(EXCLUDED.region_code, articles.region_code),
+                        content_hash = COALESCE(EXCLUDED.content_hash, articles.content_hash),
                         updated_at = NOW()
                     WHERE
                         articles.deleted_at IS NULL
@@ -267,6 +294,77 @@ impl ArticleService {
                             OR articles.content IS DISTINCT FROM COALESCE(EXCLUDED.content, articles.content)
                             OR articles.author IS DISTINCT FROM COALESCE(EXCLUDED.author, articles.author)
                             OR articles.published_at IS DISTINCT FROM COALESCE(EXCLUDED.published_at, articles.published_at)
+                            OR articles.content_hash IS DISTINCT FROM COALESCE(EXCLUDED.content_hash, articles.content_hash)
+                        )
+                    RETURNING id
+                    "#,
+        );
+
+        let ids = qb
+            .build_query_as::<(Uuid,)>()
+            .fetch_all(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?
+            .into_iter()
+            .map(|row| row.0)
+            .collect::<Vec<_>>();
+
+        Ok(ids)
+    }
+
+    /// Internal helper for batched upsert (no validation, caller must validate first).
+    async fn upsert_many_batch(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        inputs: &[CreateArticle],
+    ) -> Result<Vec<Uuid>> {
+        if inputs.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut qb: QueryBuilder<'_, Postgres> = QueryBuilder::new(
+            r#"
+                    INSERT INTO articles (source_id, title, link, content, author, published_at, issuer, doc_number, effective_date, region_code, content_hash)
+                    "#,
+        );
+
+        qb.push_values(inputs, |mut row, input| {
+            row.push_bind(input.source_id)
+                .push_bind(&input.title)
+                .push_bind(&input.link)
+                .push_bind(&input.content)
+                .push_bind(&input.author)
+                .push_bind(input.published_at)
+                .push_bind(&input.issuer)
+                .push_bind(&input.doc_number)
+                .push_bind(input.effective_date)
+                .push_bind(&input.region_code)
+                .push_bind(&input.content_hash);
+        });
+
+        qb.push(
+            r#"
+                    ON CONFLICT (tenant_id, link) DO UPDATE SET
+                        source_id = EXCLUDED.source_id,
+                        title = EXCLUDED.title,
+                        content = COALESCE(EXCLUDED.content, articles.content),
+                        author = COALESCE(EXCLUDED.author, articles.author),
+                        published_at = COALESCE(EXCLUDED.published_at, articles.published_at),
+                        issuer = COALESCE(EXCLUDED.issuer, articles.issuer),
+                        doc_number = COALESCE(EXCLUDED.doc_number, articles.doc_number),
+                        effective_date = COALESCE(EXCLUDED.effective_date, articles.effective_date),
+                        region_code = COALESCE(EXCLUDED.region_code, articles.region_code),
+                        content_hash = COALESCE(EXCLUDED.content_hash, articles.content_hash),
+                        updated_at = NOW()
+                    WHERE
+                        articles.deleted_at IS NULL
+                        AND (
+                            articles.source_id IS DISTINCT FROM EXCLUDED.source_id
+                            OR articles.title IS DISTINCT FROM EXCLUDED.title
+                            OR articles.content IS DISTINCT FROM COALESCE(EXCLUDED.content, articles.content)
+                            OR articles.author IS DISTINCT FROM COALESCE(EXCLUDED.author, articles.author)
+                            OR articles.published_at IS DISTINCT FROM COALESCE(EXCLUDED.published_at, articles.published_at)
+                            OR articles.content_hash IS DISTINCT FROM COALESCE(EXCLUDED.content_hash, articles.content_hash)
                         )
                     RETURNING id
                     "#,

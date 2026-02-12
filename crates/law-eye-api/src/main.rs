@@ -17,7 +17,7 @@ use axum::response::{IntoResponse, Response};
 use axum_login::AuthManagerLayerBuilder;
 use law_eye_ai::{AiService, LlmGateway};
 use law_eye_common::vault::{PlaintextCipher, SensitiveStringCipher, VaultTransitCipher};
-use law_eye_common::{AppConfig, ConfigRuntime};
+use law_eye_common::{AppConfig, CacheService, ConfigRuntime};
 use law_eye_core::ObjectService;
 use law_eye_db::{create_pool_retry, create_pool_with_session_role_retry};
 use law_eye_queue::TaskQueue;
@@ -440,9 +440,27 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
+    // 初始化 Redis 缓存层 (fail-open: 创建失败不影响启动)
+    let cache_service = match CacheService::new_with_timeouts(
+        &config.redis.url,
+        config.redis.pool_wait_timeout_ms,
+        config.redis.pool_create_timeout_ms,
+        config.redis.pool_recycle_timeout_ms,
+    ) {
+        Ok(svc) => {
+            info!("Redis cache service enabled");
+            Some(svc)
+        }
+        Err(e) => {
+            warn!(error = %e, "Redis cache service init failed (running without cache)");
+            None
+        }
+    };
+
     let state = AppState::new(
         pool,
         task_queue,
+        cache_service,
         ai_service,
         llm_gateway,
         object_service,

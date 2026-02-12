@@ -44,6 +44,9 @@ pub async fn create_pool_with_session_role(
 
     let mut options = PgPoolOptions::new()
         .max_connections(max_connections)
+        .min_connections(1)
+        .idle_timeout(Duration::from_secs(600))
+        .max_lifetime(Duration::from_secs(1800))
         .acquire_timeout(Duration::from_secs(30))
         .test_before_acquire(true);
 

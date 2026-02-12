@@ -1,11 +1,12 @@
 use law_eye_ai::{AiService, LlmGateway};
 use law_eye_common::config::ConfigRuntime;
 use law_eye_common::vault::SensitiveStringCipher;
+use law_eye_common::CacheService;
 use law_eye_core::{
     ApiKeyService, ArticleService, AuditService, CategoryService, EmailVerificationService,
     FeedbackService, KnowledgeService, MfaTotpService, OAuthIdentityService, ObjectService,
-    PasswordResetService, RagService, SourceService, TenantService, UserService,
-    WebPushSubscriptionService, WebhookService,
+    PasswordResetService, RagService, ReportService, ReportTemplateService, SourceService,
+    StatisticsService, TenantService, UserService, WebPushSubscriptionService, WebhookService,
 };
 use law_eye_queue::TaskQueue;
 use metrics_exporter_prometheus::PrometheusHandle;
@@ -15,6 +16,7 @@ use std::sync::Arc;
 pub struct AppBootstrapDeps {
     pub pool: PgPool,
     pub task_queue: TaskQueue,
+    pub cache_service: Option<CacheService>,
     pub ai_service: Option<AiService>,
     pub llm_gateway: Option<LlmGateway>,
     pub object_service: Option<ObjectService>,
@@ -48,6 +50,7 @@ pub struct AppState {
     pub mfa_totp_service: Arc<MfaTotpService>,
     pub object_service: Option<Arc<ObjectService>>,
     pub task_queue: Arc<TaskQueue>,
+    pub cache_service: Option<Arc<CacheService>>,
     #[allow(dead_code)]
     pub ai_service: Option<Arc<AiService>>,
     pub rag_service: Arc<RagService>,
@@ -56,6 +59,9 @@ pub struct AppState {
     pub apikey_service: Arc<ApiKeyService>,
     pub webhook_service: Arc<WebhookService>,
     pub web_push_subscription_service: Arc<WebPushSubscriptionService>,
+    pub statistics_service: Arc<StatisticsService>,
+    pub report_service: Arc<ReportService>,
+    pub report_template_service: Arc<ReportTemplateService>,
     pub metrics_handle: PrometheusHandle,
     pub metrics_token: Option<String>,
     pub allow_internal_source_urls: bool,
@@ -72,6 +78,7 @@ impl AppState {
         let AppBootstrapDeps {
             pool,
             task_queue,
+            cache_service,
             ai_service,
             llm_gateway,
             object_service,
@@ -111,12 +118,16 @@ impl AppState {
             mfa_totp_service: Arc::new(MfaTotpService::new(pool.clone(), mfa_cipher)),
             object_service: object_service.map(Arc::new),
             task_queue: Arc::new(task_queue),
+            cache_service: cache_service.map(Arc::new),
             ai_service: ai_service.map(Arc::new),
             rag_service: Arc::new(RagService::new(pool.clone(), gateway.clone())),
             knowledge_service: Arc::new(KnowledgeService::new(pool.clone(), gateway)),
             apikey_service: Arc::new(ApiKeyService::new(pool.clone())),
             webhook_service: Arc::new(WebhookService::new(pool.clone())),
             web_push_subscription_service: Arc::new(WebPushSubscriptionService::new(pool.clone())),
+            statistics_service: Arc::new(StatisticsService::new(pool.clone())),
+            report_service: Arc::new(ReportService::new(pool.clone())),
+            report_template_service: Arc::new(ReportTemplateService::new(pool.clone())),
             metrics_handle,
             metrics_token,
             allow_internal_source_urls,
@@ -133,6 +144,7 @@ impl AppState {
     pub fn new(
         pool: PgPool,
         task_queue: TaskQueue,
+        cache_service: Option<CacheService>,
         ai_service: Option<AiService>,
         llm_gateway: Option<LlmGateway>,
         object_service: Option<ObjectService>,
@@ -150,6 +162,7 @@ impl AppState {
         Self::from_deps(AppBootstrapDeps {
             pool,
             task_queue,
+            cache_service,
             ai_service,
             llm_gateway,
             object_service,

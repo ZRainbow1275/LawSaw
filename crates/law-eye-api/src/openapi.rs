@@ -104,7 +104,37 @@ impl Modify for SecurityAddon {
         crate::routes::knowledge::get_entity,
         crate::routes::knowledge::get_related_entities,
         crate::routes::knowledge::get_entity_articles,
-        crate::routes::knowledge::backfill
+        crate::routes::knowledge::backfill,
+        crate::routes::knowledge::semantic_search,
+        crate::routes::knowledge::backfill_llm,
+        crate::routes::knowledge::hybrid_search,
+        crate::routes::knowledge::get_entities_by_type,
+        crate::routes::knowledge::find_duplicate_candidates,
+        crate::routes::knowledge::merge_entities,
+        crate::routes::knowledge::get_degree_centrality,
+        crate::routes::knowledge::get_cooccurrence_network,
+        crate::routes::knowledge::get_graph_stats,
+        crate::routes::statistics::get_regional,
+        crate::routes::statistics::get_industry,
+        crate::routes::statistics::get_importance,
+        crate::routes::statistics::get_authority,
+        crate::routes::statistics::get_issuer,
+        crate::routes::statistics::get_cross_dimensional,
+        crate::routes::statistics::get_timeline,
+        crate::routes::statistics::get_overview,
+        crate::routes::reports::list_reports,
+        crate::routes::reports::create_report,
+        crate::routes::reports::get_report,
+        crate::routes::reports::update_report,
+        crate::routes::reports::delete_report,
+        crate::routes::reports::transition_status,
+        crate::routes::reports::generate_report,
+        crate::routes::reports::export_report,
+        crate::routes::reports::list_templates,
+        crate::routes::reports::create_template,
+        crate::routes::reports::get_template,
+        crate::routes::reports::update_template,
+        crate::routes::reports::delete_template
     ),
     tags(
         (name = "health", description = "Health"),
@@ -120,7 +150,10 @@ impl Modify for SecurityAddon {
         (name = "webhooks", description = "Webhook endpoints"),
         (name = "objects", description = "Object storage"),
         (name = "apikeys", description = "API keys"),
-        (name = "knowledge", description = "Knowledge graph")
+        (name = "knowledge", description = "Knowledge graph"),
+        (name = "statistics", description = "Statistics & analytics"),
+        (name = "reports", description = "Reports"),
+        (name = "report-templates", description = "Report templates")
     )
 )]
 pub struct ApiDoc;

@@ -13,6 +13,39 @@ pub struct Tenant {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct TenantConfig {
+    pub tenant_id: Uuid,
+    // Quota settings
+    pub max_users: i32,
+    pub max_articles: i32,
+    pub max_sources: i32,
+    pub max_storage_mb: i64,
+    pub max_reports_per_month: i32,
+    // Feature flags
+    pub feature_ai_enabled: bool,
+    pub feature_knowledge_graph: bool,
+    pub feature_report_generation: bool,
+    pub feature_webhook: bool,
+    // Branding
+    pub logo_url: Option<String>,
+    pub primary_color: Option<String>,
+    // Audit
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct TenantUsage {
+    pub tenant_id: Uuid,
+    pub current_users: i32,
+    pub current_articles: i32,
+    pub current_sources: i32,
+    pub current_storage_mb: i64,
+    pub current_reports_this_month: i32,
+    pub last_refreshed_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Source {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -26,6 +59,14 @@ pub struct Source {
     pub is_active: bool,
     pub last_fetch: Option<DateTime<Utc>>,
     pub last_error: Option<String>,
+    // Crawler enhancement fields (migration 030)
+    pub health_status: String,
+    pub consecutive_failures: i32,
+    pub total_articles_fetched: i64,
+    pub avg_fetch_duration_ms: Option<i32>,
+    pub render_mode: String,
+    pub encoding: Option<String>,
+    pub deleted_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -65,6 +106,17 @@ pub struct Article {
     pub status: String,
     pub version: i64,
     pub deleted_at: Option<DateTime<Utc>>,
+    // Crawler enhancement fields (migration 030)
+    pub domain_root: Option<String>,
+    pub domain_sub: Option<String>,
+    pub authority_level: Option<i32>,
+    pub issuer: Option<String>,
+    pub doc_number: Option<String>,
+    pub effective_date: Option<chrono::NaiveDate>,
+    pub region_code: Option<String>,
+    pub content_hash: Option<String>,
+    pub summary_struct: Option<serde_json::Value>,
+    pub source_ref: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -77,6 +129,12 @@ pub struct CreateArticle {
     pub content: Option<String>,
     pub author: Option<String>,
     pub published_at: Option<DateTime<Utc>>,
+    // Crawler enhancement: legal domain metadata (migration 030)
+    pub issuer: Option<String>,
+    pub doc_number: Option<String>,
+    pub effective_date: Option<chrono::NaiveDate>,
+    pub region_code: Option<String>,
+    pub content_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -464,11 +522,56 @@ pub struct ArticleEntity {
     pub created_at: DateTime<Utc>,
 }
 
+// ========== Crawl Log Models ==========
+
+/// A record of a single crawl run against a source.
+///
+/// Maps to the `crawl_logs` table (migration 030).
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct CrawlLog {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub source_id: Uuid,
+    pub started_at: DateTime<Utc>,
+    pub finished_at: Option<DateTime<Utc>>,
+    /// One of: "running", "success", "partial", "failed".
+    pub status: String,
+    pub articles_found: i32,
+    pub articles_new: i32,
+    pub articles_updated: i32,
+    pub articles_skipped: i32,
+    pub error_message: Option<String>,
+    pub duration_ms: Option<i32>,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Data required to insert a new crawl log (start of a crawl run).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateCrawlLog {
+    pub tenant_id: Uuid,
+    pub source_id: Uuid,
+}
+
+/// Data to update a crawl log when a crawl run finishes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FinishCrawlLog {
+    pub status: String,
+    pub articles_found: i32,
+    pub articles_new: i32,
+    pub articles_updated: i32,
+    pub articles_skipped: i32,
+    pub error_message: Option<String>,
+    pub duration_ms: i32,
+    pub metadata: Option<serde_json::Value>,
+}
+
 // ========== API Key Models ==========
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ApiKey {
     pub id: Uuid,
+    pub tenant_id: Uuid,
     pub user_id: Option<Uuid>,
     pub name: String,
     pub key_hash: String,
@@ -488,4 +591,87 @@ pub struct CreateApiKey {
     pub permissions: Option<Vec<String>>,
     pub rate_limit: Option<i32>,
     pub expires_at: Option<DateTime<Utc>>,
+}
+
+// ========== Report Models ==========
+
+/// 报告模板，存储 Tera HTML 模板、CSS 样式和页面配置。
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ReportTemplate {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub period_type: String,
+    pub template_body: String,
+    pub css_styles: Option<String>,
+    pub page_config: serde_json::Value,
+    pub sections_config: serde_json::Value,
+    pub is_builtin: bool,
+    pub is_active: bool,
+    pub version: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateReportTemplate {
+    pub name: String,
+    pub description: Option<String>,
+    pub period_type: String,
+    pub template_body: String,
+    pub css_styles: Option<String>,
+    pub page_config: Option<serde_json::Value>,
+    pub sections_config: Option<serde_json::Value>,
+}
+
+/// 法律合规报告实例：周报/月报/季报，包含 AI 生成内容和导出文件路径。
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Report {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub report_number: String,
+    pub title: String,
+    pub template_id: Option<Uuid>,
+    pub author_id: Uuid,
+    pub period_type: String,
+    pub period_start: chrono::NaiveDate,
+    pub period_end: chrono::NaiveDate,
+    pub status: String,
+    pub content: serde_json::Value,
+    pub export_pdf_key: Option<String>,
+    pub export_docx_key: Option<String>,
+    pub export_html_key: Option<String>,
+    pub article_count: i32,
+    pub ai_model: Option<String>,
+    pub ai_generated_at: Option<DateTime<Utc>>,
+    pub version: i64,
+    pub published_at: Option<DateTime<Utc>>,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateReport {
+    pub title: String,
+    pub template_id: Option<Uuid>,
+    pub author_id: Uuid,
+    pub period_type: String,
+    pub period_start: chrono::NaiveDate,
+    pub period_end: chrono::NaiveDate,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateReport {
+    pub title: Option<String>,
+    pub content: Option<serde_json::Value>,
+    pub status: Option<String>,
+    pub export_pdf_key: Option<String>,
+    pub export_docx_key: Option<String>,
+    pub export_html_key: Option<String>,
+    pub article_count: Option<i32>,
+    pub ai_model: Option<String>,
+    pub ai_generated_at: Option<DateTime<Utc>>,
+    pub published_at: Option<DateTime<Utc>>,
 }

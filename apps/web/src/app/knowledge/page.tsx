@@ -9,6 +9,7 @@ import { MainContent } from "@/components/layout/main-content";
 import { Sidebar } from "@/components/layout/sidebar";
 import {
 	useKnowledgeBackfill,
+	useKnowledgeLlmBackfill,
 	useKnowledgeSearchEntities,
 	useKnowledgeTopEntities,
 } from "@/hooks/use-knowledge";
@@ -25,6 +26,7 @@ export default function KnowledgePage() {
 	const topQuery = useKnowledgeTopEntities(50);
 	const searchQuery = useKnowledgeSearchEntities(searchTerm, 50);
 	const backfillMutation = useKnowledgeBackfill();
+	const llmBackfillMutation = useKnowledgeLlmBackfill();
 
 	const { success: toastSuccess, error: toastError } = useToast();
 
@@ -63,7 +65,29 @@ export default function KnowledgePage() {
 		);
 	}, [backfillMutation, t, toastError, toastSuccess]);
 
+	const handleLlmBackfill = useCallback(() => {
+		llmBackfillMutation.mutate(
+			{ limit: 200 },
+			{
+				onSuccess: (data) => {
+					toastSuccess(
+						t("LLM entity extraction started"),
+						t("{count} articles enqueued for AI entity extraction", {
+							count: (data as { articles_enqueued: number }).articles_enqueued,
+						}),
+					);
+				},
+				onError: (cause) => {
+					const message =
+						cause instanceof Error ? cause.message : t("LLM backfill failed");
+					toastError(t("LLM backfill failed"), message);
+				},
+			},
+		);
+	}, [llmBackfillMutation, t, toastError, toastSuccess]);
+
 	const onBackfill = mode === "top" ? handleBackfill : null;
+	const onLlmBackfill = mode === "top" ? handleLlmBackfill : null;
 
 	return (
 		<ProtectedRoute>
@@ -97,6 +121,8 @@ export default function KnowledgePage() {
 								onSelect={onSelect}
 								onBackfill={onBackfill}
 								backfillPending={backfillMutation.isPending}
+								onLlmBackfill={onLlmBackfill}
+								llmBackfillPending={llmBackfillMutation.isPending}
 							/>
 
 							<KnowledgeCanvas
