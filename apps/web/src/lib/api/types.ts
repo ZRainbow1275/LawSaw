@@ -1425,6 +1425,32 @@ export function assertKnowledgeBackfillResponse(
 
 // ── Reports ─────────────────────────────────────────────────────────
 
+export const REPORT_STATUSES = [
+	"draft",
+	"generating",
+	"generated",
+	"review",
+	"approved",
+	"published",
+	"archived",
+	"error",
+] as const;
+
+export type ReportStatus = (typeof REPORT_STATUSES)[number];
+
+export const REPORT_PERIOD_TYPES = [
+	"weekly",
+	"monthly",
+	"quarterly",
+	"custom",
+] as const;
+
+export type ReportPeriodType = (typeof REPORT_PERIOD_TYPES)[number];
+
+export const REPORT_EXPORT_FORMATS = ["pdf", "docx", "html"] as const;
+
+export type ReportExportFormat = (typeof REPORT_EXPORT_FORMATS)[number];
+
 export interface Report {
 	id: string;
 	tenant_id: string;
@@ -1435,7 +1461,7 @@ export interface Report {
 	period_type: string;
 	period_start: string;
 	period_end: string;
-	status: string;
+	status: ReportStatus;
 	content: Record<string, unknown>;
 	export_pdf_key: string | null;
 	export_docx_key: string | null;
@@ -1522,31 +1548,6 @@ export interface TenantDetail extends Tenant {
 
 // ── Report Assertions ───────────────────────────────────────────────
 
-const REPORT_STATUSES = [
-	"draft",
-	"generating",
-	"generated",
-	"review",
-	"published",
-	"archived",
-	"error",
-] as const;
-
-export type ReportStatus = (typeof REPORT_STATUSES)[number];
-
-const REPORT_PERIOD_TYPES = [
-	"weekly",
-	"monthly",
-	"quarterly",
-	"custom",
-] as const;
-
-export type ReportPeriodType = (typeof REPORT_PERIOD_TYPES)[number];
-
-const REPORT_EXPORT_FORMATS = ["pdf", "docx", "html"] as const;
-
-export type ReportExportFormat = (typeof REPORT_EXPORT_FORMATS)[number];
-
 export function assertReport(
 	value: unknown,
 	path = "report",
@@ -1572,7 +1573,11 @@ export function assertReport(
 		`${path}.period_start`,
 	);
 	assertString(getRequired(value, "period_end", path), `${path}.period_end`);
-	assertString(getRequired(value, "status", path), `${path}.status`);
+	assertOneOf(
+		getRequired(value, "status", path),
+		`${path}.status`,
+		REPORT_STATUSES,
+	);
 	const content = getRequired(value, "content", path);
 	assertRecord(content, `${path}.content`);
 	assertNullable(

@@ -8,7 +8,7 @@ import {
 	useGenerateReport,
 	useReports,
 } from "@/hooks/use-reports";
-import type { Report } from "@/lib/api/types";
+import type { Report, ReportPeriodType, ReportStatus } from "@/lib/api/types";
 import { useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -44,6 +44,7 @@ const STATUS_OPTIONS = [
 	"generating",
 	"generated",
 	"review",
+	"approved",
 	"published",
 	"archived",
 	"error",
@@ -67,8 +68,8 @@ export function ReportList({
 	onExportClick,
 }: ReportListProps) {
 	const t = useT();
-	const [statusFilter, setStatusFilter] = useState("");
-	const [periodFilter, setPeriodFilter] = useState("");
+	const [statusFilter, setStatusFilter] = useState<ReportStatus | "">("");
+	const [periodFilter, setPeriodFilter] = useState<ReportPeriodType | "">("");
 	const [page, setPage] = useState(0);
 
 	const offset = page * PAGE_SIZE;
@@ -114,6 +115,7 @@ export function ReportList({
 		generating: t("Generating"),
 		generated: t("Generated"),
 		review: t("In Review"),
+		approved: t("Approved"),
 		published: t("Published"),
 		archived: t("Archived"),
 		error: t("Error"),
@@ -134,7 +136,7 @@ export function ReportList({
 				<select
 					value={statusFilter}
 					onChange={(e) => {
-						setStatusFilter(e.target.value);
+						setStatusFilter(e.target.value as ReportStatus | "");
 						setPage(0);
 					}}
 					className={selectClassName}
@@ -150,7 +152,7 @@ export function ReportList({
 				<select
 					value={periodFilter}
 					onChange={(e) => {
-						setPeriodFilter(e.target.value);
+						setPeriodFilter(e.target.value as ReportPeriodType | "");
 						setPage(0);
 					}}
 					className={selectClassName}
@@ -283,6 +285,7 @@ export function ReportList({
 												</Button>
 											)}
 											{(report.status === "generated" ||
+												report.status === "approved" ||
 												report.status === "published") && (
 												<Button
 													variant="ghost"

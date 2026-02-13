@@ -8,7 +8,7 @@ import {
 	useReport,
 	useTransitionReportStatus,
 } from "@/hooks/use-reports";
-import type { Report } from "@/lib/api/types";
+import type { Report, ReportStatus } from "@/lib/api/types";
 import { useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -85,7 +85,7 @@ export function ReportDetail({
 
 	const isBusy = transitionStatus.isPending || generateReport.isPending;
 
-	const handleTransition = (targetStatus: string) => {
+	const handleTransition = (targetStatus: ReportStatus) => {
 		transitionStatus.mutate({ id: reportId, target_status: targetStatus });
 	};
 
@@ -203,6 +203,28 @@ export function ReportDetail({
 						<>
 							<Button
 								size="sm"
+								onClick={() => handleTransition("approved")}
+								disabled={isBusy}
+							>
+								<CheckCircle aria-hidden="true" className="h-4 w-4" />
+								{t("Approve")}
+							</Button>
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => handleTransition("draft")}
+								disabled={isBusy}
+							>
+								<XCircle aria-hidden="true" className="h-4 w-4" />
+								{t("Reject")}
+							</Button>
+						</>
+					)}
+
+					{report.status === "approved" && (
+						<>
+							<Button
+								size="sm"
 								onClick={() => handleTransition("published")}
 								disabled={isBusy}
 							>
@@ -216,7 +238,15 @@ export function ReportDetail({
 								disabled={isBusy}
 							>
 								<XCircle aria-hidden="true" className="h-4 w-4" />
-								{t("Reject")}
+								{t("Revoke")}
+							</Button>
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => onExportClick(report)}
+							>
+								<Download aria-hidden="true" className="h-4 w-4" />
+								{t("Export")}
 							</Button>
 						</>
 					)}

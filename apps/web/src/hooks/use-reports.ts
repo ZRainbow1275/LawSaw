@@ -6,6 +6,7 @@ import {
 	type ReportExportFormat,
 	type ReportListResponse,
 	type ReportPeriodType,
+	type ReportStatus,
 	type ReportTaskEnqueuedResponse,
 	type ReportTemplate,
 	assertDeleteResponse,
@@ -24,8 +25,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 interface ReportFilters {
 	limit?: number;
 	offset?: number;
-	status?: string;
-	period_type?: string;
+	status?: ReportStatus;
+	period_type?: ReportPeriodType;
 	author_id?: string;
 	date_from?: string;
 	date_to?: string;
@@ -135,7 +136,7 @@ export function useDeleteReport() {
 
 interface TransitionStatusInput {
 	id: string;
-	target_status: string;
+	target_status: ReportStatus;
 }
 
 export function useTransitionReportStatus() {
