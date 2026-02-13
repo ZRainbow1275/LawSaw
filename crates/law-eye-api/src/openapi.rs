@@ -30,6 +30,8 @@ impl Modify for SecurityAddon {
     ),
     paths(
         crate::routes::health::health_check,
+        crate::routes::health::ready_check,
+        crate::routes::health::live_check,
         crate::routes::health::slow_queries,
         crate::routes::auth::register,
         crate::routes::auth::login,
@@ -57,6 +59,7 @@ impl Modify for SecurityAddon {
         crate::routes::articles::command::publish_article,
         crate::routes::articles::command::archive_article,
         crate::routes::articles::command::batch_update_status,
+        crate::routes::articles::command::restore_article,
         crate::routes::categories::list_categories,
         crate::routes::sources::list_sources,
         crate::routes::sources::get_source_stats,

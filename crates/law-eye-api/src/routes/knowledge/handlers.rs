@@ -214,7 +214,7 @@ pub(crate) async fn backfill_llm(
         };
         if let Err(e) = state
             .task_queue
-            .enqueue("queue:ai", &task)
+            .enqueue_retryable("queue:ai", task)
             .await
         {
             tracing::warn!(

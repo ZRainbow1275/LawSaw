@@ -735,36 +735,60 @@ impl Worker {
                 last_scheduler = Instant::now();
             }
 
-            if let Some(reserved) = self
+            match self
                 .task_queue
                 .reserve_retryable::<IngestTask>(QUEUE_INGEST, 5)
-                .await?
+                .await
             {
-                self.handle_ingest_reserved(reserved).await;
+                Ok(Some(reserved)) => {
+                    self.handle_ingest_reserved(reserved).await;
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    error!("Failed to reserve from {}: {}", QUEUE_INGEST, e);
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    continue;
+                }
             }
 
             if self.shutdown.load(Ordering::Relaxed) {
                 break;
             }
 
-            if let Some(reserved) = self
+            match self
                 .task_queue
                 .reserve_retryable::<AiTask>(QUEUE_AI, 1)
-                .await?
+                .await
             {
-                self.handle_ai_reserved(reserved).await;
+                Ok(Some(reserved)) => {
+                    self.handle_ai_reserved(reserved).await;
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    error!("Failed to reserve from {}: {}", QUEUE_AI, e);
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    continue;
+                }
             }
 
             if self.shutdown.load(Ordering::Relaxed) {
                 break;
             }
 
-            if let Some(reserved) = self
+            match self
                 .task_queue
                 .reserve_retryable::<PushTask>(QUEUE_PUSH, 1)
-                .await?
+                .await
             {
-                self.handle_push_reserved(reserved).await;
+                Ok(Some(reserved)) => {
+                    self.handle_push_reserved(reserved).await;
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    error!("Failed to reserve from {}: {}", QUEUE_PUSH, e);
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    continue;
+                }
             }
 
             if self.shutdown.load(Ordering::Relaxed) {
@@ -772,12 +796,20 @@ impl Worker {
             }
 
             // 报告导出队列
-            if let Some(reserved) = self
+            match self
                 .task_queue
                 .reserve_retryable::<ReportExportTask>(QUEUE_REPORT_EXPORT, 1)
-                .await?
+                .await
             {
-                self.handle_report_export_reserved(reserved).await;
+                Ok(Some(reserved)) => {
+                    self.handle_report_export_reserved(reserved).await;
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    error!("Failed to reserve from {}: {}", QUEUE_REPORT_EXPORT, e);
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    continue;
+                }
             }
 
             if self.shutdown.load(Ordering::Relaxed) {
@@ -785,12 +817,20 @@ impl Worker {
             }
 
             // 报告 AI 生成队列
-            if let Some(reserved) = self
+            match self
                 .task_queue
                 .reserve_retryable::<ReportGenerateTask>(QUEUE_REPORT_GENERATE, 1)
-                .await?
+                .await
             {
-                self.handle_report_generate_reserved(reserved).await;
+                Ok(Some(reserved)) => {
+                    self.handle_report_generate_reserved(reserved).await;
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    error!("Failed to reserve from {}: {}", QUEUE_REPORT_GENERATE, e);
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    continue;
+                }
             }
         }
 

@@ -1,7 +1,7 @@
 # 命题7：技术债清理 — 执行摘要
 
 > **最后更新**: 2026-02-13
-> **总体进度**: 编译修复 + 迁移清理 + 服务注册 + Mutex 毒锁恢复 + 死代码清理 + OpenAPI 补全 + TS 类型修复 **全部完成**, R1-R6 审计修复 **全部通过**
+> **总体进度**: 编译修复 + 迁移清理 + 服务注册 + Mutex 毒锁恢复 + 死代码清理 + OpenAPI 补全 + TS 类型修复 **全部完成**, R1-R10 审计修复 **全部通过**, Worker 弹性恢复 + RLS 认证兼容 + sessions INSERT 策略 **已完成**
 
 ---
 
@@ -185,9 +185,9 @@
 6. Mutex 毒锁安全 (17 处 poison recovery) -- **已达成**
 7. 死代码清除 (AuthError/CrawlTimer/stale allow) -- **已达成**
 
-## 审计修复总记录 (2026-02-13 R1-R6)
+## 审计修复总记录 (2026-02-13 R1-R10)
 
-### R1-R6 轮次概览
+### R1-R10 轮次概览
 
 | 轮次 | 主题 | 修复数量 | 关键修复 |
 |------|------|---------|---------|
@@ -197,6 +197,10 @@
 | R4 | 功能阻断 | 3 | Worker queue:report 消费者, 报告编号竞态, 风险阈值统一 |
 | R5 | 稳定性 | 5 | 连接池加固, 批量 upsert, Mutex 毒锁, CircuitBreaker |
 | R6 | 代码质量 | 6 | 死代码清理, OpenAPI 补全, enqueue_retryable, 缓存失效精简 |
+| R7 | 深度审计 (报告/租户/性能/技术债) | 20 | JSONB NOT NULL 约束, 全量审计验证 |
+| R8 | 安全深度审计 + 弹性恢复 | 4 | Worker 弹性恢复, RLS 认证兼容, OpenAPI 完善, 部署配置 |
+| R9 | 回归验证 | 0 | 全面验证无回归 |
+| R10 | 最终回归验证 | 3 | sessions INSERT 策略, knowledge enqueue_retryable, restore_article OpenAPI |
 
 ### P0 级修复 (安全/功能阻断)
 
@@ -232,3 +236,65 @@
 | 18 | enqueue 未使用 retryable 版本 | 报告导出改用 enqueue_retryable | `law-eye-api/src/routes/reports/handlers.rs` |
 | 19 | export_report 未检查内容非空 | 入队前校验 content != {} | `law-eye-api/src/routes/reports/handlers.rs` |
 | 20 | 6 处冗余 overview 缓存失效 | 精简为仅 invalidate "statistics" | `law-eye-api/src/routes/articles.rs` |
+
+### R7 深度审计修复
+
+| # | 问题 | 修复方案 | 文件 |
+|---|------|----------|------|
+| 21 | Report 模型 JSONB 字段可能为 NULL | 创建 037_jsonb_not_null.sql 迁移, 为 content/page_config/sections_config 等添加 NOT NULL DEFAULT | `law-eye-db/migrations/037_jsonb_not_null.sql` |
+
+### R8 安全深度审计修复
+
+| # | 问题 | 影响范围 | 修复方案 | 文件 |
+|---|------|----------|----------|------|
+| 22 | **P0** Worker main loop 5 处 `reserve_retryable` 使用 `.await?`，Redis 断连导致进程退出 | Worker 可用性 | 改为 `match` + error log + `sleep(2s)` + `continue` 弹性恢复 | `law-eye-worker/src/main.rs` |
+| 23 | **P1** users/sessions 表 RLS 策略与认证流程不兼容（SET ROLE 后 tenant_id 未设置时所有查询返回空） | 认证功能 | 创建 038_auth_compatible_rls.sql，拆分 RLS 为 SELECT/INSERT/UPDATE/DELETE 精细策略 | `law-eye-db/migrations/038_auth_compatible_rls.sql` |
+| 24 | **P1** OpenAPI 缺少 ready_check + live_check 端点注册 | API 文档完整性 | 在 openapi.rs paths 列表添加两个端点 | `law-eye-api/src/openapi.rs` |
+| 25 | **P2** .env.example 缺少 SESSION_ROLE 配置 | 部署安全 | 添加 `LAW_EYE__DATABASE__SESSION_ROLE=law_eye_app` 配置及文档说明 | `.env.example` |
+
+### R8 审计验证通过的安全项
+
+以下项目经过深度审计确认安全，无需修复：
+
+| 审计项 | 状态 | 说明 |
+|--------|------|------|
+| Worker 连接池 SET ROLE | **安全** | 使用 `create_pool_with_session_role` + `session_role` 参数 |
+| MCP 服务器 RLS | **安全** | 硬编码 `Some("law_eye_app")`，R3 已修复 |
+| sessions 表 RLS (WITH CHECK) | **安全** | 仅 USING 子句, INSERT 由 tower-sessions 框架管理 |
+| categories 无 RLS | **安全** | 全局参考数据, 无 tenant_id 列 |
+| queue maintenance 错误处理 | **安全** | 已使用 `if let Err(e)` 优雅降级 |
+| DLQ + stuck task recovery | **安全** | 反序列化失败/重试耗尽进 DLQ, stuck task 每 15s 回收 |
+| 连接池参数 | **安全** | min=1, idle=600s, lifetime=1800s, acquire=30s, test_before_acquire |
+| Auth session cycle_id | **安全** | R6 已在 4 个登录点添加 `session.cycle_id()` |
+| Cookie httpOnly/secure | **安全** | httpOnly(true), secure(PRODUCTION), SameSite::Lax |
+
+### R10 最终回归修复
+
+| # | 问题 | 等级 | 修复方案 | 文件 |
+|---|------|------|----------|------|
+| 26 | **sessions 表缺少 INSERT 策略** — 038 删除了 032 的 ALL 策略但未创建 FOR INSERT，tower-sessions 无法创建新 session | **P0** | 在 038 中添加 `sessions_insert_policy WITH CHECK (true)` | `038_auth_compatible_rls.sql` |
+| 27 | **knowledge backfill 使用 `enqueue` 而非 `enqueue_retryable`** — Worker 反序列化失败（缺少 RetryableTask 包装） | **P1** | 改为 `enqueue_retryable("queue:ai", task)` | `knowledge/handlers.rs` |
+| 28 | **`restore_article` 未注册到 OpenAPI** — Swagger 文档缺少该端点 | **P2** | 在 openapi.rs paths 添加 `restore_article` | `openapi.rs` |
+
+### R10 审计验证通过的项目
+
+| 审计项 | 状态 | 说明 |
+|--------|------|------|
+| Worker 主循环 5 个 reserve match 模式 | **通过** | 全部 5/5 使用 `Err => error!+sleep+continue` |
+| Worker 子函数 `.await?` 传播 | **通过** | 全部被 handle_*_reserved 三路匹配捕获 |
+| Queue enqueue_retryable 定义 | **通过** | 第 244 行, 含 ordering 变体 |
+| ReportExportTask / ReportGenerateTask | **通过** | 第 876/887 行已定义 |
+| Worker Cargo.toml 依赖完整性 | **通过** | 16 个依赖全部完整 |
+| 生产代码无裸 unwrap/expect | **通过** | 仅 test 模块中存在 |
+| 迁移序列 001-038 完整 | **通过** | 仅 017 为已知间隙 |
+| RLS 覆盖 32/32 张表 | **通过** | 含 tenant_configs/tenant_usage |
+| SQL 注入零风险 | **通过** | statistics.rs 白名单 match 守卫 |
+| AppState 23 个服务完整 | **通过** | 无遗漏 |
+| 前端类型全部对齐 | **通过** | Report/AuthResponse/User/TenantConfig/StatisticsOverview |
+| 路由 18 个子模块全部挂载 | **通过** | 含 v1/v2 双版本 |
+| TODO/FIXME/HACK 零标记 | **通过** | 29 个路由文件无标记 |
+| 缓存失效 6 个写操作 | **通过** | 全部调用 invalidate_resource |
+| Mutex poison recovery | **通过** | 零 .lock().expect/.unwrap() |
+| 错误类型一致性 | **通过** | 全部使用 AppError |
+| .env.example SESSION_ROLE | **通过** | 第 79 行 |
+| summary_struct nullable JSONB | **安全** | Rust 模型使用 Option<Value> |
