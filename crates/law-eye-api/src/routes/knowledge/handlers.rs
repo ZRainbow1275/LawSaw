@@ -186,24 +186,37 @@ pub(crate) async fn backfill_llm(
     require_articles_read(&state, user.tenant_id, user.id).await?;
 
     let limit = clamp_limit(req.limit, 100, 1_000);
+    let tenant_id = user.tenant_id;
 
     // Find articles that have content but no article_entities link
-    let article_ids: Vec<uuid::Uuid> = sqlx::query_scalar(
-        r#"
-        SELECT a.id
-        FROM articles a
-        LEFT JOIN article_entities ae ON ae.article_id = a.id
-        WHERE a.content IS NOT NULL
-            AND LENGTH(TRIM(COALESCE(a.content, ''))) > 0
-            AND ae.id IS NULL
-        ORDER BY a.published_at DESC NULLS LAST
-        LIMIT $1
-        "#,
+    // Must use with_tenant_tx to ensure RLS sees the correct tenant context
+    let article_ids: Vec<uuid::Uuid> = law_eye_core::with_tenant_tx(
+        &state.pool,
+        tenant_id,
+        |tx| {
+            Box::pin(async move {
+                let ids = sqlx::query_scalar(
+                    r#"
+                    SELECT a.id
+                    FROM articles a
+                    LEFT JOIN article_entities ae ON ae.article_id = a.id
+                    WHERE a.content IS NOT NULL
+                        AND LENGTH(TRIM(COALESCE(a.content, ''))) > 0
+                        AND ae.id IS NULL
+                    ORDER BY a.published_at DESC NULLS LAST
+                    LIMIT $1
+                    "#,
+                )
+                .bind(limit)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| law_eye_common::Error::Database(e.to_string()))?;
+                Ok(ids)
+            })
+        },
     )
-    .bind(limit)
-    .fetch_all(&state.pool)
     .await
-    .map_err(|e| AppError::internal(format!("Database error: {}", e)))?;
+    .map_err(AppError::from)?;
 
     let mut enqueued: i64 = 0;
     for article_id in &article_ids {

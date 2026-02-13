@@ -1,7 +1,7 @@
 # 命题7：技术债清理 — 执行摘要
 
 > **最后更新**: 2026-02-13
-> **总体进度**: 编译修复 + 迁移清理 + 服务注册 + Mutex 毒锁恢复 + 死代码清理 + OpenAPI 补全 + TS 类型修复 **全部完成**, R1-R10 审计修复 **全部通过**, Worker 弹性恢复 + RLS 认证兼容 + sessions INSERT 策略 **已完成**
+> **总体进度**: 编译修复 + 迁移清理 + 服务注册 + Mutex 毒锁恢复 + 死代码清理 + OpenAPI 补全 + TS 类型修复 **全部完成**, R1-R11 审计修复 **全部通过**, Worker 弹性恢复 + RLS 认证兼容 + sessions INSERT 策略 + 注册 RLS 放宽 + JSONB NOT NULL 安全 + backfill_llm RLS 修复 **已完成**
 
 ---
 
@@ -201,6 +201,7 @@
 | R8 | 安全深度审计 + 弹性恢复 | 4 | Worker 弹性恢复, RLS 认证兼容, OpenAPI 完善, 部署配置 |
 | R9 | 回归验证 | 0 | 全面验证无回归 |
 | R10 | 最终回归验证 | 3 | sessions INSERT 策略, knowledge enqueue_retryable, restore_article OpenAPI |
+| R11 | Opus 级深度审计 | 4 | 注册 RLS 放宽, backfill_llm RLS 修复, JSONB NOT NULL 安全, 迁移幂等性 |
 
 ### P0 级修复 (安全/功能阻断)
 
@@ -286,7 +287,7 @@
 | ReportExportTask / ReportGenerateTask | **通过** | 第 876/887 行已定义 |
 | Worker Cargo.toml 依赖完整性 | **通过** | 16 个依赖全部完整 |
 | 生产代码无裸 unwrap/expect | **通过** | 仅 test 模块中存在 |
-| 迁移序列 001-038 完整 | **通过** | 仅 017 为已知间隙 |
+| 迁移序列 001-038 完整 | **通过** | 仅 017 为已知间隙, 039 已追加 |
 | RLS 覆盖 32/32 张表 | **通过** | 含 tenant_configs/tenant_usage |
 | SQL 注入零风险 | **通过** | statistics.rs 白名单 match 守卫 |
 | AppState 23 个服务完整 | **通过** | 无遗漏 |
@@ -298,3 +299,27 @@
 | 错误类型一致性 | **通过** | 全部使用 AppError |
 | .env.example SESSION_ROLE | **通过** | 第 79 行 |
 | summary_struct nullable JSONB | **安全** | Rust 模型使用 Option<Value> |
+
+### R11 Opus 级深度审计修复 (2026-02-13)
+
+4 名 Opus 级审计 agent 分别从 Worker/Queue、RLS/Auth、数据模型、API/Deploy 四个维度发起独立深度审计，发现 4 个跨迁移策略盲区：
+
+| # | 问题 | 等级 | 修复方案 | 文件 |
+|---|------|------|----------|------|
+| 29 | **注册流程被 RLS 阻断** — 038 的 `users_insert_policy` 在 `app.tenant_id = ''` 时阻止 INSERT；032 的 `roles_tenant_isolation` ALL 策略阻止 SELECT roles；032 的 `user_roles_tenant_isolation` ALL 策略阻止 INSERT user_roles | **P0** | 创建 039 迁移：放宽 users INSERT、拆分 roles/user_roles ALL→per-operation 策略 | `039_auth_registration_rls.sql` |
+| 30 | **backfill_llm 绕过 RLS 获取空结果** — 使用 `&state.pool` 直连执行 articles 查询，`app.tenant_id` 未设置导致 RLS 返回空集 | **P1** | 替换为 `with_tenant_tx(&state.pool, tenant_id, \|tx\| ...)` | `knowledge/handlers.rs` |
+| 31 | **users.preferences / api_keys.permissions JSONB 无 NOT NULL** — SQL DEFAULT 存在但无 NOT NULL 约束，已有 NULL 值导致 Rust `serde_json::Value` panic | **P2** | 回填 NULL + ALTER SET NOT NULL | `039_auth_registration_rls.sql` |
+| 32 | **039 迁移非幂等** — 8 个 CREATE POLICY 缺少 `DROP POLICY IF EXISTS` 前缀，重跑报错 | **P2** | 为全部 8 个策略创建添加 DROP IF EXISTS | `039_auth_registration_rls.sql` |
+
+### R11 审计验证通过的项目
+
+| 审计项 | 状态 | 说明 |
+|--------|------|------|
+| 注册 22 个 SQL 操作 RLS 覆盖 | **通过** | register + oauth_callback 全链路 22/22 PASS |
+| 认证后租户隔离完整性 | **通过** | 所有写操作保持严格隔离 |
+| KnowledgeService 所有方法 RLS | **通过** | 全部使用 `with_tenant_tx` |
+| 路由无 direct pool 访问 (tenant data) | **通过** | 仅 health.rs 使用直连 (SELECT 1, pg_stat) |
+| 037 与 039 JSONB NOT NULL 列无重叠 | **通过** | 037: articles/entities/entity_relations/crawl_logs, 039: users/api_keys |
+| 迁移序列 001-039 完整 | **通过** | 仅 017 为已知间隙 |
+| 039 迁移幂等性 | **通过** | 全部 CREATE POLICY 前有 DROP IF EXISTS |
+| 安全风险评估 | **可接受** | 放宽策略仅在 `app.tenant_id = ''` 短暂窗口生效，FK 约束保证数据完整性 |
