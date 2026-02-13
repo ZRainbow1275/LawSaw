@@ -1511,6 +1511,166 @@ export interface TenantDetail extends Tenant {
 	usage: TenantUsage;
 }
 
+// ── Report Assertions ───────────────────────────────────────────────
+
+const REPORT_STATUSES = [
+	"draft",
+	"generating",
+	"review",
+	"approved",
+	"published",
+	"archived",
+] as const;
+
+export type ReportStatus = (typeof REPORT_STATUSES)[number];
+
+const REPORT_PERIOD_TYPES = [
+	"weekly",
+	"monthly",
+	"quarterly",
+	"custom",
+] as const;
+
+export type ReportPeriodType = (typeof REPORT_PERIOD_TYPES)[number];
+
+const REPORT_EXPORT_FORMATS = ["pdf", "docx", "html"] as const;
+
+export type ReportExportFormat = (typeof REPORT_EXPORT_FORMATS)[number];
+
+export function assertReport(
+	value: unknown,
+	path = "report",
+): asserts value is Report {
+	assertRecord(value, path);
+
+	assertString(getRequired(value, "id", path), `${path}.id`);
+	assertString(getRequired(value, "tenant_id", path), `${path}.tenant_id`);
+	assertString(
+		getRequired(value, "report_number", path),
+		`${path}.report_number`,
+	);
+	assertString(getRequired(value, "title", path), `${path}.title`);
+	assertNullable(
+		getRequired(value, "template_id", path),
+		`${path}.template_id`,
+		assertString,
+	);
+	assertString(getRequired(value, "author_id", path), `${path}.author_id`);
+	assertString(getRequired(value, "period_type", path), `${path}.period_type`);
+	assertString(
+		getRequired(value, "period_start", path),
+		`${path}.period_start`,
+	);
+	assertString(getRequired(value, "period_end", path), `${path}.period_end`);
+	assertString(getRequired(value, "status", path), `${path}.status`);
+	const content = getRequired(value, "content", path);
+	assertRecord(content, `${path}.content`);
+	assertNullable(
+		getRequired(value, "export_pdf_key", path),
+		`${path}.export_pdf_key`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "export_docx_key", path),
+		`${path}.export_docx_key`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "export_html_key", path),
+		`${path}.export_html_key`,
+		assertString,
+	);
+	assertNumber(
+		getRequired(value, "article_count", path),
+		`${path}.article_count`,
+	);
+	assertNullable(
+		getRequired(value, "ai_model", path),
+		`${path}.ai_model`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "ai_generated_at", path),
+		`${path}.ai_generated_at`,
+		assertString,
+	);
+	assertNumber(getRequired(value, "version", path), `${path}.version`);
+	assertNullable(
+		getRequired(value, "published_at", path),
+		`${path}.published_at`,
+		assertString,
+	);
+	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
+	assertString(getRequired(value, "updated_at", path), `${path}.updated_at`);
+}
+
+export function assertReportListResponse(
+	value: unknown,
+	path = "reportList",
+): asserts value is ReportListResponse {
+	assertRecord(value, path);
+
+	const data = getRequired(value, "data", path);
+	assertArray(data, `${path}.data`, assertReport);
+
+	assertNumber(getRequired(value, "total", path), `${path}.total`);
+	assertNumber(getRequired(value, "limit", path), `${path}.limit`);
+	assertNumber(getRequired(value, "offset", path), `${path}.offset`);
+}
+
+export function assertReportTemplate(
+	value: unknown,
+	path = "reportTemplate",
+): asserts value is ReportTemplate {
+	assertRecord(value, path);
+
+	assertString(getRequired(value, "id", path), `${path}.id`);
+	assertString(getRequired(value, "tenant_id", path), `${path}.tenant_id`);
+	assertString(getRequired(value, "name", path), `${path}.name`);
+	assertNullable(
+		getRequired(value, "description", path),
+		`${path}.description`,
+		assertString,
+	);
+	assertString(getRequired(value, "period_type", path), `${path}.period_type`);
+	assertString(
+		getRequired(value, "template_body", path),
+		`${path}.template_body`,
+	);
+	assertNullable(
+		getRequired(value, "css_styles", path),
+		`${path}.css_styles`,
+		assertString,
+	);
+	const pageConfig = getRequired(value, "page_config", path);
+	assertRecord(pageConfig, `${path}.page_config`);
+	// sections_config is unknown (can be any JSON)
+	getRequired(value, "sections_config", path);
+	const isBuiltin = getRequired(value, "is_builtin", path);
+	assertBoolean(isBuiltin, `${path}.is_builtin`);
+	const isActive = getRequired(value, "is_active", path);
+	assertBoolean(isActive, `${path}.is_active`);
+	assertNumber(getRequired(value, "version", path), `${path}.version`);
+	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
+	assertString(getRequired(value, "updated_at", path), `${path}.updated_at`);
+}
+
+export function assertReportTemplateList(
+	value: unknown,
+	path = "reportTemplates",
+): asserts value is ReportTemplate[] {
+	assertArray(value, path, assertReportTemplate);
+}
+
+export function assertReportTaskEnqueuedResponse(
+	value: unknown,
+	path = "reportTaskEnqueued",
+): asserts value is ReportTaskEnqueuedResponse {
+	assertRecord(value, path);
+	assertString(getRequired(value, "message", path), `${path}.message`);
+	assertString(getRequired(value, "report_id", path), `${path}.report_id`);
+}
+
 // ── Statistics Overview ─────────────────────────────────────────────
 
 export interface StatisticsOverview {

@@ -8,6 +8,7 @@ import { useSidebarStore } from "@/stores/sidebar-store";
 import { AnimatePresence, motion } from "framer-motion";
 import {
 	ChevronRight,
+	ClipboardList,
 	Database,
 	Eye,
 	FileText,
@@ -67,6 +68,7 @@ const navigation = [
 	{ name: "Dashboard", href: "/", icon: LayoutDashboard },
 	{ name: "All articles", href: "/articles", icon: FileText },
 	{ name: "Sources", href: "/sources", icon: Rss },
+	{ name: "Reports", href: "/reports", icon: ClipboardList },
 	{ name: "Analytics", href: "/analytics", icon: TrendingUp },
 	{ name: "Knowledge Graph", href: "/knowledge", icon: Share2 },
 	{ name: "Data", href: "/data", icon: Database },

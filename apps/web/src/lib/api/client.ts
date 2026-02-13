@@ -594,6 +594,24 @@ export class ApiClient {
 		);
 	}
 
+	async put<T>(
+		endpoint: string,
+		data: unknown,
+		validate?: ResponseValidator<T>,
+		options: ApiRequestInit = {},
+	): Promise<T> {
+		return this.request<T>(
+			endpoint,
+			{
+				...options,
+				method: "PUT",
+				body: JSON.stringify(data),
+				retry: false,
+			},
+			validate,
+		);
+	}
+
 	async delete<T>(
 		endpoint: string,
 		validate?: ResponseValidator<T>,
