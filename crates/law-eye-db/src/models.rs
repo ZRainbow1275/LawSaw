@@ -229,6 +229,7 @@ pub struct PasswordResetToken {
     pub user_id: Uuid,
     pub token_hash: String,
     pub token_prefix: String,
+    /// DDL: `INET` -- queried via `requested_ip::text AS requested_ip`.
     pub requested_ip: Option<String>,
     pub requested_user_agent: Option<String>,
     pub expires_at: DateTime<Utc>,
@@ -244,6 +245,7 @@ pub struct EmailVerificationToken {
     pub email: String,
     pub token_hash: String,
     pub token_prefix: String,
+    /// DDL: `INET` -- queried via `requested_ip::text AS requested_ip`.
     pub requested_ip: Option<String>,
     pub requested_user_agent: Option<String>,
     pub expires_at: DateTime<Utc>,
@@ -327,13 +329,26 @@ pub struct CreateWebPushSubscription {
     pub user_agent: Option<String>,
 }
 
+/// Audit log entry mapped from the `audit_logs` table.
+///
+/// **Type mapping notes** (DDL vs Rust):
+/// - `prev_hash` / `hash`: DDL is `BYTEA`. SQL queries **must** use
+///   `encode(prev_hash, 'hex') AS prev_hash` / `encode(hash, 'hex') AS hash`
+///   so that `FromRow` can deserialize into `String`.
+/// - `ip_address`: DDL is `INET`. SQL queries **must** use
+///   `ip_address::text AS ip_address` on SELECT, and `$N::inet` on INSERT/UPDATE.
+///
+/// **Do NOT use `SELECT *`** against `audit_logs` with this struct; always use
+/// the explicit column list with the casts above.
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct AuditLog {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub seq: i64,
     pub event_version: i32,
+    /// DDL: `BYTEA` -- queried via `encode(prev_hash, 'hex') AS prev_hash`.
     pub prev_hash: Option<String>,
+    /// DDL: `BYTEA` -- queried via `encode(hash, 'hex') AS hash`.
     pub hash: String,
     pub user_id: Option<Uuid>,
     pub action: String,
@@ -341,6 +356,7 @@ pub struct AuditLog {
     pub resource_id: Option<Uuid>,
     pub old_value: Option<serde_json::Value>,
     pub new_value: Option<serde_json::Value>,
+    /// DDL: `INET` -- queried via `ip_address::text AS ip_address`.
     pub ip_address: Option<String>,
     pub user_agent: Option<String>,
     pub created_at: DateTime<Utc>,

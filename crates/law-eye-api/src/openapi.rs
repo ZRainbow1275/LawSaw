@@ -133,6 +133,7 @@ impl Modify for SecurityAddon {
         crate::routes::reports::transition_status,
         crate::routes::reports::generate_report,
         crate::routes::reports::export_report,
+        crate::routes::reports::download_report_export,
         crate::routes::reports::list_templates,
         crate::routes::reports::create_template,
         crate::routes::reports::get_template,

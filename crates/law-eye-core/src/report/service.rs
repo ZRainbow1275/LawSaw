@@ -465,7 +465,7 @@ impl ReportService {
                         article_count = $3,
                         ai_model = $4,
                         ai_generated_at = NOW(),
-                        status = 'draft',
+                        status = 'generated',
                         version = version + 1,
                         updated_at = NOW()
                     WHERE id = $1 AND deleted_at IS NULL

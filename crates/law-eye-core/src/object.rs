@@ -489,6 +489,21 @@ impl ObjectService {
         Ok(())
     }
 
+    /// 直接通过 object_key 从对象存储获取文件流（无需 objects 表记录）。
+    /// 适用于报告导出等由 upload_raw_bytes 上传的文件。
+    pub async fn get_stream_by_key(&self, object_key: &str) -> Result<ByteStream> {
+        let resp = self
+            .client
+            .get_object()
+            .bucket(&self.bucket)
+            .key(object_key)
+            .send()
+            .await
+            .map_err(|e| Error::Http(format!("Get object by key failed: {e:?}")))?;
+
+        Ok(resp.body)
+    }
+
     pub async fn delete_object_key(&self, object_key: &str) -> Result<()> {
         self.client
             .delete_object()

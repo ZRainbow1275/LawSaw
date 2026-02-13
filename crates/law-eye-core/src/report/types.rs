@@ -12,8 +12,10 @@ use uuid::Uuid;
 /// 报告生命周期状态，与数据库 CHECK 约束严格对齐。
 ///
 /// 状态流转规则:
-///   draft -> generating -> draft (AI 填充完成)
-///   draft -> review -> approved -> published -> archived
+///   draft -> generating -> generated -> review -> approved -> published -> archived
+///   generating -> error -> draft (生成失败后重新起草)
+///   error -> generating (错误后重试生成)
+///   generated -> draft (生成完成后打回修改)
 ///   review -> draft (退回修改)
 ///   approved -> draft (撤回修改)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -21,10 +23,12 @@ use uuid::Uuid;
 pub enum ReportStatus {
     Draft,
     Generating,
+    Generated,
     Review,
     Approved,
     Published,
     Archived,
+    Error,
 }
 
 impl ReportStatus {
@@ -33,10 +37,12 @@ impl ReportStatus {
         match s {
             "draft" => Some(Self::Draft),
             "generating" => Some(Self::Generating),
+            "generated" => Some(Self::Generated),
             "review" => Some(Self::Review),
             "approved" => Some(Self::Approved),
             "published" => Some(Self::Published),
             "archived" => Some(Self::Archived),
+            "error" => Some(Self::Error),
             _ => None,
         }
     }
@@ -46,10 +52,12 @@ impl ReportStatus {
         match self {
             Self::Draft => "draft",
             Self::Generating => "generating",
+            Self::Generated => "generated",
             Self::Review => "review",
             Self::Approved => "approved",
             Self::Published => "published",
             Self::Archived => "archived",
+            Self::Error => "error",
         }
     }
 
@@ -59,7 +67,12 @@ impl ReportStatus {
             (self, target),
             (Self::Draft, Self::Generating)
                 | (Self::Draft, Self::Review)
-                | (Self::Generating, Self::Draft)
+                | (Self::Generating, Self::Generated)
+                | (Self::Generating, Self::Error)
+                | (Self::Generated, Self::Review)
+                | (Self::Generated, Self::Draft)
+                | (Self::Error, Self::Draft)
+                | (Self::Error, Self::Generating)
                 | (Self::Review, Self::Draft)
                 | (Self::Review, Self::Approved)
                 | (Self::Approved, Self::Draft)

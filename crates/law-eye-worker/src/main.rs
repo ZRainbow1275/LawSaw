@@ -3350,6 +3350,9 @@ impl Worker {
         }
 
         let payload = task.payload.clone();
+        let export_report_id = payload.report_id;
+        let export_tenant_id = payload.tenant_id;
+        let export_format = payload.format.clone();
         let result = timeout(
             Duration::from_secs(TASK_TIMEOUT_REPORT_EXPORT_SECS),
             self.process_report_export_task(payload),
@@ -3371,6 +3374,14 @@ impl Worker {
             }
             Ok(Err(e)) => {
                 let error_msg = sanitize_error_message(e.to_string());
+                error!(
+                    %task_id,
+                    report_id = %export_report_id,
+                    tenant_id = %export_tenant_id,
+                    format = %export_format,
+                    %error_msg,
+                    "Report export task failed"
+                );
                 match self
                     .task_queue
                     .retry_or_dead_letter(queue, task, error_msg)
@@ -3395,6 +3406,14 @@ impl Worker {
             }
             Err(_) => {
                 let error_msg = format!("TASK_TIMEOUT after {}s", TASK_TIMEOUT_REPORT_EXPORT_SECS);
+                error!(
+                    %task_id,
+                    report_id = %export_report_id,
+                    tenant_id = %export_tenant_id,
+                    format = %export_format,
+                    %error_msg,
+                    "Report export task timed out"
+                );
                 match self
                     .task_queue
                     .retry_or_dead_letter(queue, task, error_msg)
@@ -3532,7 +3551,7 @@ impl Worker {
             tenant_id, report_id, chrono::Utc::now().format("%Y%m%d%H%M%S"), ext
         );
 
-        // 5. 上传到对象存储
+        // 5. 上传到对象存储并更新导出路径
         if let Some(ref object_service) = self.object_service {
             object_service
                 .upload_raw_bytes(&object_key, content_type, bytes)
@@ -3545,18 +3564,18 @@ impl Worker {
                 byte_size,
                 "Report export uploaded to object storage"
             );
-        } else {
-            warn!(
-                %report_id,
-                "Object storage not configured, skipping upload"
-            );
-        }
 
-        // 6. 更新报告中的导出路径
-        self.report_service
-            .set_export_key(tenant_id, report_id, format, &object_key)
-            .await
-            .map_err(|e| anyhow::anyhow!("更新导出路径失败: {}", e))?;
+            // 6. 只在上传成功后才更新报告中的导出路径
+            self.report_service
+                .set_export_key(tenant_id, report_id, format, &object_key)
+                .await
+                .map_err(|e| anyhow::anyhow!("更新导出路径失败: {}", e))?;
+        } else {
+            return Err(anyhow::anyhow!(
+                "Object storage not configured, cannot complete report export for report {}",
+                report_id
+            ));
+        }
 
         info!(
             %report_id,
@@ -3699,7 +3718,7 @@ impl Worker {
         }
     }
 
-    /// 报告生成失败时回退状态到 draft，防止报告卡在 generating 状态
+    /// 报告生成失败时回退状态到 draft，防止报告卡在 generating/generated 状态
     async fn rollback_report_status_to_draft(&self, task: &ReportGenerateTask) -> anyhow::Result<()> {
         use law_eye_core::report::ReportStatus;
 
@@ -3710,7 +3729,10 @@ impl Worker {
             .map_err(|e| anyhow::anyhow!("获取报告失败: {}", e))?;
 
         let current_status = ReportStatus::from_db_str(&report.status);
-        if matches!(current_status, Some(ReportStatus::Generating)) {
+        if matches!(
+            current_status,
+            Some(ReportStatus::Generating) | Some(ReportStatus::Generated)
+        ) {
             self.report_service
                 .transition_status(
                     task.tenant_id,
@@ -3722,7 +3744,8 @@ impl Worker {
                 .map_err(|e| anyhow::anyhow!("回退状态失败: {}", e))?;
             warn!(
                 report_id = %task.report_id,
-                "Rolled back report status from generating to draft after failure"
+                from_status = %report.status,
+                "Rolled back report status to draft after failure"
             );
         }
 
@@ -3834,19 +3857,14 @@ impl Worker {
             "data-only"
         };
 
-        // 5. 更新报告内容（update_ai_content 会将 status 设回 draft）
-        self.report_service
+        // 5. 更新报告内容（update_ai_content 会将 status 设为 generated）
+        let updated_report = self
+            .report_service
             .update_ai_content(tenant_id, report_id, content, article_count, ai_model)
             .await
             .map_err(|e| anyhow::anyhow!("更新 AI 内容失败: {}", e))?;
 
-        // 6. 获取更新后的报告，转换状态到 review
-        let updated_report = self
-            .report_service
-            .get_report_by_id(tenant_id, report_id)
-            .await
-            .map_err(|e| anyhow::anyhow!("获取更新后报告失败: {}", e))?;
-
+        // 6. 转换状态: generated -> review（单步 transition，崩溃安全）
         self.report_service
             .transition_status(
                 tenant_id,

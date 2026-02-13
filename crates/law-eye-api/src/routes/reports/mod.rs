@@ -32,6 +32,7 @@ pub fn router() -> Router<AppState> {
         .route("/{id}/transition", post(transition_status))
         .route("/{id}/generate", post(generate_report))
         .route("/{id}/export", post(export_report))
+        .route("/{id}/download/{format}", get(download_report_export))
 }
 
 /// Report template routes: mounted at /api/v1/report-templates
@@ -241,6 +242,33 @@ pub(crate) async fn export_report(
     req: ApiJson<ExportReportRequest>,
 ) -> ApiResult<Json<TaskEnqueuedResponse>> {
     handlers::export_report(state, auth_session, id, req).await
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/reports/{id}/download/{format}",
+    params(
+        ("id" = Uuid, Path, description = "Report ID"),
+        ("format" = String, Path, description = "Export format: pdf, docx, html")
+    ),
+    security(("session" = [])),
+    responses(
+        (status = 200, description = "Export file binary content"),
+        (status = 400, description = "Invalid format", body = ApiError),
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 403, description = "Permission denied", body = ApiError),
+        (status = 404, description = "Export not available or report not found", body = ApiError),
+        (status = 503, description = "Object storage not configured", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
+    ),
+    tag = "reports"
+)]
+pub(crate) async fn download_report_export(
+    state: State<AppState>,
+    auth_session: AuthSession,
+    path: Path<(Uuid, String)>,
+) -> ApiResult<Response> {
+    handlers::download_report_export(state, auth_session, path).await
 }
 
 // ── Template endpoint wrappers with utoipa annotations ────────

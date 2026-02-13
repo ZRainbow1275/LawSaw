@@ -1,6 +1,7 @@
 use axum::{
+    body::Body,
     extract::{Path, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -325,11 +326,29 @@ pub(crate) async fn export_report(
         .await
         .map_err(AppError::from)?;
 
+    // Check report status: only allow export for certain statuses
+    let exportable_statuses = ["review", "approved", "published", "generated"];
+    if !exportable_statuses.contains(&report.status.as_str()) {
+        return Err(AppError::validation(format!(
+            "Cannot export report in status '{}'. Report must be in one of: {}.",
+            report.status,
+            exportable_statuses.join(", ")
+        )));
+    }
+
     // Check report content is not empty before exporting
     if report.content == serde_json::json!({}) {
         return Err(AppError::validation(
             "Report content is empty. Generate content before exporting.",
         ));
+    }
+
+    // For HTML and PDF exports, a template is required
+    if matches!(format, ExportFormat::Html | ExportFormat::Pdf) && report.template_id.is_none() {
+        return Err(AppError::validation(format!(
+            "A template is required for {} export. Please set a template_id on the report first.",
+            format.extension()
+        )));
     }
 
     // Enqueue export task
@@ -351,6 +370,87 @@ pub(crate) async fn export_report(
         message: format!("Report export ({}) task enqueued", format.extension()),
         report_id: id,
     }))
+}
+
+// ══════════════════════════════════════════════════════════════
+// Report export download handler
+// ══════════════════════════════════════════════════════════════
+
+/// GET /api/v1/reports/:id/download/:format - Download exported report file
+pub(crate) async fn download_report_export(
+    State(state): State<AppState>,
+    auth_session: AuthSession,
+    Path((id, format)): Path<(Uuid, String)>,
+) -> ApiResult<Response> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+
+    let object_service = state
+        .object_service
+        .as_ref()
+        .ok_or_else(|| AppError::service_unavailable("Object storage is not configured"))?;
+
+    // Verify report exists and belongs to the user's tenant
+    let report = state
+        .report_service
+        .get_report_by_id(user.tenant_id, id)
+        .await
+        .map_err(AppError::from)?;
+
+    // Parse and validate export format
+    let export_format: ExportFormat = format.parse().map_err(|_| {
+        AppError::validation(format!(
+            "Invalid export format: {}. Valid values: pdf, docx, html",
+            format
+        ))
+    })?;
+
+    // Get the corresponding export key based on format
+    let export_key = match export_format {
+        ExportFormat::Pdf => report.export_pdf_key.as_deref(),
+        ExportFormat::Docx => report.export_docx_key.as_deref(),
+        ExportFormat::Html => report.export_html_key.as_deref(),
+    };
+
+    let export_key = export_key.ok_or_else(|| {
+        AppError::not_found(format!(
+            "No {} export available for report {}. Trigger an export first.",
+            export_format.extension(),
+            id
+        ))
+    })?;
+
+    // Stream the file from object storage
+    let stream = object_service
+        .get_stream_by_key(export_key)
+        .await
+        .map_err(AppError::from)?;
+
+    // Build response with correct headers
+    let content_type = HeaderValue::from_static(export_format.content_type());
+    let filename = format!(
+        "{}.{}",
+        report.report_number,
+        export_format.extension()
+    );
+    let disposition = HeaderValue::from_str(&format!("attachment; filename=\"{}\"", filename))
+        .map_err(|_| AppError::internal("Failed to build Content-Disposition header"))?;
+
+    let mut response = Response::new(Body::new(stream.into_inner()));
+    *response.status_mut() = StatusCode::OK;
+    response
+        .headers_mut()
+        .insert(header::CONTENT_TYPE, content_type);
+    response
+        .headers_mut()
+        .insert(header::CONTENT_DISPOSITION, disposition);
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-cache"),
+    );
+
+    Ok(response)
 }
 
 // ══════════════════════════════════════════════════════════════
