@@ -96,7 +96,7 @@ export function ReportList({
 
 	const handleDelete = (report: Report) => {
 		if (window.confirm(t("Are you sure you want to delete this report?"))) {
-			deleteReport.mutate({ id: report.id, version: report.version });
+			deleteReport.mutate({ id: report.id });
 		}
 	};
 

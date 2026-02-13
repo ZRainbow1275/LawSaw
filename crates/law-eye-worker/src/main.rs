@@ -38,7 +38,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::net::TcpListener;
 use tokio::signal;
 use tokio::time::{timeout, Duration, Instant};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 const QUEUE_INGEST: &str = "queue:ingest";
@@ -3644,7 +3644,7 @@ impl Worker {
                     "Report generate task failed"
                 );
                 // 失败时回退状态到 draft，以允许用户重新触发生成
-                if let Err(rollback_err) = self.rollback_report_status_to_draft(&task.payload).await
+                if let Err(rollback_err) = self.rollback_report_status_on_failure(&task.payload).await
                 {
                     error!(
                         %task_id,
@@ -3682,7 +3682,7 @@ impl Worker {
                     %error_msg,
                     "Report generate task timed out"
                 );
-                if let Err(rollback_err) = self.rollback_report_status_to_draft(&task.payload).await
+                if let Err(rollback_err) = self.rollback_report_status_on_failure(&task.payload).await
                 {
                     error!(
                         %task_id,
@@ -3718,8 +3718,14 @@ impl Worker {
         }
     }
 
-    /// 报告生成失败时回退状态到 draft，防止报告卡在 generating/generated 状态
-    async fn rollback_report_status_to_draft(&self, task: &ReportGenerateTask) -> anyhow::Result<()> {
+    /// 报告生成失败时回退状态，防止报告卡在 generating/generated 状态。
+    ///
+    /// 状态机合法转换：
+    ///   - Generating -> Error（生成过程中失败，标记为错误状态）
+    ///   - Generated -> Draft（已生成但后处理失败，回退到草稿）
+    ///
+    /// 注意：Generating -> Draft 不是合法转换，必须经过 Error 中间态。
+    async fn rollback_report_status_on_failure(&self, task: &ReportGenerateTask) -> anyhow::Result<()> {
         use law_eye_core::report::ReportStatus;
 
         let report = self
@@ -3729,24 +3735,51 @@ impl Worker {
             .map_err(|e| anyhow::anyhow!("获取报告失败: {}", e))?;
 
         let current_status = ReportStatus::from_db_str(&report.status);
-        if matches!(
-            current_status,
-            Some(ReportStatus::Generating) | Some(ReportStatus::Generated)
-        ) {
-            self.report_service
-                .transition_status(
-                    task.tenant_id,
-                    task.report_id,
-                    ReportStatus::Draft,
-                    report.version,
-                )
-                .await
-                .map_err(|e| anyhow::anyhow!("回退状态失败: {}", e))?;
-            warn!(
-                report_id = %task.report_id,
-                from_status = %report.status,
-                "Rolled back report status to draft after failure"
-            );
+        match current_status {
+            Some(ReportStatus::Generating) => {
+                // Generating -> Error 是合法转换
+                self.report_service
+                    .transition_status(
+                        task.tenant_id,
+                        task.report_id,
+                        ReportStatus::Error,
+                        report.version,
+                    )
+                    .await
+                    .map_err(|e| anyhow::anyhow!("转换到 Error 状态失败: {}", e))?;
+                warn!(
+                    report_id = %task.report_id,
+                    from_status = "generating",
+                    to_status = "error",
+                    "Report generation failed, transitioned to error state"
+                );
+            }
+            Some(ReportStatus::Generated) => {
+                // Generated -> Draft 是合法转换
+                self.report_service
+                    .transition_status(
+                        task.tenant_id,
+                        task.report_id,
+                        ReportStatus::Draft,
+                        report.version,
+                    )
+                    .await
+                    .map_err(|e| anyhow::anyhow!("回退到 Draft 状态失败: {}", e))?;
+                warn!(
+                    report_id = %task.report_id,
+                    from_status = "generated",
+                    to_status = "draft",
+                    "Post-generation processing failed, rolled back to draft"
+                );
+            }
+            _ => {
+                // 其他状态无需回退
+                debug!(
+                    report_id = %task.report_id,
+                    status = %report.status,
+                    "Report not in generating/generated state, no rollback needed"
+                );
+            }
         }
 
         Ok(())

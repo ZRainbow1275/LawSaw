@@ -122,12 +122,8 @@ export function useDeleteReport() {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: (input: { id: string; version: number }) =>
-			apiClient.delete(`/api/v1/reports/${input.id}`, assertDeleteResponse, {
-				headers: {
-					"If-Match": ifMatchFromVersion(input.version),
-				},
-			}),
+		mutationFn: (input: { id: string }) =>
+			apiClient.delete(`/api/v1/reports/${input.id}`, assertDeleteResponse),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["reports"] });
 		},
@@ -189,6 +185,7 @@ export function useExportReport() {
 				assertReportTaskEnqueuedResponse,
 			),
 		onSuccess: (_data, variables) => {
+			queryClient.invalidateQueries({ queryKey: ["reports"] });
 			queryClient.invalidateQueries({ queryKey: ["report", variables.id] });
 		},
 	});
