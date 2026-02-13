@@ -1,7 +1,7 @@
 # 命题6：性能设计 — 执行摘要
 
 > **最后更新**: 2026-02-13
-> **总体进度**: 索引优化 + 缓存层 + 连接池加固 + 批量写入保护 + CircuitBreaker + 输入校验常量 + Docker 依赖完善 **全部完成**, R1-R6 审计修复 **已完成**
+> **总体进度**: 索引优化 + 缓存层 + 连接池加固 + 批量写入保护 + CircuitBreaker + 输入校验常量 + Docker 依赖完善 **全部完成**, R1-R6 审计修复 **已完成**, R13 broken indexes 修复 **已完成**
 
 ---
 
@@ -24,6 +24,7 @@
 ### 已交付: Migration 034 -- 综合索引优化
 
 - **034_index_optimization.sql** -- 已创建并就绪 (注: 迁移编号从原计划的 032 调整为 034, 避免与 RLS 迁移冲突)
+- **⚠️ 034 中 5 个 broken indexes 已在 041 中修复**: 因引用不存在的列 (feedbacks.article_id / sources.next_crawl_at / users.deleted_at / api_keys.deleted_at / webhook_endpoints.is_active), 在 `041_fix_broken_indexes_and_session_tenants_update.sql` 中 DROP + 重建正确版本
 - **删除了冲突文件**: 原 `034_statistics_indexes.sql` 与 `034_index_optimization.sql` 内容重叠, 已删除前者保留后者
 - **25+ 个精准覆盖索引**, 按功能分组:
   1. **全文搜索 GIN 索引** (P0): `idx_articles_search_fts` -- 表达式 GIN 索引, 匹配 `to_tsvector('simple', title || ' ' || COALESCE(content, ''))` 查询, 条件 `deleted_at IS NULL`
@@ -198,3 +199,9 @@
 | 5 | 外部 AI API 无断路器保护 | P2 | 实现 CircuitBreaker (common) + AI Gateway 集成 | `law-eye-common/src/circuit_breaker.rs`, `law-eye-ai/src/gateway.rs` |
 | 6 | Docker worker 缺少 browserless 依赖 | P2 | worker depends_on 添加 browserless (required: false) + 环境变量 | `docker-compose.yml` |
 | 7 | 报告输入缺少校验 | P2 | title/content 非空检查, 内置模板保护, 导出前内容检查 | `law-eye-api/src/routes/reports/handlers.rs` |
+
+### R13 审计修复 (2026-02-13)
+
+| # | 问题 | 严重度 | 修复内容 | 文件 |
+|---|------|--------|----------|------|
+| 8 | Migration 034 含 5 个引用不存在列的 broken indexes | P1 | 创建 041 迁移: DROP 5 个 broken + 重建正确索引 (idx_users_tenant_email / idx_api_keys_tenant_active / idx_sources_tenant_active_schedule / idx_feedbacks_tenant_user / idx_webhook_endpoints_tenant_enabled) | `law-eye-db/migrations/041_fix_broken_indexes_and_session_tenants_update.sql` |

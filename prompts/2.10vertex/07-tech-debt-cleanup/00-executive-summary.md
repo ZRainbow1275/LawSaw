@@ -1,7 +1,7 @@
 # 命题7：技术债清理 — 执行摘要
 
 > **最后更新**: 2026-02-13
-> **总体进度**: 编译修复 + 迁移清理 + 服务注册 + Mutex 毒锁恢复 + 死代码清理 + OpenAPI 补全 + TS 类型修复 **全部完成**, R1-R11 审计修复 **全部通过**, Worker 弹性恢复 + RLS 认证兼容 + sessions INSERT 策略 + 注册 RLS 放宽 + JSONB NOT NULL 安全 + backfill_llm RLS 修复 **已完成**
+> **总体进度**: 编译修复 + 迁移清理 + 服务注册 + Mutex 毒锁恢复 + 死代码清理 + OpenAPI 补全 + TS 类型修复 **全部完成**, R1-R13 审计修复 **全部通过**, Worker 弹性恢复 + RLS 认证兼容 + sessions INSERT 策略 + 注册 RLS 放宽 + JSONB NOT NULL 安全 + backfill_llm RLS 修复 + UserService/ApiKeyService RLS 合规 + broken indexes 修复 **已完成**
 
 ---
 
@@ -71,7 +71,7 @@
 ### 迁移文件清理
 
 - **删除了冲突的 `034_statistics_indexes.sql`**: 该文件与 `034_index_optimization.sql` 内容重叠 (8 个索引 vs 25+ 索引), 保留了更全面的 `034_index_optimization.sql`
-- 迁移序列完整性: 001-036 (编号 017 不存在, 为历史遗留正常间隔)
+- 迁移序列完整性: 001-041 (编号 017 不存在, 为历史遗留正常间隔)
 - 所有迁移文件幂等: 使用 `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` / `DO $$ ... IF NOT EXISTS ... $$`
 
 ### OpenAPI 端点注册
@@ -185,9 +185,9 @@
 6. Mutex 毒锁安全 (17 处 poison recovery) -- **已达成**
 7. 死代码清除 (AuthError/CrawlTimer/stale allow) -- **已达成**
 
-## 审计修复总记录 (2026-02-13 R1-R10)
+## 审计修复总记录 (2026-02-13 R1-R13)
 
-### R1-R10 轮次概览
+### R1-R13 轮次概览
 
 | 轮次 | 主题 | 修复数量 | 关键修复 |
 |------|------|---------|---------|
@@ -202,6 +202,8 @@
 | R9 | 回归验证 | 0 | 全面验证无回归 |
 | R10 | 最终回归验证 | 3 | sessions INSERT 策略, knowledge enqueue_retryable, restore_article OpenAPI |
 | R11 | Opus 级深度审计 | 4 | 注册 RLS 放宽, backfill_llm RLS 修复, JSONB NOT NULL 安全, 迁移幂等性 |
+| R12 | Opus 深度审计 (RLS 策略/服务层/认证/迁移) | 6 | api_keys RLS 拆分, update_user_roles set_config, ApiKeyService verify RLS, UserService docs, broken indexes, session_tenants UPDATE |
+| R13 | 最终回归验证 + 手动审计 | 1 | migration 041 列名修复 (last_fetched_at→last_fetch) |
 
 ### P0 级修复 (安全/功能阻断)
 
@@ -320,6 +322,37 @@
 | KnowledgeService 所有方法 RLS | **通过** | 全部使用 `with_tenant_tx` |
 | 路由无 direct pool 访问 (tenant data) | **通过** | 仅 health.rs 使用直连 (SELECT 1, pg_stat) |
 | 037 与 039 JSONB NOT NULL 列无重叠 | **通过** | 037: articles/entities/entity_relations/crawl_logs, 039: users/api_keys |
-| 迁移序列 001-039 完整 | **通过** | 仅 017 为已知间隙 |
+| 迁移序列 001-041 完整 | **通过** | 仅 017 为已知间隙, 040/041 已追加 |
 | 039 迁移幂等性 | **通过** | 全部 CREATE POLICY 前有 DROP IF EXISTS |
 | 安全风险评估 | **可接受** | 放宽策略仅在 `app.tenant_id = ''` 短暂窗口生效，FK 约束保证数据完整性 |
+
+### R12 Opus 深度审计修复 (2026-02-13)
+
+4 名 Opus 级审计 agent 从 RLS 策略完整性、服务层 RLS 合规、认证端到端流程、迁移完整性+数据模型 四个维度发起深度审计：
+
+| # | 问题 | 等级 | 修复方案 | 文件 |
+|---|------|------|----------|------|
+| 33 | **api_keys RLS ALL 策略无法支持 per-operation 精细控制** | **P0** | 创建 040 迁移: ALL→per-operation 拆分, SELECT/UPDATE 放宽 | `040_apikeys_rls_split.sql` |
+| 34 | **update_user_roles handler pool.begin() 未设置 set_config** | **P0** | 添加 `set_config('app.tenant_id', ...)` 在 begin 后 | `law-eye-api/src/routes/users.rs` |
+| 35 | **ApiKeyService::verify() last_used UPDATE 绕过 RLS** | **P1** | 替换为 `with_tenant_tx(&self.pool, key_tenant_id, ...)` | `law-eye-core/src/apikey.rs` |
+| 36 | **UserService::list()/count() 跨租户查询无文档** | **P2** | 添加 `/// # Safety: superadmin-only` 文档注释 | `law-eye-core/src/user.rs` |
+| 37 | **Migration 034 含 5 个引用不存在列的 broken indexes** | **P1** | 创建 041 迁移: DROP 5 + 重建正确版本 | `041_fix_broken_indexes.sql` |
+| 38 | **session_tenants 缺少 UPDATE 策略** | **P1** | 在 041 中添加 session_tenants_update_policy | `041_fix_broken_indexes.sql` |
+
+### R13 最终回归验证 (2026-02-13)
+
+手动审计 (因 API 503 agent 改为人工)：
+
+| # | 问题 | 等级 | 修复方案 | 文件 |
+|---|------|------|----------|------|
+| 39 | **Migration 041 sources 索引引用 `last_fetched_at` 但实际列名为 `last_fetch`** | **P1** | 更正为 `last_fetch NULLS FIRST` | `041_fix_broken_indexes.sql` |
+
+### R12-R13 审计验证通过的项目
+
+| 审计项 | 状态 | 说明 |
+|--------|------|------|
+| 14 处直接 pool 使用 | **全部安全** | 均为 SELECT (relaxed RLS) 或 admin-only 已文档化 |
+| 7 个认证流程端到端 | **全部通过** | 注册/登录/OAuth/API Key/MFA/密码重置/邮箱验证 |
+| 23 个服务 150+ 方法 RLS 覆盖 | **全部通过** | UserService list/count 为 documented admin-only |
+| 迁移序列 001-041 完整 | **通过** | 仅 017 为已知间隙 |
+| 041 列引用交叉验证 | **通过** | 全部列名与 001_initial.sql / 005_feedbacks.sql 对齐 |
