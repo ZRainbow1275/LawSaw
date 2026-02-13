@@ -139,7 +139,7 @@ pub(crate) async fn list_keys(
         let fetch_limit = limit.saturating_add(1);
         let mut items = state
             .apikey_service
-            .list_by_user_cursor(user.id, fetch_limit, cursor.created_at, cursor.id)
+            .list_by_user_cursor(user.tenant_id, user.id, fetch_limit, cursor.created_at, cursor.id)
             .await
             .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?;
 
@@ -157,14 +157,14 @@ pub(crate) async fn list_keys(
     } else {
         state
             .apikey_service
-            .list_by_user(user.id, limit, offset)
+            .list_by_user(user.tenant_id, user.id, limit, offset)
             .await
             .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?
     };
 
     let total = state
         .apikey_service
-        .count_by_user(user.id)
+        .count_by_user(user.tenant_id, user.id)
         .await
         .map_err(|e| AppError::internal_with_code("COUNT_ERROR", e.to_string()))?;
 
@@ -267,7 +267,7 @@ pub(crate) async fn create_key(
 
     let (key, raw_key) = state
         .apikey_service
-        .create(input)
+        .create(user.tenant_id, input)
         .await
         .map_err(AppError::from)?;
 
@@ -341,7 +341,7 @@ pub(crate) async fn revoke_key(
 
     state
         .apikey_service
-        .revoke(id, user.id)
+        .revoke(user.tenant_id, id, user.id)
         .await
         .map_err(AppError::from)?;
 
@@ -398,7 +398,7 @@ pub(crate) async fn delete_key(
 
     state
         .apikey_service
-        .delete(id, user.id)
+        .delete(user.tenant_id, id, user.id)
         .await
         .map_err(AppError::from)?;
 

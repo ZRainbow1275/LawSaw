@@ -8,6 +8,8 @@ use rand::Rng;
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::with_tenant_tx;
+
 pub struct ApiKeyService {
     pool: PgPool,
 }
@@ -17,11 +19,14 @@ impl ApiKeyService {
         Self { pool }
     }
 
-    /// Generate a new API key
-    pub async fn create(&self, input: CreateApiKey) -> Result<(ApiKey, String)> {
+    /// Generate a new API key.
+    ///
+    /// Wraps the INSERT in `with_tenant_tx` so that `app.tenant_id` is set
+    /// and RLS INSERT policy is satisfied.
+    pub async fn create(&self, tenant_id: Uuid, input: CreateApiKey) -> Result<(ApiKey, String)> {
         // Generate random API key
         let raw_key = self.generate_key();
-        let key_prefix = &raw_key[..8];
+        let key_prefix = raw_key[..8].to_string();
 
         // Hash the key
         let salt = SaltString::generate(&mut OsRng);
@@ -35,24 +40,34 @@ impl ApiKeyService {
             .permissions
             .unwrap_or_else(|| vec!["read".to_string()]);
         let rate_limit = input.rate_limit.unwrap_or(100);
+        let name = input.name.clone();
+        let user_id = input.user_id;
+        let expires_at = input.expires_at;
+        let permissions_json = serde_json::json!(permissions);
 
-        let api_key = sqlx::query_as::<_, ApiKey>(
-            r#"
-            INSERT INTO api_keys (user_id, name, key_hash, key_prefix, permissions, rate_limit, expires_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING *
-            "#,
-        )
-        .bind(input.user_id)
-        .bind(&input.name)
-        .bind(&key_hash)
-        .bind(key_prefix)
-        .bind(serde_json::json!(permissions))
-        .bind(rate_limit)
-        .bind(input.expires_at)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        let api_key = with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query_as::<_, ApiKey>(
+                    r#"
+                    INSERT INTO api_keys (tenant_id, user_id, name, key_hash, key_prefix, permissions, rate_limit, expires_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    RETURNING *
+                    "#,
+                )
+                .bind(tenant_id)
+                .bind(user_id)
+                .bind(&name)
+                .bind(&key_hash)
+                .bind(&key_prefix)
+                .bind(&permissions_json)
+                .bind(rate_limit)
+                .bind(expires_at)
+                .fetch_one(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))
+            })
+        })
+        .await?;
 
         // Return the raw key only once - user must store it
         Ok((api_key, raw_key))
@@ -90,30 +105,50 @@ impl ApiKeyService {
             .verify_password(raw_key.as_bytes(), &parsed_hash)
             .map_err(|_| Error::Unauthorized("Invalid API key".to_string()))?;
 
-        // Update last_used
-        sqlx::query("UPDATE api_keys SET last_used = NOW() WHERE id = $1")
-            .bind(api_key.id)
-            .execute(&self.pool)
-            .await
-            .ok();
+        // Update last_used within proper tenant context so the UPDATE
+        // respects RLS policies (api_keys_update_policy requires tenant match
+        // or empty app.tenant_id).
+        let key_id = api_key.id;
+        let key_tenant_id = api_key.tenant_id;
+        let _ = with_tenant_tx(&self.pool, key_tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query("UPDATE api_keys SET last_used = NOW() WHERE id = $1")
+                    .bind(key_id)
+                    .execute(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?;
+                Ok(())
+            })
+        })
+        .await;
 
         Ok(api_key)
     }
 
-    /// List API keys for a user (without hashes)
-    pub async fn count_by_user(&self, user_id: Uuid) -> Result<i64> {
-        let result: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_keys WHERE user_id = $1")
-            .bind(user_id)
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
-
-        Ok(result.0)
+    /// Count API keys for a user.
+    ///
+    /// Uses `with_tenant_tx` for defense-in-depth RLS compliance.
+    pub async fn count_by_user(&self, tenant_id: Uuid, user_id: Uuid) -> Result<i64> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let result: (i64,) =
+                    sqlx::query_as("SELECT COUNT(*) FROM api_keys WHERE user_id = $1")
+                        .bind(user_id)
+                        .fetch_one(tx.as_mut())
+                        .await
+                        .map_err(|e| Error::Database(e.to_string()))?;
+                Ok(result.0)
+            })
+        })
+        .await
     }
 
-    /// List API keys for a user (without hashes)
+    /// List API keys for a user (without hashes).
+    ///
+    /// Uses `with_tenant_tx` for defense-in-depth RLS compliance.
     pub async fn list_by_user(
         &self,
+        tenant_id: Uuid,
         user_id: Uuid,
         limit: i64,
         offset: i64,
@@ -125,21 +160,29 @@ impl ApiKeyService {
             return Err(Error::Validation("offset must be >= 0".to_string()));
         }
 
-        let keys = sqlx::query_as::<_, ApiKey>(
-            "SELECT * FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3",
-        )
-        .bind(user_id)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(&self.pool)
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let keys = sqlx::query_as::<_, ApiKey>(
+                    "SELECT * FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3",
+                )
+                .bind(user_id)
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
+                Ok(keys)
+            })
+        })
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
-
-        Ok(keys)
     }
 
+    /// List API keys for a user with cursor-based pagination.
+    ///
+    /// Uses `with_tenant_tx` for defense-in-depth RLS compliance.
     pub async fn list_by_user_cursor(
         &self,
+        tenant_id: Uuid,
         user_id: Uuid,
         limit: i64,
         cursor_created_at: DateTime<Utc>,
@@ -149,51 +192,69 @@ impl ApiKeyService {
             return Err(Error::Validation("limit must be >= 1".to_string()));
         }
 
-        let keys = sqlx::query_as::<_, ApiKey>(
-            "SELECT * FROM api_keys WHERE user_id = $1 AND (created_at, id) < ($2, $3) ORDER BY created_at DESC, id DESC LIMIT $4",
-        )
-        .bind(user_id)
-        .bind(cursor_created_at)
-        .bind(cursor_id)
-        .bind(limit)
-        .fetch_all(&self.pool)
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let keys = sqlx::query_as::<_, ApiKey>(
+                    "SELECT * FROM api_keys WHERE user_id = $1 AND (created_at, id) < ($2, $3) ORDER BY created_at DESC, id DESC LIMIT $4",
+                )
+                .bind(user_id)
+                .bind(cursor_created_at)
+                .bind(cursor_id)
+                .bind(limit)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
+                Ok(keys)
+            })
+        })
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
-
-        Ok(keys)
     }
 
-    /// Revoke an API key
-    pub async fn revoke(&self, id: Uuid, user_id: Uuid) -> Result<()> {
-        let result =
-            sqlx::query("UPDATE api_keys SET is_active = false WHERE id = $1 AND user_id = $2")
+    /// Revoke an API key.
+    ///
+    /// Wraps in `with_tenant_tx` so the UPDATE respects RLS policies.
+    pub async fn revoke(&self, tenant_id: Uuid, id: Uuid, user_id: Uuid) -> Result<()> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let result = sqlx::query(
+                    "UPDATE api_keys SET is_active = false WHERE id = $1 AND user_id = $2",
+                )
                 .bind(id)
                 .bind(user_id)
-                .execute(&self.pool)
+                .execute(tx.as_mut())
                 .await
                 .map_err(|e| Error::Database(e.to_string()))?;
 
-        if result.rows_affected() == 0 {
-            return Err(Error::NotFound("API key not found".to_string()));
-        }
-
-        Ok(())
+                if result.rows_affected() == 0 {
+                    return Err(Error::NotFound("API key not found".to_string()));
+                }
+                Ok(())
+            })
+        })
+        .await
     }
 
-    /// Delete an API key
-    pub async fn delete(&self, id: Uuid, user_id: Uuid) -> Result<()> {
-        let result = sqlx::query("DELETE FROM api_keys WHERE id = $1 AND user_id = $2")
-            .bind(id)
-            .bind(user_id)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+    /// Delete an API key.
+    ///
+    /// Wraps in `with_tenant_tx` so the DELETE respects RLS policies.
+    pub async fn delete(&self, tenant_id: Uuid, id: Uuid, user_id: Uuid) -> Result<()> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let result =
+                    sqlx::query("DELETE FROM api_keys WHERE id = $1 AND user_id = $2")
+                        .bind(id)
+                        .bind(user_id)
+                        .execute(tx.as_mut())
+                        .await
+                        .map_err(|e| Error::Database(e.to_string()))?;
 
-        if result.rows_affected() == 0 {
-            return Err(Error::NotFound("API key not found".to_string()));
-        }
-
-        Ok(())
+                if result.rows_affected() == 0 {
+                    return Err(Error::NotFound("API key not found".to_string()));
+                }
+                Ok(())
+            })
+        })
+        .await
     }
 
     fn generate_key(&self) -> String {

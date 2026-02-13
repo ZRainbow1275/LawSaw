@@ -2,6 +2,7 @@ use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
+use crate::with_tenant_tx;
 use law_eye_common::{Error, Result};
 use law_eye_db::{CreateUser, Role, UpdateUser, User};
 use sqlx::{Executor, PgPool, Postgres, Transaction};
@@ -179,29 +180,34 @@ impl UserService {
 
     pub async fn create(&self, input: CreateUser) -> Result<User> {
         let password_hash = hash_password(&input.password)?;
+        let tenant_id = input.tenant_id;
 
-        let user = sqlx::query_as::<_, User>(
-            r#"
-            INSERT INTO users (tenant_id, email, password_hash, display_name)
-            VALUES ($1, $2, $3, $4)
-            RETURNING *
-            "#,
-        )
-        .bind(input.tenant_id)
-        .bind(&input.email)
-        .bind(&password_hash)
-        .bind(&input.display_name)
-        .fetch_one(&self.pool)
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let user = sqlx::query_as::<_, User>(
+                    r#"
+                    INSERT INTO users (tenant_id, email, password_hash, display_name)
+                    VALUES ($1, $2, $3, $4)
+                    RETURNING *
+                    "#,
+                )
+                .bind(tenant_id)
+                .bind(&input.email)
+                .bind(&password_hash)
+                .bind(&input.display_name)
+                .fetch_one(tx.as_mut())
+                .await
+                .map_err(|e| {
+                    if e.to_string().contains("duplicate key") {
+                        Error::Validation("Email already exists".to_string())
+                    } else {
+                        Error::Database(e.to_string())
+                    }
+                })?;
+                Ok(user)
+            })
+        })
         .await
-        .map_err(|e| {
-            if e.to_string().contains("duplicate key") {
-                Error::Validation("Email already exists".to_string())
-            } else {
-                Error::Database(e.to_string())
-            }
-        })?;
-
-        Ok(user)
     }
 
     pub async fn get_by_id(&self, id: Uuid) -> Result<User> {
@@ -233,38 +239,50 @@ impl UserService {
             return Err(Error::Unauthorized("User is deactivated".to_string()));
         }
 
-        // Update last login
-        sqlx::query("UPDATE users SET last_login = NOW() WHERE id = $1")
-            .bind(user.id)
-            .execute(&self.pool)
-            .await
-            .ok();
+        // Update last login with proper tenant context
+        let user_id = user.id;
+        let tenant_id = user.tenant_id;
+        let _ = with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query("UPDATE users SET last_login = NOW() WHERE id = $1")
+                    .bind(user_id)
+                    .execute(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?;
+                Ok(())
+            })
+        })
+        .await;
 
         Ok(user)
     }
 
-    pub async fn update(&self, id: Uuid, input: UpdateUser) -> Result<User> {
-        let user = sqlx::query_as::<_, User>(
-            r#"
-            UPDATE users SET
-                display_name = COALESCE($2, display_name),
-                avatar_url = COALESCE($3, avatar_url),
-                preferences = COALESCE($4, preferences),
-                updated_at = NOW()
-            WHERE id = $1
-            RETURNING *
-            "#,
-        )
-        .bind(id)
-        .bind(&input.display_name)
-        .bind(&input.avatar_url)
-        .bind(&input.preferences)
-        .fetch_optional(&self.pool)
+    pub async fn update(&self, tenant_id: Uuid, id: Uuid, input: UpdateUser) -> Result<User> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let user = sqlx::query_as::<_, User>(
+                    r#"
+                    UPDATE users SET
+                        display_name = COALESCE($2, display_name),
+                        avatar_url = COALESCE($3, avatar_url),
+                        preferences = COALESCE($4, preferences),
+                        updated_at = NOW()
+                    WHERE id = $1
+                    RETURNING *
+                    "#,
+                )
+                .bind(id)
+                .bind(&input.display_name)
+                .bind(&input.avatar_url)
+                .bind(&input.preferences)
+                .fetch_optional(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?
+                .ok_or_else(|| Error::NotFound(format!("User {} not found", id)))?;
+                Ok(user)
+            })
+        })
         .await
-        .map_err(|e| Error::Database(e.to_string()))?
-        .ok_or_else(|| Error::NotFound(format!("User {} not found", id)))?;
-
-        Ok(user)
     }
 
     pub async fn update_with_version(
@@ -274,29 +292,33 @@ impl UserService {
         expected_version: i64,
         input: UpdateUser,
     ) -> Result<User> {
-        let user = sqlx::query_as::<_, User>(
-            r#"
-            UPDATE users SET
-                display_name = COALESCE($4, display_name),
-                avatar_url = COALESCE($5, avatar_url),
-                preferences = COALESCE($6, preferences),
-                updated_at = NOW()
-            WHERE id = $1 AND tenant_id = $2 AND version = $3
-            RETURNING *
-            "#,
-        )
-        .bind(id)
-        .bind(tenant_id)
-        .bind(expected_version)
-        .bind(&input.display_name)
-        .bind(&input.avatar_url)
-        .bind(&input.preferences)
-        .fetch_optional(&self.pool)
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let user = sqlx::query_as::<_, User>(
+                    r#"
+                    UPDATE users SET
+                        display_name = COALESCE($4, display_name),
+                        avatar_url = COALESCE($5, avatar_url),
+                        preferences = COALESCE($6, preferences),
+                        updated_at = NOW()
+                    WHERE id = $1 AND tenant_id = $2 AND version = $3
+                    RETURNING *
+                    "#,
+                )
+                .bind(id)
+                .bind(tenant_id)
+                .bind(expected_version)
+                .bind(&input.display_name)
+                .bind(&input.avatar_url)
+                .bind(&input.preferences)
+                .fetch_optional(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?
+                .ok_or_else(|| Error::Conflict("User version conflict".to_string()))?;
+                Ok(user)
+            })
+        })
         .await
-        .map_err(|e| Error::Database(e.to_string()))?
-        .ok_or_else(|| Error::Conflict("User version conflict".to_string()))?;
-
-        Ok(user)
     }
 
     pub async fn touch_with_version_tx(
@@ -325,31 +347,43 @@ impl UserService {
         Ok(user)
     }
 
-    pub async fn update_password(&self, id: Uuid, new_password: &str) -> Result<()> {
+    pub async fn update_password(&self, tenant_id: Uuid, id: Uuid, new_password: &str) -> Result<()> {
         let password_hash = hash_password(new_password)?;
-
-        sqlx::query("UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1")
-            .bind(id)
-            .bind(&password_hash)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
-
-        Ok(())
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query("UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1")
+                    .bind(id)
+                    .bind(&password_hash)
+                    .execute(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?;
+                Ok(())
+            })
+        })
+        .await
     }
 
-    pub async fn deactivate(&self, id: Uuid) -> Result<()> {
-        sqlx::query("UPDATE users SET is_active = false, updated_at = NOW() WHERE id = $1")
-            .bind(id)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
-
-        Ok(())
+    pub async fn deactivate(&self, tenant_id: Uuid, id: Uuid) -> Result<()> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query("UPDATE users SET is_active = false, updated_at = NOW() WHERE id = $1")
+                    .bind(id)
+                    .execute(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?;
+                Ok(())
+            })
+        })
+        .await
     }
 
     pub async fn get_user_roles(&self, tenant_id: Uuid, user_id: Uuid) -> Result<Vec<Role>> {
-        fetch_user_roles(&self.pool, tenant_id, user_id).await
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                fetch_user_roles(tx.as_mut(), tenant_id, user_id).await
+            })
+        })
+        .await
     }
 
     pub async fn get_user_roles_tx(
@@ -398,11 +432,18 @@ impl UserService {
 
     pub async fn assign_role(
         &self,
+        tenant_id: Uuid,
         user_id: Uuid,
         role_name: &str,
         granted_by: Option<Uuid>,
     ) -> Result<()> {
-        assign_role_inner(&self.pool, user_id, role_name, granted_by).await
+        let role_name = role_name.to_string();
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                assign_role_inner(tx.as_mut(), user_id, &role_name, granted_by).await
+            })
+        })
+        .await
     }
 
     pub async fn assign_role_tx(
@@ -415,8 +456,14 @@ impl UserService {
         assign_role_inner(&mut **tx, user_id, role_name, granted_by).await
     }
 
-    pub async fn remove_role(&self, user_id: Uuid, role_name: &str) -> Result<()> {
-        remove_role_inner(&self.pool, user_id, role_name).await
+    pub async fn remove_role(&self, tenant_id: Uuid, user_id: Uuid, role_name: &str) -> Result<()> {
+        let role_name = role_name.to_string();
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                remove_role_inner(tx.as_mut(), user_id, &role_name).await
+            })
+        })
+        .await
     }
 
     pub async fn remove_role_tx(
@@ -428,8 +475,14 @@ impl UserService {
         remove_role_inner(&mut **tx, user_id, role_name).await
     }
 
-    pub async fn validate_roles_exist(&self, role_names: &[String]) -> Result<()> {
-        validate_roles_exist_inner(&self.pool, role_names).await
+    pub async fn validate_roles_exist(&self, tenant_id: Uuid, role_names: &[String]) -> Result<()> {
+        let role_names = role_names.to_vec();
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                validate_roles_exist_inner(tx.as_mut(), &role_names).await
+            })
+        })
+        .await
     }
 
     pub async fn validate_roles_exist_tx(
@@ -445,7 +498,13 @@ impl UserService {
         tenant_id: Uuid,
         role_names: &[String],
     ) -> Result<()> {
-        validate_roles_exist_for_tenant_inner(&self.pool, tenant_id, role_names).await
+        let role_names = role_names.to_vec();
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                validate_roles_exist_for_tenant_inner(tx.as_mut(), tenant_id, &role_names).await
+            })
+        })
+        .await
     }
 
     pub async fn validate_roles_exist_for_tenant_tx(
@@ -457,6 +516,11 @@ impl UserService {
         validate_roles_exist_for_tenant_inner(&mut **tx, tenant_id, role_names).await
     }
 
+    /// List users across ALL tenants (no tenant isolation).
+    ///
+    /// # Safety
+    /// This is a **superadmin-only** method. It must NEVER be exposed through
+    /// tenant-scoped API routes. Use [`list_by_tenant`] for tenant-scoped queries.
     pub async fn list(&self, limit: i64, offset: i64) -> Result<Vec<User>> {
         let users = sqlx::query_as::<_, User>(
             "SELECT * FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2",
@@ -470,6 +534,11 @@ impl UserService {
         Ok(users)
     }
 
+    /// Count users across ALL tenants (no tenant isolation).
+    ///
+    /// # Safety
+    /// This is a **superadmin-only** method. It must NEVER be exposed through
+    /// tenant-scoped API routes. Use [`count_by_tenant`] for tenant-scoped queries.
     pub async fn count(&self) -> Result<i64> {
         let result: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
             .fetch_one(&self.pool)
@@ -480,13 +549,17 @@ impl UserService {
     }
 
     pub async fn count_by_tenant(&self, tenant_id: Uuid) -> Result<i64> {
-        let result: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users WHERE tenant_id = $1")
-            .bind(tenant_id)
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
-
-        Ok(result.0)
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let result: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users WHERE tenant_id = $1")
+                    .bind(tenant_id)
+                    .fetch_one(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?;
+                Ok(result.0)
+            })
+        })
+        .await
     }
 
     pub async fn list_by_tenant(
@@ -501,18 +574,21 @@ impl UserService {
         if offset < 0 {
             return Err(Error::Validation("offset must be >= 0".to_string()));
         }
-
-        let users = sqlx::query_as::<_, User>(
-            "SELECT * FROM users WHERE tenant_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3",
-        )
-        .bind(tenant_id)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(&self.pool)
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let users = sqlx::query_as::<_, User>(
+                    "SELECT * FROM users WHERE tenant_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3",
+                )
+                .bind(tenant_id)
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
+                Ok(users)
+            })
+        })
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
-
-        Ok(users)
     }
 
     pub async fn list_by_tenant_cursor(
@@ -526,18 +602,22 @@ impl UserService {
             return Err(Error::Validation("limit must be >= 1".to_string()));
         }
 
-        let users = sqlx::query_as::<_, User>(
-            "SELECT * FROM users WHERE tenant_id = $1 AND (created_at, id) < ($2, $3) ORDER BY created_at DESC, id DESC LIMIT $4",
-        )
-        .bind(tenant_id)
-        .bind(cursor_created_at)
-        .bind(cursor_id)
-        .bind(limit)
-        .fetch_all(&self.pool)
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let users = sqlx::query_as::<_, User>(
+                    "SELECT * FROM users WHERE tenant_id = $1 AND (created_at, id) < ($2, $3) ORDER BY created_at DESC, id DESC LIMIT $4",
+                )
+                .bind(tenant_id)
+                .bind(cursor_created_at)
+                .bind(cursor_id)
+                .bind(limit)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
+                Ok(users)
+            })
+        })
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
-
-        Ok(users)
     }
 }
 

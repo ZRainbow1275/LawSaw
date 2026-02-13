@@ -338,7 +338,7 @@ pub(crate) async fn register(
     };
     state
         .user_service
-        .assign_role(user.id, default_role, None)
+        .assign_role(tenant.id, user.id, default_role, None)
         .await
         .map_err(AppError::from)?;
 
@@ -870,7 +870,7 @@ pub(crate) async fn oauth_callback(
             let default_role = if existing_users == 0 { "admin" } else { "viewer" };
             state
                 .user_service
-                .assign_role(created.id, default_role, None)
+                .assign_role(tenant.id, created.id, default_role, None)
                 .await
                 .map_err(AppError::from)?;
             provisioned_role = Some(default_role.to_string());

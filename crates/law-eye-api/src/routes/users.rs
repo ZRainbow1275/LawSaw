@@ -798,6 +798,14 @@ pub(crate) async fn update_user_roles(
         .await
         .map_err(|e| AppError::internal(e.to_string()))?;
 
+    // Set tenant context for RLS — without this, DELETE/UPDATE policies
+    // (which require tenant_id match) silently return 0 rows.
+    sqlx::query("SELECT set_config('app.tenant_id', $1::text, true)")
+        .bind(current_user.tenant_id)
+        .execute(tx.as_mut())
+        .await
+        .map_err(|e| AppError::internal(e.to_string()))?;
+
     let all_role_names: Vec<String> = add_set.union(&remove_set).cloned().collect();
     state
         .user_service
