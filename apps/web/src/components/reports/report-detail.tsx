@@ -280,7 +280,7 @@ export function ReportDetail({
 						<Sparkles aria-hidden="true" className="h-4 w-4 text-neutral-500" />
 					}
 					label={t("AI Model")}
-					value={report.ai_model ?? "N/A"}
+					value={report.ai_model ?? t("N/A")}
 				/>
 				<MetadataItem
 					icon={
@@ -300,7 +300,7 @@ export function ReportDetail({
 					value={
 						report.published_at
 							? new Date(report.published_at).toLocaleDateString()
-							: "N/A"
+							: t("N/A")
 					}
 				/>
 				<MetadataItem
@@ -311,7 +311,7 @@ export function ReportDetail({
 					value={
 						report.ai_generated_at
 							? new Date(report.ai_generated_at).toLocaleDateString()
-							: "N/A"
+							: t("N/A")
 					}
 				/>
 			</div>

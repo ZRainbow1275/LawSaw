@@ -3,10 +3,17 @@
 import { apiClient } from "@/lib/api";
 import {
 	assertKnowledgeBackfillResponse,
+	assertKnowledgeCooccurrenceEdgeList,
+	assertKnowledgeDegreeCentralityList,
+	assertKnowledgeDuplicateCandidateList,
 	assertKnowledgeEntity,
 	assertKnowledgeEntityArticleList,
 	assertKnowledgeEntityList,
+	assertKnowledgeGraphStats,
+	assertKnowledgeLlmBackfillResponse,
+	assertKnowledgeMergeEntitiesResponse,
 	assertKnowledgeRelatedEntityList,
+	assertKnowledgeSemanticSearchResultList,
 } from "@/lib/api/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -94,7 +101,11 @@ export function useKnowledgeLlmBackfill() {
 
 	return useMutation({
 		mutationFn: (input: { limit: number }) =>
-			apiClient.post("/api/v1/knowledge/backfill-llm", input),
+			apiClient.post(
+				"/api/v1/knowledge/backfill-llm",
+				input,
+				assertKnowledgeLlmBackfillResponse,
+			),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["knowledge"] });
 		},
@@ -108,6 +119,7 @@ export function useKnowledgeSemanticSearch(query: string, limit = 20) {
 		queryFn: () =>
 			apiClient.get(
 				`/api/v1/knowledge/entities/semantic-search?q=${encodeURIComponent(term)}&limit=${limit}`,
+				assertKnowledgeSemanticSearchResultList,
 			),
 		enabled: term.length > 0,
 	});
@@ -134,22 +146,20 @@ export function useKnowledgeEntitiesByType(
 		queryKey: ["knowledge", "entities", "by-type", entityType, limit],
 		queryFn: () =>
 			apiClient.get(
-				`/api/v1/knowledge/entities/by-type?entity_type=${encodeURIComponent(entityType!)}&limit=${limit}`,
+				`/api/v1/knowledge/entities/by-type?entity_type=${encodeURIComponent(entityType ?? "")}&limit=${limit}`,
 				assertKnowledgeEntityList,
 			),
 		enabled: !!entityType,
 	});
 }
 
-export function useKnowledgeDuplicateCandidates(
-	threshold = 0.85,
-	limit = 20,
-) {
+export function useKnowledgeDuplicateCandidates(threshold = 0.85, limit = 20) {
 	return useQuery({
 		queryKey: ["knowledge", "entities", "duplicates", threshold, limit],
 		queryFn: () =>
 			apiClient.get(
 				`/api/v1/knowledge/entities/duplicates?similarity_threshold=${threshold}&limit=${limit}`,
+				assertKnowledgeDuplicateCandidateList,
 			),
 	});
 }
@@ -159,7 +169,11 @@ export function useKnowledgeMergeEntities() {
 
 	return useMutation({
 		mutationFn: (input: { target_id: string; source_id: string }) =>
-			apiClient.post("/api/v1/knowledge/entities/merge", input),
+			apiClient.post(
+				"/api/v1/knowledge/entities/merge",
+				input,
+				assertKnowledgeMergeEntitiesResponse,
+			),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["knowledge"] });
 		},
@@ -172,6 +186,7 @@ export function useKnowledgeDegreeCentrality(limit = 50) {
 		queryFn: () =>
 			apiClient.get(
 				`/api/v1/knowledge/analytics/centrality?limit=${limit}`,
+				assertKnowledgeDegreeCentralityList,
 			),
 	});
 }
@@ -191,6 +206,7 @@ export function useKnowledgeCooccurrenceNetwork(
 		queryFn: () =>
 			apiClient.get(
 				`/api/v1/knowledge/analytics/cooccurrence?min_cooccurrence=${minCooccurrence}&limit=${limit}`,
+				assertKnowledgeCooccurrenceEdgeList,
 			),
 	});
 }
@@ -198,6 +214,7 @@ export function useKnowledgeCooccurrenceNetwork(
 export function useKnowledgeGraphStats() {
 	return useQuery({
 		queryKey: ["knowledge", "stats"],
-		queryFn: () => apiClient.get("/api/v1/knowledge/stats"),
+		queryFn: () =>
+			apiClient.get("/api/v1/knowledge/stats", assertKnowledgeGraphStats),
 	});
 }

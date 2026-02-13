@@ -121,8 +121,12 @@ export function useDeleteReport() {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: (id: string) =>
-			apiClient.delete(`/api/v1/reports/${id}`, assertDeleteResponse),
+		mutationFn: (input: { id: string; version: number }) =>
+			apiClient.delete(`/api/v1/reports/${input.id}`, assertDeleteResponse, {
+				headers: {
+					"If-Match": ifMatchFromVersion(input.version),
+				},
+			}),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["reports"] });
 		},

@@ -553,6 +553,15 @@ function assertOptional<T>(
 	assertValue(value, path);
 }
 
+function assertArrayUntyped(
+	value: unknown,
+	path: string,
+): asserts value is unknown[] {
+	if (!Array.isArray(value)) {
+		throw new Error(`${path}: expected array, got ${typeName(value)}`);
+	}
+}
+
 function assertOneOf<T extends string>(
 	value: unknown,
 	path: string,
@@ -1516,10 +1525,11 @@ export interface TenantDetail extends Tenant {
 const REPORT_STATUSES = [
 	"draft",
 	"generating",
+	"generated",
 	"review",
-	"approved",
 	"published",
 	"archived",
+	"error",
 ] as const;
 
 export type ReportStatus = (typeof REPORT_STATUSES)[number];
@@ -1680,4 +1690,285 @@ export interface StatisticsOverview {
 	with_importance: number;
 	with_authority: number;
 	with_issuer: number;
+}
+
+// ── Statistics Types ────────────────────────────────────────────────
+
+export interface RegionalCount {
+	region_code: string;
+	region_name: string;
+	count: number;
+	percentage: number;
+}
+
+export interface RegionalDistribution {
+	items: RegionalCount[];
+	total: number;
+	coverage_rate: number;
+}
+
+export interface SubDomainCount {
+	domain_sub: string;
+	count: number;
+}
+
+export interface DomainCount {
+	domain_root: string;
+	label: string;
+	count: number;
+	percentage: number;
+	sub_domains: SubDomainCount[] | null;
+}
+
+export interface IndustryDistribution {
+	items: DomainCount[];
+	total: number;
+	coverage_rate: number;
+}
+
+export interface ImportanceDistribution {
+	levels: [number, number, number, number, number];
+	total: number;
+	average: number;
+	coverage_rate: number;
+}
+
+export interface AuthorityLevelCount {
+	level: number;
+	label: string;
+	count: number;
+	percentage: number;
+}
+
+export interface AuthorityDistribution {
+	levels: AuthorityLevelCount[];
+	total: number;
+	coverage_rate: number;
+}
+
+export interface IssuerCount {
+	issuer: string;
+	count: number;
+	percentage: number;
+}
+
+export interface IssuerDistribution {
+	items: IssuerCount[];
+	total: number;
+	unique_issuers: number;
+}
+
+export interface CrossDimensionalCell {
+	x_value: string;
+	y_value: string;
+	count: number;
+}
+
+export interface CrossDimensionalResult {
+	dimension_x: string;
+	dimension_y: string;
+	cells: CrossDimensionalCell[];
+}
+
+export interface TimelinePoint {
+	date: string;
+	count: number;
+}
+
+export interface TimelineSeries {
+	dimension_value: string;
+	label: string;
+	points: TimelinePoint[];
+}
+
+export interface TimelineByDimension {
+	dimension: string;
+	granularity: string;
+	series: TimelineSeries[];
+}
+
+// ── Statistics Assert Functions ─────────────────────────────────────
+
+export function assertStatisticsOverview(
+	value: unknown,
+	path = "StatisticsOverview",
+): asserts value is StatisticsOverview {
+	assertRecord(value, path);
+	assertNumber(
+		getRequired(value, "total_articles", path),
+		`${path}.total_articles`,
+	);
+	assertNumber(getRequired(value, "with_region", path), `${path}.with_region`);
+	assertNumber(getRequired(value, "with_domain", path), `${path}.with_domain`);
+	assertNumber(
+		getRequired(value, "with_importance", path),
+		`${path}.with_importance`,
+	);
+	assertNumber(
+		getRequired(value, "with_authority", path),
+		`${path}.with_authority`,
+	);
+	assertNumber(getRequired(value, "with_issuer", path), `${path}.with_issuer`);
+}
+
+export function assertRegionalDistribution(
+	value: unknown,
+	path = "RegionalDistribution",
+): asserts value is RegionalDistribution {
+	assertRecord(value, path);
+	assertArrayUntyped(getRequired(value, "items", path), `${path}.items`);
+	assertNumber(getRequired(value, "total", path), `${path}.total`);
+	assertNumber(
+		getRequired(value, "coverage_rate", path),
+		`${path}.coverage_rate`,
+	);
+}
+
+export function assertIndustryDistribution(
+	value: unknown,
+	path = "IndustryDistribution",
+): asserts value is IndustryDistribution {
+	assertRecord(value, path);
+	assertArrayUntyped(getRequired(value, "items", path), `${path}.items`);
+	assertNumber(getRequired(value, "total", path), `${path}.total`);
+	assertNumber(
+		getRequired(value, "coverage_rate", path),
+		`${path}.coverage_rate`,
+	);
+}
+
+export function assertImportanceDistribution(
+	value: unknown,
+	path = "ImportanceDistribution",
+): asserts value is ImportanceDistribution {
+	assertRecord(value, path);
+	assertArrayUntyped(getRequired(value, "levels", path), `${path}.levels`);
+	assertNumber(getRequired(value, "total", path), `${path}.total`);
+	assertNumber(getRequired(value, "average", path), `${path}.average`);
+	assertNumber(
+		getRequired(value, "coverage_rate", path),
+		`${path}.coverage_rate`,
+	);
+}
+
+export function assertAuthorityDistribution(
+	value: unknown,
+	path = "AuthorityDistribution",
+): asserts value is AuthorityDistribution {
+	assertRecord(value, path);
+	assertArrayUntyped(getRequired(value, "levels", path), `${path}.levels`);
+	assertNumber(getRequired(value, "total", path), `${path}.total`);
+	assertNumber(
+		getRequired(value, "coverage_rate", path),
+		`${path}.coverage_rate`,
+	);
+}
+
+export function assertIssuerDistribution(
+	value: unknown,
+	path = "IssuerDistribution",
+): asserts value is IssuerDistribution {
+	assertRecord(value, path);
+	assertArrayUntyped(getRequired(value, "items", path), `${path}.items`);
+	assertNumber(getRequired(value, "total", path), `${path}.total`);
+	assertNumber(
+		getRequired(value, "unique_issuers", path),
+		`${path}.unique_issuers`,
+	);
+}
+
+export function assertCrossDimensionalResult(
+	value: unknown,
+	path = "CrossDimensionalResult",
+): asserts value is CrossDimensionalResult {
+	assertRecord(value, path);
+	assertString(getRequired(value, "dimension_x", path), `${path}.dimension_x`);
+	assertString(getRequired(value, "dimension_y", path), `${path}.dimension_y`);
+	assertArrayUntyped(getRequired(value, "cells", path), `${path}.cells`);
+}
+
+export function assertTimelineByDimension(
+	value: unknown,
+	path = "TimelineByDimension",
+): asserts value is TimelineByDimension {
+	assertRecord(value, path);
+	assertString(getRequired(value, "dimension", path), `${path}.dimension`);
+	assertString(getRequired(value, "granularity", path), `${path}.granularity`);
+	assertArrayUntyped(getRequired(value, "series", path), `${path}.series`);
+}
+
+// ── Knowledge Advanced Assert Functions ─────────────────────────────
+
+export function assertKnowledgeLlmBackfillResponse(
+	value: unknown,
+	path = "KnowledgeLlmBackfillResponse",
+): asserts value is KnowledgeLlmBackfillResponse {
+	assertRecord(value, path);
+	assertNumber(
+		getRequired(value, "articles_enqueued", path),
+		`${path}.articles_enqueued`,
+	);
+}
+
+export function assertKnowledgeSemanticSearchResultList(
+	value: unknown,
+	path = "KnowledgeSemanticSearchResultList",
+): asserts value is KnowledgeSemanticSearchResult[] {
+	assertArrayUntyped(value, path);
+}
+
+export function assertKnowledgeDuplicateCandidateList(
+	value: unknown,
+	path = "KnowledgeDuplicateCandidateList",
+): asserts value is KnowledgeDuplicateCandidatePair[] {
+	assertArrayUntyped(value, path);
+}
+
+export function assertKnowledgeMergeEntitiesResponse(
+	value: unknown,
+	path = "KnowledgeMergeEntitiesResponse",
+): asserts value is KnowledgeMergeEntitiesResponse {
+	assertRecord(value, path);
+	assertString(getRequired(value, "message", path), `${path}.message`);
+}
+
+export function assertKnowledgeDegreeCentralityList(
+	value: unknown,
+	path = "KnowledgeDegreeCentralityList",
+): asserts value is KnowledgeDegreeCentrality[] {
+	assertArrayUntyped(value, path);
+}
+
+export function assertKnowledgeCooccurrenceEdgeList(
+	value: unknown,
+	path = "KnowledgeCooccurrenceEdgeList",
+): asserts value is KnowledgeCooccurrenceEdge[] {
+	assertArrayUntyped(value, path);
+}
+
+export function assertKnowledgeGraphStats(
+	value: unknown,
+	path = "KnowledgeGraphStats",
+): asserts value is KnowledgeGraphStats {
+	assertRecord(value, path);
+	assertNumber(
+		getRequired(value, "entity_count", path),
+		`${path}.entity_count`,
+	);
+	assertNumber(
+		getRequired(value, "relation_count", path),
+		`${path}.relation_count`,
+	);
+	assertNumber(
+		getRequired(value, "article_entity_count", path),
+		`${path}.article_entity_count`,
+	);
+	assertNumber(
+		getRequired(value, "entities_with_embedding", path),
+		`${path}.entities_with_embedding`,
+	);
+	assertArrayUntyped(
+		getRequired(value, "type_distribution", path),
+		`${path}.type_distribution`,
+	);
 }
