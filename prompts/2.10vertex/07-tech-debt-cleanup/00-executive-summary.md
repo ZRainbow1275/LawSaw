@@ -1,7 +1,7 @@
 # 命题7：技术债清理 — 执行摘要
 
 > **最后更新**: 2026-02-13
-> **总体进度**: 编译修复 + 迁移清理 + 服务注册 + Mutex 毒锁恢复 + 死代码清理 + OpenAPI 补全 + TS 类型修复 **全部完成**, R1-R13 审计修复 **全部通过**, Worker 弹性恢复 + RLS 认证兼容 + sessions INSERT 策略 + 注册 RLS 放宽 + JSONB NOT NULL 安全 + backfill_llm RLS 修复 + UserService/ApiKeyService RLS 合规 + broken indexes 修复 **已完成**
+> **总体进度**: 编译修复 + 迁移清理 + 服务注册 + Mutex 毒锁恢复 + 死代码清理 + OpenAPI 补全 + TS 类型修复 **全部完成**, R1-R15 审计修复 **全部通过**, Worker 弹性恢复 + RLS 认证兼容 + sessions INSERT 策略 + 注册 RLS 放宽 + JSONB NOT NULL 安全 + backfill_llm RLS 修复 + UserService/ApiKeyService RLS 合规 + broken indexes 修复 **已完成**, **R15 最终验证 20/20 PASS**
 
 ---
 
@@ -356,3 +356,37 @@
 | 23 个服务 150+ 方法 RLS 覆盖 | **全部通过** | UserService list/count 为 documented admin-only |
 | 迁移序列 001-041 完整 | **通过** | 仅 017 为已知间隙 |
 | 041 列引用交叉验证 | **通过** | 全部列名与 001_initial.sql / 005_feedbacks.sql 对齐 |
+
+### R14-R15 最终综合验证 (2026-02-13)
+
+4 名 Opus 级审计 agent 分别从 RLS+迁移、服务层、前端+API、Worker+Queue 四个维度发起最终综合验证，**20/20 维度全部 PASS，0 问题发现**。
+
+| 维度 | 审计范围 | 状态 | 关键验证点 |
+|------|----------|------|------------|
+| RLS + 迁移完整性 | 32 张 RLS 表, 41 个迁移文件 | **PASS** | 序列完整, 列名交叉验证, 策略覆盖无遗漏 |
+| 服务层 RLS 合规 | 23 个服务 150+ 方法 | **PASS** | UserService 25 方法, ApiKeyService 7 方法, 全部 with_tenant_tx 或文档化安全 |
+| 前端 + API 完整性 | 1524 行 TS 类型, 118 个 OpenAPI 端点, 18 子模块 | **PASS** | 零 `any` 类型, 22 个 AppState 服务已注册, 6/6 缓存失效 |
+| Worker + Queue 鲁棒性 | 5 队列, 5 reserve_retryable, DLQ 双机制 | **PASS** | 零裸 `.await?`, 弹性恢复 match 模式, Docker 依赖健全 |
+| Mutex 安全 | 全局搜索 | **PASS** | 零 `.lock().expect()/.unwrap()` |
+| 裸 unwrap/expect 审计 | 生产代码全量 | **PASS** | 仅 test 代码 + 1 处启动不变量 |
+
+### 三门验证最终状态
+
+| 门禁命令 | 结果 | 说明 |
+|---------|------|------|
+| `cargo check --workspace` | **PASS** | 0 错误 |
+| `cargo clippy --workspace -- -D warnings` | **PASS** | 0 警告 |
+| `pnpm tsc --noEmit` (apps/web) | **PASS** | 0 错误 |
+
+### 总审计统计
+
+| 指标 | 数值 |
+|------|------|
+| 审计总轮次 | **15 轮 (R1-R15)** |
+| 发现并修复的问题 | **39 个 (R1-R13)** |
+| 最终验证轮次 (零问题) | **2 轮 (R14-R15)** |
+| 涉及文件变更 | **204 个文件** |
+| 代码变更行数 | **+45,266 / -3,089** |
+| P0 级修复 | **8 个** |
+| P1 级修复 | **16 个** |
+| P2 级修复 | **15 个** |

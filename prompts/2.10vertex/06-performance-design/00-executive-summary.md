@@ -1,7 +1,7 @@
 # 命题6：性能设计 — 执行摘要
 
 > **最后更新**: 2026-02-13
-> **总体进度**: 索引优化 + 缓存层 + 连接池加固 + 批量写入保护 + CircuitBreaker + 输入校验常量 + Docker 依赖完善 **全部完成**, R1-R6 审计修复 **已完成**, R13 broken indexes 修复 **已完成**
+> **总体进度**: 索引优化 + 缓存层 + 连接池加固 + 批量写入保护 + CircuitBreaker + 输入校验常量 + Docker 依赖完善 **全部完成**, R1-R6 审计修复 **已完成**, R13 broken indexes 修复 **已完成**, **R15 最终验证 20/20 PASS**
 
 ---
 
@@ -205,3 +205,15 @@
 | # | 问题 | 严重度 | 修复内容 | 文件 |
 |---|------|--------|----------|------|
 | 8 | Migration 034 含 5 个引用不存在列的 broken indexes | P1 | 创建 041 迁移: DROP 5 个 broken + 重建正确索引 (idx_users_tenant_email / idx_api_keys_tenant_active / idx_sources_tenant_active_schedule / idx_feedbacks_tenant_user / idx_webhook_endpoints_tenant_enabled) | `law-eye-db/migrations/041_fix_broken_indexes_and_session_tenants_update.sql` |
+
+### R14-R15 最终综合验证 (2026-02-13)
+
+4 名 Opus 级审计 agent 从 RLS+迁移、服务层、前端+API、Worker+Queue 四个维度验证，**20/20 维度全部 PASS**。
+
+| 维度 | 状态 | 关键验证点 |
+|------|------|------------|
+| 索引完整性 | **PASS** | 034 的 5 个 broken indexes 在 041 中修复, 列名交叉验证通过 |
+| CacheService 集成 | **PASS** | fail-open 语义, 6/6 写操作缓存失效 |
+| 连接池参数 | **PASS** | min(1) + idle(600s) + lifetime(1800s) + test_before_acquire |
+| CircuitBreaker | **PASS** | AI Gateway 集成, 三态切换正确 |
+| 批量 upsert 保护 | **PASS** | UPSERT_BATCH_SIZE=500, 防 PG $65535 溢出 |
