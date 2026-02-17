@@ -37,7 +37,8 @@ export function ChinaMap({ data }: ChinaMapProps) {
 				geoJson as Parameters<typeof echarts.registerMap>[1],
 			);
 			setMapReady(true);
-		} catch {
+		} catch (error) {
+			console.error("China map initialization failed", error);
 			setLoadError(true);
 		}
 	}, []);
@@ -54,9 +55,7 @@ export function ChinaMap({ data }: ChinaMapProps) {
 
 		const maxValue = Math.max(...data.map((d) => d.value), 1);
 
-		const tooltipFormatter = (
-			params: { name?: string; value?: number },
-		) => {
+		const tooltipFormatter = (params: { name?: string; value?: number }) => {
 			const name = String(params?.name ?? "");
 			const value = Number(params?.value ?? 0);
 			return `${name}: ${value} ${t("articles")}`;
@@ -74,13 +73,7 @@ export function ChinaMap({ data }: ChinaMapProps) {
 				top: "bottom",
 				text: [t("High"), t("Low")],
 				inRange: {
-					color: [
-						"#e0f3f8",
-						"#abd9e9",
-						"#74add1",
-						"#4575b4",
-						"#313695",
-					],
+					color: ["#e0f3f8", "#abd9e9", "#74add1", "#4575b4", "#313695"],
 				},
 				calculable: true,
 			},
@@ -124,9 +117,7 @@ export function ChinaMap({ data }: ChinaMapProps) {
 	if (loadError) {
 		return (
 			<div className="flex h-[500px] items-center justify-center text-sm text-neutral-500">
-				{t(
-					"Failed to load map data. Please check your network connection.",
-				)}
+				{t("Failed to load map data. Please check your network connection.")}
 			</div>
 		);
 	}

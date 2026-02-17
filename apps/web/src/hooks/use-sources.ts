@@ -68,7 +68,7 @@ export function useCreateSource() {
 				{ ...data, config: data.config ?? {} },
 				assertSource,
 			),
-		onSuccess: () => {
+		onSettled: () => {
 			queryClient.invalidateQueries({ queryKey: ["sources"] });
 			queryClient.invalidateQueries({ queryKey: ["sourceStats"] });
 		},
@@ -80,7 +80,7 @@ export function useTriggerFetch() {
 
 	return useMutation({
 		mutationFn: (id: string) => apiClient.post(`/api/v1/sources/${id}/fetch`),
-		onSuccess: () => {
+		onSettled: () => {
 			queryClient.invalidateQueries({ queryKey: ["sources"] });
 			queryClient.invalidateQueries({ queryKey: ["sourceStats"] });
 		},

@@ -36,8 +36,9 @@ pub struct CacheTtl;
 impl CacheTtl {
     /// Articles 列表缓存: 30 秒
     pub const ARTICLES_LIST: u64 = 30;
-    /// Statistics 聚合查询缓存: 5 分钟
-    pub const STATISTICS: u64 = 300;
+    /// Statistics 聚合查询缓存: 2 分钟
+    /// 作为主动失效遗漏时的兜底，降低陈旧数据暴露窗口。
+    pub const STATISTICS: u64 = 120;
     /// Knowledge Graph 缓存: 10 分钟
     pub const KNOWLEDGE_GRAPH: u64 = 600;
     /// Overview 概览缓存: 2 分钟

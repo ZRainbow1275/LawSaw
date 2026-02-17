@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use futures::stream::{self, StreamExt};
 use law_eye_ai::AiService;
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -77,6 +78,8 @@ pub struct CrawlOrchestrator {
     incremental_checker: Option<Arc<IncrementalChecker>>,
     ai_service: Option<Arc<AiService>>,
 }
+
+const DEFAULT_BATCH_MAX_CONCURRENCY: usize = 8;
 
 impl CrawlOrchestrator {
     /// Create an orchestrator with default adapters and subsystems.
@@ -170,7 +173,28 @@ impl CrawlOrchestrator {
             .unwrap_or_else(|| "unknown".to_string());
 
         // --- Step 3: acquire concurrency permit ---
-        let _permit = self.concurrency.acquire(&domain).await;
+        let _permit = match self.concurrency.acquire(&domain).await {
+            Ok(permit) => permit,
+            Err(err) => {
+                warn!(
+                    source = %job.source_name,
+                    domain = %domain,
+                    error = %err,
+                    "failed to acquire concurrency permit"
+                );
+                logger.record_error(
+                    "concurrency",
+                    format!("failed to acquire permit for domain {}: {}", domain, err),
+                );
+                let (outcome, stats) = logger.finish();
+                return CrawlJobResult {
+                    outcome,
+                    stats,
+                    articles: Vec::new(),
+                    duration_ms: start.elapsed().as_millis() as i32,
+                };
+            }
+        };
 
         // --- Step 4: rate limiting ---
         self.rate_limiter.wait(&domain).await;
@@ -322,25 +346,67 @@ impl CrawlOrchestrator {
         }
     }
 
-    /// Run multiple crawl jobs sequentially, merging stats.
+    /// Run multiple crawl jobs with bounded concurrency.
     ///
+    /// Results keep input order even though execution is concurrent.
     /// This is a convenience method for batch crawling (e.g. daily cron job
     /// that crawls all configured sources).
     pub async fn run_batch(&self, jobs: &[CrawlJobConfig]) -> Vec<CrawlJobResult> {
-        let mut results = Vec::with_capacity(jobs.len());
-        for job in jobs {
-            let result = self.run_job(job).await;
-            results.push(result);
+        if jobs.is_empty() {
+            return Vec::new();
         }
-        results
+
+        let max_concurrency = jobs.len().min(DEFAULT_BATCH_MAX_CONCURRENCY).max(1);
+        let mut indexed_results: Vec<(usize, CrawlJobResult)> = stream::iter(
+            jobs.iter().cloned().enumerate(),
+        )
+        .map(|(index, job)| async move { (index, self.run_job(&job).await) })
+        .buffer_unordered(max_concurrency)
+        .collect()
+        .await;
+
+        indexed_results.sort_by_key(|(index, _)| *index);
+        indexed_results
+            .into_iter()
+            .map(|(_, result)| result)
+            .collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::adapters::{FetchContext, SourceAdapter};
     use crate::anti_crawl::RateLimiterConfig;
     use crate::incremental::ConcurrencyConfig;
+    use async_trait::async_trait;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+
+    struct SlowAdapter {
+        delay: Duration,
+        in_flight: Arc<AtomicUsize>,
+        peak_in_flight: Arc<AtomicUsize>,
+    }
+
+    #[async_trait(?Send)]
+    impl SourceAdapter for SlowAdapter {
+        fn kind(&self) -> &str {
+            "slow"
+        }
+
+        fn display_name(&self) -> &str {
+            "Slow Test Adapter"
+        }
+
+        async fn fetch(&self, ctx: &FetchContext) -> law_eye_common::Result<Vec<RawArticle>> {
+            let current = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+            self.peak_in_flight.fetch_max(current, Ordering::SeqCst);
+            tokio::time::sleep(self.delay).await;
+            self.in_flight.fetch_sub(1, Ordering::SeqCst);
+            Ok(vec![RawArticle::new("slow", &ctx.url)])
+        }
+    }
 
     fn make_orchestrator() -> CrawlOrchestrator {
         let registry = AdapterRegistry::new();
@@ -391,7 +457,7 @@ mod tests {
         let result = orch.run_job(&job).await;
         assert_eq!(result.outcome, CrawlOutcome::Failed);
         assert!(result.articles.is_empty());
-        assert!(result.stats.errors.len() >= 1);
+        assert!(!result.stats.errors.is_empty());
         assert!(result.duration_ms >= 0);
     }
 
@@ -443,6 +509,46 @@ mod tests {
         for r in &results {
             assert_eq!(r.outcome, CrawlOutcome::Failed);
         }
+    }
+
+    #[tokio::test]
+    async fn run_batch_executes_jobs_concurrently_and_keeps_order() {
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let peak_in_flight = Arc::new(AtomicUsize::new(0));
+        let mut registry = AdapterRegistry::new();
+        registry.register(Arc::new(SlowAdapter {
+            delay: Duration::from_millis(180),
+            in_flight: in_flight.clone(),
+            peak_in_flight: peak_in_flight.clone(),
+        }));
+
+        let rate_limiter = Arc::new(DomainRateLimiter::new(RateLimiterConfig {
+            burst_size: 10,
+            tokens_per_second: 100.0,
+        }));
+        let concurrency = Arc::new(ConcurrencyController::new(ConcurrencyConfig::default()));
+        let orch = CrawlOrchestrator::new(registry, rate_limiter, concurrency);
+
+        let mut job_a = make_job();
+        job_a.kind = "slow".to_string();
+        job_a.url = "https://example.com/a".to_string();
+        let mut job_b = make_job();
+        job_b.kind = "slow".to_string();
+        job_b.url = "https://example.com/b".to_string();
+        let jobs = vec![job_a.clone(), job_b.clone()];
+
+        let results = orch.run_batch(&jobs).await;
+
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(|r| r.outcome == CrawlOutcome::Success));
+        assert!(
+            peak_in_flight.load(Ordering::SeqCst) >= 2,
+            "expected at least 2 concurrent jobs, got peak={}",
+            peak_in_flight.load(Ordering::SeqCst)
+        );
+
+        assert_eq!(results[0].articles[0].link, job_a.url);
+        assert_eq!(results[1].articles[0].link, job_b.url);
     }
 
     #[test]

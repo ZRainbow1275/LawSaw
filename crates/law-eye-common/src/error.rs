@@ -11,6 +11,15 @@ pub enum Error {
     #[error("HTTP error: {0}")]
     Http(String),
 
+    #[error("Rate limited: {0}")]
+    RateLimited(String),
+
+    #[error("Timeout error: {0}")]
+    Timeout(String),
+
+    #[error("External service error: {0}")]
+    ExternalService(String),
+
     #[error("Parse error: {0}")]
     Parse(String),
 

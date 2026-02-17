@@ -24,6 +24,7 @@ async-trait.workspace = true
 rand.workspace = true
 metrics.workspace = true
 uuid.workspace = true
+futures.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

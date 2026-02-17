@@ -1,7 +1,7 @@
 "use client";
 
 import { useSidebarStore } from "@/stores/sidebar-store";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useCallback, useEffect } from "react";
 import { Sidebar } from "./sidebar";
 
@@ -11,6 +11,7 @@ interface ReaderLayoutProps {
 
 export function ReaderLayout({ children }: ReaderLayoutProps) {
 	const { readerMode, hovered, setReaderMode, setHovered } = useSidebarStore();
+	const reducedMotion = useReducedMotion() ?? false;
 
 	useEffect(() => {
 		setReaderMode(true);
@@ -40,13 +41,17 @@ export function ReaderLayout({ children }: ReaderLayoutProps) {
 			/>
 
 			{/* Sidebar */}
-			<AnimatePresence>
+			<AnimatePresence initial={!reducedMotion}>
 				{showSidebar && (
 					<motion.div
-						initial={{ x: -280, opacity: 0 }}
+						initial={reducedMotion ? false : { x: -280, opacity: 0 }}
 						animate={{ x: 0, opacity: 1 }}
-						exit={{ x: -280, opacity: 0 }}
-						transition={{ type: "spring", damping: 25, stiffness: 200 }}
+						exit={reducedMotion ? undefined : { x: -280, opacity: 0 }}
+						transition={
+							reducedMotion
+								? { duration: 0 }
+								: { type: "spring", damping: 25, stiffness: 200 }
+						}
 						onMouseLeave={handleSidebarLeave}
 						className="fixed left-0 top-0 z-50"
 					>
@@ -56,13 +61,13 @@ export function ReaderLayout({ children }: ReaderLayoutProps) {
 			</AnimatePresence>
 
 			{/* Backdrop overlay */}
-			<AnimatePresence>
+			<AnimatePresence initial={!reducedMotion}>
 				{readerMode && hovered && (
 					<motion.div
-						initial={{ opacity: 0 }}
+						initial={reducedMotion ? false : { opacity: 0 }}
 						animate={{ opacity: 1 }}
-						exit={{ opacity: 0 }}
-						transition={{ duration: 0.2 }}
+						exit={reducedMotion ? undefined : { opacity: 0 }}
+						transition={reducedMotion ? { duration: 0 } : { duration: 0.2 }}
 						className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm"
 						onClick={() => setHovered(false)}
 					/>

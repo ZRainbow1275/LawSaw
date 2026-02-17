@@ -599,13 +599,13 @@ mod tests {
 
     #[test]
     fn ttl_cache_hits_then_expires() {
-        let mut cache = TtlLruCache::new(2, Duration::from_millis(10));
+        let mut cache = TtlLruCache::new(2, Duration::from_millis(100));
         let key = "search-key".to_string();
 
         cache.insert(key.clone(), 42_i32);
         assert_eq!(cache.get(&key), Some(42));
 
-        thread::sleep(Duration::from_millis(20));
+        thread::sleep(Duration::from_millis(150));
         assert_eq!(cache.get(&key), None);
     }
 

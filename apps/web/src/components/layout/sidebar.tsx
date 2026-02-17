@@ -5,7 +5,7 @@ import { stripLocalePrefix, withLocalePath } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
 import { useSidebarStore } from "@/stores/sidebar-store";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
 	ChevronRight,
 	ClipboardList,
@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 
 function parseHexColor(
 	input: string,
@@ -86,6 +86,7 @@ interface SidebarPanelProps {
 	categories: CategoryList;
 	categoryCount: number;
 	layoutIdPrefix: string;
+	reducedMotion: boolean;
 	onNavigate?: () => void;
 	showCollapseToggle?: boolean;
 	onToggleCollapsed?: () => void;
@@ -100,6 +101,7 @@ function SidebarPanel({
 	categories,
 	categoryCount,
 	layoutIdPrefix,
+	reducedMotion,
 	onNavigate,
 	showCollapseToggle,
 	onToggleCollapsed,
@@ -115,30 +117,38 @@ function SidebarPanel({
 			<div className="flex h-16 items-center gap-3 border-b border-neutral-100 px-4">
 				<motion.div
 					className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 text-white shadow-brand"
-					whileHover={{ scale: 1.08, rotate: 5 }}
-					whileTap={{ scale: 0.95 }}
+					whileHover={reducedMotion ? undefined : { scale: 1.08, rotate: 5 }}
+					whileTap={reducedMotion ? undefined : { scale: 0.95 }}
 				>
 					<Eye aria-hidden="true" className="h-5 w-5" />
 					<motion.div
 						className="absolute -right-0.5 -top-0.5"
-						animate={{ scale: [1, 1.2, 1], opacity: [0.7, 1, 0.7] }}
-						transition={{
-							duration: 2,
-							repeat: Number.POSITIVE_INFINITY,
-							ease: "easeInOut",
-						}}
+						animate={
+							reducedMotion
+								? undefined
+								: { scale: [1, 1.2, 1], opacity: [0.7, 1, 0.7] }
+						}
+						transition={
+							reducedMotion
+								? undefined
+								: {
+										duration: 2,
+										repeat: Number.POSITIVE_INFINITY,
+										ease: "easeInOut",
+									}
+						}
 					>
 						<Sparkles aria-hidden="true" className="h-3 w-3 text-yellow-300" />
 					</motion.div>
 				</motion.div>
-				<AnimatePresence>
+				<AnimatePresence initial={!reducedMotion}>
 					{!collapsed && (
 						<motion.div
 							className="flex flex-col overflow-hidden"
-							initial={{ opacity: 0, width: 0 }}
+							initial={reducedMotion ? false : { opacity: 0, width: 0 }}
 							animate={{ opacity: 1, width: "auto" }}
-							exit={{ opacity: 0, width: 0 }}
-							transition={{ duration: 0.2 }}
+							exit={reducedMotion ? undefined : { opacity: 0, width: 0 }}
+							transition={reducedMotion ? { duration: 0 } : { duration: 0.2 }}
 						>
 							<span className="text-lg font-bold text-neutral-900">
 								{locale === "zh" ? t("Law Eye (short)") : "Law Eye"}
@@ -158,7 +168,7 @@ function SidebarPanel({
 						aria-label={t("Close navigation")}
 						onClick={() => onRequestClose?.()}
 					>
-						<X aria-hidden="true" className="h-5 w-5"  />
+						<X aria-hidden="true" className="h-5 w-5" />
 					</button>
 				)}
 			</div>
@@ -166,13 +176,14 @@ function SidebarPanel({
 			{/* Navigation */}
 			<nav className="flex-1 space-y-1 overflow-y-auto p-3">
 				<div className="mb-4">
-					<AnimatePresence>
+					<AnimatePresence initial={!reducedMotion}>
 						{!collapsed && (
 							<motion.p
 								className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-neutral-400"
-								initial={{ opacity: 0, x: -10 }}
+								initial={reducedMotion ? false : { opacity: 0, x: -10 }}
 								animate={{ opacity: 1, x: 0 }}
-								exit={{ opacity: 0, x: -10 }}
+								exit={reducedMotion ? undefined : { opacity: 0, x: -10 }}
+								transition={reducedMotion ? { duration: 0 } : undefined}
 							>
 								{t("Navigation")}
 							</motion.p>
@@ -183,9 +194,13 @@ function SidebarPanel({
 						return (
 							<motion.div
 								key={item.name}
-								initial={{ opacity: 0, x: -20 }}
+								initial={reducedMotion ? false : { opacity: 0, x: -20 }}
 								animate={{ opacity: 1, x: 0 }}
-								transition={{ delay: index * 0.05 }}
+								transition={
+									reducedMotion
+										? { duration: 0 }
+										: { delay: index * 0.05 }
+								}
 							>
 								<Link
 									href={withLocalePath(locale, item.href)}
@@ -202,20 +217,36 @@ function SidebarPanel({
 									{/* Active state background */}
 									{isActive && (
 										<motion.div
-											layoutId={`${layoutIdPrefix}-activeNav`}
+											layoutId={
+												reducedMotion
+													? undefined
+													: `${layoutIdPrefix}-activeNav`
+											}
 											className="absolute inset-0 rounded-xl bg-gradient-to-r from-primary-50 to-primary-100 shadow-sm"
-											transition={{
-												type: "spring",
-												stiffness: 300,
-												damping: 30,
-											}}
+											transition={
+												reducedMotion
+													? { duration: 0 }
+													: {
+															type: "spring",
+															stiffness: 300,
+															damping: 30,
+														}
+											}
 										/>
 									)}
 
 									<motion.div
 										className="relative z-10"
-										whileHover={{ scale: 1.1, rotate: isActive ? 0 : 5 }}
-										transition={{ type: "spring", stiffness: 400 }}
+										whileHover={
+											reducedMotion
+												? undefined
+												: { scale: 1.1, rotate: isActive ? 0 : 5 }
+										}
+										transition={
+											reducedMotion
+												? { duration: 0 }
+												: { type: "spring", stiffness: 400 }
+										}
 									>
 										<item.icon
 											className={cn(
@@ -227,13 +258,14 @@ function SidebarPanel({
 										/>
 									</motion.div>
 
-									<AnimatePresence>
+									<AnimatePresence initial={!reducedMotion}>
 										{!collapsed && (
 											<motion.span
 												className="relative z-10"
-												initial={{ opacity: 0, x: -10 }}
+												initial={reducedMotion ? false : { opacity: 0, x: -10 }}
 												animate={{ opacity: 1, x: 0 }}
-												exit={{ opacity: 0, x: -10 }}
+												exit={reducedMotion ? undefined : { opacity: 0, x: -10 }}
+												transition={reducedMotion ? { duration: 0 } : undefined}
 											>
 												{t(item.name)}
 											</motion.span>
@@ -246,19 +278,22 @@ function SidebarPanel({
 				</div>
 
 				{/* Categories */}
-				<AnimatePresence>
+				<AnimatePresence initial={!reducedMotion}>
 					{!collapsed && (
 						<motion.div
 							className="pt-4 border-t border-neutral-100"
-							initial={{ opacity: 0 }}
+							initial={reducedMotion ? false : { opacity: 0 }}
 							animate={{ opacity: 1 }}
-							exit={{ opacity: 0 }}
+							exit={reducedMotion ? undefined : { opacity: 0 }}
+							transition={reducedMotion ? { duration: 0 } : undefined}
 						>
 							<motion.p
 								className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-neutral-400"
-								initial={{ opacity: 0 }}
+								initial={reducedMotion ? false : { opacity: 0 }}
 								animate={{ opacity: 1 }}
-								transition={{ delay: 0.1 }}
+								transition={
+									reducedMotion ? { duration: 0 } : { delay: 0.1 }
+								}
 							>
 								{categoriesQuery.isLoading
 									? t("Loading categories")
@@ -303,9 +338,13 @@ function SidebarPanel({
 										return (
 											<motion.div
 												key={category.id}
-												initial={{ opacity: 0, x: -20 }}
+												initial={reducedMotion ? false : { opacity: 0, x: -20 }}
 												animate={{ opacity: 1, x: 0 }}
-												transition={{ delay: 0.15 + index * 0.03 }}
+												transition={
+													reducedMotion
+														? { duration: 0 }
+														: { delay: 0.15 + index * 0.03 }
+												}
 											>
 												<Link
 													href={withLocalePath(
@@ -329,8 +368,16 @@ function SidebarPanel({
 																: "bg-neutral-100 text-neutral-600",
 														)}
 														style={badgeStyle}
-														whileHover={{ scale: 1.15, rotate: 10 }}
-														transition={{ type: "spring", stiffness: 400 }}
+														whileHover={
+															reducedMotion
+																? undefined
+																: { scale: 1.15, rotate: 10 }
+														}
+														transition={
+															reducedMotion
+																? { duration: 0 }
+																: { type: "spring", stiffness: 400 }
+														}
 														aria-hidden="true"
 													>
 														{iconText}
@@ -358,21 +405,24 @@ function SidebarPanel({
 							"border border-neutral-200/50",
 							"hover:from-primary-50 hover:to-primary-100/50 hover:text-primary-600 hover:border-primary-200/50",
 						)}
-						whileHover={{ scale: 1.02 }}
-						whileTap={{ scale: 0.98 }}
+						whileHover={reducedMotion ? undefined : { scale: 1.02 }}
+						whileTap={reducedMotion ? undefined : { scale: 0.98 }}
 					>
 						<motion.div
-							animate={{ rotate: collapsed ? 0 : 180 }}
-							transition={{ duration: 0.3 }}
+							animate={
+								reducedMotion ? undefined : { rotate: collapsed ? 0 : 180 }
+							}
+							transition={reducedMotion ? { duration: 0 } : { duration: 0.3 }}
 						>
 							<ChevronRight aria-hidden="true" className="h-4 w-4" />
 						</motion.div>
-						<AnimatePresence>
+						<AnimatePresence initial={!reducedMotion}>
 							{!collapsed && (
 								<motion.span
-									initial={{ opacity: 0, width: 0 }}
+									initial={reducedMotion ? false : { opacity: 0, width: 0 }}
 									animate={{ opacity: 1, width: "auto" }}
-									exit={{ opacity: 0, width: 0 }}
+									exit={reducedMotion ? undefined : { opacity: 0, width: 0 }}
+									transition={reducedMotion ? { duration: 0 } : undefined}
 								>
 									{t("Collapse menu")}
 								</motion.span>
@@ -389,12 +439,41 @@ export function Sidebar() {
 	const pathname = usePathname();
 	const activePathname = stripLocalePrefix(pathname);
 	const t = useT();
+	const reducedMotion = useReducedMotion() ?? false;
 	const { collapsed, toggle, mobileOpen, closeMobile } = useSidebarStore();
 	const categoriesQuery = useCategories();
 	const categories = categoriesQuery.data ?? [];
 	const categoryCount = categories.length;
 
 	const previousPathnameRef = useRef<string | null>(null);
+	const mobileDrawerRef = useRef<HTMLDialogElement | null>(null);
+	const previousFocusedElementRef = useRef<HTMLElement | null>(null);
+
+	const handleFocusTrap = useCallback((event: KeyboardEvent) => {
+		if (event.key !== "Tab") return;
+		const container = mobileDrawerRef.current;
+		if (!container) return;
+
+		const focusable = container.querySelectorAll<HTMLElement>(
+			'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])',
+		);
+		if (focusable.length === 0) return;
+
+		const first = focusable[0];
+		const last = focusable[focusable.length - 1];
+
+		if (event.shiftKey) {
+			if (document.activeElement === first) {
+				event.preventDefault();
+				last.focus();
+			}
+		} else {
+			if (document.activeElement === last) {
+				event.preventDefault();
+				first.focus();
+			}
+		}
+	}, []);
 
 	useEffect(() => {
 		const previous = previousPathnameRef.current;
@@ -409,18 +488,38 @@ export function Sidebar() {
 
 		const previousOverflow = document.body.style.overflow;
 		document.body.style.overflow = "hidden";
+		previousFocusedElementRef.current = document.activeElement as HTMLElement | null;
 
 		const handleKeyDown = (event: KeyboardEvent) => {
 			if (event.key === "Escape") closeMobile();
+			handleFocusTrap(event);
 		};
 
 		window.addEventListener("keydown", handleKeyDown);
 
+		// Focus the drawer container when opened
+		const drawer = mobileDrawerRef.current;
+		if (drawer) {
+			const firstFocusable = drawer.querySelector<HTMLElement>(
+				'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+			);
+			if (firstFocusable) {
+				firstFocusable.focus();
+			} else {
+				drawer.focus();
+			}
+		}
+
 		return () => {
 			window.removeEventListener("keydown", handleKeyDown);
 			document.body.style.overflow = previousOverflow;
+			const previousFocused = previousFocusedElementRef.current;
+			if (previousFocused && document.contains(previousFocused)) {
+				previousFocused.focus();
+			}
+			previousFocusedElementRef.current = null;
 		};
-	}, [mobileOpen, closeMobile]);
+	}, [mobileOpen, closeMobile, handleFocusTrap]);
 
 	const baseAsideClassName = cn(
 		"fixed left-0 top-0 flex h-screen flex-col",
@@ -435,7 +534,11 @@ export function Sidebar() {
 			<motion.aside
 				initial={false}
 				animate={{ width: collapsed ? 64 : 280 }}
-				transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+				transition={
+					reducedMotion
+						? { duration: 0 }
+						: { duration: 0.3, ease: [0.4, 0, 0.2, 1] }
+				}
 				className={cn(baseAsideClassName, "z-30 hidden md:flex")}
 				aria-label={t("Primary navigation")}
 			>
@@ -446,31 +549,43 @@ export function Sidebar() {
 					categories={categories}
 					categoryCount={categoryCount}
 					layoutIdPrefix="desktop"
+					reducedMotion={reducedMotion}
 					showCollapseToggle
 					onToggleCollapsed={toggle}
 				/>
 			</motion.aside>
 
 			{/* Mobile Drawer */}
-			<AnimatePresence>
+			<AnimatePresence initial={!reducedMotion}>
 				{mobileOpen && (
 					<>
 						<motion.div
-							initial={{ opacity: 0 }}
+							initial={reducedMotion ? false : { opacity: 0 }}
 							animate={{ opacity: 1 }}
-							exit={{ opacity: 0 }}
-							transition={{ duration: 0.2 }}
+							exit={reducedMotion ? undefined : { opacity: 0 }}
+							transition={reducedMotion ? { duration: 0 } : { duration: 0.2 }}
 							className="fixed inset-0 z-40 bg-black/40 md:hidden"
 							onClick={closeMobile}
 							aria-hidden="true"
 						/>
-						<motion.aside
-							initial={{ x: -320 }}
+						<motion.dialog
+							ref={mobileDrawerRef}
+							open
+							initial={reducedMotion ? false : { x: -320 }}
 							animate={{ x: 0 }}
-							exit={{ x: -320 }}
-							transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-							className={cn(baseAsideClassName, "z-50 w-[280px] md:hidden")}
+							exit={reducedMotion ? undefined : { x: -320 }}
+							transition={
+								reducedMotion
+									? { duration: 0 }
+									: { duration: 0.25, ease: [0.4, 0, 0.2, 1] }
+							}
+							className={cn(
+								baseAsideClassName,
+								"z-50 m-0 w-[280px] max-w-none p-0 md:hidden",
+							)}
+							aria-modal="true"
 							aria-label={t("Primary navigation")}
+							tabIndex={-1}
 						>
 							<SidebarPanel
 								collapsed={false}
@@ -479,11 +594,12 @@ export function Sidebar() {
 								categories={categories}
 								categoryCount={categoryCount}
 								layoutIdPrefix="mobile"
+								reducedMotion={reducedMotion}
 								onNavigate={closeMobile}
 								showCloseButton
 								onRequestClose={closeMobile}
 							/>
-						</motion.aside>
+						</motion.dialog>
 					</>
 				)}
 			</AnimatePresence>

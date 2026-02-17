@@ -20,7 +20,7 @@ pub mod webhooks;
 use axum::{
     body::Body,
     extract::{MatchedPath, State},
-    http::{header, HeaderMap, HeaderValue, Method, Request, StatusCode},
+    http::{header, HeaderMap, HeaderName, HeaderValue, Method, Request, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::get,
@@ -102,6 +102,12 @@ async fn track_metrics(req: Request<Body>, next: Next) -> Response {
 }
 
 const DEFAULT_CACHE_CONTROL_HEADER: &str = "private, max-age=30, must-revalidate";
+const V1_DEPRECATION_WARNING_HEADER: &str =
+    "299 - \"API v1 is deprecated; migrate to /api/v2\"";
+const V1_SUNSET_RFC2822: &str = "Wed, 31 Dec 2026 23:59:59 GMT";
+const HEADER_DEPRECATION: &str = "deprecation";
+const HEADER_SUNSET: &str = "sunset";
+const HEADER_X_API_VERSION: &str = "x-api-version";
 
 fn build_weak_etag_signature(path_and_query: &str, response: &Response) -> Option<String> {
     let content_length = response
@@ -223,6 +229,37 @@ async fn apply_conditional_cache_headers(req: Request<Body>, next: Next) -> Resp
     response
 }
 
+async fn apply_api_version_headers(req: Request<Body>, next: Next) -> Response {
+    let path = req.uri().path().to_string();
+    let mut response = next.run(req).await;
+
+    if path.starts_with("/api/v1") {
+        response.headers_mut().insert(
+            HeaderName::from_static(HEADER_X_API_VERSION),
+            HeaderValue::from_static("1"),
+        );
+        response.headers_mut().insert(
+            HeaderName::from_static(HEADER_DEPRECATION),
+            HeaderValue::from_static("true"),
+        );
+        response.headers_mut().insert(
+            HeaderName::from_static(HEADER_SUNSET),
+            HeaderValue::from_static(V1_SUNSET_RFC2822),
+        );
+        response.headers_mut().insert(
+            header::WARNING,
+            HeaderValue::from_static(V1_DEPRECATION_WARNING_HEADER),
+        );
+    } else if path.starts_with("/api/v2") {
+        response.headers_mut().insert(
+            HeaderName::from_static(HEADER_X_API_VERSION),
+            HeaderValue::from_static("2"),
+        );
+    }
+
+    response
+}
+
 pub(super) fn extract_audit_meta(
     headers: &HeaderMap,
     addr: SocketAddr,
@@ -316,7 +353,7 @@ pub fn create_router(state: AppState) -> Router {
         )
         .nest(
             "/sources",
-            require_permissions(sources::router(), "sources:read", "*"),
+            require_permissions(sources::router(), "sources:read", "sources:write"),
         )
         .nest(
             "/categories",
@@ -324,7 +361,7 @@ pub fn create_router(state: AppState) -> Router {
         )
         .nest(
             "/feedbacks",
-            require_permission(feedbacks::router(), "feedbacks:write"),
+            require_permissions(feedbacks::router(), "feedbacks:read", "feedbacks:write"),
         )
         .nest(
             "/ai",
@@ -333,7 +370,7 @@ pub fn create_router(state: AppState) -> Router {
         .nest("/users", require_permission(users::router(), "users:read"))
         .nest(
             "/webhooks",
-            require_permission(webhooks::router(), "users:read"),
+            require_permissions(webhooks::router(), "webhooks:read", "webhooks:write"),
         )
         .nest(
             "/objects",
@@ -358,11 +395,11 @@ pub fn create_router(state: AppState) -> Router {
         )
         .nest(
             "/reports",
-            require_permission(reports::router(), "articles:read"),
+            require_permissions(reports::router(), "reports:read", "reports:write"),
         )
         .nest(
             "/report-templates",
-            require_permission(reports::template_router(), "articles:read"),
+            require_permissions(reports::template_router(), "reports:read", "reports:write"),
         )
         .nest(
             "/tenants",
@@ -381,6 +418,7 @@ pub fn create_router(state: AppState) -> Router {
         .nest("/api/v1", protected_api.clone())
         .nest("/api/v2", protected_api)
         .nest("/health", health::router())
+        .route_layer(middleware::from_fn(apply_api_version_headers))
         .route_layer(middleware::from_fn(track_metrics))
         .route_layer(middleware::from_fn(apply_conditional_cache_headers))
         .with_state(state)
@@ -390,7 +428,7 @@ pub fn create_router(state: AppState) -> Router {
 mod contract_tests {
     use super::*;
     use axum::body::Body;
-    use axum::http::{header, Method, Request, StatusCode};
+    use axum::http::{header, HeaderName, Method, Request, StatusCode};
     use law_eye_ai::LlmGateway;
     use law_eye_common::vault::PlaintextCipher;
     use law_eye_queue::TaskQueue;
@@ -466,5 +504,74 @@ mod contract_tests {
         assert_ne!(v1, StatusCode::NOT_FOUND);
         assert_ne!(v2, StatusCode::NOT_FOUND);
         assert_eq!(v1, v2, "v1/v2 protected route status should stay aligned");
+    }
+
+    #[tokio::test]
+    async fn v1_includes_deprecation_headers_but_v2_does_not() {
+        let app = create_router(test_state());
+
+        let v1_request = Request::builder()
+            .method(Method::POST)
+            .uri("/api/v1/auth/login")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from("{}"))
+            .expect("v1 request");
+        let v1_response = app
+            .clone()
+            .oneshot(v1_request)
+            .await
+            .expect("v1 response");
+
+        let v2_request = Request::builder()
+            .method(Method::POST)
+            .uri("/api/v2/auth/login")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from("{}"))
+            .expect("v2 request");
+        let v2_response = app.oneshot(v2_request).await.expect("v2 response");
+
+        let deprecation_header = HeaderName::from_static(HEADER_DEPRECATION);
+        let sunset_header = HeaderName::from_static(HEADER_SUNSET);
+        let version_header = HeaderName::from_static(HEADER_X_API_VERSION);
+
+        assert_eq!(
+            v1_response
+                .headers()
+                .get(&version_header)
+                .and_then(|v| v.to_str().ok()),
+            Some("1")
+        );
+        assert_eq!(
+            v1_response
+                .headers()
+                .get(&deprecation_header)
+                .and_then(|v| v.to_str().ok()),
+            Some("true")
+        );
+        assert_eq!(
+            v1_response
+                .headers()
+                .get(&sunset_header)
+                .and_then(|v| v.to_str().ok()),
+            Some(V1_SUNSET_RFC2822)
+        );
+        assert!(
+            v1_response
+                .headers()
+                .get(header::WARNING)
+                .and_then(|v| v.to_str().ok())
+                .is_some_and(|value| value.contains("/api/v2")),
+            "v1 should carry migration warning header"
+        );
+
+        assert_eq!(
+            v2_response
+                .headers()
+                .get(&version_header)
+                .and_then(|v| v.to_str().ok()),
+            Some("2")
+        );
+        assert!(v2_response.headers().get(&deprecation_header).is_none());
+        assert!(v2_response.headers().get(&sunset_header).is_none());
     }
 }

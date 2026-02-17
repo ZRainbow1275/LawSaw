@@ -106,16 +106,21 @@ impl AppError {
     }
 
     pub fn internal(msg: impl Into<String>) -> Self {
+        let msg = msg.into();
+        error!(error = %msg, error_type = "internal", "internal error");
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
-            body: ApiError::new(msg).with_code("INTERNAL_ERROR"),
+            body: ApiError::new("Internal server error").with_code("INTERNAL_ERROR"),
         }
     }
 
     pub fn internal_with_code(code: impl Into<String>, msg: impl Into<String>) -> Self {
+        let code = code.into();
+        let msg = msg.into();
+        error!(error = %msg, code = %code, error_type = "internal", "internal error");
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
-            body: ApiError::new(msg).with_code(code),
+            body: ApiError::new("Internal server error").with_code(code),
         }
     }
 
@@ -130,6 +135,13 @@ impl AppError {
         Self {
             status: StatusCode::SERVICE_UNAVAILABLE,
             body: ApiError::new(msg).with_code("SERVICE_UNAVAILABLE"),
+        }
+    }
+
+    pub fn gateway_timeout(msg: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::GATEWAY_TIMEOUT,
+            body: ApiError::new(msg).with_code("GATEWAY_TIMEOUT"),
         }
     }
 
@@ -161,8 +173,12 @@ impl IntoResponse for AppError {
     }
 }
 
-fn is_production() -> bool {
-    std::env::var_os("PRODUCTION").is_some()
+fn internal_error_response(error_type: &'static str, msg: String) -> AppError {
+    error!(error = %msg, error_type, "internal error");
+    AppError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        body: ApiError::new("Internal server error").with_code("INTERNAL_ERROR"),
+    }
 }
 
 impl From<law_eye_common::Error> for AppError {
@@ -174,38 +190,13 @@ impl From<law_eye_common::Error> for AppError {
             law_eye_common::Error::Forbidden(msg) => Self::forbidden(msg),
             law_eye_common::Error::Conflict(msg) => Self::conflict(msg),
             law_eye_common::Error::Parse(msg) => Self::bad_request(format!("Parse error: {}", msg)),
-            law_eye_common::Error::Database(msg) => {
-                error!(error = %msg, error_type = "database", "internal error");
-                if is_production() {
-                    Self::internal("Internal server error")
-                } else {
-                    Self::internal(format!("Database error: {}", msg))
-                }
-            }
-            law_eye_common::Error::Config(msg) => {
-                error!(error = %msg, error_type = "config", "internal error");
-                if is_production() {
-                    Self::internal("Internal server error")
-                } else {
-                    Self::internal(format!("Config error: {}", msg))
-                }
-            }
-            law_eye_common::Error::Http(msg) => {
-                error!(error = %msg, error_type = "http", "internal error");
-                if is_production() {
-                    Self::internal("Internal server error")
-                } else {
-                    Self::internal(format!("HTTP error: {}", msg))
-                }
-            }
-            law_eye_common::Error::Internal(msg) => {
-                error!(error = %msg, error_type = "internal", "internal error");
-                if is_production() {
-                    Self::internal("Internal server error")
-                } else {
-                    Self::internal(msg)
-                }
-            }
+            law_eye_common::Error::RateLimited(msg) => Self::rate_limited(msg),
+            law_eye_common::Error::Timeout(msg) => Self::gateway_timeout(msg),
+            law_eye_common::Error::ExternalService(msg) => Self::service_unavailable(msg),
+            law_eye_common::Error::Database(msg) => internal_error_response("database", msg),
+            law_eye_common::Error::Config(msg) => internal_error_response("config", msg),
+            law_eye_common::Error::Http(msg) => internal_error_response("http", msg),
+            law_eye_common::Error::Internal(msg) => internal_error_response("internal", msg),
         }
     }
 }
@@ -263,13 +254,83 @@ fn map_query_rejection(rejection: axum::extract::rejection::QueryRejection) -> A
 }
 
 fn bad_request_rejection(code: &str, message: &str, reason: String) -> AppError {
-    let mut body = ApiError::new(message).with_code(code);
-    if !is_production() {
-        body.details = Some(serde_json::json!({ "reason": reason }));
-    }
-
+    error!(error = %reason, code, "request rejected");
     AppError {
         status: StatusCode::BAD_REQUEST,
-        body,
+        body: ApiError::new(message).with_code(code),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn internal_common_errors_are_sanitized() {
+        let errors = [
+            law_eye_common::Error::Database("db connection string leaked".to_string()),
+            law_eye_common::Error::Config("missing secret key".to_string()),
+            law_eye_common::Error::Http("upstream timeout detail".to_string()),
+            law_eye_common::Error::Internal("panic backtrace".to_string()),
+        ];
+
+        for source_error in errors {
+            let mapped: AppError = source_error.into();
+            assert_eq!(mapped.status, StatusCode::INTERNAL_SERVER_ERROR);
+            assert_eq!(mapped.body.error, "Internal server error");
+            assert_eq!(mapped.body.code.as_deref(), Some("INTERNAL_ERROR"));
+            assert!(mapped.body.details.is_none());
+        }
+    }
+
+    #[test]
+    fn semantic_common_errors_map_to_expected_status_codes() {
+        let cases = [
+            (
+                law_eye_common::Error::RateLimited("quota exceeded".to_string()),
+                StatusCode::TOO_MANY_REQUESTS,
+                "RATE_LIMITED",
+            ),
+            (
+                law_eye_common::Error::Timeout("upstream timed out".to_string()),
+                StatusCode::GATEWAY_TIMEOUT,
+                "GATEWAY_TIMEOUT",
+            ),
+            (
+                law_eye_common::Error::ExternalService("vendor is unavailable".to_string()),
+                StatusCode::SERVICE_UNAVAILABLE,
+                "SERVICE_UNAVAILABLE",
+            ),
+        ];
+
+        for (source_error, expected_status, expected_code) in cases {
+            let mapped: AppError = source_error.into();
+            assert_eq!(mapped.status, expected_status);
+            assert_eq!(mapped.body.code.as_deref(), Some(expected_code));
+            assert!(mapped.body.details.is_none());
+        }
+    }
+
+    #[test]
+    fn bad_request_rejection_hides_reason() {
+        let mapped = bad_request_rejection(
+            "INVALID_JSON",
+            "Invalid request body",
+            "invalid type: map, expected sequence".to_string(),
+        );
+
+        assert_eq!(mapped.status, StatusCode::BAD_REQUEST);
+        assert_eq!(mapped.body.code.as_deref(), Some("INVALID_JSON"));
+        assert_eq!(mapped.body.error, "Invalid request body");
+        assert!(mapped.body.details.is_none());
+    }
+
+    #[test]
+    fn internal_with_code_hides_reason() {
+        let mapped = AppError::internal_with_code("FETCH_ERROR", "postgres connection refused");
+        assert_eq!(mapped.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(mapped.body.code.as_deref(), Some("FETCH_ERROR"));
+        assert_eq!(mapped.body.error, "Internal server error");
+        assert!(mapped.body.details.is_none());
     }
 }

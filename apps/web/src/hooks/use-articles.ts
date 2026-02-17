@@ -108,7 +108,7 @@ export function usePublishArticle() {
 					},
 				},
 			),
-		onSuccess: () => {
+		onSettled: () => {
 			queryClient.invalidateQueries({ queryKey: ["articles"] });
 			queryClient.invalidateQueries({ queryKey: ["articleStats"] });
 		},
@@ -130,7 +130,7 @@ export function useArchiveArticle() {
 					},
 				},
 			),
-		onSuccess: () => {
+		onSettled: () => {
 			queryClient.invalidateQueries({ queryKey: ["articles"] });
 			queryClient.invalidateQueries({ queryKey: ["articleStats"] });
 		},
@@ -147,7 +147,7 @@ export function useDeleteArticle() {
 					"If-Match": ifMatchFromVersion(input.version),
 				},
 			}),
-		onSuccess: () => {
+		onSettled: () => {
 			queryClient.invalidateQueries({ queryKey: ["articles"] });
 			queryClient.invalidateQueries({ queryKey: ["articleStats"] });
 		},
