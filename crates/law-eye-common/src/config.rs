@@ -57,6 +57,22 @@ fn default_feedback_vault_transit_key() -> String {
     "law-eye-feedback".to_string()
 }
 
+fn default_feedback_require_in_production() -> bool {
+    true
+}
+
+fn default_feedback_backfill_on_startup() -> bool {
+    true
+}
+
+fn default_feedback_backfill_batch_size() -> i64 {
+    100
+}
+
+fn default_feedback_backfill_max_batches() -> u32 {
+    0
+}
+
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct EncryptionConfig {
     #[serde(default)]
@@ -67,6 +83,18 @@ pub struct EncryptionConfig {
 pub struct FeedbackEncryptionConfig {
     #[serde(default)]
     pub enabled: bool,
+    /// Require feedback encryption in production startup checks.
+    #[serde(default = "default_feedback_require_in_production")]
+    pub require_in_production: bool,
+    /// Whether to run plaintext-to-ciphertext backfill on API startup when encryption is enabled.
+    #[serde(default = "default_feedback_backfill_on_startup")]
+    pub backfill_on_startup: bool,
+    /// Number of plaintext feedback rows to process per backfill batch.
+    #[serde(default = "default_feedback_backfill_batch_size")]
+    pub backfill_batch_size: i64,
+    /// Max number of startup backfill batches. `0` means no explicit limit.
+    #[serde(default = "default_feedback_backfill_max_batches")]
+    pub backfill_max_batches: u32,
     /// Vault Transit mount path (usually `transit`).
     #[serde(default = "default_vault_transit_mount")]
     pub vault_transit_mount: String,
@@ -79,6 +107,10 @@ impl Default for FeedbackEncryptionConfig {
     fn default() -> Self {
         Self {
             enabled: false,
+            require_in_production: default_feedback_require_in_production(),
+            backfill_on_startup: default_feedback_backfill_on_startup(),
+            backfill_batch_size: default_feedback_backfill_batch_size(),
+            backfill_max_batches: default_feedback_backfill_max_batches(),
             vault_transit_mount: default_vault_transit_mount(),
             vault_transit_key: default_feedback_vault_transit_key(),
         }
@@ -134,7 +166,11 @@ fn default_auth_oauth_state_ttl_seconds() -> u64 {
 }
 
 fn default_auth_oauth_enabled_providers() -> Vec<String> {
-    vec!["google".to_string(), "github".to_string(), "microsoft".to_string()]
+    vec![
+        "google".to_string(),
+        "github".to_string(),
+        "microsoft".to_string(),
+    ]
 }
 
 fn default_auth_mfa_totp_issuer() -> String {
@@ -605,9 +641,9 @@ impl AppConfig {
             .map(|provider| provider.trim().to_ascii_lowercase())
             .filter(|provider| {
                 !provider.is_empty()
-                    && provider
-                        .chars()
-                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
+                    && provider.chars().all(|c| {
+                        c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-'
+                    })
             })
             .collect();
 

@@ -54,6 +54,14 @@ embedding_model = "text-embedding-3-small"
 [encryption.feedbacks]
 # Enable Vault Transit encryption for sensitive feedback fields (content/contact_email).
 enabled = false
+# Production startup safety gate. If true, production API startup fails when feedback encryption is disabled.
+require_in_production = true
+# Run online backfill for historical plaintext feedback rows on API startup (when encryption is enabled).
+backfill_on_startup = true
+# Rows processed per startup backfill batch.
+backfill_batch_size = 100
+# Max startup backfill batches (0 means unlimited until no plaintext rows remain).
+backfill_max_batches = 0
 vault_transit_mount = "transit"
 vault_transit_key = "law-eye-feedback"
 

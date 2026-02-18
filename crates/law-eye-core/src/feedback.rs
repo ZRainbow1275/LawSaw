@@ -10,6 +10,13 @@ use uuid::Uuid;
 
 const FEEDBACK_ENCRYPTION_VERSION_VAULT_TRANSIT: i16 = 1;
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FeedbackEncryptionBackfillStats {
+    pub scanned_rows: u64,
+    pub migrated_rows: u64,
+    pub batches: u32,
+}
+
 pub struct FeedbackService {
     pool: PgPool,
     cipher: Arc<dyn SensitiveStringCipher>,
@@ -107,6 +114,7 @@ impl FeedbackService {
                     r#"
                 SELECT * FROM feedbacks
                 WHERE user_id = $1
+                  AND deleted_at IS NULL
                 ORDER BY created_at DESC, id DESC
                 LIMIT $2 OFFSET $3
                 "#,
@@ -161,6 +169,7 @@ impl FeedbackService {
                     r#"
                 SELECT * FROM feedbacks
                 WHERE user_id = $1
+                  AND deleted_at IS NULL
                   AND (created_at, id) < ($2, $3)
                 ORDER BY created_at DESC, id DESC
                 LIMIT $4
@@ -210,6 +219,7 @@ impl FeedbackService {
                 sqlx::query_as::<_, Feedback>(
                     r#"
                 SELECT * FROM feedbacks
+                WHERE deleted_at IS NULL
                 ORDER BY created_at DESC, id DESC
                 LIMIT $1 OFFSET $2
                 "#,
@@ -261,7 +271,8 @@ impl FeedbackService {
                 sqlx::query_as::<_, Feedback>(
                     r#"
                 SELECT * FROM feedbacks
-                WHERE (created_at, id) < ($1, $2)
+                WHERE deleted_at IS NULL
+                  AND (created_at, id) < ($1, $2)
                 ORDER BY created_at DESC, id DESC
                 LIMIT $3
                 "#,
@@ -297,16 +308,47 @@ impl FeedbackService {
         Ok(out)
     }
 
+    pub async fn count_all(&self, tenant_id: Uuid) -> Result<i64> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM feedbacks WHERE deleted_at IS NULL",
+                )
+                .fetch_one(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))
+            })
+        })
+        .await
+    }
+
+    pub async fn count_by_user(&self, tenant_id: Uuid, user_id: Uuid) -> Result<i64> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM feedbacks WHERE user_id = $1 AND deleted_at IS NULL",
+                )
+                .bind(user_id)
+                .fetch_one(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))
+            })
+        })
+        .await
+    }
+
     pub async fn get_by_id(&self, tenant_id: Uuid, id: Uuid) -> Result<Feedback> {
         let cipher = self.cipher.clone();
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
-                let row = sqlx::query_as::<_, Feedback>("SELECT * FROM feedbacks WHERE id = $1")
-                    .bind(id)
-                    .fetch_optional(tx.as_mut())
-                    .await
-                    .map_err(|e| Error::Database(e.to_string()))?
-                    .ok_or_else(|| Error::NotFound(format!("Feedback {} not found", id)))?;
+                let row = sqlx::query_as::<_, Feedback>(
+                    "SELECT * FROM feedbacks WHERE id = $1 AND deleted_at IS NULL",
+                )
+                .bind(id)
+                .fetch_optional(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?
+                .ok_or_else(|| Error::NotFound(format!("Feedback {} not found", id)))?;
                 decrypt_or_backfill_feedback(tx, &cipher, row).await
             })
         })
@@ -326,12 +368,14 @@ impl FeedbackService {
             .map_err(|e| Error::Database(e.to_string()))?;
 
         let cipher = self.cipher.clone();
-        let row = sqlx::query_as::<_, Feedback>("SELECT * FROM feedbacks WHERE id = $1")
-            .bind(id)
-            .fetch_optional(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?
-            .ok_or_else(|| Error::NotFound(format!("Feedback {} not found", id)))?;
+        let row = sqlx::query_as::<_, Feedback>(
+            "SELECT * FROM feedbacks WHERE id = $1 AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .fetch_optional(tx.as_mut())
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?
+        .ok_or_else(|| Error::NotFound(format!("Feedback {} not found", id)))?;
 
         decrypt_or_backfill_feedback(tx, &cipher, row).await
     }
@@ -386,7 +430,7 @@ impl FeedbackService {
                 status = COALESCE($2, status),
                 admin_response = COALESCE($3, admin_response),
                 updated_at = NOW()
-            WHERE id = $1 AND version = $4
+            WHERE id = $1 AND version = $4 AND deleted_at IS NULL
             RETURNING *
             "#,
         )
@@ -401,6 +445,83 @@ impl FeedbackService {
 
         decrypt_or_backfill_feedback(tx, cipher, row).await
     }
+}
+
+pub async fn backfill_feedback_encryption(
+    pool: &PgPool,
+    cipher: Arc<dyn SensitiveStringCipher>,
+    batch_size: i64,
+    max_batches: u32,
+) -> Result<FeedbackEncryptionBackfillStats> {
+    if !cipher.is_enabled() {
+        return Err(Error::Config(
+            "Feedback encryption backfill requires an enabled runtime cipher".into(),
+        ));
+    }
+
+    let limit = batch_size.clamp(1, 1000);
+    let mut stats = FeedbackEncryptionBackfillStats::default();
+
+    loop {
+        if max_batches > 0 && stats.batches >= max_batches {
+            break;
+        }
+
+        let rows: Vec<(Uuid, String, Option<String>)> = sqlx::query_as(
+            r#"
+            SELECT id, content, contact_email
+            FROM feedbacks
+            WHERE deleted_at IS NULL
+              AND encryption_version = 0
+            ORDER BY created_at ASC, id ASC
+            LIMIT $1
+            "#,
+        )
+        .bind(limit)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        if rows.is_empty() {
+            break;
+        }
+
+        stats.scanned_rows += rows.len() as u64;
+
+        for (id, plaintext_content, plaintext_contact_email) in rows {
+            let ciphertext_content = cipher.encrypt(&plaintext_content).await?;
+            let ciphertext_contact_email = match plaintext_contact_email.as_deref() {
+                Some(v) => Some(cipher.encrypt(v).await?),
+                None => None,
+            };
+
+            let affected = sqlx::query(
+                r#"
+                UPDATE feedbacks
+                SET content = $2,
+                    contact_email = $3,
+                    encryption_version = $4,
+                    updated_at = NOW()
+                WHERE id = $1
+                  AND encryption_version = 0
+                "#,
+            )
+            .bind(id)
+            .bind(&ciphertext_content)
+            .bind(&ciphertext_contact_email)
+            .bind(FEEDBACK_ENCRYPTION_VERSION_VAULT_TRANSIT)
+            .execute(pool)
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?
+            .rows_affected();
+
+            stats.migrated_rows += affected;
+        }
+
+        stats.batches += 1;
+    }
+
+    Ok(stats)
 }
 
 async fn decrypt_or_backfill_feedback(

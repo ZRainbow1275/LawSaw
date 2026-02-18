@@ -18,10 +18,12 @@ use axum_login::AuthManagerLayerBuilder;
 use law_eye_ai::{AiService, LlmGateway};
 use law_eye_common::vault::{PlaintextCipher, SensitiveStringCipher, VaultTransitCipher};
 use law_eye_common::{AppConfig, CacheService, ConfigRuntime};
+use law_eye_core::feedback::backfill_feedback_encryption;
 use law_eye_core::ObjectService;
 use law_eye_db::{create_pool_retry, create_pool_with_session_role_retry};
 use law_eye_queue::TaskQueue;
 use metrics_exporter_prometheus::PrometheusBuilder;
+use sqlx::PgPool;
 use std::{collections::HashSet, net::SocketAddr, sync::Arc, time::Duration};
 use tower::{timeout::TimeoutLayer, BoxError, ServiceBuilder};
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -104,6 +106,37 @@ fn redact_sensitive_url(raw: &str) -> String {
         }
         Err(_) => "<redacted>".to_string(),
     }
+}
+
+fn spawn_feedback_encryption_backfill_task(
+    pool: PgPool,
+    cipher: Arc<dyn SensitiveStringCipher>,
+    batch_size: i64,
+    max_batches: u32,
+) {
+    tokio::spawn(async move {
+        info!(
+            batch_size = batch_size.clamp(1, 1000),
+            max_batches, "Starting feedback encryption backfill task"
+        );
+
+        match backfill_feedback_encryption(&pool, cipher, batch_size, max_batches).await {
+            Ok(stats) => {
+                info!(
+                    scanned_rows = stats.scanned_rows,
+                    migrated_rows = stats.migrated_rows,
+                    batches = stats.batches,
+                    "Feedback encryption backfill task completed"
+                );
+            }
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    "Feedback encryption backfill task failed"
+                );
+            }
+        }
+    });
 }
 
 fn normalize_origin(raw: &str) -> Option<String> {
@@ -196,6 +229,7 @@ async fn shutdown_signal() {
         let _ = tokio::signal::ctrl_c().await;
     }
 
+    crate::middleware::rate_limit::signal_rate_limit_cleanup_shutdown();
     info!("Received shutdown signal, starting graceful shutdown");
 }
 
@@ -408,6 +442,16 @@ async fn main() -> anyhow::Result<()> {
         info!("Metrics enabled at /metrics (development mode)");
     }
 
+    if is_production
+        && config.encryption.feedbacks.require_in_production
+        && !config.encryption.feedbacks.enabled
+    {
+        anyhow::bail!(
+            "LAW_EYE__ENCRYPTION__FEEDBACKS__ENABLED must be true in production \
+             (or set LAW_EYE__ENCRYPTION__FEEDBACKS__REQUIRE_IN_PRODUCTION=false explicitly)"
+        );
+    }
+
     let feedback_cipher: Arc<dyn SensitiveStringCipher> = if config.encryption.feedbacks.enabled {
         if !config.secrets.vault.enabled {
             anyhow::bail!("Feedback encryption requires Vault secrets to be enabled");
@@ -429,6 +473,15 @@ async fn main() -> anyhow::Result<()> {
         info!("Feedback encryption disabled");
         Arc::new(PlaintextCipher)
     };
+
+    if config.encryption.feedbacks.enabled && config.encryption.feedbacks.backfill_on_startup {
+        spawn_feedback_encryption_backfill_task(
+            admin_pool.clone(),
+            feedback_cipher.clone(),
+            config.encryption.feedbacks.backfill_batch_size,
+            config.encryption.feedbacks.backfill_max_batches,
+        );
+    }
 
     let object_service = if config.object_storage.enabled {
         info!(
