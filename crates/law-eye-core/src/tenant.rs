@@ -67,7 +67,6 @@ impl TenantService {
             .ok_or_else(|| Error::NotFound(format!("Tenant {} not found", tenant_id)))
     }
 
-
     pub async fn bind_session_tenant(
         &self,
         session_id: &str,
@@ -100,11 +99,7 @@ impl TenantService {
         .await
     }
 
-    pub async fn unbind_session_tenant(
-        &self,
-        session_id: &str,
-        tenant_id: Uuid,
-    ) -> Result<()> {
+    pub async fn unbind_session_tenant(&self, session_id: &str, tenant_id: Uuid) -> Result<()> {
         let session_id = session_id.to_string();
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
@@ -204,8 +199,15 @@ impl TenantService {
     pub async fn update_config(
         &self,
         tenant_id: Uuid,
+        expected_version: i64,
         input: UpdateTenantConfigInput,
     ) -> Result<TenantConfig> {
+        if expected_version < 1 {
+            return Err(Error::Validation(
+                "expected_version must be >= 1".to_string(),
+            ));
+        }
+
         // Ensure tenant exists (tenants table has no RLS)
         self.get_by_id(tenant_id).await?;
 
@@ -220,9 +222,10 @@ impl TenantService {
                 .await
                 .map_err(|e| Error::Database(e.to_string()))?;
 
-                sqlx::query_as::<_, TenantConfig>(
+                let updated = sqlx::query_as::<_, TenantConfig>(
                     r#"
                     UPDATE tenant_configs SET
+                        version               = version + 1,
                         max_users             = COALESCE($2, max_users),
                         max_articles          = COALESCE($3, max_articles),
                         max_sources           = COALESCE($4, max_sources),
@@ -236,6 +239,7 @@ impl TenantService {
                         primary_color  = COALESCE($12, primary_color),
                         updated_at     = NOW()
                     WHERE tenant_id = $1
+                      AND version = $13
                     RETURNING *
                     "#,
                 )
@@ -251,9 +255,32 @@ impl TenantService {
                 .bind(input.feature_webhook)
                 .bind(input.logo_url)
                 .bind(input.primary_color)
-                .fetch_one(tx.as_mut())
+                .bind(expected_version)
+                .fetch_optional(tx.as_mut())
                 .await
-                .map_err(|e| Error::Database(e.to_string()))
+                .map_err(|e| Error::Database(e.to_string()))?;
+
+                if let Some(config) = updated {
+                    return Ok(config);
+                }
+
+                let current_version = sqlx::query_scalar::<_, i64>(
+                    "SELECT version FROM tenant_configs WHERE tenant_id = $1",
+                )
+                .bind(tenant_id)
+                .fetch_optional(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
+
+                match current_version {
+                    Some(current_version) => Err(Error::Conflict(format!(
+                        "Tenant config version conflict: expected {expected_version}, current {current_version}"
+                    ))),
+                    None => Err(Error::NotFound(format!(
+                        "Tenant config for tenant {} not found",
+                        tenant_id
+                    ))),
+                }
             })
         })
         .await

@@ -29,6 +29,7 @@ impl From<law_eye_db::Tenant> for TenantResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TenantConfigResponse {
     pub tenant_id: Uuid,
+    pub version: i64,
     // Quotas
     pub max_users: i32,
     pub max_articles: i32,
@@ -52,6 +53,7 @@ impl From<law_eye_db::TenantConfig> for TenantConfigResponse {
     fn from(c: law_eye_db::TenantConfig) -> Self {
         Self {
             tenant_id: c.tenant_id,
+            version: c.version,
             max_users: c.max_users,
             max_articles: c.max_articles,
             max_sources: c.max_sources,

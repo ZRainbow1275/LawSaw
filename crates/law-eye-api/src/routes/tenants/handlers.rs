@@ -1,6 +1,7 @@
 use axum::{
     extract::{Path, State},
-    http::HeaderMap,
+    http::{header, HeaderMap},
+    response::{IntoResponse, Response},
     Json,
 };
 use law_eye_core::UpdateTenantConfigInput;
@@ -13,15 +14,12 @@ use super::dto::{
     TenantResponse, TenantUsageResponse, UpdateTenantConfigRequest, UpdateTenantRequest,
 };
 use crate::auth::AuthSession;
+use crate::routes::{etag_for_version, require_if_match_version};
 use crate::state::AppState;
 use crate::{ApiJson, ApiResult, AppError};
 
 /// Require the current user to have the `tenants:manage` permission.
-async fn require_tenants_manage(
-    state: &AppState,
-    tenant_id: Uuid,
-    user_id: Uuid,
-) -> ApiResult<()> {
+async fn require_tenants_manage(state: &AppState, tenant_id: Uuid, user_id: Uuid) -> ApiResult<()> {
     let allowed = state
         .user_service
         .has_permission(tenant_id, user_id, "tenants:manage")
@@ -277,7 +275,7 @@ pub(crate) async fn get_tenant_config(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(id): Path<Uuid>,
-) -> ApiResult<Json<TenantConfigResponse>> {
+) -> ApiResult<Response> {
     let user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
@@ -290,7 +288,11 @@ pub(crate) async fn get_tenant_config(
         .await
         .map_err(AppError::from)?;
 
-    Ok(Json(TenantConfigResponse::from(config)))
+    let body = TenantConfigResponse::from(config);
+    let etag = etag_for_version(body.version)?;
+    let mut response = Json(body).into_response();
+    response.headers_mut().insert(header::ETAG, etag);
+    Ok(response)
 }
 
 // ── Update tenant config ──────────────────────────────────────────────
@@ -302,12 +304,14 @@ pub(crate) async fn update_tenant_config(
     axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<SocketAddr>,
     Path(id): Path<Uuid>,
     ApiJson(req): ApiJson<UpdateTenantConfigRequest>,
-) -> ApiResult<Json<TenantConfigResponse>> {
+) -> ApiResult<Response> {
     let user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
     require_tenants_manage(&state, user.tenant_id, user.id).await?;
+
+    let expected_version = require_if_match_version(&headers)?;
 
     let before = state
         .tenant_service
@@ -331,9 +335,12 @@ pub(crate) async fn update_tenant_config(
 
     let config = state
         .tenant_service
-        .update_config(id, input)
+        .update_config(id, expected_version, input)
         .await
-        .map_err(AppError::from)?;
+        .map_err(|err| match err {
+            law_eye_common::Error::Conflict(msg) => AppError::precondition_failed(msg),
+            other => AppError::from(other),
+        })?;
 
     let (ip_address, user_agent) = super::super::extract_audit_meta(&headers, addr);
 
@@ -375,7 +382,11 @@ pub(crate) async fn update_tenant_config(
         .await
         .map_err(AppError::from)?;
 
-    Ok(Json(TenantConfigResponse::from(config)))
+    let body = TenantConfigResponse::from(config);
+    let etag = etag_for_version(body.version)?;
+    let mut response = Json(body).into_response();
+    response.headers_mut().insert(header::ETAG, etag);
+    Ok(response)
 }
 
 // ── Get tenant usage ──────────────────────────────────────────────────

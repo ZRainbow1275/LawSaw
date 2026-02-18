@@ -1,5 +1,6 @@
 use axum::{
     extract::{Path, State},
+    response::Response,
     routing::{get, post},
     Json, Router,
 };
@@ -24,7 +25,10 @@ pub fn router() -> Router<AppState> {
             "/{id}",
             get(get_tenant).put(update_tenant).delete(delete_tenant),
         )
-        .route("/{id}/config", get(get_tenant_config).put(update_tenant_config))
+        .route(
+            "/{id}/config",
+            get(get_tenant_config).put(update_tenant_config),
+        )
         .route("/{id}/usage", get(get_tenant_usage))
         .route("/{id}/usage/refresh", post(refresh_tenant_usage))
 }
@@ -163,7 +167,7 @@ pub(crate) async fn get_tenant_config(
     state: State<AppState>,
     auth_session: AuthSession,
     id: Path<Uuid>,
-) -> ApiResult<Json<TenantConfigResponse>> {
+) -> ApiResult<Response> {
     handlers::get_tenant_config(state, auth_session, id).await
 }
 
@@ -178,6 +182,8 @@ pub(crate) async fn get_tenant_config(
         (status = 400, description = "Validation error", body = ApiError),
         (status = 401, description = "Not authenticated", body = ApiError),
         (status = 403, description = "Permission denied", body = ApiError),
+        (status = 412, description = "Version mismatch (If-Match failed)", body = ApiError),
+        (status = 428, description = "Missing If-Match header", body = ApiError),
         (status = 404, description = "Not found", body = ApiError),
         (status = 500, description = "Server error", body = ApiError),
     ),
@@ -190,7 +196,7 @@ pub(crate) async fn update_tenant_config(
     addr: axum::extract::ConnectInfo<std::net::SocketAddr>,
     id: Path<Uuid>,
     req: ApiJson<UpdateTenantConfigRequest>,
-) -> ApiResult<Json<TenantConfigResponse>> {
+) -> ApiResult<Response> {
     handlers::update_tenant_config(state, auth_session, headers, addr, id, req).await
 }
 

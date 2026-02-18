@@ -15,6 +15,7 @@ pub struct Tenant {
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct TenantConfig {
     pub tenant_id: Uuid,
+    pub version: i64,
     // Quota settings
     pub max_users: i32,
     pub max_articles: i32,
