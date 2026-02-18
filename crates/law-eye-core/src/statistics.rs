@@ -2,6 +2,8 @@ use chrono::NaiveDate;
 use law_eye_common::{Error, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::collections::HashMap;
+use std::sync::OnceLock;
 use uuid::Uuid;
 
 use crate::tenant::with_tenant_tx;
@@ -9,61 +11,81 @@ use crate::tenant::with_tenant_tx;
 // ── Region code -> name mapping (GB/T 2260) ─────────────────────────
 
 pub const REGION_MAP: &[(&str, &str)] = &[
-    ("110000", "\u{5317}\u{4eac}"),   // 北京
-    ("120000", "\u{5929}\u{6d25}"),   // 天津
-    ("130000", "\u{6cb3}\u{5317}"),   // 河北
-    ("140000", "\u{5c71}\u{897f}"),   // 山西
+    ("110000", "\u{5317}\u{4eac}"),         // 北京
+    ("120000", "\u{5929}\u{6d25}"),         // 天津
+    ("130000", "\u{6cb3}\u{5317}"),         // 河北
+    ("140000", "\u{5c71}\u{897f}"),         // 山西
     ("150000", "\u{5185}\u{8499}\u{53e4}"), // 内蒙古
-    ("210000", "\u{8fbd}\u{5b81}"),   // 辽宁
-    ("220000", "\u{5409}\u{6797}"),   // 吉林
+    ("210000", "\u{8fbd}\u{5b81}"),         // 辽宁
+    ("220000", "\u{5409}\u{6797}"),         // 吉林
     ("230000", "\u{9ed1}\u{9f99}\u{6c5f}"), // 黑龙江
-    ("310000", "\u{4e0a}\u{6d77}"),   // 上海
-    ("320000", "\u{6c5f}\u{82cf}"),   // 江苏
-    ("330000", "\u{6d59}\u{6c5f}"),   // 浙江
-    ("340000", "\u{5b89}\u{5fbd}"),   // 安徽
-    ("350000", "\u{798f}\u{5efa}"),   // 福建
-    ("360000", "\u{6c5f}\u{897f}"),   // 江西
-    ("370000", "\u{5c71}\u{4e1c}"),   // 山东
-    ("410000", "\u{6cb3}\u{5357}"),   // 河南
-    ("420000", "\u{6e56}\u{5317}"),   // 湖北
-    ("430000", "\u{6e56}\u{5357}"),   // 湖南
-    ("440000", "\u{5e7f}\u{4e1c}"),   // 广东
-    ("450000", "\u{5e7f}\u{897f}"),   // 广西
-    ("460000", "\u{6d77}\u{5357}"),   // 海南
-    ("500000", "\u{91cd}\u{5e86}"),   // 重庆
-    ("510000", "\u{56db}\u{5ddd}"),   // 四川
-    ("520000", "\u{8d35}\u{5dde}"),   // 贵州
-    ("530000", "\u{4e91}\u{5357}"),   // 云南
-    ("540000", "\u{897f}\u{85cf}"),   // 西藏
-    ("610000", "\u{9655}\u{897f}"),   // 陕西
-    ("620000", "\u{7518}\u{8083}"),   // 甘肃
-    ("630000", "\u{9752}\u{6d77}"),   // 青海
-    ("640000", "\u{5b81}\u{590f}"),   // 宁夏
-    ("650000", "\u{65b0}\u{7586}"),   // 新疆
-    ("710000", "\u{53f0}\u{6e7e}"),   // 台湾
-    ("810000", "\u{9999}\u{6e2f}"),   // 香港
-    ("820000", "\u{6fb3}\u{95e8}"),   // 澳门
+    ("310000", "\u{4e0a}\u{6d77}"),         // 上海
+    ("320000", "\u{6c5f}\u{82cf}"),         // 江苏
+    ("330000", "\u{6d59}\u{6c5f}"),         // 浙江
+    ("340000", "\u{5b89}\u{5fbd}"),         // 安徽
+    ("350000", "\u{798f}\u{5efa}"),         // 福建
+    ("360000", "\u{6c5f}\u{897f}"),         // 江西
+    ("370000", "\u{5c71}\u{4e1c}"),         // 山东
+    ("410000", "\u{6cb3}\u{5357}"),         // 河南
+    ("420000", "\u{6e56}\u{5317}"),         // 湖北
+    ("430000", "\u{6e56}\u{5357}"),         // 湖南
+    ("440000", "\u{5e7f}\u{4e1c}"),         // 广东
+    ("450000", "\u{5e7f}\u{897f}"),         // 广西
+    ("460000", "\u{6d77}\u{5357}"),         // 海南
+    ("500000", "\u{91cd}\u{5e86}"),         // 重庆
+    ("510000", "\u{56db}\u{5ddd}"),         // 四川
+    ("520000", "\u{8d35}\u{5dde}"),         // 贵州
+    ("530000", "\u{4e91}\u{5357}"),         // 云南
+    ("540000", "\u{897f}\u{85cf}"),         // 西藏
+    ("610000", "\u{9655}\u{897f}"),         // 陕西
+    ("620000", "\u{7518}\u{8083}"),         // 甘肃
+    ("630000", "\u{9752}\u{6d77}"),         // 青海
+    ("640000", "\u{5b81}\u{590f}"),         // 宁夏
+    ("650000", "\u{65b0}\u{7586}"),         // 新疆
+    ("710000", "\u{53f0}\u{6e7e}"),         // 台湾
+    ("810000", "\u{9999}\u{6e2f}"),         // 香港
+    ("820000", "\u{6fb3}\u{95e8}"),         // 澳门
 ];
 
+static REGION_NAME_LOOKUP: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
+
+fn region_name_lookup() -> &'static HashMap<&'static str, &'static str> {
+    REGION_NAME_LOOKUP.get_or_init(|| REGION_MAP.iter().copied().collect())
+}
+
 pub fn region_code_to_name(code: &str) -> &str {
-    REGION_MAP
-        .iter()
-        .find(|(c, _)| *c == code)
-        .map(|(_, name)| *name)
+    region_name_lookup()
+        .get(code)
+        .copied()
         .unwrap_or("\u{672a}\u{77e5}\u{5730}\u{533a}") // 未知地区
+}
+
+#[cfg(test)]
+mod tests {
+    use super::region_code_to_name;
+
+    #[test]
+    fn region_code_to_name_returns_known_region() {
+        assert_eq!(region_code_to_name("110000"), "\u{5317}\u{4eac}");
+    }
+
+    #[test]
+    fn region_code_to_name_falls_back_to_unknown() {
+        assert_eq!(region_code_to_name("000000"), "\u{672a}\u{77e5}\u{5730}\u{533a}");
+    }
 }
 
 // Domain root -> Chinese label
 pub fn domain_root_label(root: &str) -> &str {
     match root {
-        "legislation" => "\u{7acb}\u{6cd5}\u{524d}\u{6cbf}",     // 立法前沿
-        "regulation" => "\u{76d1}\u{7ba1}\u{52a8}\u{5411}",       // 监管动向
-        "enforcement" => "\u{6267}\u{6cd5}\u{6848}\u{4f8b}",      // 执法案例
-        "industry" => "\u{4e1a}\u{754c}\u{8d44}\u{8baf}",         // 业界资讯
-        "compliance" => "\u{5408}\u{89c4}\u{524d}\u{6cbf}",       // 合规前沿
+        "legislation" => "\u{7acb}\u{6cd5}\u{524d}\u{6cbf}", // 立法前沿
+        "regulation" => "\u{76d1}\u{7ba1}\u{52a8}\u{5411}",  // 监管动向
+        "enforcement" => "\u{6267}\u{6cd5}\u{6848}\u{4f8b}", // 执法案例
+        "industry" => "\u{4e1a}\u{754c}\u{8d44}\u{8baf}",    // 业界资讯
+        "compliance" => "\u{5408}\u{89c4}\u{524d}\u{6cbf}",  // 合规前沿
         "technology" => "\u{6570}\u{636e}/\u{5b89}\u{5168}/\u{6280}\u{672f}", // 数据/安全/技术
-        "academic" => "\u{5b66}\u{672f}\u{6587}\u{7ae0}",         // 学术文章
-        "international" => "\u{56fd}\u{9645}\u{89c6}\u{91ce}",    // 国际视野
+        "academic" => "\u{5b66}\u{672f}\u{6587}\u{7ae0}",    // 学术文章
+        "international" => "\u{56fd}\u{9645}\u{89c6}\u{91ce}", // 国际视野
         _ => root,
     }
 }
@@ -71,17 +93,17 @@ pub fn domain_root_label(root: &str) -> &str {
 // Authority level -> Chinese label
 fn authority_level_label(level: i32) -> &'static str {
     match level {
-        1 => "\u{5baa}\u{6cd5}",             // 宪法
-        2 => "\u{6cd5}\u{5f8b}",             // 法律
-        3 => "\u{884c}\u{653f}\u{6cd5}\u{89c4}", // 行政法规
-        4 => "\u{90e8}\u{95e8}\u{89c4}\u{7ae0}", // 部门规章
-        5 => "\u{5730}\u{65b9}\u{6027}\u{6cd5}\u{89c4}", // 地方性法规
+        1 => "\u{5baa}\u{6cd5}",                                 // 宪法
+        2 => "\u{6cd5}\u{5f8b}",                                 // 法律
+        3 => "\u{884c}\u{653f}\u{6cd5}\u{89c4}",                 // 行政法规
+        4 => "\u{90e8}\u{95e8}\u{89c4}\u{7ae0}",                 // 部门规章
+        5 => "\u{5730}\u{65b9}\u{6027}\u{6cd5}\u{89c4}",         // 地方性法规
         6 => "\u{5730}\u{65b9}\u{653f}\u{5e9c}\u{89c4}\u{7ae0}", // 地方政府规章
-        7 => "\u{53f8}\u{6cd5}\u{89e3}\u{91ca}", // 司法解释
-        8 => "\u{89c4}\u{8303}\u{6027}\u{6587}\u{4ef6}", // 规范性文件
-        9 => "\u{884c}\u{4e1a}\u{6807}\u{51c6}", // 行业标准
-        10 => "\u{975e}\u{6b63}\u{5f0f}",    // 非正式
-        _ => "\u{672a}\u{77e5}",              // 未知
+        7 => "\u{53f8}\u{6cd5}\u{89e3}\u{91ca}",                 // 司法解释
+        8 => "\u{89c4}\u{8303}\u{6027}\u{6587}\u{4ef6}",         // 规范性文件
+        9 => "\u{884c}\u{4e1a}\u{6807}\u{51c6}",                 // 行业标准
+        10 => "\u{975e}\u{6b63}\u{5f0f}",                        // 非正式
+        _ => "\u{672a}\u{77e5}",                                 // 未知
     }
 }
 
@@ -379,7 +401,8 @@ impl StatisticsService {
                 let sum: i64 = rows.iter().map(|(_, c)| c).sum();
 
                 // Optionally load sub-domain breakdown
-                let sub_map: std::collections::HashMap<String, Vec<SubDomainCount>> = if include_sub {
+                let sub_map: std::collections::HashMap<String, Vec<SubDomainCount>> = if include_sub
+                {
                     let sub_rows: Vec<(String, String, i64)> = sqlx::query_as(
                         r#"
                         SELECT domain_root, domain_sub, COUNT(*)::bigint AS count
