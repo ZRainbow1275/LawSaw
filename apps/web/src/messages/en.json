@@ -731,5 +731,22 @@
 	"Test": "Test",
 	"Name, URL, signing secret and events are required": "Name, URL, signing secret and events are required",
 	"timeout_ms must be >= 1000": "timeout_ms must be >= 1000",
-	"max_retries must be >= 0": "max_retries must be >= 0"
+	"max_retries must be >= 0": "max_retries must be >= 0",
+	"Enabled only": "Enabled only",
+	"Disabled only": "Disabled only",
+	"Delivery state": "Delivery state",
+	"All delivery states": "All delivery states",
+	"Healthy": "Healthy",
+	"Failing": "Failing",
+	"Never delivered": "Never delivered",
+	"Search webhooks by name, URL or event": "Search webhooks by name, URL or event",
+	"Filtered {count} of {total}": "Filtered {count} of {total}",
+	"Request timed out. Please try again.": "Request timed out. Please try again.",
+	"Session expired. Please sign in again.": "Session expired. Please sign in again.",
+	"You do not have permission to perform this action.": "You do not have permission to perform this action.",
+	"The requested resource was not found.": "The requested resource was not found.",
+	"Request conflict detected. Please refresh and retry.": "Request conflict detected. Please refresh and retry.",
+	"Data has changed. Please refresh and retry.": "Data has changed. Please refresh and retry.",
+	"Missing precondition. Please refresh and retry.": "Missing precondition. Please refresh and retry.",
+	"Server is temporarily unavailable. Please try again later.": "Server is temporarily unavailable. Please try again later."
 }

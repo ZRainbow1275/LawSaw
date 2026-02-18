@@ -731,5 +731,22 @@
 	"Test": "测试",
 	"Name, URL, signing secret and events are required": "名称、URL、签名密钥和事件为必填项",
 	"timeout_ms must be >= 1000": "timeout_ms 必须大于等于 1000",
-	"max_retries must be >= 0": "max_retries 必须大于等于 0"
+	"max_retries must be >= 0": "max_retries 必须大于等于 0",
+	"Enabled only": "仅启用",
+	"Disabled only": "仅禁用",
+	"Delivery state": "投递状态",
+	"All delivery states": "全部投递状态",
+	"Healthy": "健康",
+	"Failing": "失败中",
+	"Never delivered": "从未投递",
+	"Search webhooks by name, URL or event": "按名称、URL 或事件搜索 Webhook",
+	"Filtered {count} of {total}": "已筛选 {count}/{total}",
+	"Request timed out. Please try again.": "请求超时，请重试。",
+	"Session expired. Please sign in again.": "会话已过期，请重新登录。",
+	"You do not have permission to perform this action.": "您没有执行该操作的权限。",
+	"The requested resource was not found.": "请求的资源不存在。",
+	"Request conflict detected. Please refresh and retry.": "检测到请求冲突，请刷新后重试。",
+	"Data has changed. Please refresh and retry.": "数据已变更，请刷新后重试。",
+	"Missing precondition. Please refresh and retry.": "缺少前置条件，请刷新后重试。",
+	"Server is temporarily unavailable. Please try again later.": "服务暂时不可用，请稍后重试。"
 }

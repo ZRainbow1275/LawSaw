@@ -1,0 +1,192 @@
+# Enterprise Readiness 42 维审查 Runbook（2026-02-16）
+
+## 目标
+
+将 LawSaw/Law Eye 从“可演示”推进到“可部署、可对外稳定使用”，以企业级标准（多租户、安全、可运维、可追溯）做批判性审查与修复闭环。
+
+## 本轮已完成
+
+### 1) 关键缺口闭环：前端租户与 Webhook 管理链路
+- 新增 `apps/web/src/hooks/use-tenants.ts`
+- 新增 `apps/web/src/hooks/use-webhooks.ts`
+- 更新 `apps/web/src/hooks/index.ts`
+- 更新 `apps/web/src/app/settings/page.tsx`
+- 更新 `apps/web/src/messages/zh.json`
+
+能力清单：
+- 租户：创建、列表、详情、配置更新、用量刷新、删除
+- Webhook：创建、列表、启停、测试、删除
+- 全链路走真实 API，无 mock
+
+### 2) 验证结果
+- `pnpm -C apps/web typecheck`：通过
+- `pnpm -C apps/web lint`：通过（0 warning）
+- `pnpm -C apps/web test:unit`：通过（10/10）
+
+### 3) 关键缺口闭环：后端 reports 租户隔离硬化（P0）
+- 新增迁移：`crates/law-eye-db/migrations/045_reports_tenant_fk_hardening.sql`
+- 更新服务：`crates/law-eye-core/src/report/service.rs`
+
+能力清单：
+- `reports.author_id` 从单列 FK 升级为复合 FK：`(tenant_id, author_id) -> users(tenant_id, id)`
+- `reports.template_id` 从单列 FK 升级为复合 FK：`(tenant_id, template_id) -> report_templates(tenant_id, id)`
+- `report_templates` 增加 `UNIQUE (tenant_id, name)`，并在迁移中自动修复历史重名模板
+- 迁移对历史脏数据采用“可恢复项修复 + 核心项阻断”策略：
+  - 跨租户 `template_id` 自动置空
+  - 跨租户/失效 `author_id` 直接中止迁移并报错
+- `ReportService::create_report` 增加显式预检查：
+  - 校验 `title` / `period` / `period_type`
+  - 校验 `author_id` 属于当前租户
+  - 校验 `template_id` 在当前租户内且 `is_active=true`
+
+后端验证结果：
+- `cargo check -p law-eye-db -p law-eye-core -p law-eye-api`：通过
+- `cargo test -p law-eye-core validate_create_report_input`：通过（4/4）
+
+### 4) 前端可用性与容错加固（P1，2026-02-16 本轮新增）
+- 更新 `apps/web/src/app/settings/page.tsx`
+- 更新 `apps/web/src/components/layout/header.tsx`
+
+能力清单：
+- Settings 页签切换从纯本地状态升级为“状态 + URL 深链”同步（`?tab=` 实时更新），支持刷新后保持上下文。
+- Settings 左侧导航补齐 `tablist/tab/tabpanel` 语义，提升键盘与读屏可用性。
+- Header 搜索历史 IndexedDB 读写新增异常保护，避免受限浏览器环境导致未捕获错误并污染交互链路。
+
+本轮验证结果（2026-02-16）：
+- `pnpm -C apps/web typecheck`：通过
+- `pnpm -C apps/web lint`：通过（Biome 133 files, 0 issue）
+- `pnpm -C apps/web test:unit`：通过（10/10）
+
+### 5) 发布安全与可观测加固（P0/P1，2026-02-16 本轮新增）
+- 更新 `.github/workflows/cd.yml`
+- 更新 `.github/workflows/deploy.yml`
+- 更新 `infra/caddy/Caddyfile`
+- 更新 `docker-compose.enterprise.yml`
+- 新增 `infra/monitoring/prometheus.yml`
+- 新增 `infra/monitoring/alert_rules.yml`
+- 新增 `infra/monitoring/blackbox.yml`
+- 新增 `infra/monitoring/alertmanager.yml`
+- 新增 `scripts/enterprise/reports-tenant-fk-verify.sql`
+- 更新 `docs/runbooks/cd.md`
+
+能力清单：
+- CD 工作流新增 cosign keyless 签名（api/worker/web digest）。
+- Deploy 工作流新增部署前 cosign 验签，签名不通过则阻断 apply。
+- Deploy 工作流新增 rollout 状态失败自动 rollback（apply 路径）。
+- 网关 HTTP 入口改为永久重定向到 HTTPS（避免明文服务路径）。
+- 企业 compose 新增 Prometheus + Alertmanager + Blackbox，可对 API/Web/MinIO 做持续探测与告警。
+- 新增 reports 复合外键回归 SQL，验证跨租户 template/author 写入被拒绝。
+
+本轮验证结果（2026-02-16）：
+- `.github/workflows/cd.yml` YAML 解析通过
+- `.github/workflows/deploy.yml` YAML 解析通过
+- `infra/monitoring/*.yml` YAML 解析通过
+- `docker compose -f docker-compose.yml -f docker-compose.enterprise.yml config` 渲染通过（注入必需环境变量）
+
+## 42 维状态总览（摘要）
+
+- `✅` 已达标或可运行：13 项
+- `🟡` 基础可用但需加强：28 项
+- `❌` 关键风险待修：1 项
+
+### `❌` 必须优先推进（P0）
+- reports 复合外键回归脚本尚未在 staging/prod 执行并留存证据（命令与脚本已就绪）
+  证据：`scripts/enterprise/reports-tenant-fk-verify.sql`
+
+## 42 维批判性矩阵（第三轮复核）
+
+说明：`✅` 已闭环或可用，`🟡` 可用但需加强，`❌` 阻塞上线。
+
+1. 前端功能模块与组件：`🟡`（`apps/web/src/app/settings/page.tsx` 仍偏大，待拆分）
+2. 后端数据库/API连通：`🟡`（主链路可用，部分错误语义与可观测性待增强）
+3. 路由与导航：`🟡`（已补 settings tab 深链，同类模式需推广）
+4. 移动端适配：`🟡`（侧边栏已改进，但小屏长菜单仍需专项压测）
+5. 离线支持与 PWA：`🟡`（已具备 SW/outbox 基础，API 级离线策略不足）
+6. 状态同步与冲突解决：`🟡`（部分更新链路仍缺乐观并发）
+7. 运维功能：`🟡`（runbook 已有，但监控与演练不足）
+8. 业务流完整：`🟡`（核心流可走通，异常支路提示需细化）
+9. 服务设置合理：`🟡`（compose 已强化，发布侧仍需策略约束）
+10. 代码结构审查：`🟡`（若干大文件待拆）
+11. 性能：`🟡`（已做索引/并行优化，仍需持续 profiling）
+12. 可访问性：`🟡`（本轮修复 settings 语义，仍需系统化 a11y 检查）
+13. 依赖项健康度：`🟡`（需要持续跟进锁定与漏洞扫描）
+14. 数据库设计：`🟡`（tenant 约束增强，仍需跨租户回归测试补齐）
+15. API 设计一致性：`🟡`（主路径统一，错误码与响应语义仍有欠账）
+16. 错误处理与日志：`🟡`（错误边界存在，业务链路日志粒度需提升）
+17. 业务逻辑完整性：`🟡`（覆盖面提升，边界分支仍待覆盖）
+18. 国际化/本地化：`🟡`（`en.json` 已落地，仍需人工翻译校对）
+19. 代码可维护性：`🟡`（task 化推进中）
+20. 身份颗粒度对齐：`🟡`（权限体系可用，策略稽核需深化）
+21. 并发异步消息队列：`🟡`（能力已具备，公平调度与饥饿验证待增强）
+22. 数据一致性同步性：`🟡`（RLS+FK 强化后需更多回归样例）
+23. 通讯延迟与同步链路：`🟡`（缺端到端 SLA/延迟预算可视化）
+24. 可靠发布：`🟡`（已有 rollout，签名与回滚剧本待补齐）
+25. 数据同步幂等：`🟡`（机制已引入，业务接口幂等覆盖需盘点）
+26. 顺序性与同对象事件：`🟡`（需补“同对象事件”重放与乱序测试）
+27. 跨模块一致性：`🟡`（前后端契约持续收敛中）
+28. 结构化收缩：`🟡`（历史字段治理需持续）
+29. 对象存储+元数据表：`🟡`（对象链路可用，修复流程文档待补）
+30. 在线预览异步化：`🟡`（能力待显式化）
+31. 版本管理：`🟡`（有版本流程，发布治理待加强）
+32. 全链路 HTTPS/TLS + 内部 mTLS：`🟡`（Compose + K8s 策略已落地，待证书轮换演练）
+33. 秘钥与配置集中管理：`🟡`（企业 compose 已接 Vault，默认流仍需收敛）
+34. 租户隔离：`✅`（RLS + 复合 FK 已显著增强）
+35. 数据加密与脱敏：`🟡`（已具备基础，字段级策略待完善）
+36. 审计日志不可篡改：`✅`（已有 hash-chain + append-only 机制）
+37. 权限变更审计：`🟡`（需补“谁在何时授予何权限”的标准报表）
+38. 操作审计可还原：`🟡`（主链路可追，跨系统聚合待补）
+39. 可预测性与故障处理：`🟡`（需完善故障演练与自动化恢复）
+40. 集成与扩展（Gateway/Webhook）：`🟡`（基础能力已打通，沙箱/边界待细化）
+41. 数据/网络/通信安全设计：`🟡`（供应链签名/验签 + K8s TLS/mTLS 已落地，待实网演练）
+42. 数据库延迟策略与算法优化：`🟡`（已做第一轮优化，需持续监测与调优）
+
+## 下一批执行清单（建议顺序）
+
+1. 数据隔离硬化
+- [x] 为 reports 增加 `(tenant_id, author_id)` 复合外键
+- [x] 为 reports/template 增加 tenant 归属一致性约束
+- [x] 增加对应迁移回归测试脚本（跨租户写入应失败）`scripts/enterprise/reports-tenant-fk-verify.sql`
+- [ ] 在 staging/prod 执行并留存验证证据
+
+2. 发布与安全硬化
+- [x] 为 Kubernetes 生产入口补齐 TLS/mTLS 强制策略（`infra/k8s/base/ingress.yaml` + `networkpolicy.yaml` + deploy 前置 secret 校验）
+- [x] 发布门禁增加渲染校验（禁止 `*.example.com` 占位域名上线 + server-side dry-run）
+- [x] 工作流增加 rollout status + 自动回滚
+- [x] 镜像签名校验纳入 CD
+
+3. 可观测与运维
+- [x] Prometheus 抓取与告警规则落地（企业 compose）
+- [x] 备份恢复 runbook（DB + 对象存储 + 队列）落地并演练脚本补齐（`docs/runbooks/disaster-recovery.md` + `scripts/enterprise/restore-encrypted.sh`）
+- [x] 发布后自动验收脚本落地（`scripts/enterprise/post-deploy-verify.sh`）
+
+## 前端专项待修（Top 10）
+
+- [x] `apps/web/src/components/layout/sidebar.tsx`：移动抽屉已改为语义化 `dialog`，lint warning 已清零
+- [ ] `apps/web/src/app/settings/page.tsx`：单文件体量过大，建议拆分为 profile/security/api/tenant/webhook 子组件
+- [x] `apps/web/src/app/settings/page.tsx`：页签状态与 URL 深链已打通，补齐 tablist/tab/tabpanel 可访问语义
+- [x] `apps/web/src/lib/i18n.ts`：新增 `apps/web/src/messages/en.json`，英文词条从隐式回退改为显式词条表
+- [x] `apps/web/src/app/settings/page.tsx`：tenant/webhook 管理页已补齐细粒度错误码提示映射（401/403/404/409/412/428/429/5xx），并统一扩展到 WebPush/APIKey/Security/LoginActivity 操作
+- [x] `apps/web/src/hooks/use-tenants.ts`：更新租户配置已接入 optimistic concurrency（`If-Match` + version）
+- [x] `apps/web/src/hooks/use-webhooks.ts`：Webhook 列表已支持 `search/enabled/delivery` 筛选，并返回状态统计（enabled/disabled/healthy/failing/never）
+- [x] `apps/web/src/components/layout/header.tsx`：用户菜单补齐 ESC 关闭、外部点击关闭与焦点回收
+- [x] `apps/web/src/components/layout/header.tsx`：IndexedDB 搜索历史读写已增加异常保护，避免无提示崩溃
+- [x] `apps/web/src/app/reports/page.tsx`：导出弹窗接入轮询，文件就绪后再显示下载入口，避免“已排队=已完成”误判
+- [x] `apps/web/src/components/reports/report-detail.tsx`：下载入口增加发布状态校验与阻断提示
+- [x] `apps/web/src/components/providers/network-status-indicator.tsx`：离线恢复后增加“Refresh”重试动作
+
+## 执行原则
+
+- 真实数据路径优先，禁止 mock 逃逸
+- 每次改动必须通过 typecheck + lint + 相关测试
+- 租户隔离采用“双保险”：RLS + 复合外键
+- 审计链路必须可追溯（操作人、时间、对象、前后值）
+
+## 本轮验证记录（2026-02-16）
+
+- `cargo check -p law-eye-api` ✅
+- `pnpm -C apps/web typecheck` ✅
+- `pnpm -C apps/web lint` ✅（Biome 134 files, 0 issue）
+- `pnpm -C apps/web test:unit` ✅（10/10）
+- `bash -n scripts/enterprise/restore-encrypted.sh` ✅
+- `kubectl kustomize infra/k8s/overlays/bluegreen` ✅
+- `kubectl kustomize infra/k8s/overlays/canary` ✅

@@ -25,6 +25,8 @@ import {
 	useUpdateTenantConfig,
 } from "@/hooks/use-tenants";
 import {
+	type WebhookDeliveryFilter,
+	type WebhookEnabledFilter,
 	useCreateWebhook,
 	useDeleteWebhook,
 	useTestWebhook,
@@ -38,7 +40,7 @@ import {
 	useMfaTotpDisable,
 	useMfaTotpSetup,
 } from "@/hooks/use-security";
-import { apiClient, ifMatchFromVersion } from "@/lib/api";
+import { ApiClientError, apiClient, ifMatchFromVersion } from "@/lib/api";
 import {
 	type ApiKey,
 	type LoginActivityEntry,
@@ -348,7 +350,7 @@ function SettingsContent() {
 		} catch (err) {
 			toastError(
 				t("Failed to enable Web Push"),
-				err instanceof Error ? err.message : t("Unknown error"),
+				uiMessageFromError(err, t),
 			);
 			await refreshWebPushStatus();
 		} finally {
@@ -378,7 +380,7 @@ function SettingsContent() {
 		} catch (err) {
 			toastError(
 				t("Failed to disable Web Push"),
-				err instanceof Error ? err.message : t("Unknown error"),
+				uiMessageFromError(err, t),
 			);
 			await refreshWebPushStatus();
 		} finally {
@@ -407,7 +409,7 @@ function SettingsContent() {
 		} catch (err) {
 			toastError(
 				t("Failed to send test notification"),
-				err instanceof Error ? err.message : t("Unknown error"),
+				uiMessageFromError(err, t),
 			);
 		} finally {
 			setWebPush((prev) => ({ ...prev, busy: false }));
@@ -540,7 +542,7 @@ function SettingsContent() {
 			queryClient.invalidateQueries({ queryKey: ["users", userId] });
 		},
 		onError: (err) => {
-			const message = err instanceof Error ? err.message : t("Unknown error");
+			const message = uiMessageFromError(err, t);
 			toastError(t("Save failed"), message);
 		},
 	});
@@ -596,7 +598,7 @@ function SettingsContent() {
 			queryClient.invalidateQueries({ queryKey: ["users", userId] });
 		},
 		onError: (err) => {
-			const message = err instanceof Error ? err.message : t("Unknown error");
+			const message = uiMessageFromError(err, t);
 			toastError(t("Avatar upload failed"), message);
 		},
 	});
@@ -654,7 +656,7 @@ function SettingsContent() {
 			queryClient.invalidateQueries({ queryKey: ["apikeys"] });
 		},
 		onError: (err) => {
-			const message = err instanceof Error ? err.message : t("Unknown error");
+			const message = uiMessageFromError(err, t);
 			toastError(t("Create failed"), message);
 		},
 	});
@@ -671,7 +673,7 @@ function SettingsContent() {
 			queryClient.invalidateQueries({ queryKey: ["apikeys"] });
 		},
 		onError: (err) => {
-			const message = err instanceof Error ? err.message : t("Unknown error");
+			const message = uiMessageFromError(err, t);
 			toastError(t("Revoke failed"), message);
 		},
 	});
@@ -684,7 +686,7 @@ function SettingsContent() {
 			queryClient.invalidateQueries({ queryKey: ["apikeys"] });
 		},
 		onError: (err) => {
-			const message = err instanceof Error ? err.message : t("Unknown error");
+			const message = uiMessageFromError(err, t);
 			toastError(t("Delete failed"), message);
 		},
 	});
@@ -1356,9 +1358,7 @@ function SettingsContent() {
 												{apiKeysQuery.isError && (
 													<p className="py-6 text-center text-sm text-neutral-500">
 														{t("Load failed:")}
-														{apiKeysQuery.error instanceof Error
-															? apiKeysQuery.error.message
-															: t("Unknown error")}
+														{uiMessageFromError(apiKeysQuery.error, t)}
 													</p>
 												)}
 
@@ -1661,6 +1661,56 @@ function toOptionalPositiveInteger(
 	return parsed;
 }
 
+function uiMessageFromError(
+	error: unknown,
+	t: (key: string, params?: Record<string, string | number>) => string,
+): string {
+	if (!(error instanceof ApiClientError)) {
+		return error instanceof Error ? error.message : t("Unknown error");
+	}
+
+	if (error.status === 0) {
+		if (error.code === "CLIENT_TIMEOUT") {
+			return t("Request timed out. Please try again.");
+		}
+		return t("Network issue. Please try again later.");
+	}
+
+	if (error.status === 401) {
+		return t("Session expired. Please sign in again.");
+	}
+
+	if (error.status === 403) {
+		return t("You do not have permission to perform this action.");
+	}
+
+	if (error.status === 404) {
+		return t("The requested resource was not found.");
+	}
+
+	if (error.status === 409) {
+		return t("Request conflict detected. Please refresh and retry.");
+	}
+
+	if (error.status === 412) {
+		return t("Data has changed. Please refresh and retry.");
+	}
+
+	if (error.status === 428) {
+		return t("Missing precondition. Please refresh and retry.");
+	}
+
+	if (error.status === 429) {
+		return t("Too many requests. Please try again later.");
+	}
+
+	if (error.status >= 500) {
+		return t("Server is temporarily unavailable. Please try again later.");
+	}
+
+	return error.message || t("Unknown error");
+}
+
 type TenantConfigDraft = {
 	max_users: string;
 	max_articles: string;
@@ -1747,7 +1797,7 @@ function TenantManagementTab() {
 			setCreateName("");
 			toastSuccess(t("Tenant created"), `${created.name} (${created.slug})`);
 		} catch (err) {
-			const message = err instanceof Error ? err.message : t("Unknown error");
+			const message = uiMessageFromError(err, t);
 			toastError(t("Create failed"), message);
 		}
 	};
@@ -1764,7 +1814,7 @@ function TenantManagementTab() {
 			await updateTenantMutation.mutateAsync({ id: selectedTenantId, name });
 			toastSuccess(t("Saved"));
 		} catch (err) {
-			const message = err instanceof Error ? err.message : t("Unknown error");
+			const message = uiMessageFromError(err, t);
 			toastError(t("Save failed"), message);
 		}
 	};
@@ -1815,7 +1865,7 @@ function TenantManagementTab() {
 			});
 			toastSuccess(t("Tenant config updated"));
 		} catch (err) {
-			const message = err instanceof Error ? err.message : t("Unknown error");
+			const message = uiMessageFromError(err, t);
 			toastError(t("Save failed"), message);
 		}
 	};
@@ -1826,7 +1876,7 @@ function TenantManagementTab() {
 			await refreshUsageMutation.mutateAsync(selectedTenantId);
 			toastSuccess(t("Usage refreshed"));
 		} catch (err) {
-			const message = err instanceof Error ? err.message : t("Unknown error");
+			const message = uiMessageFromError(err, t);
 			toastError(t("Refresh failed"), message);
 		}
 	};
@@ -1843,7 +1893,7 @@ function TenantManagementTab() {
 			toastSuccess(t("Tenant deleted"), selected.name);
 			setSelectedTenantId(null);
 		} catch (err) {
-			const message = err instanceof Error ? err.message : t("Unknown error");
+			const message = uiMessageFromError(err, t);
 			toastError(t("Delete failed"), message);
 		}
 	};
@@ -1957,9 +2007,7 @@ function TenantManagementTab() {
 					{tenantsQuery.isError && (
 						<p className="py-6 text-center text-sm text-neutral-500">
 							{t("Load failed:")}
-							{tenantsQuery.error instanceof Error
-								? tenantsQuery.error.message
-								: t("Unknown error")}
+							{uiMessageFromError(tenantsQuery.error, t)}
 						</p>
 					)}
 
@@ -2168,7 +2216,6 @@ function TenantManagementTab() {
 function WebhookManagementTab() {
 	const t = useT();
 	const { success: toastSuccess, error: toastError } = useToast();
-	const webhooksQuery = useWebhooks({ limit: 100, offset: 0 });
 	const createWebhookMutation = useCreateWebhook();
 	const updateWebhookMutation = useUpdateWebhook();
 	const deleteWebhookMutation = useDeleteWebhook();
@@ -2181,6 +2228,18 @@ function WebhookManagementTab() {
 	const [timeoutMs, setTimeoutMs] = useState("10000");
 	const [maxRetries, setMaxRetries] = useState("5");
 	const [enabled, setEnabled] = useState(true);
+	const [webhookSearch, setWebhookSearch] = useState("");
+	const [enabledFilter, setEnabledFilter] = useState<WebhookEnabledFilter>("all");
+	const [deliveryFilter, setDeliveryFilter] =
+		useState<WebhookDeliveryFilter>("all");
+	const webhooksQuery = useWebhooks({
+		limit: 100,
+		offset: 0,
+		search: webhookSearch,
+		enabled: enabledFilter,
+		delivery: deliveryFilter,
+	});
+	const webhookStats = webhooksQuery.data?.stats;
 
 	const handleCreateWebhook = async () => {
 		const webhookName = name.trim();
@@ -2223,7 +2282,7 @@ function WebhookManagementTab() {
 			setMaxRetries("5");
 			setEnabled(true);
 		} catch (err) {
-			const message = err instanceof Error ? err.message : t("Unknown error");
+			const message = uiMessageFromError(err, t);
 			toastError(t("Create failed"), message);
 		}
 	};
@@ -2233,7 +2292,7 @@ function WebhookManagementTab() {
 			await updateWebhookMutation.mutateAsync({ id, enabled: nextEnabled });
 			toastSuccess(nextEnabled ? t("Webhook enabled") : t("Webhook disabled"));
 		} catch (err) {
-			const message = err instanceof Error ? err.message : t("Unknown error");
+			const message = uiMessageFromError(err, t);
 			toastError(t("Update failed"), message);
 		}
 	};
@@ -2243,7 +2302,7 @@ function WebhookManagementTab() {
 			const result = await testWebhookMutation.mutateAsync({ id });
 			toastSuccess(t("Test event queued"), `${result.event_type} · ${result.event_id}`);
 		} catch (err) {
-			const message = err instanceof Error ? err.message : t("Unknown error");
+			const message = uiMessageFromError(err, t);
 			toastError(t("Test failed"), message);
 		}
 	};
@@ -2256,7 +2315,7 @@ function WebhookManagementTab() {
 			await deleteWebhookMutation.mutateAsync(id);
 			toastSuccess(t("Webhook deleted"), webhookName);
 		} catch (err) {
-			const message = err instanceof Error ? err.message : t("Unknown error");
+			const message = uiMessageFromError(err, t);
 			toastError(t("Delete failed"), message);
 		}
 	};
@@ -2394,6 +2453,96 @@ function WebhookManagementTab() {
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-3">
+					<div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+						<div>
+							<label
+								htmlFor="webhook-search"
+								className="mb-1 block text-xs font-medium text-neutral-600"
+							>
+								{t("Search")}
+							</label>
+							<Input
+								id="webhook-search"
+								value={webhookSearch}
+								onChange={(e) => setWebhookSearch(e.target.value)}
+								placeholder={t("Search webhooks by name, URL or event")}
+							/>
+						</div>
+						<div>
+							<label
+								htmlFor="webhook-enabled-filter"
+								className="mb-1 block text-xs font-medium text-neutral-600"
+							>
+								{t("Status")}
+							</label>
+							<select
+								id="webhook-enabled-filter"
+								value={enabledFilter}
+								onChange={(e) =>
+									setEnabledFilter(e.target.value as WebhookEnabledFilter)
+								}
+								className="h-10 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm text-neutral-700"
+							>
+								<option value="all">{t("All statuses")}</option>
+								<option value="enabled">{t("Enabled only")}</option>
+								<option value="disabled">{t("Disabled only")}</option>
+							</select>
+						</div>
+						<div>
+							<label
+								htmlFor="webhook-delivery-filter"
+								className="mb-1 block text-xs font-medium text-neutral-600"
+							>
+								{t("Delivery state")}
+							</label>
+							<select
+								id="webhook-delivery-filter"
+								value={deliveryFilter}
+								onChange={(e) =>
+									setDeliveryFilter(e.target.value as WebhookDeliveryFilter)
+								}
+								className="h-10 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm text-neutral-700"
+							>
+								<option value="all">{t("All delivery states")}</option>
+								<option value="healthy">{t("Healthy")}</option>
+								<option value="failing">{t("Failing")}</option>
+								<option value="never">{t("Never delivered")}</option>
+							</select>
+						</div>
+					</div>
+
+					{webhookStats && (
+						<div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600">
+							<Badge variant="outline">
+								{t("Total")}: {webhookStats.total}
+							</Badge>
+							<Badge variant="outline">
+								{t("Enabled")}: {webhookStats.enabled}
+							</Badge>
+							<Badge variant="outline">
+								{t("Disabled")}: {webhookStats.disabled}
+							</Badge>
+							<Badge variant="outline">
+								{t("Healthy")}: {webhookStats.healthy}
+							</Badge>
+							<Badge variant="outline">
+								{t("Failing")}: {webhookStats.failing}
+							</Badge>
+							<Badge variant="outline">
+								{t("Never delivered")}: {webhookStats.never}
+							</Badge>
+						</div>
+					)}
+
+					{webhooksQuery.data && (
+						<p className="text-xs text-neutral-500">
+							{t("Filtered {count} of {total}", {
+								count: webhooksQuery.data.filtered_total,
+								total: webhooksQuery.data.stats.total,
+							})}
+						</p>
+					)}
+
 					<div className="flex items-center justify-end">
 						<Button
 							variant="outline"
@@ -2418,9 +2567,7 @@ function WebhookManagementTab() {
 					{webhooksQuery.isError && (
 						<p className="py-6 text-center text-sm text-neutral-500">
 							{t("Load failed:")}
-							{webhooksQuery.error instanceof Error
-								? webhooksQuery.error.message
-								: t("Unknown error")}
+							{uiMessageFromError(webhooksQuery.error, t)}
 						</p>
 					)}
 					{webhooksQuery.data && webhooksQuery.data.items.length === 0 && (
@@ -2548,7 +2695,7 @@ function SecurityTab() {
 			setConfirmNewPassword("");
 			setPwTouched(false);
 		} catch (err) {
-			const message = err instanceof Error ? err.message : t("Unknown error");
+			const message = uiMessageFromError(err, t);
 			toastError(t("Password change failed"), message);
 		}
 	};
@@ -2580,7 +2727,7 @@ function SecurityTab() {
 			setTotpUri(result.provisioning_uri);
 			setMfaPhase("setup");
 		} catch (err) {
-			const message = err instanceof Error ? err.message : t("Unknown error");
+			const message = uiMessageFromError(err, t);
 			toastError(t("Operation failed"), message);
 		}
 	};
@@ -2597,7 +2744,7 @@ function SecurityTab() {
 				toastSuccess(t("2FA enabled successfully"));
 			}
 		} catch (err) {
-			const message = err instanceof Error ? err.message : t("Unknown error");
+			const message = uiMessageFromError(err, t);
 			toastError(t("Verification failed"), message);
 		}
 	};
@@ -2612,7 +2759,7 @@ function SecurityTab() {
 			setTotpLastUsedAt(null);
 			toastSuccess(t("2FA disabled successfully"));
 		} catch (err) {
-			const message = err instanceof Error ? err.message : t("Unknown error");
+			const message = uiMessageFromError(err, t);
 			toastError(t("Operation failed"), message);
 		}
 	};
@@ -2945,9 +3092,7 @@ function SecurityTab() {
 					{loginActivityQuery.isError && (
 						<p className="py-6 text-center text-sm text-neutral-500">
 							{t("Load failed:")}
-							{loginActivityQuery.error instanceof Error
-								? loginActivityQuery.error.message
-								: t("Unknown error")}
+							{uiMessageFromError(loginActivityQuery.error, t)}
 						</p>
 					)}
 
