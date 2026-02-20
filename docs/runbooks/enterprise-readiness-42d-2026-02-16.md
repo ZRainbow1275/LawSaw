@@ -147,6 +147,10 @@
 - [x] 为 reports/template 增加 tenant 归属一致性约束
 - [x] 增加对应迁移回归测试脚本（跨租户写入应失败）`scripts/enterprise/reports-tenant-fk-verify.sql`
 - [ ] 在 staging/prod 执行并留存验证证据
+  - ⚠️ 2026-02-20（本地重试）：
+    - 尝试 1：`bash scripts/enterprise/post-deploy-verify.sh`，失败（缺少 `LAW_EYE_BASE_URL`）。
+    - 尝试 2：`LAW_EYE_BASE_URL=http://127.0.0.1:3000 bash scripts/enterprise/post-deploy-verify.sh`，失败（`/health` 连接拒绝，本地未运行目标服务）。
+    - 结论：该项需在真实 `staging/prod` 环境执行并留存日志证据（人工介入：提供可访问 `LAW_EYE_BASE_URL` 与对应部署环境）。
 
 2. 发布与安全硬化
 - [x] 为 Kubernetes 生产入口补齐 TLS/mTLS 强制策略（`infra/k8s/base/ingress.yaml` + `networkpolicy.yaml` + deploy 前置 secret 校验）
