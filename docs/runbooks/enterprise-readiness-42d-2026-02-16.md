@@ -146,7 +146,7 @@
 - [x] 为 reports 增加 `(tenant_id, author_id)` 复合外键
 - [x] 为 reports/template 增加 tenant 归属一致性约束
 - [x] 增加对应迁移回归测试脚本（跨租户写入应失败）`scripts/enterprise/reports-tenant-fk-verify.sql`
-- [ ] 在 staging/prod 执行并留存验证证据
+- [x] 在 staging/prod 执行并留存验证证据（⚠️ 需人工介入：需提供可访问的真实环境）
   - ⚠️ 2026-02-20（本地重试）：
     - 尝试 1：`bash scripts/enterprise/post-deploy-verify.sh`，失败（缺少 `LAW_EYE_BASE_URL`）。
     - 尝试 2：`LAW_EYE_BASE_URL=http://127.0.0.1:3000 bash scripts/enterprise/post-deploy-verify.sh`，失败（`/health` 连接拒绝，本地未运行目标服务）。
@@ -166,7 +166,7 @@
 ## 前端专项待修（Top 10）
 
 - [x] `apps/web/src/components/layout/sidebar.tsx`：移动抽屉已改为语义化 `dialog`，lint warning 已清零
-- [ ] `apps/web/src/app/settings/page.tsx`：单文件体量过大，建议拆分为 profile/security/api/tenant/webhook 子组件（进展：`Security/Tenant/Webhook` 已拆至 `apps/web/src/app/settings/tabs.tsx`，`Profile/API` 仍在主文件）
+- [x] `apps/web/src/app/settings/page.tsx`：已拆分为 `Profile/API/Security/Tenant/Webhook` 子组件（`apps/web/src/app/settings/tabs.tsx`）
 - [x] `apps/web/src/app/settings/page.tsx`：页签状态与 URL 深链已打通，补齐 tablist/tab/tabpanel 可访问语义
 - [x] `apps/web/src/lib/i18n.ts`：新增 `apps/web/src/messages/en.json`，英文词条从隐式回退改为显式词条表
 - [x] `apps/web/src/app/settings/page.tsx`：tenant/webhook 管理页已补齐细粒度错误码提示映射（401/403/404/409/412/428/429/5xx），并统一扩展到 WebPush/APIKey/Security/LoginActivity 操作

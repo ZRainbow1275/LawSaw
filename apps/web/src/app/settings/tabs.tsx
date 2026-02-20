@@ -36,7 +36,7 @@ import {
 	useMfaTotpSetup,
 } from "@/hooks/use-security";
 import { ApiClientError } from "@/lib/api";
-import type { LoginActivityEntry } from "@/lib/api/types";
+import type { ApiKey, LoginActivityEntry } from "@/lib/api/types";
 import { useT } from "@/lib/i18n-client";
 import { useToast } from "@/stores/toast-store";
 import {
@@ -44,11 +44,15 @@ import {
 	ExternalLink,
 	Eye,
 	EyeOff,
+	Key,
 	Lock,
 	RefreshCw,
+	Save,
 	Shield,
 	Smartphone,
+	Trash2,
 } from "lucide-react";
+import Image from "next/image";
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useState } from "react";
 
@@ -215,6 +219,430 @@ export function uiMessageFromError(
 	}
 
 	return error.message || t("Unknown error");
+}
+
+type TranslateFn = (
+	key: string,
+	params?: Record<string, string | number>,
+) => string;
+
+export type ProfileTabProps = {
+	t: TranslateFn;
+	profile: { displayName: string; email: string };
+	setProfile: (
+		updater: (
+			prev: {
+				displayName: string;
+				email: string;
+			},
+		) => {
+			displayName: string;
+			email: string;
+		},
+	) => void;
+	avatarInputRef: { current: HTMLInputElement | null };
+	avatarSrc: string | null;
+	isPreviewAvatar: boolean;
+	avatarInitial: string;
+	uploadingAvatar: boolean;
+	avatarFile: File | null;
+	handleAvatarChange: (file: File | null) => void;
+	onUploadAvatar: () => void;
+	onSave: () => Promise<void> | void;
+	saving: boolean;
+	avatarMaxBytes: number;
+};
+
+export function ProfileTab({
+	t,
+	profile,
+	setProfile,
+	avatarInputRef,
+	avatarSrc,
+	isPreviewAvatar,
+	avatarInitial,
+	uploadingAvatar,
+	avatarFile,
+	handleAvatarChange,
+	onUploadAvatar,
+	onSave,
+	saving,
+	avatarMaxBytes,
+}: ProfileTabProps) {
+	return (
+		<Card>
+			<CardHeader>
+				<CardTitle>{t("Profile")}</CardTitle>
+				<CardDescription>{t("Manage your account information")}</CardDescription>
+			</CardHeader>
+			<CardContent className="space-y-4">
+				<div>
+					<label htmlFor="profile-avatar" className="mb-1 block text-sm font-medium">
+						{t("Avatar")}
+					</label>
+					<div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+						<div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-neutral-100 bg-neutral-50">
+							{avatarSrc ? (
+								<Image
+									src={avatarSrc}
+									alt={t("Avatar")}
+									width={64}
+									height={64}
+									sizes="64px"
+									className="h-16 w-16 object-cover"
+									unoptimized={isPreviewAvatar}
+								/>
+							) : (
+								<span className="text-lg font-semibold text-neutral-600">
+									{avatarInitial || "U"}
+								</span>
+							)}
+						</div>
+
+						<div className="space-y-2">
+							<input
+								id="profile-avatar"
+								ref={avatarInputRef}
+								type="file"
+								accept="image/png,image/jpeg,image/webp"
+								className="hidden"
+								onChange={(e) => {
+									const file = e.target.files?.[0] ?? null;
+									handleAvatarChange(file);
+									e.currentTarget.value = "";
+								}}
+							/>
+
+							<div className="flex flex-wrap gap-2">
+								<Button
+									type="button"
+									variant="outline"
+									onClick={() => avatarInputRef.current?.click()}
+									disabled={uploadingAvatar}
+								>
+									{t("Choose file")}
+								</Button>
+								<Button
+									type="button"
+									onClick={onUploadAvatar}
+									disabled={!avatarFile || uploadingAvatar}
+								>
+									{uploadingAvatar ? (
+										<RefreshCw
+											aria-hidden="true"
+											className="mr-2 h-4 w-4 animate-spin"
+										/>
+									) : null}
+									{t("Upload avatar")}
+								</Button>
+							</div>
+
+							<p className="text-xs text-neutral-500">
+								{t("Supported formats: PNG / JPEG / WEBP. Max {size}KB", {
+									size: Math.floor(avatarMaxBytes / 1024),
+								})}
+							</p>
+						</div>
+					</div>
+				</div>
+
+				<div>
+					<label
+						htmlFor="profile-display-name"
+						className="mb-1 block text-sm font-medium"
+					>
+						{t("Display name")}
+					</label>
+					<Input
+						id="profile-display-name"
+						value={profile.displayName}
+						onChange={(e) =>
+							setProfile((prev) => ({
+								...prev,
+								displayName: e.target.value,
+							}))
+						}
+						placeholder={t("Your name")}
+					/>
+				</div>
+
+				<div>
+					<label htmlFor="profile-email" className="mb-1 block text-sm font-medium">
+						{t("Email address")}
+					</label>
+					<Input
+						id="profile-email"
+						type="email"
+						value={profile.email}
+						disabled
+						readOnly
+					/>
+					<p className="mt-1 text-xs text-neutral-500">
+						{t("Email is used as the login account and cannot be changed online yet.")}
+					</p>
+				</div>
+
+				<div className="flex justify-end">
+					<Button onClick={() => void onSave()} disabled={saving}>
+						{saving ? (
+							<RefreshCw aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
+						) : (
+							<Save aria-hidden="true" className="mr-2 h-4 w-4" />
+						)}
+						{t("Save changes")}
+					</Button>
+				</div>
+			</CardContent>
+		</Card>
+	);
+}
+
+export type ApiKeysTabProps = {
+	t: TranslateFn;
+	createdRawKey: string | null;
+	onCopyRawKey: (value: string) => Promise<void>;
+	onClearRawKey: () => void;
+	apiKeyName: string;
+	setApiKeyName: (value: string) => void;
+	apiKeyPermissions: string;
+	setApiKeyPermissions: (value: string) => void;
+	apiKeyRateLimit: string;
+	setApiKeyRateLimit: (value: string) => void;
+	createPending: boolean;
+	onCreate: () => void;
+	isLoading: boolean;
+	isError: boolean;
+	isFetching: boolean;
+	error: unknown;
+	keys: ApiKey[];
+	revokePending: boolean;
+	deletePending: boolean;
+	onRefetch: () => void;
+	onRevoke: (id: string) => void;
+	onDelete: (id: string) => void;
+};
+
+export function ApiKeysTab({
+	t,
+	createdRawKey,
+	onCopyRawKey,
+	onClearRawKey,
+	apiKeyName,
+	setApiKeyName,
+	apiKeyPermissions,
+	setApiKeyPermissions,
+	apiKeyRateLimit,
+	setApiKeyRateLimit,
+	createPending,
+	onCreate,
+	isLoading,
+	isError,
+	isFetching,
+	error,
+	keys,
+	revokePending,
+	deletePending,
+	onRefetch,
+	onRevoke,
+	onDelete,
+}: ApiKeysTabProps) {
+	return (
+		<Card>
+			<CardHeader>
+				<CardTitle>{t("API keys")}</CardTitle>
+				<CardDescription>{t("Manage your API access keys")}</CardDescription>
+			</CardHeader>
+			<CardContent className="space-y-4">
+				<div className="rounded-lg bg-neutral-50 p-4">
+					<p className="text-sm text-neutral-600">
+						{t(
+							"API keys are used for programmatic access. Keep them secret and do not share with others.",
+						)}
+					</p>
+				</div>
+
+				{createdRawKey && (
+					<div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+						<p className="text-sm font-medium text-amber-900">
+							{t("New key (shown only once). Copy and store it now.")}
+						</p>
+						<div className="mt-3 flex flex-col gap-2 sm:flex-row">
+							<Input value={createdRawKey} readOnly />
+							<Button
+								variant="outline"
+								onClick={() => void onCopyRawKey(createdRawKey)}
+							>
+								<Copy aria-hidden="true" className="mr-2 h-4 w-4" />
+								{t("Copy")}
+							</Button>
+							<Button variant="outline" onClick={onClearRawKey}>
+								{t("Close")}
+							</Button>
+						</div>
+					</div>
+				)}
+
+				<div className="rounded-lg border border-neutral-100 p-4">
+					<p className="text-sm font-medium">{t("Create new key")}</p>
+					<div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+						<div className="sm:col-span-1">
+							<label
+								htmlFor="apikey-name"
+								className="mb-1 block text-xs font-medium text-neutral-600"
+							>
+								{t("Name")}
+							</label>
+							<Input
+								id="apikey-name"
+								value={apiKeyName}
+								onChange={(e) => setApiKeyName(e.target.value)}
+								placeholder={t("e.g. CI / integration service")}
+							/>
+						</div>
+						<div className="sm:col-span-1">
+							<label
+								htmlFor="apikey-permissions"
+								className="mb-1 block text-xs font-medium text-neutral-600"
+							>
+								{t("Permissions (optional, comma-separated)")}
+							</label>
+							<Input
+								id="apikey-permissions"
+								value={apiKeyPermissions}
+								onChange={(e) => setApiKeyPermissions(e.target.value)}
+								placeholder={t("e.g. read, articles:read")}
+							/>
+						</div>
+						<div className="sm:col-span-1">
+							<label
+								htmlFor="apikey-rate-limit"
+								className="mb-1 block text-xs font-medium text-neutral-600"
+							>
+								{t("Rate limit (optional)")}
+							</label>
+							<Input
+								id="apikey-rate-limit"
+								value={apiKeyRateLimit}
+								onChange={(e) => setApiKeyRateLimit(e.target.value)}
+								placeholder={t("e.g. 100")}
+								inputMode="numeric"
+							/>
+						</div>
+					</div>
+					<div className="mt-3 flex justify-end">
+						<Button onClick={onCreate} disabled={createPending}>
+							{createPending ? (
+								<RefreshCw aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
+							) : (
+								<Key aria-hidden="true" className="mr-2 h-4 w-4" />
+							)}
+							{t("Create")}
+						</Button>
+					</div>
+				</div>
+
+				<div className="space-y-2">
+					<div className="flex items-center justify-between">
+						<p className="text-sm font-medium">{t("Existing keys")}</p>
+						<Button variant="outline" onClick={onRefetch} disabled={isFetching}>
+							<RefreshCw
+								className={`mr-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`}
+								aria-hidden="true"
+								focusable="false"
+							/>
+							{t("Refresh")}
+						</Button>
+					</div>
+
+					{isLoading && (
+						<p className="py-6 text-center text-sm text-neutral-500">
+							{t("Loading...")}
+						</p>
+					)}
+
+					{isError && (
+						<p className="py-6 text-center text-sm text-neutral-500">
+							{t("Load failed:")}
+							{uiMessageFromError(error, t)}
+						</p>
+					)}
+
+					{!isLoading && !isError && keys.length === 0 && (
+						<p className="py-6 text-center text-sm text-neutral-500">
+							{t("No API keys")}
+						</p>
+					)}
+
+					{keys.map((k) => (
+						<div key={k.id} className="rounded-lg border border-neutral-100 p-4">
+							<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+								<div className="min-w-0">
+									<div className="flex items-center gap-2">
+										<p className="truncate font-medium">{k.name}</p>
+										<Badge variant="outline">
+											{k.is_active ? t("Active") : t("Revoked")}
+										</Badge>
+									</div>
+									<p className="mt-1 text-xs text-neutral-500">
+										{t("Prefix: {prefix} · Rate limit: {limit}", {
+											prefix: k.key_prefix,
+											limit: k.rate_limit,
+										})}
+									</p>
+									<p className="mt-1 text-xs text-neutral-500">
+										{t("Permissions:")}
+										{k.permissions.length > 0
+											? k.permissions.join(", ")
+											: t("(default)")}
+									</p>
+								</div>
+
+								<div className="flex gap-2">
+									<Button
+										variant="outline"
+										disabled={!k.is_active || revokePending}
+										onClick={() => {
+											if (
+												!window.confirm(
+													t(
+														"Confirm revoke this API key? It will be invalid immediately.",
+													),
+												)
+											) {
+												return;
+											}
+											onRevoke(k.id);
+										}}
+									>
+										{t("Revoke")}
+									</Button>
+									<Button
+										variant="outline"
+										disabled={deletePending}
+										onClick={() => {
+											if (
+												!window.confirm(
+													t(
+														"Confirm delete this API key? This action cannot be undone.",
+													),
+												)
+											) {
+												return;
+											}
+											onDelete(k.id);
+										}}
+									>
+										<Trash2 aria-hidden="true" className="mr-2 h-4 w-4" />
+										{t("Delete")}
+									</Button>
+								</div>
+							</div>
+						</div>
+					))}
+				</div>
+			</CardContent>
+		</Card>
+	);
 }
 
 type TenantConfigDraft = {
