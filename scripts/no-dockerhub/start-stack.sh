@@ -95,9 +95,11 @@ fi
 
 cleanup_on_exit() {
   local exit_code=$?
-  if [[ "$RUNNING" -eq 1 && "$exit_code" -ne 0 ]]; then
+  if [[ "$RUNNING" -eq 1 && "$exit_code" -ne 0 && "${LAW_EYE_KEEP_ON_ERROR:-0}" != "1" ]]; then
     echo "Startup failed (exit=$exit_code). Cleaning up stack: $STACK_NAME" >&2
     bash "$ROOT/scripts/no-dockerhub/stop-stack.sh" --name "$STACK_NAME" >/dev/null 2>&1 || true
+  elif [[ "$RUNNING" -eq 1 && "$exit_code" -ne 0 && "${LAW_EYE_KEEP_ON_ERROR:-0}" == "1" ]]; then
+    echo "Startup failed (exit=$exit_code). Keeping stack for debugging: $STACK_NAME" >&2
   fi
 }
 trap cleanup_on_exit EXIT
@@ -247,7 +249,15 @@ else
   # but only Windows `node.exe` is installed. In that case, `pnpm` will fail inside WSL with
   # "exec: node: not found", so we must start the Next server on Windows instead.
   if pnpm -v >/dev/null 2>&1; then
-    WEB_RUNS_ON_WINDOWS=0
+    NODE_PLATFORM=""
+    if command -v node >/dev/null 2>&1; then
+      NODE_PLATFORM="$(node -p "process.platform" 2>/dev/null | tr -d '\r' | tr -d '\n' || true)"
+    fi
+    if [[ "$NODE_PLATFORM" == "win32" ]]; then
+      WEB_RUNS_ON_WINDOWS=1
+    else
+      WEB_RUNS_ON_WINDOWS=0
+    fi
   elif command -v cmd.exe >/dev/null 2>&1 && cmd.exe /c pnpm -v >/dev/null 2>&1; then
     WEB_RUNS_ON_WINDOWS=1
   else
@@ -531,7 +541,7 @@ FROM mcr.microsoft.com/devcontainers/base:ubuntu@sha256:3dcb059253b2ebb44de39366
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \
-  && apt-get install -y ca-certificates curl gnupg \
+  && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
   && rm -rf /var/lib/apt/lists/*
 
 # Install PostgreSQL 16 + pgvector from PGDG.
@@ -539,7 +549,7 @@ RUN set -eux; \
   echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt noble-pgdg main" > /etc/apt/sources.list.d/pgdg.list; \
   curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql.gpg; \
   apt-get update; \
-  apt-get install -y postgresql-16 postgresql-16-pgvector; \
+  apt-get install -y --no-install-recommends postgresql-16 postgresql-contrib-16 postgresql-16-pgvector; \
   rm -rf /var/lib/apt/lists/*
 
 ENV PGDATA=/var/lib/postgresql/data
@@ -588,33 +598,43 @@ if [ ! -s "${PGDATA}/PG_VERSION" ]; then
   "${BIN}/pg_ctl" -D "${PGDATA}" -o "-c listen_addresses='*'" -w start
 
   psql -v ON_ERROR_STOP=1 --username=postgres -v app_user="${POSTGRES_USER}" -v app_pass="${POSTGRES_PASSWORD}" <<'SQL'
+SELECT format(
+  'CREATE ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS',
+  :'app_user',
+  :'app_pass'
+) WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_user');
+\gexec
+
+SELECT format(
+  'ALTER ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS',
+  :'app_user',
+  :'app_pass'
+) WHERE EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_user');
+\gexec
+SQL
+
+  psql -v ON_ERROR_STOP=1 --username=postgres -v app_user="${POSTGRES_USER}" <<'SQL'
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_user') THEN
-    EXECUTE format(
-      'ALTER ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION',
-      :'app_user',
-      :'app_pass'
-    );
-  ELSE
-    EXECUTE format(
-      'CREATE ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION',
-      :'app_user',
-      :'app_pass'
-    );
-  END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'law_eye_app') THEN
+        CREATE ROLE law_eye_app NOLOGIN NOSUPERUSER NOBYPASSRLS;
+    END IF;
 END $$;
+
+ALTER ROLE law_eye_app NOLOGIN NOSUPERUSER NOBYPASSRLS;
+
+SELECT format('GRANT law_eye_app TO %I', :'app_user');
+\gexec
 SQL
 
   psql -v ON_ERROR_STOP=1 --username=postgres -v db_name="${POSTGRES_DB}" -v db_owner="${POSTGRES_USER}" <<'SQL'
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'db_name') THEN
-    EXECUTE format('CREATE DATABASE %I OWNER %I', :'db_name', :'db_owner');
-  ELSE
-    EXECUTE format('ALTER DATABASE %I OWNER TO %I', :'db_name', :'db_owner');
-  END IF;
-END $$;
+SELECT format('CREATE DATABASE %I OWNER %I', :'db_name', :'db_owner')
+WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'db_name');
+\gexec
+
+SELECT format('ALTER DATABASE %I OWNER TO %I', :'db_name', :'db_owner')
+WHERE EXISTS (SELECT 1 FROM pg_database WHERE datname = :'db_name');
+\gexec
 SQL
 
   psql -v ON_ERROR_STOP=1 --username=postgres --dbname="${POSTGRES_DB}" -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'
@@ -649,7 +669,7 @@ RUN set -eux; \
   rm -rf /var/lib/apt/lists/*; \
   test -n "$MINIO_SHA256"; \
   url="https://dl.min.io/server/minio/release/linux-amd64/archive/minio.${MINIO_VERSION}"; \
-  curl -fsSL --connect-timeout 10 --max-time 180 --retry 3 --retry-delay 2 "$url" -o /usr/local/bin/minio; \
+  curl -fsSL --connect-timeout 20 --max-time 600 --retry 5 --retry-all-errors --retry-delay 3 "$url" -o /usr/local/bin/minio; \
   test -s /usr/local/bin/minio; \
   echo "${MINIO_SHA256}  /usr/local/bin/minio" | sha256sum -c -; \
   chmod +x /usr/local/bin/minio
@@ -810,9 +830,10 @@ if ! docker exec "$REDIS_CONTAINER" redis-cli -a "$REDIS_PASSWORD" ping >/dev/nu
 fi
 
 echo "Waiting for Postgres..."
+postgres_ready_cmd=(docker exec "$POSTGRES_CONTAINER" pg_isready -q -h 127.0.0.1 -p 5432 -U postgres)
 postgres_ready_streak=0
 for _ in $(seq 1 180); do
-  if docker exec "$POSTGRES_CONTAINER" su - postgres -c "pg_isready -q -p 5432" >/dev/null 2>&1; then
+  if "${postgres_ready_cmd[@]}" >/dev/null 2>&1; then
     postgres_ready_streak=$((postgres_ready_streak + 1))
     if [[ "$postgres_ready_streak" -ge 3 ]]; then
       break
@@ -822,11 +843,18 @@ for _ in $(seq 1 180); do
   fi
   sleep 1
 done
-if [[ "$postgres_ready_streak" -lt 3 ]]; then
+if [[ "$postgres_ready_streak" -lt 3 ]] || ! "${postgres_ready_cmd[@]}" >/dev/null 2>&1; then
   dump_container_debug "$POSTGRES_CONTAINER" "postgres"
   echo "ERROR: Postgres did not become ready. Debug logs: $LOG_DIR/postgres.docker.log" >&2
   exit 1
 fi
+
+# Backward compatibility for existing volumes initialized before BYPASSRLS was added.
+docker exec -i "$POSTGRES_CONTAINER" psql -v ON_ERROR_STOP=1 --username=postgres -v app_user="law_eye" <<'SQL'
+SELECT format('ALTER ROLE %I BYPASSRLS', :'app_user')
+WHERE EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_user');
+\gexec
+SQL
 
 echo "Waiting for MinIO..."
 for _ in $(seq 1 120); do
@@ -854,12 +882,12 @@ REDIS_PASS_ENC="$(urlencode "$REDIS_PASSWORD")"
 DB_URL="postgres://law_eye:${DB_PASS_ENC}@localhost:${POSTGRES_PORT}/law_eye"
 REDIS_URL="redis://:${REDIS_PASS_ENC}@localhost:${REDIS_PORT}"
 
-# Web should call same-origin (/api/v1/*) to keep cookie auth stable under SameSite=Lax.
-# Next dev server proxies to the Rust API via rewrites configured by LAW_EYE_API_PROXY_TARGET.
+# Web should call same-origin (/api/v1/*) by default.
+# Next rewrites proxy these requests to LAW_EYE_API_PROXY_TARGET.
 WSL_HOST_IP="${LAW_EYE_WSL_HOST_IP:-}"
 WINDOWS_HOST_IP="${LAW_EYE_WINDOWS_HOST_IP:-}"
-NEXT_PUBLIC_API_URL="http://localhost:${WEB_PORT}"
 LAW_EYE_API_PROXY_TARGET="http://localhost:${API_PORT}"
+NEXT_PUBLIC_API_URL="http://localhost:${WEB_PORT}"
 
 if [[ -z "$WINDOWS_HOST_IP" ]]; then
   WINDOWS_HOST_IP="$(get_windows_host_ip)"
@@ -878,16 +906,31 @@ if [[ "${LAW_EYE__OBJECT_STORAGE__ENABLED}" == "true" || "${LAW_EYE__OBJECT_STOR
   export LAW_EYE__OBJECT_STORAGE__ACCESS_KEY_ID="${LAW_EYE__OBJECT_STORAGE__ACCESS_KEY_ID:-$MINIO_ROOT_USER}"
   export LAW_EYE__OBJECT_STORAGE__SECRET_ACCESS_KEY="${LAW_EYE__OBJECT_STORAGE__SECRET_ACCESS_KEY:-$MINIO_ROOT_PASSWORD}"
   export LAW_EYE__OBJECT_STORAGE__FORCE_PATH_STYLE="${LAW_EYE__OBJECT_STORAGE__FORCE_PATH_STYLE:-true}"
+  # Local MinIO in this stack may not support bucket-level SSE APIs consistently.
+  export LAW_EYE__OBJECT_STORAGE__SSE_ENABLED="${LAW_EYE__OBJECT_STORAGE__SSE_ENABLED:-false}"
 fi
 export LAW_EYE__DATABASE__SESSION_ROLE="law_eye_app"
 export LAW_EYE__SERVER__HOST="${LAW_EYE__SERVER__HOST:-0.0.0.0}"
 export LAW_EYE__SERVER__PORT="$API_PORT"
-export LAW_EYE__SERVER__ALLOWED_ORIGINS="http://localhost:${WEB_PORT},http://127.0.0.1:${WEB_PORT}"
+ALLOWED_ORIGINS="http://localhost:${WEB_PORT},http://127.0.0.1:${WEB_PORT}"
+if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]] && [[ -n "${WINDOWS_HOST_IP:-}" ]]; then
+  ALLOWED_ORIGINS="${ALLOWED_ORIGINS},http://${WINDOWS_HOST_IP}:${WEB_PORT}"
+fi
+export LAW_EYE__SERVER__ALLOWED_ORIGINS="$ALLOWED_ORIGINS"
+# E2E/local runs can trigger repeated auth redirects/logins while validating flows.
+# Keep limits configurable, but use generous defaults in this local stack runner.
+export LAW_EYE__RATE_LIMIT__LOGIN_MAX_REQUESTS="${LAW_EYE__RATE_LIMIT__LOGIN_MAX_REQUESTS:-200}"
+export LAW_EYE__RATE_LIMIT__LOGIN_WINDOW_SECONDS="${LAW_EYE__RATE_LIMIT__LOGIN_WINDOW_SECONDS:-60}"
+export LAW_EYE__RATE_LIMIT__REGISTER_MAX_REQUESTS="${LAW_EYE__RATE_LIMIT__REGISTER_MAX_REQUESTS:-50}"
+export LAW_EYE__RATE_LIMIT__REGISTER_WINDOW_SECONDS="${LAW_EYE__RATE_LIMIT__REGISTER_WINDOW_SECONDS:-3600}"
 export LAW_EYE__SECURITY__ALLOW_INTERNAL_SOURCE_URLS="${LAW_EYE__SECURITY__ALLOW_INTERNAL_SOURCE_URLS:-true}"
 export WEB_PORT="$WEB_PORT"
 
 # Avoid Windows-mounted target dir issues by placing build artifacts in the WSL filesystem.
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cache/lawsaw-cargo-target}"
+CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
+CARGO_PROFILE_DEV_DEBUG="${CARGO_PROFILE_DEV_DEBUG:-0}"
+LAW_EYE_SKIP_BUILD="${LAW_EYE_SKIP_BUILD:-0}"
 mkdir -p "$CARGO_TARGET_DIR"
 
 start_bg() {
@@ -955,8 +998,17 @@ start_web_windows() {
     local existing_pid
     existing_pid="$(cat "$pid_file" 2>/dev/null || true)"
     if [[ -n "$existing_pid" ]] && pid_exists "$existing_pid"; then
-      echo "Process already running: $name (pid=$existing_pid)"
-      return 0
+      local existing_pid_raw="${existing_pid#win:}"
+      local listening_pid
+      listening_pid="$(windows_listen_pid "$WEB_PORT")"
+
+      if [[ -n "$listening_pid" && "$listening_pid" == "$existing_pid_raw" ]]; then
+        echo "Process already running: $name (pid=$existing_pid)"
+        return 0
+      fi
+
+      echo "WARN: stale web pid file detected (pid=$existing_pid, web_port=$WEB_PORT, listening_pid=${listening_pid:-none}); restarting web." >&2
+      rm -f "$pid_file"
     fi
   fi
 
@@ -1026,29 +1078,114 @@ PY
   fi
 }
 
-echo "Building API + worker (CARGO_TARGET_DIR=$CARGO_TARGET_DIR)..."
-(cd "$ROOT" && cargo build -p law-eye-api -p law-eye-worker >"$LOG_DIR/cargo-build.log" 2>&1)
-
 API_BIN="$CARGO_TARGET_DIR/debug/law-eye-api"
 WORKER_BIN="$CARGO_TARGET_DIR/debug/law-eye-worker"
 
+if [[ "$LAW_EYE_SKIP_BUILD" == "1" ]]; then
+  echo "Skipping API + worker build (LAW_EYE_SKIP_BUILD=1)..."
+  if [[ ! -f "$API_BIN" || ! -f "$WORKER_BIN" ]]; then
+    echo "ERROR: LAW_EYE_SKIP_BUILD=1 but binaries are missing:" >&2
+    echo "  - $API_BIN" >&2
+    echo "  - $WORKER_BIN" >&2
+    exit 1
+  fi
+else
+  echo "Building API + worker (CARGO_TARGET_DIR=$CARGO_TARGET_DIR)..."
+  (cd "$ROOT" && CARGO_PROFILE_DEV_DEBUG="$CARGO_PROFILE_DEV_DEBUG" cargo build -j "$CARGO_BUILD_JOBS" -p law-eye-api -p law-eye-worker >"$LOG_DIR/cargo-build.log" 2>&1)
+fi
+
 start_bg api "$ROOT" "$API_BIN"
 
+wait_for_api_health() {
+  local attempts="${1:-90}"
+  for _ in $(seq 1 "$attempts"); do
+    if curl -fsS "http://localhost:${API_PORT}/health" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  curl -fsS "http://localhost:${API_PORT}/health" >/dev/null 2>&1
+}
+
 echo "Waiting for API /health..."
-for _ in $(seq 1 90); do
-  if curl -fsS "http://localhost:${API_PORT}/health" >/dev/null 2>&1; then
-    break
+api_fix_attempts=0
+while ! wait_for_api_health 90; do
+  # Compatibility shim for old embedded migrations:
+  # migration 034 may reference columns that do not exist in this schema path.
+  if [[ "$api_fix_attempts" -lt 2 ]] \
+    && grep -q "migration 34" "$LOG_DIR/api.log" 2>/dev/null; then
+    api_fix_attempts=$((api_fix_attempts + 1))
+    echo "INFO: applying DB compatibility fix for migration 34 (attempt=${api_fix_attempts})..." >&2
+    docker exec -i "$POSTGRES_CONTAINER" psql -v ON_ERROR_STOP=1 --username=postgres --dbname=law_eye <<'SQL' >/dev/null
+DO $$
+BEGIN
+    IF to_regclass('public.sources') IS NOT NULL THEN
+        ALTER TABLE public.sources ADD COLUMN IF NOT EXISTS next_crawl_at TIMESTAMPTZ;
+    END IF;
+
+    IF to_regclass('public.users') IS NOT NULL THEN
+        ALTER TABLE public.users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+    END IF;
+
+    IF to_regclass('public.api_keys') IS NOT NULL THEN
+        ALTER TABLE public.api_keys ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+    END IF;
+
+    IF to_regclass('public.webhook_endpoints') IS NOT NULL THEN
+        ALTER TABLE public.webhook_endpoints ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+    END IF;
+
+    IF to_regclass('public.feedbacks') IS NOT NULL THEN
+        ALTER TABLE public.feedbacks ADD COLUMN IF NOT EXISTS article_id UUID;
+    END IF;
+END $$;
+SQL
+
+    # API exits on migration failure; start it again after applying the shim.
+    start_bg api "$ROOT" "$API_BIN"
+    continue
   fi
-  sleep 1
-done
-if ! curl -fsS "http://localhost:${API_PORT}/health" >/dev/null 2>&1; then
-  echo "ERROR: API did not become ready. See: $LOG_DIR/api.log" >&2
+
+  # Compatibility shim for migration 044:
+  # older schema stores role permissions in roles.permissions JSONB (no role_permissions table).
+  if [[ "$api_fix_attempts" -lt 3 ]] \
+    && grep -q "migration 44" "$LOG_DIR/api.log" 2>/dev/null \
+    && grep -q "role_permissions" "$LOG_DIR/api.log" 2>/dev/null; then
+    api_fix_attempts=$((api_fix_attempts + 1))
+    echo "INFO: applying DB compatibility fix for migration 44 (attempt=${api_fix_attempts})..." >&2
+    docker exec -i "$POSTGRES_CONTAINER" psql -v ON_ERROR_STOP=1 --username=postgres --dbname=law_eye <<'SQL' >/dev/null
+CREATE TABLE IF NOT EXISTS public.role_permissions (
+    role TEXT NOT NULL,
+    permission TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (role, permission)
+);
+ALTER TABLE public.role_permissions OWNER TO law_eye;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.role_permissions TO law_eye;
+GRANT SELECT ON public.role_permissions TO law_eye_app;
+
+INSERT INTO public.role_permissions (role, permission)
+SELECT r.name, perms.permission
+FROM public.roles r
+CROSS JOIN LATERAL jsonb_array_elements_text(r.permissions) AS perms(permission)
+ON CONFLICT (role, permission) DO NOTHING;
+SQL
+
+    start_bg api "$ROOT" "$API_BIN"
+    continue
+  fi
+
+  if [[ "$api_fix_attempts" -gt 0 ]]; then
+    echo "ERROR: API did not become ready after compatibility fixes. See: $LOG_DIR/api.log" >&2
+  else
+    echo "ERROR: API did not become ready. See: $LOG_DIR/api.log" >&2
+  fi
   exit 1
-fi
+done
 
 start_bg worker "$ROOT" "$WORKER_BIN"
 
-if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
+if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]] && [[ "${LAW_EYE_ALLOW_WSL_IP_PROXY:-0}" == "1" ]]; then
   if ! powershell.exe -NoProfile -Command "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:${API_PORT}/health).StatusCode } catch { exit 1 }" >/dev/null 2>&1; then
     if [[ -z "$WSL_HOST_IP" ]]; then
       WSL_HOST_IP="$(get_primary_ipv4)"
@@ -1058,7 +1195,7 @@ if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
       exit 1
     fi
     LAW_EYE_API_PROXY_TARGET="http://${WSL_HOST_IP}:${API_PORT}"
-    echo "INFO: Windows cannot reach WSL API via localhost. Using LAW_EYE_API_PROXY_TARGET=$LAW_EYE_API_PROXY_TARGET for Next rewrites." >&2
+    echo "INFO: Windows cannot reach API via localhost. Using LAW_EYE_API_PROXY_TARGET=$LAW_EYE_API_PROXY_TARGET for Next rewrites." >&2
   fi
 fi
 
@@ -1069,10 +1206,11 @@ if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
 else
   if [[ "$WEB_MODE" == "prod" ]]; then
     echo "Building Web (prod)..."
+    rm -f "$ROOT/apps/web/.next/lock"
     (cd "$ROOT/apps/web" && env NODE_ENV=production pnpm build >"$LOG_DIR/web.build.log" 2>&1)
     start_bg web "$ROOT/apps/web" env NODE_ENV=production node ./node_modules/next/dist/bin/next start -p "$WEB_PORT" -H 0.0.0.0
   else
-    start_bg web "$ROOT/apps/web" pnpm dev
+    start_bg web "$ROOT/apps/web" env WEB_PORT="$WEB_PORT" PORT="$WEB_PORT" pnpm dev
   fi
 fi
 
@@ -1082,13 +1220,23 @@ if [[ "$WEB_MODE" == "prod" ]]; then
   WEB_READY_WAIT_SECONDS=240
 fi
 if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
-  for _ in $(seq 1 "$WEB_READY_WAIT_SECONDS"); do
+  web_ready_windows() {
     if powershell.exe -NoProfile -Command "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:${WEB_PORT}/login).StatusCode } catch { exit 1 }" >/dev/null 2>&1; then
+      return 0
+    fi
+    if [[ -n "${WINDOWS_HOST_IP:-}" ]] && curl -fsS "http://${WINDOWS_HOST_IP}:${WEB_PORT}/login" >/dev/null 2>&1; then
+      return 0
+    fi
+    return 1
+  }
+
+  for _ in $(seq 1 "$WEB_READY_WAIT_SECONDS"); do
+    if web_ready_windows; then
       break
     fi
     sleep 1
   done
-  if ! powershell.exe -NoProfile -Command "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:${WEB_PORT}/login).StatusCode } catch { exit 1 }" >/dev/null 2>&1; then
+  if ! web_ready_windows; then
     echo "ERROR: Web did not become ready. See: $LOG_DIR/web.log ($LOG_DIR/web.err.log)" >&2
     exit 1
   fi

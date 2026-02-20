@@ -83,6 +83,25 @@
 - `infra/monitoring/*.yml` YAML 解析通过
 - `docker compose -f docker-compose.yml -f docker-compose.enterprise.yml config` 渲染通过（注入必需环境变量）
 
+### 6) 本机可部署链路复核（2026-02-20）
+- 更新迁移：`crates/law-eye-db/migrations/045_reports_tenant_fk_hardening.sql`
+- 更新迁移：`crates/law-eye-db/migrations/047_session_tenants_tenant_fk_hardening.sql`
+- 更新脚本：`scripts/no-dockerhub/start-stack.sh`
+
+能力清单：
+- 修复迁移幂等缺陷：将 `users_tenant_id_id_key` / `report_templates_tenant_id_id_key` / `reports_*_tenant_fkey` / `session_tenants_user_tenant_fkey` 的创建改为 `pg_constraint` 存在性判断，避免历史库重放迁移时触发 `relation already exists`。
+- 修复本机启动器稳定性缺陷：Windows `web.pid` 存在但未监听 `WEB_PORT` 时自动识别为 stale pid 并重启 Web，避免 `start-stack.sh` 长时间等待。
+- 本机独立栈验证通过：`LAW_EYE_STACK_NAME=law-eye-local-codex`，端口 `API=13000`、`Postgres=15435`、`Redis=16380`、`MinIO=19000`。
+- 健康检查契约闭环：`/health`、`/health/live`、`/health/ready` 全部 `200 OK`。
+- 发布后验收脚本闭环：`scripts/enterprise/post-deploy-verify.sh` 在本机通过（包含 reports 租户 FK 回归 SQL、tenant_configs version 校验、feedback encryption posture 校验）。
+
+本轮验证结果（2026-02-20）：
+- `cargo check -p law-eye-db -p law-eye-core -p law-eye-api`：通过
+- `cargo test -p law-eye-api -- --nocapture`：通过（32/32）
+- `cargo test -p law-eye-core`：通过（13/13）
+- `LAW_EYE_BASE_URL=http://127.0.0.1:13000 bash scripts/enterprise/post-deploy-verify.sh`：通过
+- `LAW_EYE_BASE_URL=http://127.0.0.1:13000 LAW_EYE__DATABASE__URL=postgres://law_eye:***@localhost:15435/law_eye bash scripts/enterprise/post-deploy-verify.sh`：通过
+
 ## 42 维状态总览（摘要）
 
 - `✅` 已达标或可运行：13 项
@@ -150,6 +169,7 @@
   - ⚠️ 2026-02-20（本地重试）：
     - 尝试 1：`bash scripts/enterprise/post-deploy-verify.sh`，失败（缺少 `LAW_EYE_BASE_URL`）。
     - 尝试 2：`LAW_EYE_BASE_URL=http://127.0.0.1:3000 bash scripts/enterprise/post-deploy-verify.sh`，失败（`/health` 连接拒绝，本地未运行目标服务）。
+    - 尝试 3：`LAW_EYE_BASE_URL=http://127.0.0.1:13000 LAW_EYE__DATABASE__URL=postgres://law_eye:***@localhost:15435/law_eye bash scripts/enterprise/post-deploy-verify.sh`，成功（本机独立栈验收完成）。
     - 结论：该项需在真实 `staging/prod` 环境执行并留存日志证据（人工介入：提供可访问 `LAW_EYE_BASE_URL` 与对应部署环境）。
 
 2. 发布与安全硬化
@@ -194,3 +214,15 @@
 - `bash -n scripts/enterprise/restore-encrypted.sh` ✅
 - `kubectl kustomize infra/k8s/overlays/bluegreen` ✅
 - `kubectl kustomize infra/k8s/overlays/canary` ✅
+
+## 本轮验证记录（2026-02-20）
+
+- `LAW_EYE_STACK_NAME=law-eye-local-codex bash scripts/no-dockerhub/start-stack.sh --name law-eye-local-codex` ✅（API/DB/Redis/MinIO 就绪）
+- `LAW_EYE_STACK_NAME=law-eye-local-codex LAW_EYE_SKIP_BUILD=1 bash scripts/no-dockerhub/start-stack.sh --name law-eye-local-codex` ✅（快速复核，脚本正常返回）
+- `curl http://127.0.0.1:13000/health` ✅
+- `curl http://127.0.0.1:13000/health/live` ✅
+- `curl http://127.0.0.1:13000/health/ready` ✅
+- `LAW_EYE_BASE_URL=http://127.0.0.1:13000 LAW_EYE__DATABASE__URL=postgres://law_eye:***@localhost:15435/law_eye bash scripts/enterprise/post-deploy-verify.sh` ✅
+- `cargo check -p law-eye-db -p law-eye-core -p law-eye-api` ✅
+- `cargo test -p law-eye-api -- --nocapture` ✅（32/32）
+- `cargo test -p law-eye-core` ✅（13/13）

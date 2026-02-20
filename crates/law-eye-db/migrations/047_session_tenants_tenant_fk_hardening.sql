@@ -12,10 +12,15 @@
 
 DO $$
 BEGIN
-    ALTER TABLE users
-        ADD CONSTRAINT users_tenant_id_id_key UNIQUE (tenant_id, id);
-EXCEPTION
-    WHEN duplicate_object THEN NULL;
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'users_tenant_id_id_key'
+          AND conrelid = 'users'::regclass
+    ) THEN
+        ALTER TABLE users
+            ADD CONSTRAINT users_tenant_id_id_key UNIQUE (tenant_id, id);
+    END IF;
 END
 $$;
 
@@ -45,13 +50,18 @@ ALTER TABLE session_tenants DROP CONSTRAINT IF EXISTS session_tenants_user_id_fk
 
 DO $$
 BEGIN
-    ALTER TABLE session_tenants
-        ADD CONSTRAINT session_tenants_user_tenant_fkey
-        FOREIGN KEY (tenant_id, user_id)
-        REFERENCES users(tenant_id, id)
-        ON DELETE SET NULL;
-EXCEPTION
-    WHEN duplicate_object THEN NULL;
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'session_tenants_user_tenant_fkey'
+          AND conrelid = 'session_tenants'::regclass
+    ) THEN
+        ALTER TABLE session_tenants
+            ADD CONSTRAINT session_tenants_user_tenant_fkey
+            FOREIGN KEY (tenant_id, user_id)
+            REFERENCES users(tenant_id, id)
+            ON DELETE SET NULL;
+    END IF;
 END
 $$;
 
