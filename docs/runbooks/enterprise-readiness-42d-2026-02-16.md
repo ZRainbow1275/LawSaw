@@ -277,3 +277,44 @@
 - `cargo check -p law-eye-db -p law-eye-core -p law-eye-api` ✅
 - `cargo test -p law-eye-api -- --nocapture` ✅（32/32）
 - `cargo test -p law-eye-core` ✅（13/13）
+
+## 本轮验证记录（2026-02-20，Round 2：失败点修复闭环）
+
+新增失败点（真实联测发现）：
+- `POST /api/v1/auth/register` 在无 `Origin` 时返回 `CSRF_FAILED`（403）。
+- `POST /api/v1/report-templates` 接受错误上下文模板（如 `{{ report.title }}`），导致导出阶段才失败。
+- 抓取增量去重为全局作用域，存在跨租户误过滤风险（同 hash 在不同租户被错误跳过）。
+- RSS 源存在“抓取计数增加但文章被质量门限全量过滤”场景（低质量摘要被当作正文）。
+
+本轮修复：
+- `crates/law-eye-crawler/src/incremental/content_hash.rs`
+  - 增量去重键由 `content_hash` 改为 `(tenant_id, content_hash)`，避免跨租户串扰。
+- `crates/law-eye-crawler/src/orchestrator.rs`
+  - 增量去重调用点改为租户作用域检查/记录。
+- `crates/law-eye-crawler/src/rss.rs`
+  - 对 RSS 短摘要（占位文本）归一化为 `None`，避免被质量阶段误判导致全量丢弃。
+- `crates/law-eye-core/src/report/template_service.rs`
+  - 模板创建时新增“语法 + 上下文可渲染性”验证，提前阻断错误模板。
+- `crates/law-eye-crawler/tests/e2e_regression_tests.rs`
+  - 回归测试更新为租户作用域；新增跨租户同 hash 隔离断言。
+
+修复后实测（本机、无 mock）：
+- 爬虫（租户 `codex-fix-c-1771623553`）：
+  - 源：`source_id=9336da81-a6f4-487f-872b-9610b2e35e5e`（`https://hnrss.org/frontpage`）
+  - 结果：`health_status=healthy`，`total_articles_fetched=20`，`GET /articles?limit=3` 返回真实文章且 `total=20`。
+- 知识图谱：
+  - `POST /api/v1/knowledge/backfill` => `articles_considered=500, entities_upserted=12, article_entities_inserted=20`。
+  - `GET /api/v1/knowledge/stats` => `article_entity_count=20`。
+- 统计：
+  - `regional/industry/importance/overview` 全部 200；
+  - `coverage_rate`（regional/industry/importance）均为 `1.0`，`overview.total_articles=20`。
+- 日报（生成-导出-下载）：
+  - 报告：`report_id=6d473a92-97e1-4308-b611-153a8d1b46e2`
+  - 导出：`export_pdf_key=tenants/90e624df-e68d-45a9-bc1e-472fd5da0189/reports/6d473a92-97e1-4308-b611-153a8d1b46e2/export_20260220220718.pdf`
+  - 下载：`GET /download/pdf` => `200`，`content-type=application/pdf`，文件大小 `40216` bytes。
+
+验证命令：
+- `cargo check -p law-eye-crawler -p law-eye-core -p law-eye-worker -p law-eye-api` ✅
+- `cargo test -p law-eye-crawler incremental_checker -- --nocapture` ✅
+- `cargo test -p law-eye-crawler normalize_rss_content -- --nocapture` ✅
+- `cargo test -p law-eye-core report::template_service::tests -- --nocapture` ✅

@@ -80,6 +80,7 @@ impl ReportTemplateService {
         if input.template_body.trim().is_empty() {
             return Err(Error::Validation("模板内容不能为空".to_string()));
         }
+        validate_template_renderability(&input.template_body)?;
 
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
@@ -161,5 +162,73 @@ impl ReportTemplateService {
             })
         })
         .await
+    }
+}
+
+fn validate_template_renderability(template_body: &str) -> Result<()> {
+    let mut tera = tera::Tera::default();
+    tera.add_raw_template("report", template_body)
+        .map_err(|e| Error::Validation(format!("模板语法错误: {}", e)))?;
+
+    let mut context = tera::Context::new();
+    context.insert("title", "Template Validation");
+    context.insert("report_number", "RPT-TEST-0001");
+    context.insert("period_start", "2026-01-01");
+    context.insert("period_end", "2026-01-07");
+    context.insert("generated_at", "2026-01-08 12:00");
+    context.insert("css", "body { font-family: sans-serif; }");
+    context.insert(
+        "overview",
+        &serde_json::json!({
+            "total_articles": 0,
+            "high_importance_count": 0,
+            "high_risk_count": 0,
+            "ai_summary": null,
+            "domain_breakdown": [],
+            "region_breakdown": [],
+        }),
+    );
+    context.insert("highlights", &Vec::<serde_json::Value>::new());
+    context.insert("risk_items", &Vec::<serde_json::Value>::new());
+    context.insert("charts", &Vec::<serde_json::Value>::new());
+    context.insert("calendar_events", &Vec::<serde_json::Value>::new());
+
+    tera.render("report", &context)
+        .map_err(|e| Error::Validation(format!("模板渲染上下文不兼容: {}", e)))?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_template_renderability;
+
+    #[test]
+    fn template_validation_accepts_supported_context_keys() {
+        let template = r#"
+            <html>
+            <head><style>{{ css }}</style></head>
+            <body>
+              <h1>{{ title }}</h1>
+              <div>{{ report_number }}</div>
+              <div>{{ period_start }} ~ {{ period_end }}</div>
+              <div>{{ generated_at }}</div>
+              <div>{{ overview.total_articles }}</div>
+              {% for article in highlights %}
+                <p>{{ article.title }}</p>
+              {% endfor %}
+            </body>
+            </html>
+        "#;
+
+        assert!(validate_template_renderability(template).is_ok());
+    }
+
+    #[test]
+    fn template_validation_rejects_unknown_context_keys() {
+        let template = "<h1>{{ report.title }}</h1>";
+        let err = validate_template_renderability(template).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("模板渲染上下文不兼容"));
     }
 }

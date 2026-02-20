@@ -4,7 +4,7 @@
 //! - AdapterRegistry 包含所有预期适配器
 //! - SiteProfile 字段完整性
 //! - Pipeline 保留法律元数据
-//! - IncrementalChecker 跨会话去重
+//! - IncrementalChecker 跨会话去重（租户作用域）
 //! - Cron 表达式合法性
 
 use law_eye_crawler::{
@@ -164,40 +164,62 @@ fn pipeline_dedup_filters_duplicate_content() {
 #[test]
 fn incremental_checker_records_and_detects_known_hashes() {
     let checker = IncrementalChecker::new();
+    let tenant = uuid::Uuid::new_v4();
 
-    assert!(!checker.is_known("hash1"));
-    checker.record("hash1".to_string(), "https://example.com/1".to_string());
-    assert!(checker.is_known("hash1"));
-    assert!(!checker.is_known("hash2"));
+    assert!(!checker.is_known(tenant, "hash1"));
+    checker.record(
+        tenant,
+        "hash1".to_string(),
+        "https://example.com/1".to_string(),
+    );
+    assert!(checker.is_known(tenant, "hash1"));
+    assert!(!checker.is_known(tenant, "hash2"));
     assert_eq!(checker.known_count(), 1);
 }
 
 #[test]
 fn incremental_checker_seed_bulk_loads() {
     let checker = IncrementalChecker::new();
+    let tenant = uuid::Uuid::new_v4();
     let entries = vec![
-        ("h1".to_string(), "url1".to_string()),
-        ("h2".to_string(), "url2".to_string()),
-        ("h3".to_string(), "url3".to_string()),
+        (tenant, "h1".to_string(), "url1".to_string()),
+        (tenant, "h2".to_string(), "url2".to_string()),
+        (tenant, "h3".to_string(), "url3".to_string()),
     ];
     checker.seed(entries);
 
-    assert!(checker.is_known("h1"));
-    assert!(checker.is_known("h2"));
-    assert!(checker.is_known("h3"));
-    assert!(!checker.is_known("h4"));
+    assert!(checker.is_known(tenant, "h1"));
+    assert!(checker.is_known(tenant, "h2"));
+    assert!(checker.is_known(tenant, "h3"));
+    assert!(!checker.is_known(tenant, "h4"));
     assert_eq!(checker.known_count(), 3);
 }
 
 #[test]
 fn incremental_checker_remove_works() {
     let checker = IncrementalChecker::new();
-    checker.record("h1".to_string(), "url1".to_string());
-    assert!(checker.is_known("h1"));
+    let tenant = uuid::Uuid::new_v4();
+    checker.record(tenant, "h1".to_string(), "url1".to_string());
+    assert!(checker.is_known(tenant, "h1"));
 
-    checker.remove("h1");
-    assert!(!checker.is_known("h1"));
+    checker.remove(tenant, "h1");
+    assert!(!checker.is_known(tenant, "h1"));
     assert_eq!(checker.known_count(), 0);
+}
+
+#[test]
+fn incremental_checker_isolates_same_hash_between_tenants() {
+    let checker = IncrementalChecker::new();
+    let tenant_a = uuid::Uuid::new_v4();
+    let tenant_b = uuid::Uuid::new_v4();
+    checker.record(
+        tenant_a,
+        "same_hash".to_string(),
+        "https://example.com/a".to_string(),
+    );
+
+    assert!(checker.is_known(tenant_a, "same_hash"));
+    assert!(!checker.is_known(tenant_b, "same_hash"));
 }
 
 // ============================================================
@@ -261,9 +283,10 @@ async fn orchestrator_with_incremental_checker_filters_known_articles() {
     }));
     let concurrency = Arc::new(ConcurrencyController::new(ConcurrencyConfig::default()));
     let checker = Arc::new(IncrementalChecker::new());
+    let tenant_id = uuid::Uuid::new_v4();
 
     // Pre-seed known hash
-    checker.record("known_hash".to_string(), "old_url".to_string());
+    checker.record(tenant_id, "known_hash".to_string(), "old_url".to_string());
 
     let orch = CrawlOrchestrator::new(registry, rate_limiter, concurrency)
         .with_incremental_checker(checker.clone());
@@ -272,8 +295,8 @@ async fn orchestrator_with_incremental_checker_filters_known_articles() {
     assert!(orch.registry().is_empty()); // empty registry for test
 
     // Verify checker integration
-    assert!(checker.is_known("known_hash"));
-    assert!(!checker.is_known("new_hash"));
+    assert!(checker.is_known(tenant_id, "known_hash"));
+    assert!(!checker.is_known(tenant_id, "new_hash"));
 }
 
 #[test]

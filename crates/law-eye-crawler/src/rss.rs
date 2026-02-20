@@ -10,6 +10,7 @@ use tracing::{info, warn};
 const DEFAULT_RSS_MAX_RETRIES: u32 = 3;
 const DEFAULT_RSS_RETRY_BASE_DELAY_MS: u64 = 500;
 const DEFAULT_RSS_RETRY_MAX_DELAY_MS: u64 = 10_000;
+const MIN_RSS_CONTENT_CHARS: usize = 20;
 
 pub struct RssFetcher {
     client: Client,
@@ -59,10 +60,12 @@ impl RssFetcher {
             .filter_map(|entry| {
                 let link = entry.links.first()?.href.clone();
                 let title = entry.title.map(|t| t.content)?;
-                let content = entry
-                    .summary
-                    .map(|s| s.content)
-                    .or_else(|| entry.content.and_then(|c| c.body));
+                let content = normalize_rss_content(
+                    entry
+                        .summary
+                        .map(|s| s.content)
+                        .or_else(|| entry.content.and_then(|c| c.body)),
+                );
                 let published_at = entry.published.or(entry.updated);
 
                 let mut article = RawArticle::new(title, link);
@@ -170,4 +173,45 @@ fn retry_delay_ms(attempt: u32, base_delay_ms: u64, max_delay_ms: u64) -> u64 {
     base_delay_ms
         .saturating_mul(1u64 << shift)
         .min(max_delay_ms)
+}
+
+fn normalize_rss_content(content: Option<String>) -> Option<String> {
+    let value = content?;
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    // RSS feeds often include short placeholders (e.g. "Link", "Read more")
+    // that would be dropped by quality stage; treat them as missing content.
+    if trimmed.chars().count() < MIN_RSS_CONTENT_CHARS {
+        return None;
+    }
+
+    Some(trimmed.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_rss_content;
+
+    #[test]
+    fn normalize_rss_content_drops_short_or_blank_values() {
+        assert_eq!(normalize_rss_content(None), None);
+        assert_eq!(normalize_rss_content(Some("".to_string())), None);
+        assert_eq!(normalize_rss_content(Some("  \n\t ".to_string())), None);
+        assert_eq!(
+            normalize_rss_content(Some("Read more".to_string())),
+            None
+        );
+    }
+
+    #[test]
+    fn normalize_rss_content_keeps_meaningful_summary() {
+        let value = "This summary is definitely longer than twenty characters.";
+        assert_eq!(
+            normalize_rss_content(Some(value.to_string())),
+            Some(value.to_string())
+        );
+    }
 }

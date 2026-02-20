@@ -274,16 +274,16 @@ impl CrawlOrchestrator {
         // --- Step 6b: cross-session incremental deduplication ---
         let processed = if let Some(ref checker) = self.incremental_checker {
             let before_incr = processed.len();
-            let mut kept = Vec::with_capacity(before_incr);
-            for article in processed {
-                if let Some(ref hash) = article.content_hash {
-                    if checker.is_known(hash) {
-                        continue;
+                let mut kept = Vec::with_capacity(before_incr);
+                for article in processed {
+                    if let Some(ref hash) = article.content_hash {
+                        if checker.is_known(job.tenant_id, hash) {
+                            continue;
+                        }
+                        checker.record(job.tenant_id, hash.clone(), article.link.clone());
                     }
-                    checker.record(hash.clone(), article.link.clone());
+                    kept.push(article);
                 }
-                kept.push(article);
-            }
             let incr_skipped = (before_incr - kept.len()) as i32;
             if incr_skipped > 0 {
                 logger.stats_mut().articles_skipped += incr_skipped;
