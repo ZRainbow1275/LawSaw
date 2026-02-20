@@ -110,16 +110,40 @@ impl WebSpider {
             .unwrap_or(false);
 
         let html = if is_dynamic {
-            // Dynamic rendering via Browserless headless browser
-            let browser = BrowserlessClient::new()?;
+            // Dynamic rendering via Browserless headless browser.
+            // If Browserless is unavailable, gracefully fall back to static mode
+            // to keep crawler pipeline available.
             info!(url = %page_url, "Using dynamic rendering (Browserless)");
-            browser
-                .fetch_rendered_html(
-                    page_url.as_str(),
-                    config.wait_for_selector.as_deref(),
-                    config.wait_timeout_ms,
-                )
-                .await?
+            match BrowserlessClient::new() {
+                Ok(browser) => match browser
+                    .fetch_rendered_html(
+                        page_url.as_str(),
+                        config.wait_for_selector.as_deref(),
+                        config.wait_timeout_ms,
+                    )
+                    .await
+                {
+                    Ok(rendered_html) => rendered_html,
+                    Err(err) => {
+                        warn!(
+                            url = %page_url,
+                            error = %err,
+                            "dynamic rendering failed; falling back to static mode"
+                        );
+                        self.fetch_html_with_retry(page_url.as_str(), "list", encoding_hint)
+                            .await?
+                    }
+                },
+                Err(err) => {
+                    warn!(
+                        url = %page_url,
+                        error = %err,
+                        "Browserless client init failed; falling back to static mode"
+                    );
+                    self.fetch_html_with_retry(page_url.as_str(), "list", encoding_hint)
+                        .await?
+                }
+            }
         } else {
             // Static rendering via reqwest
             self.fetch_html_with_retry(page_url.as_str(), "list", encoding_hint)
@@ -744,6 +768,39 @@ mod tests {
         assert_eq!(articles[0].title, "Only Article");
         assert_eq!(articles[0].content, None);
         assert_eq!(articles[0].published_at, None);
+    }
+
+    #[tokio::test]
+    async fn fetch_dynamic_mode_falls_back_to_static_when_browserless_is_unreachable() {
+        let list_html = r#"
+            <ul>
+                <li class="item"><a class="entry" href="/detail">Fallback Article</a></li>
+            </ul>
+        "#;
+        let server = TestServer::spawn(&[("/list", list_html)]);
+        let spider = new_test_spider();
+
+        let browserless_url_key = "LAW_EYE__BROWSERLESS__URL";
+        let previous_browserless_url = std::env::var(browserless_url_key).ok();
+        // Use an unroutable endpoint to force Browserless failure quickly.
+        std::env::set_var(browserless_url_key, "http://127.0.0.1:9");
+
+        let mut config = build_config(None, None, None);
+        config.render_mode = Some("dynamic".to_string());
+
+        let fetched = spider
+            .fetch(&format!("{}/list", server.base_url), &config, true)
+            .await;
+
+        if let Some(previous) = previous_browserless_url {
+            std::env::set_var(browserless_url_key, previous);
+        } else {
+            std::env::remove_var(browserless_url_key);
+        }
+
+        let articles = fetched.expect("dynamic mode should fall back to static mode");
+        assert_eq!(articles.len(), 1);
+        assert_eq!(articles[0].title, "Fallback Article");
     }
 
     #[test]
