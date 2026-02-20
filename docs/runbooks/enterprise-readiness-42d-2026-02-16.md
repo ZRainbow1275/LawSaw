@@ -318,3 +318,33 @@
 - `cargo test -p law-eye-crawler incremental_checker -- --nocapture` ✅
 - `cargo test -p law-eye-crawler normalize_rss_content -- --nocapture` ✅
 - `cargo test -p law-eye-core report::template_service::tests -- --nocapture` ✅
+
+## 本轮验证记录（2026-02-20，Round 3：四项实测复核）
+
+提交基线：
+- `293b4fd fix: harden crawler/report real-path reliability round2`
+
+实测范围（本机，无 mock）：
+- 租户：`codex-r3-1771626018`
+- API：`http://localhost:13002`
+- 爬虫：`source_id=592567ba-15d6-497e-822a-5a008c00dc59`（`https://hnrss.org/frontpage`）
+- 日报：`report_id=e5d555fb-18ec-4773-98be-76e99022239b`
+
+失败点（本轮）：
+- 环境项：`Origin=http://localhost:8849` 与 `http://127.0.0.1:8849` 在认证写接口返回 `403 CSRF_FAILED`。
+  - 根因：当前本机栈有效允许源为 `http://localhost:18849`（端口漂移后未同步请求源）。
+  - 处理：切换为 `Origin=http://localhost:18849`，链路恢复。
+- 功能项：四大核心链路未复现新的功能性失败。
+
+四项结果：
+- 爬虫：`total_articles_fetched=20`，`health_status=healthy`，`GET /articles` 返回 `total=20`。
+- 知识图谱：`POST /knowledge/backfill` => `article_entities_inserted=20`，`GET /knowledge/stats` => `article_entity_count=20`。
+- 统计：`regional/industry/importance/overview` 全部 `200`，覆盖率 `1/1/1`，`overview.total_articles=20`。
+- 日报：`generate -> export(pdf) -> download(pdf)` 全链路 `200`，`PDF bytes=37801`，`mime=application/pdf`，`export_pdf_key` 已落库。
+
+待办风险清单（explorer 并行审查，需进一步验证后落地）：
+- [ ] [R3-CG-001] 动态渲染源对 Browserless 依赖较强，缺少“失败后自动降级静态抓取”策略（候选文件：`crates/law-eye-crawler/src/spider.rs`）。
+- [ ] [R3-CG-002] 知识图谱 LLM 回填入队需要补强同租户同文章幂等保护（候选文件：`crates/law-eye-api/src/routes/knowledge/handlers.rs`）。
+- [ ] [R3-RS-001] 统计缓存 key 需要进一步约束 query 参数规范，防止异常参数导致 key 污染（候选文件：`crates/law-eye-api/src/routes/statistics/handlers.rs`）。
+- [ ] [R3-RS-002] PDF 导出链路建议补充 request-id 级别可观测日志与有限重试策略（候选文件：`crates/law-eye-core/src/report/exporter/pdf.rs`）。
+- [ ] [R3-RS-003] 导出 key 更新建议补充并发 CAS 校验与对象元数据一致性检查（候选文件：`crates/law-eye-core/src/report/service.rs`）。
