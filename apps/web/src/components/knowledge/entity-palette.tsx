@@ -79,7 +79,10 @@ export function EntityPalette({
 				</div>
 
 				<div className="relative mt-3">
-					<Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+					<Search
+						aria-hidden="true"
+						className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
+					/>
 					<Input
 						value={searchTerm}
 						onChange={(e) => onSearchTermChange(e.target.value)}

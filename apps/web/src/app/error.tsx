@@ -30,7 +30,10 @@ export default function GlobalError({
 				<Card>
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2">
-							<AlertTriangle aria-hidden="true" className="h-5 w-5 text-destructive" />
+							<AlertTriangle
+								aria-hidden="true"
+								className="h-5 w-5 text-destructive"
+							/>
 							{t("Something went wrong")}
 						</CardTitle>
 					</CardHeader>

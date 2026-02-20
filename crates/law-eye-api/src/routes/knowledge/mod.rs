@@ -17,11 +17,11 @@ mod queries;
 pub use dto::{
     BackfillRequest, BackfillResponse, CooccurrenceEdge, CooccurrenceNetworkQuery,
     DegreeCentralityQuery, DegreeCentralityResponse, DuplicateCandidatePair,
-    DuplicateCandidatesQuery, EntitiesByTypeQuery, EntityArticleResponse,
-    EntityArticlesQuery, GraphStatsResponse, HybridSearchQuery, KnowledgeEntityResponse,
-    LlmBackfillRequest, LlmBackfillResponse, MergeEntitiesRequest, MergeEntitiesResponse,
-    RelatedEntitiesQuery, RelatedEntityResponse, SearchEntitiesQuery,
-    SemanticSearchEntityResponse, SemanticSearchQuery, TopEntitiesQuery,
+    DuplicateCandidatesQuery, EntitiesByTypeQuery, EntityArticleResponse, EntityArticlesQuery,
+    GraphStatsResponse, HybridSearchQuery, KnowledgeEntityResponse, LlmBackfillRequest,
+    LlmBackfillResponse, MergeEntitiesRequest, MergeEntitiesResponse, RelatedEntitiesQuery,
+    RelatedEntityResponse, SearchEntitiesQuery, SemanticSearchEntityResponse, SemanticSearchQuery,
+    TopEntitiesQuery,
 };
 
 pub fn router() -> Router<AppState> {

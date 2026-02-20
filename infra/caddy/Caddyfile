@@ -4,21 +4,7 @@
 }
 
 http://localhost, http://127.0.0.1 {
-	encode zstd gzip
-
-	@api path /api/* /health /metrics /docs* /swagger* /redoc*
-	reverse_proxy @api https://api-mtls:3443 {
-		header_up Host api-mtls
-
-		transport http {
-			tls
-			tls_server_name api-mtls
-			tls_trust_pool file /etc/caddy/pki/ca.crt
-			tls_client_auth /etc/caddy/pki/gateway-client.crt /etc/caddy/pki/gateway-client.key
-		}
-	}
-
-	reverse_proxy web:8849
+	redir https://{host}{uri} permanent
 }
 
 https://localhost, https://127.0.0.1 {

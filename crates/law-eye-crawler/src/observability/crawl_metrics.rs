@@ -46,20 +46,17 @@ impl CrawlMetrics {
 
     /// Record articles discovered during a crawl.
     pub fn record_articles_found(source: &str, count: u64) {
-        counter!("crawler_articles_found_total", "source" => source.to_string())
-            .increment(count);
+        counter!("crawler_articles_found_total", "source" => source.to_string()).increment(count);
     }
 
     /// Record new articles successfully persisted.
     pub fn record_articles_new(source: &str, count: u64) {
-        counter!("crawler_articles_new_total", "source" => source.to_string())
-            .increment(count);
+        counter!("crawler_articles_new_total", "source" => source.to_string()).increment(count);
     }
 
     /// Record articles skipped (dedup, quality filter, etc.).
     pub fn record_articles_skipped(source: &str, count: u64) {
-        counter!("crawler_articles_skipped_total", "source" => source.to_string())
-            .increment(count);
+        counter!("crawler_articles_skipped_total", "source" => source.to_string()).increment(count);
     }
 
     // ---- Error metrics ----

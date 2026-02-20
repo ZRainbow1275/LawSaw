@@ -28,7 +28,10 @@ impl HtmlExporter {
         context.insert("report_number", report_number);
         context.insert("period_start", period_start);
         context.insert("period_end", period_end);
-        context.insert("generated_at", &chrono::Utc::now().format("%Y-%m-%d %H:%M").to_string());
+        context.insert(
+            "generated_at",
+            &chrono::Utc::now().format("%Y-%m-%d %H:%M").to_string(),
+        );
         context.insert("css", &template.css_styles.as_deref().unwrap_or(""));
 
         // 概览数据

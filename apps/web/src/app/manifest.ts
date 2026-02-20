@@ -35,7 +35,7 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
 		background_color: "#0b0f1a",
 		theme_color: "#0b0f1a",
 		lang: bcp47(locale),
-		orientation: "portrait",
+		orientation: "any",
 		icons: [
 			{
 				src: "/icon.svg",

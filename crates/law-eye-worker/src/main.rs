@@ -1,5 +1,11 @@
 use anyhow::Context;
-use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
+use axum::{
+    extract::State,
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
+    routing::get,
+    Json, Router,
+};
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use hmac::{Hmac, Mac};
@@ -10,15 +16,13 @@ use law_eye_ai::{
 use law_eye_common::egress::{validate_outbound_url, OutboundUrlPolicy};
 use law_eye_common::AppConfig;
 use law_eye_core::{
-    ArticleService, CrawlLogService, DomainEventInput, DomainEventService, KnowledgeService,
-    ObjectService, ReportService, ReportTemplateService, SourceService, OBJECT_KIND_USER_AVATAR,
-    source::CrawlFetchStats,
+    source::CrawlFetchStats, ArticleService, CrawlLogService, DomainEventInput, DomainEventService,
+    KnowledgeService, ObjectService, ReportService, ReportTemplateService, SourceService,
+    OBJECT_KIND_USER_AVATAR,
 };
 use law_eye_crawler::{
-    CrawlJobConfig, CrawlOrchestrator, CrawlOutcome,
-    AdapterRegistry, DomainRateLimiter, RateLimiterConfig,
-    ConcurrencyController, ConcurrencyConfig, RobotsChecker,
-    IncrementalChecker,
+    AdapterRegistry, ConcurrencyConfig, ConcurrencyController, CrawlJobConfig, CrawlOrchestrator,
+    CrawlOutcome, DomainRateLimiter, IncrementalChecker, RateLimiterConfig, RobotsChecker,
 };
 use law_eye_db::{
     create_pool_with_session_role, create_pool_with_session_role_retry, CreateArticle,
@@ -28,6 +32,7 @@ use law_eye_queue::{
     AiTask, AiTaskType, IngestTask, OrderedTaskGate, PushTask, ReportExportTask,
     ReportGenerateTask, ReservedTask, RetryableTask, TaskQueue,
 };
+use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use serde_json::json;
 use sha2::Sha256;
 use sqlx::{types::Json as DbJson, PgPool, Postgres, QueryBuilder};
@@ -377,6 +382,9 @@ struct WorkerHealthState {
     task_queue: Arc<TaskQueue>,
     shutdown: Arc<AtomicBool>,
     check_timeout: Duration,
+    metrics_handle: PrometheusHandle,
+    metrics_token: Option<String>,
+    is_production: bool,
 }
 
 async fn health_live() -> (StatusCode, Json<serde_json::Value>) {
@@ -421,6 +429,38 @@ async fn health_ready(
     (StatusCode::OK, Json(json!({ "status": "ready" })))
 }
 
+async fn metrics_endpoint(State(state): State<WorkerHealthState>, headers: HeaderMap) -> Response {
+    if state.is_production {
+        let Some(token) = state
+            .metrics_token
+            .as_deref()
+            .map(str::trim)
+            .filter(|token| !token.is_empty())
+        else {
+            return StatusCode::NOT_FOUND.into_response();
+        };
+
+        let expected = format!("Bearer {}", token);
+        let auth_ok = headers
+            .get(header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value.trim() == expected);
+        if !auth_ok {
+            return StatusCode::NOT_FOUND.into_response();
+        }
+    }
+
+    let metrics = state.metrics_handle.render();
+    (
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("text/plain; version=0.0.4"),
+        )],
+        metrics,
+    )
+        .into_response()
+}
+
 async fn serve_worker_health_http(
     host: String,
     port: u16,
@@ -440,6 +480,7 @@ async fn serve_worker_health_http(
         .route("/health/live", get(health_live))
         .route("/health/ready", get(health_ready))
         .route("/health", get(health_ready))
+        .route("/metrics", get(metrics_endpoint))
         .with_state(state);
 
     info!(%addr, "worker health http server started");
@@ -657,7 +698,8 @@ impl Worker {
             burst_size: 5,
             tokens_per_second: 2.0,
         }));
-        let concurrency = std::sync::Arc::new(ConcurrencyController::new(ConcurrencyConfig::default()));
+        let concurrency =
+            std::sync::Arc::new(ConcurrencyController::new(ConcurrencyConfig::default()));
         let mut orchestrator = CrawlOrchestrator::new(registry, rate_limiter, concurrency);
 
         // Optionally configure robots.txt checker
@@ -666,7 +708,10 @@ impl Worker {
                 orchestrator = orchestrator.with_robots_checker(std::sync::Arc::new(checker));
             }
             Err(e) => {
-                warn!("Failed to create RobotsChecker, proceeding without robots.txt checking: {}", e);
+                warn!(
+                    "Failed to create RobotsChecker, proceeding without robots.txt checking: {}",
+                    e
+                );
             }
         }
 
@@ -735,102 +780,90 @@ impl Worker {
                 last_scheduler = Instant::now();
             }
 
-            match self
-                .task_queue
-                .reserve_retryable::<IngestTask>(QUEUE_INGEST, 5)
-                .await
-            {
+            // Reserve from all queues in parallel so no single queue starves others.
+            let (res_ingest, res_ai, res_push, res_report_export, res_report_generate) = tokio::join!(
+                self.task_queue
+                    .reserve_retryable::<IngestTask>(QUEUE_INGEST, 5),
+                self.task_queue.reserve_retryable::<AiTask>(QUEUE_AI, 1),
+                self.task_queue.reserve_retryable::<PushTask>(QUEUE_PUSH, 1),
+                self.task_queue
+                    .reserve_retryable::<ReportExportTask>(QUEUE_REPORT_EXPORT, 1),
+                self.task_queue
+                    .reserve_retryable::<ReportGenerateTask>(QUEUE_REPORT_GENERATE, 1),
+            );
+
+            let mut had_task = false;
+            let mut had_error = false;
+
+            match res_ingest {
                 Ok(Some(reserved)) => {
                     self.handle_ingest_reserved(reserved).await;
+                    had_task = true;
                 }
                 Ok(None) => {}
                 Err(e) => {
                     error!("Failed to reserve from {}: {}", QUEUE_INGEST, e);
-                    tokio::time::sleep(Duration::from_secs(2)).await;
-                    continue;
+                    had_error = true;
                 }
             }
 
-            if self.shutdown.load(Ordering::Relaxed) {
-                break;
-            }
-
-            match self
-                .task_queue
-                .reserve_retryable::<AiTask>(QUEUE_AI, 1)
-                .await
-            {
+            match res_ai {
                 Ok(Some(reserved)) => {
                     self.handle_ai_reserved(reserved).await;
+                    had_task = true;
                 }
                 Ok(None) => {}
                 Err(e) => {
                     error!("Failed to reserve from {}: {}", QUEUE_AI, e);
-                    tokio::time::sleep(Duration::from_secs(2)).await;
-                    continue;
+                    had_error = true;
                 }
             }
 
-            if self.shutdown.load(Ordering::Relaxed) {
-                break;
-            }
-
-            match self
-                .task_queue
-                .reserve_retryable::<PushTask>(QUEUE_PUSH, 1)
-                .await
-            {
+            match res_push {
                 Ok(Some(reserved)) => {
                     self.handle_push_reserved(reserved).await;
+                    had_task = true;
                 }
                 Ok(None) => {}
                 Err(e) => {
                     error!("Failed to reserve from {}: {}", QUEUE_PUSH, e);
-                    tokio::time::sleep(Duration::from_secs(2)).await;
-                    continue;
+                    had_error = true;
                 }
             }
 
-            if self.shutdown.load(Ordering::Relaxed) {
-                break;
-            }
-
-            // 报告导出队列
-            match self
-                .task_queue
-                .reserve_retryable::<ReportExportTask>(QUEUE_REPORT_EXPORT, 1)
-                .await
-            {
+            match res_report_export {
                 Ok(Some(reserved)) => {
                     self.handle_report_export_reserved(reserved).await;
+                    had_task = true;
                 }
                 Ok(None) => {}
                 Err(e) => {
                     error!("Failed to reserve from {}: {}", QUEUE_REPORT_EXPORT, e);
-                    tokio::time::sleep(Duration::from_secs(2)).await;
-                    continue;
+                    had_error = true;
                 }
             }
 
-            if self.shutdown.load(Ordering::Relaxed) {
-                break;
-            }
-
-            // 报告 AI 生成队列
-            match self
-                .task_queue
-                .reserve_retryable::<ReportGenerateTask>(QUEUE_REPORT_GENERATE, 1)
-                .await
-            {
+            match res_report_generate {
                 Ok(Some(reserved)) => {
                     self.handle_report_generate_reserved(reserved).await;
+                    had_task = true;
                 }
                 Ok(None) => {}
                 Err(e) => {
                     error!("Failed to reserve from {}: {}", QUEUE_REPORT_GENERATE, e);
-                    tokio::time::sleep(Duration::from_secs(2)).await;
-                    continue;
+                    had_error = true;
                 }
+            }
+
+            // If all queues were empty and no errors, brief sleep to avoid busy-loop.
+            // If there was an error, back off slightly longer.
+            if !had_task {
+                let backoff = if had_error {
+                    Duration::from_secs(2)
+                } else {
+                    Duration::from_millis(100)
+                };
+                tokio::time::sleep(backoff).await;
             }
         }
 
@@ -939,11 +972,7 @@ impl Worker {
                     config: source.config.clone(),
                 };
 
-                match self
-                    .task_queue
-                    .enqueue_retryable(QUEUE_INGEST, task)
-                    .await
-                {
+                match self.task_queue.enqueue_retryable(QUEUE_INGEST, task).await {
                     Ok(_) => {
                         enqueued += 1;
                         info!(
@@ -1809,15 +1838,27 @@ impl Worker {
                 }
                 if let Err(e) = self
                     .task_queue
-                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        false,
+                    )
                     .await
                 {
-                    error!("Failed to release ingest ordering gate for {}: {}", task_id, e);
+                    error!(
+                        "Failed to release ingest ordering gate for {}: {}",
+                        task_id, e
+                    );
                 }
                 return;
             }
             Err(e) => {
-                error!("Failed to acquire ingest ordering gate for {}: {}", task_id, e);
+                error!(
+                    "Failed to acquire ingest ordering gate for {}: {}",
+                    task_id, e
+                );
                 return;
             }
         }
@@ -1833,10 +1874,19 @@ impl Worker {
                 }
                 if let Err(e) = self
                     .task_queue
-                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, true)
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        true,
+                    )
                     .await
                 {
-                    error!("Failed to release ingest ordering gate for {}: {}", task_id, e);
+                    error!(
+                        "Failed to release ingest ordering gate for {}: {}",
+                        task_id, e
+                    );
                 }
                 return;
             }
@@ -1845,7 +1895,13 @@ impl Worker {
                 error!("Failed to check ingest task {} done: {}", task_id, e);
                 if let Err(release_err) = self
                     .task_queue
-                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        false,
+                    )
                     .await
                 {
                     error!(
@@ -1878,10 +1934,19 @@ impl Worker {
                 }
                 if let Err(e) = self
                     .task_queue
-                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, true)
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        true,
+                    )
                     .await
                 {
-                    error!("Failed to release ingest ordering gate for {}: {}", task_id, e);
+                    error!(
+                        "Failed to release ingest ordering gate for {}: {}",
+                        task_id, e
+                    );
                 }
             }
             Ok(Err(e)) => {
@@ -1913,10 +1978,19 @@ impl Worker {
                 }
                 if let Err(e) = self
                     .task_queue
-                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        false,
+                    )
                     .await
                 {
-                    error!("Failed to release ingest ordering gate for {}: {}", task_id, e);
+                    error!(
+                        "Failed to release ingest ordering gate for {}: {}",
+                        task_id, e
+                    );
                 }
             }
             Err(_) => {
@@ -1944,10 +2018,19 @@ impl Worker {
                 }
                 if let Err(e) = self
                     .task_queue
-                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        false,
+                    )
                     .await
                 {
-                    error!("Failed to release ingest ordering gate for {}: {}", task_id, e);
+                    error!(
+                        "Failed to release ingest ordering gate for {}: {}",
+                        task_id, e
+                    );
                 }
             }
         }
@@ -2004,7 +2087,13 @@ impl Worker {
                 }
                 if let Err(e) = self
                     .task_queue
-                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        false,
+                    )
                     .await
                 {
                     error!("Failed to release AI ordering gate for {}: {}", task_id, e);
@@ -2028,7 +2117,13 @@ impl Worker {
                 }
                 if let Err(e) = self
                     .task_queue
-                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, true)
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        true,
+                    )
                     .await
                 {
                     error!("Failed to release AI ordering gate for {}: {}", task_id, e);
@@ -2040,7 +2135,13 @@ impl Worker {
                 error!("Failed to check AI task {} done: {}", task_id, e);
                 if let Err(release_err) = self
                     .task_queue
-                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        false,
+                    )
                     .await
                 {
                     error!(
@@ -2073,7 +2174,13 @@ impl Worker {
                 }
                 if let Err(e) = self
                     .task_queue
-                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, true)
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        true,
+                    )
                     .await
                 {
                     error!("Failed to release AI ordering gate for {}: {}", task_id, e);
@@ -2104,7 +2211,13 @@ impl Worker {
                 }
                 if let Err(e) = self
                     .task_queue
-                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        false,
+                    )
                     .await
                 {
                     error!("Failed to release AI ordering gate for {}: {}", task_id, e);
@@ -2135,7 +2248,13 @@ impl Worker {
                 }
                 if let Err(e) = self
                     .task_queue
-                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        false,
+                    )
                     .await
                 {
                     error!("Failed to release AI ordering gate for {}: {}", task_id, e);
@@ -2195,15 +2314,27 @@ impl Worker {
                 }
                 if let Err(e) = self
                     .task_queue
-                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        false,
+                    )
                     .await
                 {
-                    error!("Failed to release push ordering gate for {}: {}", task_id, e);
+                    error!(
+                        "Failed to release push ordering gate for {}: {}",
+                        task_id, e
+                    );
                 }
                 return;
             }
             Err(e) => {
-                error!("Failed to acquire push ordering gate for {}: {}", task_id, e);
+                error!(
+                    "Failed to acquire push ordering gate for {}: {}",
+                    task_id, e
+                );
                 return;
             }
         }
@@ -2219,10 +2350,19 @@ impl Worker {
                 }
                 if let Err(e) = self
                     .task_queue
-                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, true)
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        true,
+                    )
                     .await
                 {
-                    error!("Failed to release push ordering gate for {}: {}", task_id, e);
+                    error!(
+                        "Failed to release push ordering gate for {}: {}",
+                        task_id, e
+                    );
                 }
                 return;
             }
@@ -2231,7 +2371,13 @@ impl Worker {
                 error!("Failed to check push task {} done: {}", task_id, e);
                 if let Err(release_err) = self
                     .task_queue
-                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        false,
+                    )
                     .await
                 {
                     error!(
@@ -2264,10 +2410,19 @@ impl Worker {
                 }
                 if let Err(e) = self
                     .task_queue
-                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, true)
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        true,
+                    )
                     .await
                 {
-                    error!("Failed to release push ordering gate for {}: {}", task_id, e);
+                    error!(
+                        "Failed to release push ordering gate for {}: {}",
+                        task_id, e
+                    );
                 }
             }
             Ok(Err(e)) => {
@@ -2295,10 +2450,19 @@ impl Worker {
                 }
                 if let Err(e) = self
                     .task_queue
-                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        false,
+                    )
                     .await
                 {
-                    error!("Failed to release push ordering gate for {}: {}", task_id, e);
+                    error!(
+                        "Failed to release push ordering gate for {}: {}",
+                        task_id, e
+                    );
                 }
             }
             Err(_) => {
@@ -2326,10 +2490,19 @@ impl Worker {
                 }
                 if let Err(e) = self
                     .task_queue
-                    .release_ordering_gate(queue, task_id, ordering_key.as_deref(), ordering_seq, false)
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        false,
+                    )
                     .await
                 {
-                    error!("Failed to release push ordering gate for {}: {}", task_id, e);
+                    error!(
+                        "Failed to release push ordering gate for {}: {}",
+                        task_id, e
+                    );
                 }
             }
         }
@@ -2364,16 +2537,19 @@ impl Worker {
             encoding: source.encoding.clone(),
             render_mode: Some(source.render_mode.clone()),
             allow_internal: self.allow_internal_source_urls,
-            enable_ai: false,  // AI runs via separate queue, not in-pipeline
+            enable_ai: false, // AI runs via separate queue, not in-pipeline
             respect_robots: true,
         };
 
         // Start crawl log entry (non-critical, failures are not fatal)
         let crawl_log_id = crawl_log_service
-            .start(tenant_id, CreateCrawlLog {
+            .start(
                 tenant_id,
-                source_id: task.source_id,
-            })
+                CreateCrawlLog {
+                    tenant_id,
+                    source_id: task.source_id,
+                },
+            )
             .await
             .ok();
 
@@ -2507,16 +2683,20 @@ impl Worker {
                 // Finish crawl log entry
                 if let Some(log_id) = crawl_log_id {
                     let _ = crawl_log_service
-                        .finish(tenant_id, log_id, FinishCrawlLog {
-                            status: "completed".to_string(),
-                            articles_found: result.stats.articles_found,
-                            articles_new: result.stats.articles_new,
-                            articles_updated: result.stats.articles_updated,
-                            articles_skipped: result.stats.articles_skipped,
-                            error_message: None,
-                            duration_ms: crawl_duration_ms,
-                            metadata: None,
-                        })
+                        .finish(
+                            tenant_id,
+                            log_id,
+                            FinishCrawlLog {
+                                status: "completed".to_string(),
+                                articles_found: result.stats.articles_found,
+                                articles_new: result.stats.articles_new,
+                                articles_updated: result.stats.articles_updated,
+                                articles_skipped: result.stats.articles_skipped,
+                                error_message: None,
+                                duration_ms: crawl_duration_ms,
+                                metadata: None,
+                            },
+                        )
                         .await;
                 }
 
@@ -2544,16 +2724,20 @@ impl Worker {
                 // Finish crawl log entry with failure
                 if let Some(log_id) = crawl_log_id {
                     let _ = crawl_log_service
-                        .finish(tenant_id, log_id, FinishCrawlLog {
-                            status: "failed".to_string(),
-                            articles_found: result.stats.articles_found,
-                            articles_new: 0,
-                            articles_updated: 0,
-                            articles_skipped: 0,
-                            error_message: Some(msg.clone()),
-                            duration_ms: crawl_duration_ms,
-                            metadata: None,
-                        })
+                        .finish(
+                            tenant_id,
+                            log_id,
+                            FinishCrawlLog {
+                                status: "failed".to_string(),
+                                articles_found: result.stats.articles_found,
+                                articles_new: 0,
+                                articles_updated: 0,
+                                articles_skipped: 0,
+                                error_message: Some(msg.clone()),
+                                duration_ms: crawl_duration_ms,
+                                metadata: None,
+                            },
+                        )
                         .await;
                 }
 
@@ -3287,7 +3471,10 @@ impl Worker {
                                     aggregate_id: first_article_id,
                                     aggregate_version: 0,
                                     event_type: "push.sent".to_string(),
-                                    dedupe_key: Self::domain_event_dedupe_key("push", first_article_id),
+                                    dedupe_key: Self::domain_event_dedupe_key(
+                                        "push",
+                                        first_article_id,
+                                    ),
                                     payload: json!({
                                         "article_ids": task.article_ids,
                                         "article_count": articles.len(),
@@ -3338,7 +3525,10 @@ impl Worker {
                     .ack_reserved(queue, &reserved.raw_payload)
                     .await
                 {
-                    error!("Failed to ack duplicate report export task {}: {}", task_id, e);
+                    error!(
+                        "Failed to ack duplicate report export task {}: {}",
+                        task_id, e
+                    );
                 }
                 return;
             }
@@ -3425,7 +3615,10 @@ impl Worker {
                             .ack_reserved(queue, &reserved.raw_payload)
                             .await
                         {
-                            error!("Failed to ack timed out report export task {}: {}", task_id, e);
+                            error!(
+                                "Failed to ack timed out report export task {}: {}",
+                                task_id, e
+                            );
                         }
                     }
                     Err(e) => {
@@ -3441,15 +3634,14 @@ impl Worker {
 
     /// 处理报告导出任务：获取报告 → 获取模板 → 聚合数据 → 渲染 → 上传到对象存储 → 更新报告
     async fn process_report_export_task(&self, task: ReportExportTask) -> anyhow::Result<()> {
-        use law_eye_core::report::{
-            ExportFormat, HtmlExporter, PdfExporter, DocxExporter,
-        };
+        use law_eye_core::report::{DocxExporter, ExportFormat, HtmlExporter, PdfExporter};
 
         let tenant_id = task.tenant_id;
         let report_id = task.report_id;
-        let format: ExportFormat = task.format.parse().map_err(|e| {
-            anyhow::anyhow!("Invalid export format '{}': {}", task.format, e)
-        })?;
+        let format: ExportFormat = task
+            .format
+            .parse()
+            .map_err(|e| anyhow::anyhow!("Invalid export format '{}': {}", task.format, e))?;
 
         info!(
             %report_id,
@@ -3490,9 +3682,9 @@ impl Worker {
         // 4. 根据格式渲染导出
         let (bytes, content_type) = match format {
             ExportFormat::Html => {
-                let template = template.as_ref().ok_or_else(|| {
-                    anyhow::anyhow!("HTML 导出需要报告模板")
-                })?;
+                let template = template
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("HTML 导出需要报告模板"))?;
                 let html = HtmlExporter::render(
                     template,
                     &report.title,
@@ -3506,9 +3698,9 @@ impl Worker {
             }
             ExportFormat::Pdf => {
                 // 先渲染 HTML，再转 PDF
-                let template = template.as_ref().ok_or_else(|| {
-                    anyhow::anyhow!("PDF 导出需要报告模板")
-                })?;
+                let template = template
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("PDF 导出需要报告模板"))?;
                 let html = HtmlExporter::render(
                     template,
                     &report.title,
@@ -3548,7 +3740,10 @@ impl Worker {
         let ext = format.extension();
         let object_key = format!(
             "tenants/{}/reports/{}/export_{}.{}",
-            tenant_id, report_id, chrono::Utc::now().format("%Y%m%d%H%M%S"), ext
+            tenant_id,
+            report_id,
+            chrono::Utc::now().format("%Y%m%d%H%M%S"),
+            ext
         );
 
         // 5. 上传到对象存储并更新导出路径
@@ -3605,13 +3800,19 @@ impl Worker {
                     .ack_reserved(queue, &reserved.raw_payload)
                     .await
                 {
-                    error!("Failed to ack duplicate report generate task {}: {}", task_id, e);
+                    error!(
+                        "Failed to ack duplicate report generate task {}: {}",
+                        task_id, e
+                    );
                 }
                 return;
             }
             Ok(false) => {}
             Err(e) => {
-                error!("Failed to check report generate task {} done: {}", task_id, e);
+                error!(
+                    "Failed to check report generate task {} done: {}",
+                    task_id, e
+                );
                 return;
             }
         }
@@ -3626,7 +3827,10 @@ impl Worker {
         match result {
             Ok(Ok(())) => {
                 if let Err(e) = self.task_queue.mark_done(queue, task_id).await {
-                    error!("Failed to mark report generate task {} done: {}", task_id, e);
+                    error!(
+                        "Failed to mark report generate task {} done: {}",
+                        task_id, e
+                    );
                 }
                 if let Err(e) = self
                     .task_queue
@@ -3644,7 +3848,8 @@ impl Worker {
                     "Report generate task failed"
                 );
                 // 失败时回退状态到 draft，以允许用户重新触发生成
-                if let Err(rollback_err) = self.rollback_report_status_on_failure(&task.payload).await
+                if let Err(rollback_err) =
+                    self.rollback_report_status_on_failure(&task.payload).await
                 {
                     error!(
                         %task_id,
@@ -3663,7 +3868,10 @@ impl Worker {
                             .ack_reserved(queue, &reserved.raw_payload)
                             .await
                         {
-                            error!("Failed to ack failed report generate task {}: {}", task_id, e);
+                            error!(
+                                "Failed to ack failed report generate task {}: {}",
+                                task_id, e
+                            );
                         }
                     }
                     Err(e) => {
@@ -3682,7 +3890,8 @@ impl Worker {
                     %error_msg,
                     "Report generate task timed out"
                 );
-                if let Err(rollback_err) = self.rollback_report_status_on_failure(&task.payload).await
+                if let Err(rollback_err) =
+                    self.rollback_report_status_on_failure(&task.payload).await
                 {
                     error!(
                         %task_id,
@@ -3725,7 +3934,10 @@ impl Worker {
     ///   - Generated -> Draft（已生成但后处理失败，回退到草稿）
     ///
     /// 注意：Generating -> Draft 不是合法转换，必须经过 Error 中间态。
-    async fn rollback_report_status_on_failure(&self, task: &ReportGenerateTask) -> anyhow::Result<()> {
+    async fn rollback_report_status_on_failure(
+        &self,
+        task: &ReportGenerateTask,
+    ) -> anyhow::Result<()> {
         use law_eye_core::report::ReportStatus;
 
         let report = self
@@ -3806,9 +4018,8 @@ impl Worker {
             .map_err(|e| anyhow::anyhow!("获取报告失败: {}", e))?;
 
         // 校验报告状态必须是 generating
-        let current_status = ReportStatus::from_db_str(&report.status).ok_or_else(|| {
-            anyhow::anyhow!("Unknown report status: {}", report.status)
-        })?;
+        let current_status = ReportStatus::from_db_str(&report.status)
+            .ok_or_else(|| anyhow::anyhow!("Unknown report status: {}", report.status))?;
         if current_status != ReportStatus::Generating {
             return Err(anyhow::anyhow!(
                 "Report {} is in '{}' status, expected 'generating'",
@@ -3826,8 +4037,8 @@ impl Worker {
 
         // 3. (可选) 如果有 AI 服务，生成摘要
         let ai_summary = if let Some(ref ai_service) = self.ai_service {
-            let overview_json = serde_json::to_string(&aggregated.overview)
-                .unwrap_or_else(|_| "{}".to_string());
+            let overview_json =
+                serde_json::to_string(&aggregated.overview).unwrap_or_else(|_| "{}".to_string());
             let highlight_titles: Vec<&str> = aggregated
                 .highlights
                 .iter()
@@ -3835,7 +4046,8 @@ impl Worker {
                 .map(|h| h.title.as_str())
                 .collect();
 
-            let system_prompt = "你是法规监测报告的摘要生成助手。根据提供的数据生成简洁的中文执行摘要。";
+            let system_prompt =
+                "你是法规监测报告的摘要生成助手。根据提供的数据生成简洁的中文执行摘要。";
             let user_prompt = format!(
                 "根据以下法规监测报告数据，生成一段100-200字的中文执行摘要。\n\n\
                  报告期间: {} 至 {}\n\
@@ -3919,7 +4131,6 @@ impl Worker {
         Ok(())
     }
 }
-
 
 fn push_preview_limit() -> usize {
     const DEFAULT_LIMIT: usize = 50;
@@ -4059,6 +4270,27 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("load application config (file/env + optional Vault secrets)")?;
 
+    let metrics_handle = PrometheusBuilder::new()
+        .install_recorder()
+        .context("install prometheus metrics recorder")?;
+
+    if is_production {
+        if config
+            .metrics
+            .token
+            .as_deref()
+            .map(str::trim)
+            .filter(|token| !token.is_empty())
+            .is_some()
+        {
+            info!("Worker metrics enabled at /metrics (token protected)");
+        } else {
+            warn!("Worker metrics disabled in production (LAW_EYE__METRICS__TOKEN not set)");
+        }
+    } else {
+        info!("Worker metrics enabled at /metrics (development mode)");
+    }
+
     info!("Starting Law Eye Worker...");
 
     let pool = create_pool_with_session_role_retry(
@@ -4142,6 +4374,9 @@ async fn main() -> anyhow::Result<()> {
             task_queue: task_queue_for_health,
             shutdown: shutdown.clone(),
             check_timeout,
+            metrics_handle: metrics_handle.clone(),
+            metrics_token: config.metrics.token.clone(),
+            is_production,
         };
 
         tokio::spawn(async move {
@@ -4168,9 +4403,9 @@ async fn main() -> anyhow::Result<()> {
         .build()
         .context("build webhook http client")?;
 
-    let knowledge_service = ai_service.as_ref().map(|ai| {
-        KnowledgeService::new(pool.clone(), ai.gateway())
-    });
+    let knowledge_service = ai_service
+        .as_ref()
+        .map(|ai| KnowledgeService::new(pool.clone(), ai.gateway()));
 
     let worker = Worker::new(WorkerInit {
         pool,
@@ -4321,8 +4556,14 @@ mod crawler_integration_tests {
 
     #[test]
     fn scheduler_constant_is_reasonable() {
-        assert!(SCHEDULER_INTERVAL_SECS >= 30, "Scheduler should not run more often than every 30s");
-        assert!(SCHEDULER_INTERVAL_SECS <= 300, "Scheduler should run at least every 5 minutes");
+        assert!(
+            SCHEDULER_INTERVAL_SECS >= 30,
+            "Scheduler should not run more often than every 30s"
+        );
+        assert!(
+            SCHEDULER_INTERVAL_SECS <= 300,
+            "Scheduler should run at least every 5 minutes"
+        );
     }
 
     #[test]

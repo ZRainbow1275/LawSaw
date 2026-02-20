@@ -257,7 +257,10 @@ export default function Dashboard() {
 								>
 									<CardTitle className="flex items-center gap-2">
 										{overallStatus === "error" ? (
-											<AlertTriangle aria-hidden="true" className="h-5 w-5 text-red-500" />
+											<AlertTriangle
+												aria-hidden="true"
+												className="h-5 w-5 text-red-500"
+											/>
 										) : (
 											<motion.div
 												animate={{ scale: [1, 1.1, 1] }}
@@ -266,7 +269,10 @@ export default function Dashboard() {
 													repeat: Number.POSITIVE_INFINITY,
 												}}
 											>
-												<CheckCircle2 aria-hidden="true" className="h-5 w-5 text-green-500" />
+												<CheckCircle2
+													aria-hidden="true"
+													className="h-5 w-5 text-green-500"
+												/>
 											</motion.div>
 										)}
 										{t("System status")}

@@ -395,7 +395,11 @@ impl TaskQueue {
         Ok(())
     }
 
-    pub async fn release_reserved_back_to_queue(&self, queue: &str, raw_payload: &str) -> Result<()> {
+    pub async fn release_reserved_back_to_queue(
+        &self,
+        queue: &str,
+        raw_payload: &str,
+    ) -> Result<()> {
         let processing_queue = format!("{}:processing", queue);
         let inflight_queue = format!("{}:inflight", queue);
 

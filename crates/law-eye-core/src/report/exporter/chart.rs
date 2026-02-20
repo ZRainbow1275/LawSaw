@@ -63,9 +63,7 @@ impl ChartRenderer {
                 .disable_mesh()
                 .y_labels(bar_count)
                 .y_label_formatter(&|idx| {
-                    data.get(*idx)
-                        .map(|d| d.label.clone())
-                        .unwrap_or_default()
+                    data.get(*idx).map(|d| d.label.clone()).unwrap_or_default()
                 })
                 .draw()
                 .map_err(|e| Error::Internal(format!("图表绘制失败: {}", e)))?;

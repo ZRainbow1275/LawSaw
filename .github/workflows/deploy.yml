@@ -28,6 +28,14 @@ on:
         description: "Image tag to deploy (e.g. v2.6.0 or sha-<sha>). If empty, uses current ref name."
         required: false
         type: string
+      public_host:
+        description: "Public ingress host (required when action=apply), e.g. law-eye.company.com"
+        required: false
+        type: string
+      internal_host:
+        description: "Internal ingress host (required when action=apply), e.g. law-eye-internal.company.local"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -76,13 +84,103 @@ jobs:
           sudo mv kubectl-argo-rollouts /usr/local/bin/kubectl-argo-rollouts
           kubectl argo rollouts version
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.7.0
+        with:
+          cosign-release: "v2.4.1"
+
+      - name: Verify image signature (required for apply)
+        if: ${{ inputs.action == 'apply' }}
+        env:
+          COSIGN_CERT_IDENTITY_REGEXP: "^https://github.com/${{ github.repository }}/.github/workflows/cd.yml@.*$"
+          COSIGN_CERT_OIDC_ISSUER: "https://token.actions.githubusercontent.com"
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "${COSIGN_CERT_IDENTITY_REGEXP}" \
+            --certificate-oidc-issuer "${COSIGN_CERT_OIDC_ISSUER}" \
+            "${{ steps.vars.outputs.image }}"
+
+      - name: Validate TLS/mTLS secrets (required for apply)
+        if: ${{ inputs.action == 'apply' }}
+        run: |
+          set -euo pipefail
+          for secret_name in law-eye-public-tls law-eye-internal-tls law-eye-client-ca; do
+            kubectl get secret "${secret_name}" -n "${{ inputs.namespace }}" >/dev/null
+          done
+
+          MTLS_CA="$(kubectl get secret law-eye-client-ca -n "${{ inputs.namespace }}" -o jsonpath='{.data.ca\.crt}')"
+          if [ -z "${MTLS_CA}" ]; then
+            echo "law-eye-client-ca is missing required key: ca.crt" >&2
+            exit 1
+          fi
+
+      - name: Render and validate manifests (required for apply)
+        if: ${{ inputs.action == 'apply' }}
+        env:
+          PUBLIC_HOST: ${{ inputs.public_host }}
+          INTERNAL_HOST: ${{ inputs.internal_host }}
+        run: |
+          set -euo pipefail
+          RENDERED="/tmp/law-eye-rendered.yaml"
+
+          if [ -z "${PUBLIC_HOST}" ] || [ -z "${INTERNAL_HOST}" ]; then
+            echo "public_host and internal_host inputs are required when action=apply" >&2
+            exit 1
+          fi
+
+          if [ "${PUBLIC_HOST}" = "${INTERNAL_HOST}" ]; then
+            echo "public_host and internal_host must be different" >&2
+            exit 1
+          fi
+
+          for host in "${PUBLIC_HOST}" "${INTERNAL_HOST}"; do
+            if ! echo "${host}" | grep -Eq '^[A-Za-z0-9.-]+$'; then
+              echo "invalid host value: ${host}" >&2
+              exit 1
+            fi
+            if ! echo "${host}" | grep -q '\.'; then
+              echo "invalid host value (must be FQDN): ${host}" >&2
+              exit 1
+            fi
+          done
+
+          kubectl kustomize "infra/k8s/overlays/${{ inputs.strategy }}" \
+            | sed "s#__LAW_EYE_NAMESPACE__#${{ inputs.namespace }}#g" \
+            | sed "s#law-eye\\.example\\.com#${PUBLIC_HOST}#g" \
+            | sed "s#law-eye-internal\\.example\\.com#${INTERNAL_HOST}#g" \
+            > "${RENDERED}"
+
+          if grep -q "__LAW_EYE_NAMESPACE__" "${RENDERED}"; then
+            echo "rendered manifests still contain namespace placeholder" >&2
+            exit 1
+          fi
+
+          if grep -Eiq 'law-eye(-internal)?\.example\.com' "${RENDERED}"; then
+            echo "refusing deployment: placeholder ingress host(s) detected (example.com)" >&2
+            exit 1
+          fi
+
+          if ! grep -q "^kind: Ingress$" "${RENDERED}"; then
+            echo "rendered manifests do not contain ingress resources" >&2
+            exit 1
+          fi
+
+          kubectl apply --dry-run=server -f "${RENDERED}" -n "${{ inputs.namespace }}" >/dev/null
+
       - name: Apply manifests + set image
         if: ${{ inputs.action == 'apply' }}
         run: |
-          kubectl apply -k "infra/k8s/overlays/${{ inputs.strategy }}" -n "${{ inputs.namespace }}"
+          kubectl apply -f "/tmp/law-eye-rendered.yaml" -n "${{ inputs.namespace }}"
           kubectl -n "${{ inputs.namespace }}" patch rollout law-eye-api --type='json' -p='[
             {"op":"replace","path":"/spec/template/spec/containers/0/image","value":"${{ steps.vars.outputs.image }}"}
           ]'
+
+      - name: Verify ingress resources (required for apply)
+        if: ${{ inputs.action == 'apply' }}
+        run: |
+          kubectl get ingress law-eye-api-public -n "${{ inputs.namespace }}"
+          kubectl get ingress law-eye-api-internal -n "${{ inputs.namespace }}"
+          kubectl get ingress law-eye-api-internal -n "${{ inputs.namespace }}" -o jsonpath='{.metadata.annotations.nginx\.ingress\.kubernetes\.io/auth-tls-secret}' | grep -Fx "${{ inputs.namespace }}/law-eye-client-ca"
 
       - name: Promote
         if: ${{ inputs.action == 'promote' }}
@@ -100,5 +198,21 @@ jobs:
           kubectl argo rollouts undo law-eye-api -n "${{ inputs.namespace }}"
 
       - name: Status
+        id: rollout_status
+        continue-on-error: true
         run: |
           kubectl argo rollouts status law-eye-api -n "${{ inputs.namespace }}" --timeout 10m
+
+      - name: Auto rollback on status failure
+        if: ${{ inputs.action == 'apply' && steps.rollout_status.outcome == 'failure' }}
+        run: |
+          echo "rollout status failed, executing automatic rollback..."
+          kubectl argo rollouts undo law-eye-api -n "${{ inputs.namespace }}"
+          kubectl argo rollouts status law-eye-api -n "${{ inputs.namespace }}" --timeout 10m
+          exit 1
+
+      - name: Fail on rollout status failure
+        if: ${{ inputs.action != 'apply' && steps.rollout_status.outcome == 'failure' }}
+        run: |
+          echo "rollout status failed"
+          exit 1

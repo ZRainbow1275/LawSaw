@@ -189,9 +189,15 @@ export function AiInsightsCard({
 						<span>{t(riskConfig.labelKey)}</span>
 					</div>
 					{isExpanded ? (
-						<ChevronUp aria-hidden="true" className="h-4 w-4 text-neutral-400" />
+						<ChevronUp
+							aria-hidden="true"
+							className="h-4 w-4 text-neutral-400"
+						/>
 					) : (
-						<ChevronDown aria-hidden="true" className="h-4 w-4 text-neutral-400" />
+						<ChevronDown
+							aria-hidden="true"
+							className="h-4 w-4 text-neutral-400"
+						/>
 					)}
 				</div>
 			</button>
@@ -282,7 +288,10 @@ export function AiInsightsCard({
 								insights.risk_dimensions.length > 0 && (
 									<div>
 										<h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-											<AlertTriangle aria-hidden="true" className="h-3.5 w-3.5" />
+											<AlertTriangle
+												aria-hidden="true"
+												className="h-3.5 w-3.5"
+											/>
 											{t("Risk dimensions")}
 										</h4>
 										<div className="space-y-2">
@@ -384,7 +393,10 @@ export function AiInsightsBrief({
 				className,
 			)}
 		>
-			<Sparkles aria-hidden="true" className="h-4 w-4 text-primary-400 mt-0.5 shrink-0" />
+			<Sparkles
+				aria-hidden="true"
+				className="h-4 w-4 text-primary-400 mt-0.5 shrink-0"
+			/>
 			<div className="flex-1 min-w-0">
 				<p className="text-sm text-neutral-600 line-clamp-2">{summary}</p>
 			</div>

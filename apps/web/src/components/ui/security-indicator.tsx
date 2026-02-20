@@ -163,7 +163,10 @@ export function SecurityIndicator({
 				)}
 			>
 				<div className="relative">
-					<Icon aria-hidden="true" className={cn("h-4 w-4", config.iconColor)} />
+					<Icon
+						aria-hidden="true"
+						className={cn("h-4 w-4", config.iconColor)}
+					/>
 					{encryptionStatus === "active" && (
 						<motion.span
 							className={cn(
@@ -228,7 +231,10 @@ export function SecurityIndicator({
 
 			{/* Integrity */}
 			<div className="shrink-0 flex items-center gap-1">
-				<IntegrityIcon aria-hidden="true" className={cn("h-4 w-4", integrity.color)} />
+				<IntegrityIcon
+					aria-hidden="true"
+					className={cn("h-4 w-4", integrity.color)}
+				/>
 				<span className="sr-only">{t(integrity.label)}</span>
 			</div>
 		</button>
@@ -260,7 +266,10 @@ export function SecurityBadge({
 				className,
 			)}
 		>
-			<Icon aria-hidden="true" className={cn("h-3.5 w-3.5", config.iconColor)} />
+			<Icon
+				aria-hidden="true"
+				className={cn("h-3.5 w-3.5", config.iconColor)}
+			/>
 			<span className="text-neutral-700">{t(config.label)}</span>
 		</div>
 	);

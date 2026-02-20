@@ -14,7 +14,9 @@ pub use adapters::{
     AdapterRegistry, FetchContext, GovernmentSiteAdapter, RssAdapter, SiteProfile, SourceAdapter,
     SpiderAdapter,
 };
-pub use anti_crawl::{DomainRateLimiter, RandomizedHeaders, RateLimiterConfig, RobotsChecker, UserAgentPool};
+pub use anti_crawl::{
+    DomainRateLimiter, RandomizedHeaders, RateLimiterConfig, RobotsChecker, UserAgentPool,
+};
 pub use browser::BrowserlessClient;
 pub use encoding::detect_and_decode;
 pub use incremental::{

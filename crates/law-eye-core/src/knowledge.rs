@@ -37,13 +37,15 @@ impl KnowledgeService {
             return Ok(vec![]);
         }
 
-        // Batch embedding: collect all entity names and embed them together
-        // to eliminate N+1 serial API calls
-        let mut embeddings: Vec<Vec<f32>> = Vec::with_capacity(extraction.entities.len());
-        for extracted in &extraction.entities {
-            let embedding = self.embedder.embed(&extracted.name).await?;
-            embeddings.push(embedding.vector);
-        }
+        // Batch embedding: embed all entity names concurrently to eliminate
+        // N+1 serial API calls.
+        let embed_futures: Vec<_> = extraction
+            .entities
+            .iter()
+            .map(|extracted| self.embedder.embed(&extracted.name))
+            .collect();
+        let embed_results = futures::future::try_join_all(embed_futures).await?;
+        let embeddings: Vec<Vec<f32>> = embed_results.into_iter().map(|r| r.vector).collect();
 
         let mut entity_ids = Vec::with_capacity(extraction.entities.len());
         let mut entity_id_map: std::collections::HashMap<(String, String), Uuid> =
@@ -51,9 +53,7 @@ impl KnowledgeService {
 
         // Process entities with pre-computed embeddings
         for (extracted, embedding) in extraction.entities.iter().zip(embeddings.iter()) {
-            let entity_id = self
-                .upsert_entity(tenant_id, extracted, embedding)
-                .await?;
+            let entity_id = self.upsert_entity(tenant_id, extracted, embedding).await?;
             self.link_article_entity(tenant_id, article_id, entity_id, extracted)
                 .await?;
 
@@ -251,13 +251,23 @@ impl KnowledgeService {
             Box::pin(async move {
                 // Use pgvector cosine distance operator (<=>)
                 // Lower distance = more similar; convert to similarity score
-                let rows = sqlx::query_as::<_, (
-                    Uuid, Uuid, String, String, Vec<String>,
-                    serde_json::Value, i32,
-                    chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>,
-                    chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>,
-                    f64,
-                )>(
+                let rows = sqlx::query_as::<
+                    _,
+                    (
+                        Uuid,
+                        Uuid,
+                        String,
+                        String,
+                        Vec<String>,
+                        serde_json::Value,
+                        i32,
+                        chrono::DateTime<chrono::Utc>,
+                        chrono::DateTime<chrono::Utc>,
+                        chrono::DateTime<chrono::Utc>,
+                        chrono::DateTime<chrono::Utc>,
+                        f64,
+                    ),
+                >(
                     r#"
                     SELECT
                         e.id, e.tenant_id, e.name, e.entity_type, e.aliases,
@@ -278,25 +288,40 @@ impl KnowledgeService {
 
                 let results = rows
                     .into_iter()
-                    .map(|(id, tenant_id, name, entity_type, aliases, properties, mention_count, first_seen, last_seen, created_at, updated_at, similarity)| {
-                        (
-                            Entity {
-                                id,
-                                tenant_id,
-                                name,
-                                entity_type,
-                                aliases,
-                                properties,
-                                embedding: None,
-                                mention_count,
-                                first_seen,
-                                last_seen,
-                                created_at,
-                                updated_at,
-                            },
+                    .map(
+                        |(
+                            id,
+                            tenant_id,
+                            name,
+                            entity_type,
+                            aliases,
+                            properties,
+                            mention_count,
+                            first_seen,
+                            last_seen,
+                            created_at,
+                            updated_at,
                             similarity,
-                        )
-                    })
+                        )| {
+                            (
+                                Entity {
+                                    id,
+                                    tenant_id,
+                                    name,
+                                    entity_type,
+                                    aliases,
+                                    properties,
+                                    embedding: None,
+                                    mention_count,
+                                    first_seen,
+                                    last_seen,
+                                    created_at,
+                                    updated_at,
+                                },
+                                similarity,
+                            )
+                        },
+                    )
                     .collect();
 
                 Ok(results)
@@ -455,11 +480,10 @@ impl KnowledgeService {
             Box::pin(async move {
                 // Find pairs of entities with high embedding similarity
                 // that are NOT already the same entity
-                let rows = sqlx::query_as::<_, (
-                    Uuid, String, String, i32,
-                    Uuid, String, String, i32,
-                    f64,
-                )>(
+                let rows = sqlx::query_as::<
+                    _,
+                    (Uuid, String, String, i32, Uuid, String, String, i32, f64),
+                >(
                     r#"
                     SELECT
                         e1.id, e1.name, e1.entity_type, e1.mention_count,
@@ -671,12 +695,23 @@ impl KnowledgeService {
     ) -> Result<Vec<(Entity, i64, i64, i64)>> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
-                let rows = sqlx::query_as::<_, (
-                    Uuid, String, String, Vec<String>, serde_json::Value, i32,
-                    chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>,
-                    chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>,
-                    i64, i64,
-                )>(
+                let rows = sqlx::query_as::<
+                    _,
+                    (
+                        Uuid,
+                        String,
+                        String,
+                        Vec<String>,
+                        serde_json::Value,
+                        i32,
+                        chrono::DateTime<chrono::Utc>,
+                        chrono::DateTime<chrono::Utc>,
+                        chrono::DateTime<chrono::Utc>,
+                        chrono::DateTime<chrono::Utc>,
+                        i64,
+                        i64,
+                    ),
+                >(
                     r#"
                     SELECT
                         e.id, e.name, e.entity_type, e.aliases, e.properties, e.mention_count,
@@ -704,26 +739,39 @@ impl KnowledgeService {
 
                 let results = rows
                     .into_iter()
-                    .map(|(id, name, entity_type, aliases, properties, mention_count,
-                           first_seen, last_seen, created_at, updated_at,
-                           out_degree, in_degree)| {
-                        let entity = Entity {
+                    .map(
+                        |(
                             id,
-                            tenant_id,
                             name,
                             entity_type,
                             aliases,
                             properties,
-                            embedding: None,
                             mention_count,
                             first_seen,
                             last_seen,
                             created_at,
                             updated_at,
-                        };
-                        let total = out_degree + in_degree;
-                        (entity, out_degree, in_degree, total)
-                    })
+                            out_degree,
+                            in_degree,
+                        )| {
+                            let entity = Entity {
+                                id,
+                                tenant_id,
+                                name,
+                                entity_type,
+                                aliases,
+                                properties,
+                                embedding: None,
+                                mention_count,
+                                first_seen,
+                                last_seen,
+                                created_at,
+                                updated_at,
+                            };
+                            let total = out_degree + in_degree;
+                            (entity, out_degree, in_degree, total)
+                        },
+                    )
                     .collect();
 
                 Ok(results)
@@ -774,10 +822,7 @@ impl KnowledgeService {
     }
 
     /// Get graph statistics summary
-    pub async fn get_graph_stats(
-        &self,
-        tenant_id: Uuid,
-    ) -> Result<GraphStats> {
+    pub async fn get_graph_stats(&self, tenant_id: Uuid) -> Result<GraphStats> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
                 let (entity_count,): (i64,) = sqlx::query_as(

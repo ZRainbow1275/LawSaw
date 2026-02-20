@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: scripts/no-dockerhub/e2e.sh [--name <stack-name>] [--keep] [--rebuild] [--skip-monkey] [--web-mode <dev|prod>]
+Usage: scripts/no-dockerhub/e2e.sh [--name <stack-name>] [--keep] [--rebuild] [--skip-monkey] [--skip-reports-fk-check] [--web-mode <dev|prod>]
 
 This script:
   1) Starts a local RSS fixture server (WSL) for deterministic ingest tests
@@ -17,6 +17,8 @@ Options:
   --keep               Keep stack + fixture server running for debugging
   --rebuild            Rebuild local helper images (redis/postgres+pgvector)
   --skip-monkey        Skip monkey tests (faster local iteration)
+  --skip-reports-fk-check
+                       Skip reports tenant FK regression check
   --web-mode <mode>    Web runtime mode: dev (next dev) or prod (next start). If omitted:
                        - defaults to prod when monkey is enabled (more stable)
                        - defaults to dev when --skip-monkey is used (faster)
@@ -30,6 +32,7 @@ STACK_NAME="law-eye-e2e-$(date +%Y%m%d%H%M%S)-$RANDOM"
 KEEP=0
 REBUILD=0
 RUN_MONKEY=1
+RUN_REPORTS_FK_CHECK=1
 WEB_MODE=""
 
 while [[ $# -gt 0 ]]; do
@@ -48,6 +51,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-monkey)
       RUN_MONKEY=0
+      shift
+      ;;
+    --skip-reports-fk-check)
+      RUN_REPORTS_FK_CHECK=0
       shift
       ;;
     --web-mode)
@@ -214,11 +221,73 @@ bash "$ROOT/scripts/no-dockerhub/start-stack.sh" "${START_ARGS[@]}"
 # shellcheck disable=SC1090
 source "$STATE_DIR/stack.env"
 
+run_reports_fk_check() {
+  local secrets_env_file="$STATE_DIR/secrets.env"
+  if [[ -f "$secrets_env_file" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$secrets_env_file"
+    set +a
+  fi
+
+  if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
+    echo "ERROR: POSTGRES_PASSWORD is missing; cannot run reports FK regression check" >&2
+    return 1
+  fi
+
+  local postgres_container=""
+  postgres_container="$(
+    docker compose \
+      --project-name "$STACK_NAME" \
+      -f "$ROOT/docker-compose.yml" \
+      ps -q postgres 2>/dev/null | tr -d '\r' | tr -d '\n'
+  )"
+
+  if [[ -z "$postgres_container" ]]; then
+    echo "ERROR: failed to locate postgres container for stack $STACK_NAME" >&2
+    return 1
+  fi
+
+  echo "Running reports tenant FK regression check..."
+  docker exec \
+    -e "PGPASSWORD=${POSTGRES_PASSWORD}" \
+    -i "$postgres_container" \
+    psql \
+      -h 127.0.0.1 \
+      -U law_eye \
+      -d law_eye \
+      -v ON_ERROR_STOP=1 \
+      -f - < "$ROOT/scripts/enterprise/reports-tenant-fk-verify.sql"
+}
+
+if [[ "$RUN_REPORTS_FK_CHECK" -eq 1 ]]; then
+  run_reports_fk_check
+fi
+
+# If Web is running on Windows, force Playwright to run on Windows too.
+# This keeps browser origin and NEXT_PUBLIC_API_URL loopback behavior aligned.
+if [[ "${WEB_RUNS_ON_WINDOWS:-0}" == "1" ]]; then
+  PNPM_RUNNER="win"
+fi
+
 export STACK_NAME
 export WEB_PORT
 export LAW_EYE_API_PROXY_TARGET
-export E2E_BASE_URL="http://127.0.0.1:${WEB_PORT}"
-export E2E_RSS_URL="http://127.0.0.1:${RSS_PORT}/rss.xml"
+E2E_BASE_URL_CANDIDATE="http://127.0.0.1:${WEB_PORT}"
+if [[ "${WEB_RUNS_ON_WINDOWS:-0}" == "1" ]] \
+  && [[ "$PNPM_RUNNER" != "win" ]] \
+  && [[ -n "${WINDOWS_HOST_IP:-}" ]]; then
+  if curl -fsS --max-time 2 "${E2E_BASE_URL_CANDIDATE}/login" >/dev/null 2>&1; then
+    export E2E_BASE_URL="$E2E_BASE_URL_CANDIDATE"
+  else
+    export E2E_BASE_URL="http://${WINDOWS_HOST_IP}:${WEB_PORT}"
+  fi
+else
+  export E2E_BASE_URL="$E2E_BASE_URL_CANDIDATE"
+fi
+# RSS is fetched by API/worker inside WSL; default to a WSL-local address.
+E2E_RSS_HOST="${LAW_EYE_E2E_RSS_HOST:-127.0.0.1}"
+export E2E_RSS_URL="http://${E2E_RSS_HOST}:${RSS_PORT}/rss.xml"
 
 E2E_ENV_FILE="$RUNTIME_E2E_ENV_FILE"
 python3 - "$E2E_ENV_FILE" <<'PY'
@@ -239,6 +308,7 @@ data = {
 path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 PY
 
+echo "E2E config: runner=${PNPM_RUNNER} base_url=${E2E_BASE_URL} web_runs_on_windows=${WEB_RUNS_ON_WINDOWS:-0}"
 echo "Running Playwright E2E..."
 if [[ "$PNPM_RUNNER" == "win" ]]; then
   ensure_cmd cmd.exe "WSL must have Windows interop enabled (cmd.exe available)."

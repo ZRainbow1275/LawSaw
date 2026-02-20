@@ -25,6 +25,9 @@ use std::net::{IpAddr, SocketAddr};
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_users))
+        // /me routes MUST be registered before /{id} to avoid path conflicts
+        .route("/me/change-password", post(change_password))
+        .route("/me/login-activity", get(login_activity))
         .route("/{id}", get(get_user))
         .route("/{id}", patch(update_user))
         .route("/{id}/permissions/audit", get(list_permission_audits))
@@ -52,7 +55,10 @@ const AVATAR_URL_MAX_LEN: usize = 2048;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct UsersListResponse {
-    pub users: Vec<UserResponse>,
+    pub data: Vec<UserResponse>,
+    /// Backward-compatible alias for legacy clients; prefer `data`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub users: Option<Vec<UserResponse>>,
     pub total: i64,
     pub limit: i64,
     pub offset: i64,
@@ -60,13 +66,15 @@ pub struct UsersListResponse {
     pub next_cursor: Option<String>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct UserResponse {
     pub id: Uuid,
+    pub tenant_id: Uuid,
     pub email: String,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
     pub is_active: bool,
+    pub email_verified_at: Option<chrono::DateTime<chrono::Utc>>,
     pub last_login: Option<chrono::DateTime<chrono::Utc>>,
     pub version: i64,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -76,10 +84,12 @@ impl From<law_eye_db::User> for UserResponse {
     fn from(user: law_eye_db::User) -> Self {
         Self {
             id: user.id,
+            tenant_id: user.tenant_id,
             email: user.email,
             display_name: user.display_name,
             avatar_url: user.avatar_url,
             is_active: user.is_active,
+            email_verified_at: user.email_verified_at,
             last_login: user.last_login,
             version: user.version,
             created_at: user.created_at,
@@ -175,6 +185,50 @@ pub struct PermissionAuditListResponse {
     pub items: Vec<PermissionAuditEntry>,
     pub total: i64,
     pub limit: i64,
+    pub offset: i64,
+}
+
+// ========== Change Password Types ==========
+
+#[derive(Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ChangePasswordRequest {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+impl std::fmt::Debug for ChangePasswordRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ChangePasswordRequest")
+            .field("current_password", &"[REDACTED]")
+            .field("new_password", &"[REDACTED]")
+            .finish()
+    }
+}
+
+// ========== Login Activity Types ==========
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct LoginActivityEntry {
+    pub id: Uuid,
+    pub action: String,
+    pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct LoginActivityResponse {
+    pub items: Vec<LoginActivityEntry>,
+    pub total: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LoginActivityParams {
+    #[serde(default = "default_limit")]
+    pub limit: i64,
+    #[serde(default)]
     pub offset: i64,
 }
 
@@ -295,8 +349,10 @@ pub(crate) async fn list_users(
         .await
         .map_err(AppError::from)?;
 
+    let rows: Vec<UserResponse> = users.into_iter().map(Into::into).collect();
     Ok(Json(UsersListResponse {
-        users: users.into_iter().map(Into::into).collect(),
+        data: rows.clone(),
+        users: Some(rows),
         total,
         limit,
         offset: if query.cursor.is_some() { 0 } else { offset },
@@ -708,6 +764,140 @@ pub(crate) async fn list_permission_audits(
         offset: query.offset,
     }))
 }
+/// 修改当前用户密码
+#[utoipa::path(
+    post,
+    path = "/api/v1/users/me/change-password",
+    request_body = ChangePasswordRequest,
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "Password changed", body = SuccessResponse),
+        (status = 400, description = "Validation error", body = ApiError),
+        (status = 401, description = "Not authenticated or wrong password", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
+    )
+)]
+pub(crate) async fn change_password(
+    State(state): State<AppState>,
+    auth_session: AuthSession,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    ApiJson(req): ApiJson<ChangePasswordRequest>,
+) -> ApiResult<Json<SuccessResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+
+    // Verify current password
+    state
+        .user_service
+        .verify_password(&user.email, &req.current_password)
+        .await
+        .map_err(|e| match e {
+            Error::Unauthorized(_) => AppError::unauthorized("Current password is incorrect"),
+            Error::NotFound(_) => AppError::unauthorized("Current password is incorrect"),
+            other => AppError::from(other),
+        })?;
+
+    // Validate new password policy
+    crate::routes::auth::validate_password_policy(&req.new_password)?;
+
+    // Update password
+    state
+        .user_service
+        .update_password(user.tenant_id, user.id, &req.new_password)
+        .await
+        .map_err(AppError::from)?;
+
+    // Audit log
+    let (ip_address, user_agent) = crate::routes::extract_audit_meta(&headers, addr);
+    state
+        .audit_service
+        .log(
+            user.tenant_id,
+            CreateAuditLog {
+                user_id: Some(user.id),
+                action: "users.password.change".to_string(),
+                resource: "users".to_string(),
+                resource_id: Some(user.id),
+                old_value: None,
+                new_value: None,
+                ip_address,
+                user_agent,
+            },
+        )
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(Json(SuccessResponse {
+        success: true,
+        message: "Password changed successfully".to_string(),
+        version: 0,
+    }))
+}
+
+/// 获取当前用户的登录活动记录
+#[utoipa::path(
+    get,
+    path = "/api/v1/users/me/login-activity",
+    security(
+        ("session" = [])
+    ),
+    responses(
+        (status = 200, description = "Login activity list", body = LoginActivityResponse),
+        (status = 401, description = "Not authenticated", body = ApiError),
+        (status = 500, description = "Server error", body = ApiError)
+    )
+)]
+pub(crate) async fn login_activity(
+    State(state): State<AppState>,
+    auth_session: AuthSession,
+    ApiQuery(params): ApiQuery<LoginActivityParams>,
+) -> ApiResult<Json<LoginActivityResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+
+    let limit = params.limit.clamp(1, 100);
+    let offset = params.offset.max(0);
+
+    let filters = AuditFilters {
+        user_id: Some(user.id),
+        resource: Some("auth".to_string()),
+        action: None,
+        resource_id: None,
+        limit,
+        offset,
+    };
+
+    let total = state
+        .audit_service
+        .count(user.tenant_id, filters.clone())
+        .await
+        .map_err(AppError::from)?;
+
+    let logs = state
+        .audit_service
+        .list(user.tenant_id, filters)
+        .await
+        .map_err(AppError::from)?;
+
+    let items = logs
+        .into_iter()
+        .map(|log| LoginActivityEntry {
+            id: log.id,
+            action: log.action,
+            ip_address: log.ip_address,
+            user_agent: log.user_agent,
+            created_at: log.created_at,
+        })
+        .collect::<Vec<_>>();
+
+    Ok(Json(LoginActivityResponse { items, total }))
+}
+
 /// 更新用户角色 (需要管理员权限)
 #[utoipa::path(
     patch,

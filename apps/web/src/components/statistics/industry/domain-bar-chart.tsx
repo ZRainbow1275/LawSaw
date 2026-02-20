@@ -1,8 +1,7 @@
 "use client";
 
-import { useT } from "@/lib/i18n-client";
 import type { DomainCount } from "@/hooks/use-statistics";
-import { DOMAIN_COLORS, DOMAIN_LABELS } from "../constants";
+import { useT } from "@/lib/i18n-client";
 import {
 	Bar,
 	BarChart,
@@ -12,6 +11,7 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
+import { DOMAIN_COLORS, DOMAIN_LABELS } from "../constants";
 
 interface DomainBarChartProps {
 	items: DomainCount[];

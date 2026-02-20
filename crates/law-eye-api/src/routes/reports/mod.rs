@@ -41,7 +41,9 @@ pub fn template_router() -> Router<AppState> {
         .route("/", get(list_templates).post(create_template))
         .route(
             "/{id}",
-            get(get_template).put(update_template).delete(delete_template),
+            get(get_template)
+                .put(update_template)
+                .delete(delete_template),
         )
 }
 
@@ -53,7 +55,7 @@ pub fn template_router() -> Router<AppState> {
     params(
         ("limit" = Option<i64>, Query, description = "Max results (default 20, max 100)"),
         ("offset" = Option<i64>, Query, description = "Offset (default 0)"),
-        ("status" = Option<String>, Query, description = "Filter by status (draft/generating/review/approved/published/archived)"),
+        ("status" = Option<String>, Query, description = "Filter by status (draft/generating/generated/review/approved/published/archived/error)"),
         ("period_type" = Option<String>, Query, description = "Filter by period type (weekly/monthly/quarterly/custom)"),
         ("author_id" = Option<Uuid>, Query, description = "Filter by author"),
         ("date_from" = Option<String>, Query, description = "Period start >= date (YYYY-MM-DD)"),

@@ -31,12 +31,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
         })?;
 
-    let pool = law_eye_db::create_pool_with_session_role(
-        &database_url,
-        5,
-        Some("law_eye_app"),
-    )
-    .await?;
+    let pool =
+        law_eye_db::create_pool_with_session_role(&database_url, 5, Some("law_eye_app")).await?;
 
     info!("Connected to database");
 

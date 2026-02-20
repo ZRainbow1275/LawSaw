@@ -240,13 +240,12 @@ impl ApiKeyService {
     pub async fn delete(&self, tenant_id: Uuid, id: Uuid, user_id: Uuid) -> Result<()> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
-                let result =
-                    sqlx::query("DELETE FROM api_keys WHERE id = $1 AND user_id = $2")
-                        .bind(id)
-                        .bind(user_id)
-                        .execute(tx.as_mut())
-                        .await
-                        .map_err(|e| Error::Database(e.to_string()))?;
+                let result = sqlx::query("DELETE FROM api_keys WHERE id = $1 AND user_id = $2")
+                    .bind(id)
+                    .bind(user_id)
+                    .execute(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?;
 
                 if result.rows_affected() == 0 {
                     return Err(Error::NotFound("API key not found".to_string()));

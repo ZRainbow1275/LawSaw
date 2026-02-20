@@ -177,9 +177,7 @@ pub struct AsyncPipeline {
 
 impl AsyncPipeline {
     pub fn new() -> Self {
-        Self {
-            stages: Vec::new(),
-        }
+        Self { stages: Vec::new() }
     }
 
     pub fn add_stage<S: AsyncPipelineStage + 'static>(mut self, stage: S) -> Self {
@@ -248,7 +246,8 @@ mod tests {
 
         let mut article = RawArticle::new("test", "https://example.com");
         article.ai_category = Some("legislation".to_string());
-        article.content = Some("这是一段很长的内容用于测试AI增强管线是否会跳过已经富化过的文章".to_string());
+        article.content =
+            Some("这是一段很长的内容用于测试AI增强管线是否会跳过已经富化过的文章".to_string());
 
         let result = stage.process(article.clone()).await.unwrap();
         // Should be unchanged (skipped due to already enriched)

@@ -113,7 +113,10 @@ mod tests {
         }
 
         async fn fetch(&self, _ctx: &FetchContext) -> Result<Vec<RawArticle>> {
-            Ok(vec![RawArticle::new("Dummy Title", "https://example.com/1")])
+            Ok(vec![RawArticle::new(
+                "Dummy Title",
+                "https://example.com/1",
+            )])
         }
     }
 

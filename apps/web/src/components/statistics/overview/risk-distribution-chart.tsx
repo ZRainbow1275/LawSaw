@@ -1,8 +1,7 @@
 "use client";
 
-import { useT } from "@/lib/i18n-client";
 import type { ArticleRiskCounts } from "@/lib/api/types";
-import { RISK_COLORS } from "../constants";
+import { useT } from "@/lib/i18n-client";
 import {
 	Bar,
 	BarChart,
@@ -12,6 +11,7 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
+import { RISK_COLORS } from "../constants";
 
 interface RiskDistributionChartProps {
 	data: ArticleRiskCounts;
@@ -44,7 +44,10 @@ export function RiskDistributionChart({ data }: RiskDistributionChartProps) {
 
 	return (
 		<ResponsiveContainer width="100%" height={260}>
-			<BarChart data={chartData} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
+			<BarChart
+				data={chartData}
+				margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
+			>
 				<XAxis
 					dataKey="name"
 					tick={{ fontSize: 12 }}

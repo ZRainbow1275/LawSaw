@@ -170,7 +170,17 @@ impl ReportDataAggregator {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
                 #[allow(clippy::type_complexity)]
-                let rows: Vec<(Uuid, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<i32>, Option<i32>, String)> = sqlx::query_as(
+                let rows: Vec<(
+                    Uuid,
+                    String,
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                    Option<i32>,
+                    Option<i32>,
+                    String,
+                )> = sqlx::query_as(
                     r#"
                     SELECT
                         id, title, summary, domain_root, issuer,
@@ -198,24 +208,36 @@ impl ReportDataAggregator {
 
                 let highlights = rows
                     .into_iter()
-                    .map(|(id, title, summary, domain_root, issuer, published_at, importance, risk_score, link)| {
-                        let domain_label = domain_root
-                            .as_deref()
-                            .map(domain_root_label)
-                            .unwrap_or("其他")
-                            .to_string();
-                        ReportArticleSummary {
+                    .map(
+                        |(
                             id,
                             title,
                             summary,
-                            domain_label,
+                            domain_root,
                             issuer,
                             published_at,
                             importance,
                             risk_score,
                             link,
-                        }
-                    })
+                        )| {
+                            let domain_label = domain_root
+                                .as_deref()
+                                .map(domain_root_label)
+                                .unwrap_or("其他")
+                                .to_string();
+                            ReportArticleSummary {
+                                id,
+                                title,
+                                summary,
+                                domain_label,
+                                issuer,
+                                published_at,
+                                importance,
+                                risk_score,
+                                link,
+                            }
+                        },
+                    )
                     .collect();
 
                 Ok(highlights)

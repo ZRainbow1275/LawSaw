@@ -102,8 +102,7 @@ async fn track_metrics(req: Request<Body>, next: Next) -> Response {
 }
 
 const DEFAULT_CACHE_CONTROL_HEADER: &str = "private, max-age=30, must-revalidate";
-const V1_DEPRECATION_WARNING_HEADER: &str =
-    "299 - \"API v1 is deprecated; migrate to /api/v2\"";
+const V1_DEPRECATION_WARNING_HEADER: &str = "299 - \"API v1 is deprecated; migrate to /api/v2\"";
 const V1_SUNSET_RFC2822: &str = "Wed, 31 Dec 2026 23:59:59 GMT";
 const HEADER_DEPRECATION: &str = "deprecation";
 const HEADER_SUNSET: &str = "sunset";
@@ -516,11 +515,7 @@ mod contract_tests {
             .header(header::CONTENT_TYPE, "application/json")
             .body(Body::from("{}"))
             .expect("v1 request");
-        let v1_response = app
-            .clone()
-            .oneshot(v1_request)
-            .await
-            .expect("v1 response");
+        let v1_response = app.clone().oneshot(v1_request).await.expect("v1 response");
 
         let v2_request = Request::builder()
             .method(Method::POST)

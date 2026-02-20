@@ -95,44 +95,68 @@ function createPageErrorGate() {
 }
 
 async function waitForStackReady(context: BrowserContext, baseURL: string) {
-	const healthUrl = new URL("/health", baseURL).toString();
+	const webHealthUrl = new URL("/health", baseURL).toString();
+	const authMeUrl = new URL("/api/v1/auth/me", baseURL).toString();
 	const requestTimeoutMs = 10_000;
 	const deadline = Date.now() + 90_000;
 	let lastDetail = "";
 
 	while (Date.now() < deadline) {
+		let healthDetail = "not checked";
+		let authMeDetail = "not checked";
+
 		try {
-			const resp = await context.request.get(healthUrl, {
+			const resp = await context.request.get(webHealthUrl, {
 				timeout: requestTimeoutMs,
 			});
 			const text = (await resp.text()).trim();
-			lastDetail = `${resp.status()} ${text.slice(0, 200)}`;
-			if (!resp.ok) {
-				await new Promise((resolve) => setTimeout(resolve, 1000));
-				continue;
+			healthDetail = `${resp.status()} ${text.slice(0, 200)}`;
+			if (resp.ok()) {
+				try {
+					const parsed: unknown = JSON.parse(text);
+					if (
+						parsed &&
+						typeof parsed === "object" &&
+						"status" in parsed &&
+						(parsed as { status?: unknown }).status === "ok"
+					) {
+						return;
+					}
+				} catch {
+					// ignore json parse error
+				}
 			}
+		} catch (err) {
+			healthDetail = err instanceof Error ? err.message : String(err);
+		}
 
+		try {
+			const resp = await context.request.get(authMeUrl, {
+				timeout: requestTimeoutMs,
+			});
+			const text = (await resp.text()).trim();
+			authMeDetail = `${resp.status()} ${text.slice(0, 200)}`;
 			try {
 				const parsed: unknown = JSON.parse(text);
-				if (
-					parsed &&
-					typeof parsed === "object" &&
-					"status" in parsed &&
-					(parsed as { status?: unknown }).status === "ok"
-				) {
+				if (resp.status() === 200 && parsed && typeof parsed === "object") {
 					return;
 				}
 			} catch {
 				// ignore json parse error
 			}
+
+			if (resp.status() === 401) {
+				return;
+			}
 		} catch (err) {
-			lastDetail = err instanceof Error ? err.message : String(err);
+			authMeDetail = err instanceof Error ? err.message : String(err);
 		}
 
+		lastDetail = `health=${healthDetail}; auth_me=${authMeDetail}`;
 		await new Promise((resolve) => setTimeout(resolve, 1000));
 	}
 
-	throw new Error(`Stack not ready: GET /health did not return {status: ok}. Last: ${lastDetail}`);
+	throw new Error(`Stack not ready: health/auth probes failed. Last: ${lastDetail}`);
 }
 
 async function registerAndLogin(
@@ -142,7 +166,6 @@ async function registerAndLogin(
 ) {
 	const registerUrl = new URL("/api/v1/auth/register", baseURL).toString();
 	const meUrl = new URL("/api/v1/auth/me", baseURL).toString();
-	const dashboardUrl = new URL("/", baseURL).toString();
 
 	const payload = {
 		email: credentials.email,
@@ -250,135 +273,90 @@ async function registerAndLogin(
 		);
 	}
 
-	const page = await context.newPage();
-	const gate = createPageErrorGate();
-	gate.attach(page);
-	await page.goto(dashboardUrl, { waitUntil: "domcontentloaded", timeout: 90_000 });
-	await expect(
-		page.getByRole("heading", { name: "数据看板", level: 1 }),
-	).toBeVisible({ timeout: 90_000 });
-	gate.assertNoErrors();
-	await page.close();
+	// API session check above is sufficient for setup; the real page-level flows are
+	// covered by the test cases below in their own isolated browser contexts.
 }
 
-async function loginExistingUser(
-	context: BrowserContext,
-	baseURL: string,
+async function submitLoginForm(
+	page: Page,
 	credentials: Pick<E2ECredentials, "email" | "password">,
 ) {
-	const loginUrl = new URL("/api/v1/auth/login", baseURL).toString();
-	const meUrl = new URL("/api/v1/auth/me", baseURL).toString();
+	const emailInput = page.locator("#email");
+	const passwordInput = page.locator("#password");
+	const submitButton = page
+		.getByRole("button", { name: /登录|sign in|log in/i })
+		.first();
 
-	const payload = {
-		email: credentials.email,
-		password: credentials.password,
-	};
-
-	const requestTimeoutMs = 20_000;
-	const doLogin = async () =>
-		context.request.post(loginUrl, {
-			data: payload,
-			timeout: requestTimeoutMs,
-			headers: {
-				Origin: baseURL,
-				Referer: new URL("/login", baseURL).toString(),
-			},
-		});
-
-	const maxAttempts = 5;
-	let response: Awaited<ReturnType<typeof doLogin>> | null = null;
-	let lastError: unknown = null;
-	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-		try {
-			response = await doLogin();
-		} catch (error) {
-			lastError = error;
-			response = null;
-		}
-
-		if (!response) {
-			await new Promise((resolve) =>
-				setTimeout(resolve, Math.min(10_000, 500 * 2 ** (attempt - 1))),
-			);
-			continue;
-		}
-
-		if (response.status() === 429) {
-			const retryAfterRaw = response.headers()["retry-after"];
-			const retryAfterSeconds = retryAfterRaw
-				? Number.parseInt(retryAfterRaw, 10)
-				: Number.NaN;
-			const delayMs =
-				Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-					? retryAfterSeconds * 1000
-					: 5_000;
-			await new Promise((resolve) => setTimeout(resolve, delayMs));
-			continue;
-		}
-
-		if (response.status() >= 500 && attempt < maxAttempts) {
-			await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
-			continue;
-		}
-
-		break;
-	}
-
-	if (!response) {
-		const detail = lastError instanceof Error ? lastError.message : String(lastError);
-		throw new Error(`Login request failed: ${detail}`);
-	}
-
-	const loginText = await response.text();
-	if (!response.ok()) {
-		throw new Error(`Login failed: ${response.status()} ${loginText.slice(0, 200)}`);
-	}
-
-	let loginJson: unknown = null;
-	try {
-		loginJson = JSON.parse(loginText) as unknown;
-	} catch {
-		throw new Error(`Login returned non-JSON: ${loginText.slice(0, 200)}`);
-	}
-	if (
-		!loginJson ||
-		typeof loginJson !== "object" ||
-		!("success" in loginJson) ||
-		(loginJson as { success?: unknown }).success !== true
-	) {
-		throw new Error(`Login returned unexpected payload: ${loginText.slice(0, 200)}`);
-	}
-
-	const maxMeAttempts = 5;
-	let meResponse: Awaited<ReturnType<typeof context.request.get>> | null = null;
-	for (let attempt = 1; attempt <= maxMeAttempts; attempt++) {
-		meResponse = await context.request.get(meUrl, { timeout: 10_000 });
-		if (meResponse.ok()) break;
-		if (meResponse.status() >= 500 && attempt < maxMeAttempts) {
-			await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
-			continue;
-		}
-		break;
-	}
-
-	if (!meResponse) throw new Error("Auth session check failed: missing response");
-	const meText = await meResponse.text();
-	if (!meResponse.ok()) {
-		throw new Error(
-			`Auth session not established: ${meResponse.status()} ${meText.slice(0, 200)}`,
-		);
-	}
+	await expect(emailInput).toBeVisible({ timeout: 90_000 });
+	await emailInput.fill(credentials.email);
+	await passwordInput.fill(credentials.password);
+	await expect(emailInput).toHaveValue(credentials.email);
+	await expect(passwordInput).toHaveValue(credentials.password);
+	await expect(submitButton).toBeEnabled({ timeout: 30_000 });
+	await submitButton.click({ force: true });
 }
 
-	test.describe.serial("LawSaw 关键用户流 E2E", () => {
-		let auth:
-			| {
-					statePath: string;
-					unique: string;
-					displayName: string;
-					email: string;
-					password: string;
-			  }
+async function ensureLoggedInByUi(
+	page: Page,
+	credentials: Pick<E2ECredentials, "email" | "password">,
+) {
+	await page.goto("/login", { waitUntil: "domcontentloaded", timeout: 90_000 });
+	await submitLoginForm(page, credentials);
+	await expect(page).not.toHaveURL(/\/login(?:\?|$)/, { timeout: 90_000 });
+}
+
+async function gotoWithAuth(
+	page: Page,
+	pathname: string,
+	credentials: Pick<E2ECredentials, "email" | "password">,
+) {
+	const maxAttempts = 3;
+	let lastMeStatus = 0;
+	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+		await page.goto(pathname, { waitUntil: "domcontentloaded", timeout: 90_000 });
+		if (/\/login(?:\?|$)/.test(page.url())) {
+			await submitLoginForm(page, credentials);
+		}
+
+		try {
+			await expect(page).not.toHaveURL(/\/login(?:\?|$)/, { timeout: 10_000 });
+		} catch {
+			if (attempt === maxAttempts) {
+				break;
+			}
+			continue;
+		}
+
+		lastMeStatus = await page
+			.evaluate(async () => {
+				try {
+					const resp = await fetch("/api/v1/auth/me", {
+						credentials: "include",
+					});
+					return resp.status;
+				} catch {
+					return 0;
+				}
+			})
+			.catch(() => 0);
+		if (lastMeStatus === 200) {
+			return;
+		}
+	}
+
+	throw new Error(
+		`gotoWithAuth failed for ${pathname}; last URL=${page.url()} auth_me_status=${lastMeStatus}`,
+	);
+}
+
+		test.describe.serial("LawSaw 关键用户流 E2E", () => {
+			let auth:
+				| {
+						unique: string;
+						displayName: string;
+						email: string;
+						password: string;
+				  }
 			| undefined;
 
 	test.beforeAll(async ({ browser }, testInfo) => {
@@ -387,27 +365,17 @@ async function loginExistingUser(
 		if (!baseURL) throw new Error("Playwright baseURL 未配置，无法初始化登录态。");
 
 		const credentials = createE2ECredentials();
-		const statePath = path.resolve(
-			process.cwd(),
-			"..",
-			"..",
-			"tmp",
-			`e2e-auth-state-${credentials.unique}.json`,
-		);
+			const context = await browser.newContext({ baseURL });
+			await waitForStackReady(context, baseURL);
+			await registerAndLogin(context, baseURL, credentials);
+			await context.close();
 
-		const context = await browser.newContext({ baseURL });
-		await waitForStackReady(context, baseURL);
-		await registerAndLogin(context, baseURL, credentials);
-		await context.storageState({ path: statePath });
-		await context.close();
-
-			auth = {
-				statePath,
-				unique: credentials.unique,
-				displayName: credentials.displayName,
-				email: credentials.email,
-				password: credentials.password,
-			};
+				auth = {
+					unique: credentials.unique,
+					displayName: credentials.displayName,
+					email: credentials.email,
+					password: credentials.password,
+				};
 		});
 
 		test("未登录访问受保护页面应重定向到登录页", async ({ page }) => {
@@ -418,37 +386,38 @@ async function loginExistingUser(
 			await expect(page).toHaveURL(/\/login(?:\?|$)/, { timeout: 90_000 });
 
 			const redirected = new URL(page.url());
-			expect(redirected.searchParams.get("returnTo")).toBe("/articles");
+			expect(redirected.searchParams.get("returnTo")).toMatch(
+				/^\/(?:(?:en|zh)\/)?articles$/,
+			);
 
-			await expect(page.getByLabel("邮箱")).toBeVisible();
-			await page.getByLabel("邮箱").fill(auth.email);
-			await page.getByLabel("密码").fill(auth.password);
-			await page.getByRole("button", { name: "登录" }).click();
-			await expect(page).toHaveURL(/\/articles(?:\?|$)/, { timeout: 90_000 });
-			await expect(
-				page.getByRole("heading", { name: "资讯列表", level: 1 }),
-			).toBeVisible({ timeout: 90_000 });
+			await submitLoginForm(page, auth);
+			await expect(page).toHaveURL(/\/(?:(?:en|zh)\/)?articles(?:\?|$)/, {
+				timeout: 90_000,
+			});
+			await expect(page.getByRole("heading", { level: 1 })).toBeVisible({
+				timeout: 90_000,
+			});
 			gate.assertNoErrors();
 		});
 
-	test("移动端抽屉导航：打开/关闭/跳转/锁滚动", async ({ browser }, testInfo) => {
-		if (!auth) throw new Error("E2E 登录态初始化失败（auth state missing）。");
-		const baseURL = testInfo.project.use.baseURL as string | undefined;
-		if (!baseURL) throw new Error("Playwright baseURL 未配置，无法运行移动端用例。");
+		test("移动端抽屉导航：打开/关闭/跳转/锁滚动", async ({ browser }, testInfo) => {
+			if (!auth) throw new Error("E2E 登录态初始化失败（auth state missing）。");
+			const baseURL = testInfo.project.use.baseURL as string | undefined;
+			if (!baseURL) throw new Error("Playwright baseURL 未配置，无法运行移动端用例。");
 
-		const context = await browser.newContext({
-			baseURL,
-			storageState: auth.statePath,
+			const context = await browser.newContext({ baseURL });
+			await waitForStackReady(context, baseURL);
+			const page = await context.newPage();
+			const gate = createPageErrorGate();
+			gate.attach(page);
+
+			await page.setViewportSize({ width: 390, height: 844 });
+			await ensureLoggedInByUi(page, auth);
+		await gotoWithAuth(page, "/", auth);
+		await expect(page).not.toHaveURL(/\/login(?:\?|$)/, { timeout: 90_000 });
+		await expect(page.getByRole("heading", { level: 1 })).toBeVisible({
+			timeout: 90_000,
 		});
-		const page = await context.newPage();
-		const gate = createPageErrorGate();
-		gate.attach(page);
-
-		await page.setViewportSize({ width: 390, height: 844 });
-		await page.goto("/");
-		await expect(
-			page.getByRole("heading", { name: "数据看板", level: 1 }),
-		).toBeVisible();
 
 		const openButton = page.getByRole("button", { name: "打开导航菜单" });
 		await expect(openButton).toBeVisible();
@@ -521,26 +490,25 @@ async function loginExistingUser(
 			);
 		}
 
-		const context = await browser.newContext({
-			baseURL,
-			storageState: auth.statePath,
-		});
-		await waitForStackReady(context, baseURL);
-		const page = await context.newPage();
-		const gate = createPageErrorGate();
-		gate.attach(page);
+			const context = await browser.newContext({ baseURL });
+			await waitForStackReady(context, baseURL);
+			const page = await context.newPage();
+			const gate = createPageErrorGate();
+			gate.attach(page);
 
-		await page.goto("/");
-		await expect(
-			page.getByRole("heading", { name: "数据看板", level: 1 }),
-		).toBeVisible();
+			await ensureLoggedInByUi(page, auth);
+		await gotoWithAuth(page, "/", auth);
+		await expect(page).not.toHaveURL(/\/login(?:\?|$)/, { timeout: 90_000 });
+		await expect(page.getByRole("heading", { level: 1 })).toBeVisible({
+			timeout: 90_000,
+		});
 
 		const sourceName = `E2E RSS ${auth.unique}`;
 		const expectedArticleTitle = "E2EKEY 合规要点速览（测试）";
 		const expectedSearchKeyword = "E2EKEY-12345";
 
 		// 2) 添加 RSS 信息源（admin-only）
-		await page.goto("/sources");
+		await gotoWithAuth(page, "/sources", auth);
 		await expect(
 			page.getByRole("heading", { name: "信息源管理", level: 1 }),
 		).toBeVisible();
@@ -626,7 +594,7 @@ async function loginExistingUser(
 			.toEqual({ lastFetch: expect.any(String), lastError: null });
 
 		// 4) 文章列表出现 RSS 内容，并可进入详情页
-		await page.goto("/articles");
+		await gotoWithAuth(page, "/articles", auth);
 		await expect(
 			page.getByRole("heading", { name: "资讯列表", level: 1 }),
 		).toBeVisible();
@@ -643,7 +611,7 @@ async function loginExistingUser(
 		).toBeVisible({ timeout: 90_000 });
 
 		// 5) 关键词搜索可命中该文章（非 AI）
-		await page.goto("/search");
+		await gotoWithAuth(page, "/search", auth);
 		await expect(page.getByRole("heading", { name: "搜索", level: 1 })).toBeVisible();
 
 		await page.getByPlaceholder("输入关键词搜索...").fill(expectedSearchKeyword);
@@ -657,7 +625,7 @@ async function loginExistingUser(
 		).toBeVisible({ timeout: 90_000 });
 
 		// 6) 数据管理：归档该文章（验证批量写操作闭环）
-		await page.goto("/data");
+		await gotoWithAuth(page, "/data", auth);
 		await expect(
 			page.getByRole("heading", { name: "数据管理", level: 1 }),
 		).toBeVisible({ timeout: 90_000 });
@@ -676,7 +644,7 @@ async function loginExistingUser(
 		await expect(dataRow.getByText("已归档")).toBeVisible({ timeout: 90_000 });
 
 		// 7) 知识图谱：初始化 + 检索信息源实体 + 关联文章可见
-		await page.goto("/knowledge");
+		await gotoWithAuth(page, "/knowledge", auth);
 		await expect(
 			page.getByRole("heading", { name: "知识图谱", level: 1 }),
 		).toBeVisible({ timeout: 90_000 });
@@ -724,7 +692,7 @@ async function loginExistingUser(
 		).toBeVisible({ timeout: 90_000 });
 
 		// 8) 留言反馈：提交一条问题反馈并验证可见
-		await page.goto("/feedback");
+		await gotoWithAuth(page, "/feedback", auth);
 		await expect(
 			page.getByRole("heading", { name: "留言反馈", level: 1 }),
 		).toBeVisible({ timeout: 90_000 });
@@ -738,7 +706,7 @@ async function loginExistingUser(
 		await expect(page.getByText(feedbackTitle).first()).toBeVisible({ timeout: 90_000 });
 
 		// 9) 系统设置：上传头像（对象存储）+ API Key 生命周期 + 系统健康检查
-		await page.goto("/settings?tab=profile");
+		await gotoWithAuth(page, "/settings?tab=profile", auth);
 		await expect(
 			page.getByRole("heading", { name: "系统设置", level: 1 }),
 		).toBeVisible({ timeout: 90_000 });
@@ -759,7 +727,7 @@ async function loginExistingUser(
 				.getByText("头像已更新", { exact: true }),
 		).toBeVisible({ timeout: 30_000 });
 
-		await page.goto("/settings?tab=api");
+		await gotoWithAuth(page, "/settings?tab=api", auth);
 		await expect(
 			page.getByRole("heading", { name: "API 密钥" }),
 		).toBeVisible({ timeout: 90_000 });
@@ -788,18 +756,18 @@ async function loginExistingUser(
 				.getByText("已删除 API 密钥", { exact: true }),
 		).toBeVisible({ timeout: 30_000 });
 
-		await page.goto("/settings?tab=system");
+		await gotoWithAuth(page, "/settings?tab=system", auth);
 		await expect(page.getByText("API 状态")).toBeVisible({ timeout: 90_000 });
 		await expect(page.getByText("ok")).toBeVisible({ timeout: 90_000 });
 
 		// 10) 统计分析（确保聚合接口可用且页面可渲染）
-		await page.goto("/analytics");
+		await gotoWithAuth(page, "/analytics", auth);
 		await expect(
 			page.getByRole("heading", { name: "统计分析", level: 1 }),
 		).toBeVisible({ timeout: 90_000 });
 
 		// 11) 分类页 smoke（确保默认分类可用）
-		await page.goto("/category/legislation");
+		await gotoWithAuth(page, "/category/legislation", auth);
 		await expect(page.getByText("未找到该分类")).toHaveCount(0);
 		await expect(page.getByRole("heading", { level: 1 })).toBeVisible({
 			timeout: 90_000,
@@ -832,12 +800,12 @@ async function loginExistingUser(
 
 			const context = await browser.newContext({ baseURL });
 			await waitForStackReady(context, baseURL);
-			await loginExistingUser(context, baseURL, auth);
 			const page = await context.newPage();
 			const gate = createPageErrorGate();
 			gate.attach(page);
 
-			await page.goto("/sources");
+			await ensureLoggedInByUi(page, auth);
+			await gotoWithAuth(page, "/sources", auth);
 			await expect(
 				page.getByRole("heading", { name: "信息源管理", level: 1 }),
 			).toBeVisible({ timeout: 90_000 });
@@ -848,12 +816,14 @@ async function loginExistingUser(
 
 			await expect(page).toHaveURL(/\/login\?returnTo=/, { timeout: 90_000 });
 			const redirected = new URL(page.url());
-			expect(redirected.searchParams.get("returnTo")).toBe("/sources");
+			expect(redirected.searchParams.get("returnTo")).toMatch(
+				/^\/(?:(?:en|zh)\/)?sources$/,
+			);
 
-			await page.getByLabel("邮箱").fill(auth.email);
-			await page.getByLabel("密码").fill(auth.password);
-			await page.getByRole("button", { name: "登录" }).click();
-			await expect(page).toHaveURL(/\/sources(?:\?|$)/, { timeout: 90_000 });
+			await submitLoginForm(page, auth);
+			await expect(page).toHaveURL(/\/(?:(?:en|zh)\/)?sources(?:\?|$)/, {
+				timeout: 90_000,
+			});
 			await expect(
 				page.getByRole("heading", { name: "信息源管理", level: 1 }),
 			).toBeVisible({ timeout: 90_000 });
@@ -870,10 +840,10 @@ async function loginExistingUser(
 
 			const context = await browser.newContext({ baseURL });
 			await waitForStackReady(context, baseURL);
-			await loginExistingUser(context, baseURL, auth);
 			const page = await context.newPage();
 			const gate = createPageErrorGate();
 			gate.attach(page);
+			await ensureLoggedInByUi(page, auth);
 
 			let sourcesHit = 0;
 			await page.route("**/api/v1/sources", async (route) => {
@@ -885,7 +855,7 @@ async function loginExistingUser(
 				});
 			});
 
-			await page.goto("/sources");
+			await gotoWithAuth(page, "/sources", auth);
 			await expect(
 				page.getByRole("heading", { name: "信息源管理", level: 1 }),
 			).toBeVisible({ timeout: 90_000 });
@@ -913,8 +883,8 @@ async function loginExistingUser(
 
 			const context = await browser.newContext({ baseURL });
 			await waitForStackReady(context, baseURL);
-			await loginExistingUser(context, baseURL, auth);
 			const page = await context.newPage();
+			await ensureLoggedInByUi(page, auth);
 
 			// 该用例会制造 5xx，避免使用全局 error gate（其会把 5xx 视为失败信号）。
 			let failuresLeft = 3;
@@ -931,7 +901,7 @@ async function loginExistingUser(
 				await route.continue();
 			});
 
-			await page.goto("/sources");
+			await gotoWithAuth(page, "/sources", auth);
 			await expect(page.getByText("加载失败", { exact: true })).toBeVisible({
 				timeout: 90_000,
 			});

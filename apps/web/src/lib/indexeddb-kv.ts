@@ -8,7 +8,9 @@ type StoredValue = {
 };
 
 function hasIndexedDb(): boolean {
-	return typeof window !== "undefined" && typeof window.indexedDB !== "undefined";
+	return (
+		typeof window !== "undefined" && typeof window.indexedDB !== "undefined"
+	);
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -26,7 +28,8 @@ function openDb(): Promise<IDBDatabase> {
 			}
 		};
 		request.onsuccess = () => resolve(request.result);
-		request.onerror = () => reject(request.error ?? new Error("Failed to open IndexedDB"));
+		request.onerror = () =>
+			reject(request.error ?? new Error("Failed to open IndexedDB"));
 		request.onblocked = () => reject(new Error("IndexedDB open blocked"));
 	});
 }
@@ -63,8 +66,9 @@ async function withStore<T>(
 export async function readIndexedDbJson<T>(key: string): Promise<T | null> {
 	if (!hasIndexedDb()) return null;
 	try {
-		const payload = await withStore<StoredValue | undefined>("readonly", (store) =>
-			store.get(key),
+		const payload = await withStore<StoredValue | undefined>(
+			"readonly",
+			(store) => store.get(key),
 		);
 		if (!payload || typeof payload !== "object" || !("value" in payload)) {
 			return null;

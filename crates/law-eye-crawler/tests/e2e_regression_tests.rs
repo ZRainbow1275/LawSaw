@@ -8,10 +8,9 @@
 //! - Cron 表达式合法性
 
 use law_eye_crawler::{
-    AdapterRegistry, CleaningStage, ConcurrencyConfig, ConcurrencyController,
-    CrawlJobConfig, CrawlOrchestrator, DeduplicationStage,
-    DomainRateLimiter, IncrementalChecker, MetadataExtractionStage, Pipeline,
-    RateLimiterConfig, RawArticle,
+    AdapterRegistry, CleaningStage, ConcurrencyConfig, ConcurrencyController, CrawlJobConfig,
+    CrawlOrchestrator, DeduplicationStage, DomainRateLimiter, IncrementalChecker,
+    MetadataExtractionStage, Pipeline, RateLimiterConfig, RawArticle,
 };
 use std::sync::Arc;
 
@@ -57,11 +56,7 @@ fn registry_contains_all_expected_kinds() {
         "cnvd",
     ];
     for kind in &expected {
-        assert!(
-            kinds.contains(kind),
-            "Missing adapter kind: {}",
-            kind
-        );
+        assert!(kinds.contains(kind), "Missing adapter kind: {}", kind);
     }
 }
 
@@ -114,7 +109,10 @@ fn pipeline_preserves_legal_metadata_fields() {
     );
     assert_eq!(out.extracted_region_code.as_deref(), Some("000000"));
     // content_hash is set by DeduplicationStage (overwrites with MD5 of content)
-    assert!(out.content_hash.is_some(), "content_hash should be set by DeduplicationStage");
+    assert!(
+        out.content_hash.is_some(),
+        "content_hash should be set by DeduplicationStage"
+    );
 }
 
 #[test]

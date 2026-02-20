@@ -108,13 +108,8 @@ impl CacheService {
     /// 构造标准化缓存键: `cache:{tenant_id}:{resource}:{params_hash}`
     ///
     /// `params` 会被序列化后 SHA-256 哈希，确保键长度可控。
-    pub fn build_key<P: Serialize>(
-        tenant_id: uuid::Uuid,
-        resource: &str,
-        params: &P,
-    ) -> String {
-        let params_json =
-            serde_json::to_string(params).unwrap_or_else(|_| "{}".to_string());
+    pub fn build_key<P: Serialize>(tenant_id: uuid::Uuid, resource: &str, params: &P) -> String {
+        let params_json = serde_json::to_string(params).unwrap_or_else(|_| "{}".to_string());
         let mut hasher = Sha256::new();
         hasher.update(params_json.as_bytes());
         let digest = hasher.finalize();
@@ -153,9 +148,8 @@ impl CacheService {
 
         match raw {
             Some(data) => {
-                let value: T = serde_json::from_str(&data).map_err(|e| {
-                    Error::Internal(format!("cache deserialization failed: {e}"))
-                })?;
+                let value: T = serde_json::from_str(&data)
+                    .map_err(|e| Error::Internal(format!("cache deserialization failed: {e}")))?;
                 debug!(key = %key, "cache: HIT");
                 metrics::counter!("cache_hits_total").increment(1);
                 Ok(Some(value))
@@ -228,16 +222,15 @@ impl CacheService {
         let mut total_deleted: u64 = 0;
 
         loop {
-            let (next_cursor, keys): (u64, Vec<String>) =
-                redis::cmd("SCAN")
-                    .arg(cursor)
-                    .arg("MATCH")
-                    .arg(pattern)
-                    .arg("COUNT")
-                    .arg(100)
-                    .query_async(&mut conn)
-                    .await
-                    .map_err(|e| Error::Internal(format!("cache SCAN failed: {e}")))?;
+            let (next_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg(pattern)
+                .arg("COUNT")
+                .arg(100)
+                .query_async(&mut conn)
+                .await
+                .map_err(|e| Error::Internal(format!("cache SCAN failed: {e}")))?;
 
             if !keys.is_empty() {
                 let deleted: u64 = redis::cmd("DEL")
@@ -266,11 +259,7 @@ impl CacheService {
     }
 
     /// 失效某个租户下某个资源的所有缓存
-    pub async fn invalidate_resource(
-        &self,
-        tenant_id: uuid::Uuid,
-        resource: &str,
-    ) -> Result<u64> {
+    pub async fn invalidate_resource(&self, tenant_id: uuid::Uuid, resource: &str) -> Result<u64> {
         let pattern = format!("{CACHE_KEY_PREFIX}:{tenant_id}:{resource}:*");
         self.invalidate_pattern(&pattern).await
     }
@@ -286,12 +275,7 @@ impl CacheService {
     /// Cache-Aside 模式的高层封装
     ///
     /// 先查缓存，命中则返回；未命中则调用 `fetch` 获取数据，写入缓存后返回。
-    pub async fn get_or_fetch<T, F, Fut>(
-        &self,
-        key: &str,
-        ttl_seconds: u64,
-        fetch: F,
-    ) -> Result<T>
+    pub async fn get_or_fetch<T, F, Fut>(&self, key: &str, ttl_seconds: u64, fetch: F) -> Result<T>
     where
         T: Serialize + DeserializeOwned,
         F: FnOnce() -> Fut,

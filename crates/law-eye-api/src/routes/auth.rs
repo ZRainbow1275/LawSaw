@@ -11,8 +11,8 @@ use law_eye_db::{CreateAuditLog, CreateUser};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::net::SocketAddr;
-use utoipa::ToSchema;
 use tower_sessions::Session;
+use utoipa::ToSchema;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -46,7 +46,10 @@ pub fn router() -> Router<AppState> {
             "/password-reset/request",
             post(request_password_reset).layer(RateLimitLayer::password_reset()),
         )
-        .route("/password-reset/confirm", post(confirm_password_reset).layer(RateLimitLayer::password_reset()))
+        .route(
+            "/password-reset/confirm",
+            post(confirm_password_reset).layer(RateLimitLayer::password_reset()),
+        )
         .route(
             "/oauth/start",
             post(oauth_start).layer(RateLimitLayer::login()),
@@ -75,7 +78,7 @@ pub fn router() -> Router<AppState> {
         .route("/me", get(get_current_user))
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RegisterRequest {
     pub email: String,
@@ -85,6 +88,18 @@ pub struct RegisterRequest {
     pub tenant_slug: Option<String>,
     /// 租户名称（创建新租户时使用）。未提供时默认使用 slug。
     pub tenant_name: Option<String>,
+}
+
+impl std::fmt::Debug for RegisterRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RegisterRequest")
+            .field("email", &self.email)
+            .field("password", &"[REDACTED]")
+            .field("display_name", &self.display_name)
+            .field("tenant_slug", &self.tenant_slug)
+            .field("tenant_name", &self.tenant_name)
+            .finish()
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -140,10 +155,18 @@ pub struct MfaTotpSetupResponse {
     pub provisioning_uri: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MfaTotpConfirmRequest {
     pub code: String,
+}
+
+impl std::fmt::Debug for MfaTotpConfirmRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MfaTotpConfirmRequest")
+            .field("code", &"[REDACTED]")
+            .finish()
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -154,12 +177,22 @@ pub struct MfaTotpStatusResponse {
     pub last_used_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MfaVerifyRequest {
     pub email: String,
     pub challenge: String,
     pub code: String,
+}
+
+impl std::fmt::Debug for MfaVerifyRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MfaVerifyRequest")
+            .field("email", &self.email)
+            .field("challenge", &"[REDACTED]")
+            .field("code", &"[REDACTED]")
+            .finish()
+    }
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -205,12 +238,22 @@ pub struct EmailVerificationConfirmRequest {
     pub tenant_slug: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PasswordResetConfirmRequest {
     pub email: String,
     pub token: String,
     pub new_password: String,
+}
+
+impl std::fmt::Debug for PasswordResetConfirmRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PasswordResetConfirmRequest")
+            .field("email", &self.email)
+            .field("token", &"[REDACTED]")
+            .field("new_password", &"[REDACTED]")
+            .finish()
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -222,6 +265,9 @@ pub struct UserResponse {
     pub avatar_url: Option<String>,
     pub is_active: bool,
     pub email_verified_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub last_login: Option<chrono::DateTime<chrono::Utc>>,
+    pub version: Option<i64>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl From<AuthenticatedUser> for UserResponse {
@@ -234,6 +280,9 @@ impl From<AuthenticatedUser> for UserResponse {
             avatar_url: user.avatar_url,
             is_active: user.is_active,
             email_verified_at: user.email_verified_at,
+            last_login: None,
+            version: None,
+            created_at: None,
         }
     }
 }
@@ -248,6 +297,9 @@ impl From<law_eye_db::User> for UserResponse {
             avatar_url: user.avatar_url,
             is_active: user.is_active,
             email_verified_at: user.email_verified_at,
+            last_login: user.last_login,
+            version: Some(user.version),
+            created_at: Some(user.created_at),
         }
     }
 }
@@ -342,7 +394,10 @@ pub(crate) async fn register(
         .await
         .map_err(AppError::from)?;
 
-    session.cycle_id().await.map_err(|e| AppError::internal(format!("Session cycle error: {}", e)))?;
+    session
+        .cycle_id()
+        .await
+        .map_err(|e| AppError::internal(format!("Session cycle error: {}", e)))?;
     let auth_user = AuthenticatedUser::from_db_user(&user);
     auth_session
         .login(&auth_user)
@@ -408,7 +463,12 @@ pub(crate) async fn login(
     let user = auth_session
         .authenticate(creds)
         .await
-        .map_err(|e| AppError::internal(format!("Auth backend error: {}", e)))?
+        .map_err(|err| match err {
+            axum_login::Error::Backend(inner) => AppError::from(inner),
+            axum_login::Error::Session(inner) => {
+                AppError::internal(format!("Session error: {}", inner))
+            }
+        })?
         .ok_or_else(|| AppError::unauthorized("Invalid email or password"))?;
 
     let mfa_status = state
@@ -454,7 +514,10 @@ pub(crate) async fn login(
         }));
     }
 
-    session.cycle_id().await.map_err(|e| AppError::internal(format!("Session cycle error: {}", e)))?;
+    session
+        .cycle_id()
+        .await
+        .map_err(|e| AppError::internal(format!("Session cycle error: {}", e)))?;
     auth_session
         .login(&user)
         .await
@@ -513,7 +576,12 @@ pub(crate) async fn logout(
         .await
         .map_err(|e| AppError::internal(format!("Session error: {}", e)))?;
 
-    unbind_session_tenant_mapping(&state, &session, user.as_ref().map(|u| u.tenant_id).unwrap_or_default()).await?;
+    unbind_session_tenant_mapping(
+        &state,
+        &session,
+        user.as_ref().map(|u| u.tenant_id).unwrap_or_default(),
+    )
+    .await?;
 
     if let Some(user) = user {
         let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
@@ -608,7 +676,7 @@ async fn unbind_session_tenant_mapping(
     Ok(())
 }
 
-fn validate_password_policy(password: &str) -> Result<(), AppError> {
+pub(crate) fn validate_password_policy(password: &str) -> Result<(), AppError> {
     let password = password.trim();
 
     if password.len() < 12 {
@@ -671,9 +739,7 @@ fn oauth_state_ttl_seconds(state: &AppState) -> u64 {
 }
 
 fn mfa_challenge_ttl_seconds(state: &AppState) -> u64 {
-    state
-        .auth_mfa_login_challenge_ttl_seconds
-        .clamp(30, 1800)
+    state.auth_mfa_login_challenge_ttl_seconds.clamp(30, 1800)
 }
 
 fn normalize_provider_or_err(state: &AppState, provider: &str) -> Result<String, AppError> {
@@ -735,11 +801,7 @@ pub(crate) async fn oauth_start(
 
     let issued = state
         .oauth_identity_service
-        .issue_state_token(
-            tenant.id,
-            &provider,
-            oauth_state_ttl_seconds(&state),
-        )
+        .issue_state_token(tenant.id, &provider, oauth_state_ttl_seconds(&state))
         .await
         .map_err(AppError::from)?;
 
@@ -867,7 +929,11 @@ pub(crate) async fn oauth_callback(
                 Err(err) => return Err(AppError::from(err)),
             };
 
-            let default_role = if existing_users == 0 { "admin" } else { "viewer" };
+            let default_role = if existing_users == 0 {
+                "admin"
+            } else {
+                "viewer"
+            };
             state
                 .user_service
                 .assign_role(tenant.id, created.id, default_role, None)
@@ -884,7 +950,10 @@ pub(crate) async fn oauth_callback(
         .await
         .map_err(AppError::from)?;
 
-    session.cycle_id().await.map_err(|e| AppError::internal(format!("Session cycle error: {}", e)))?;
+    session
+        .cycle_id()
+        .await
+        .map_err(|e| AppError::internal(format!("Session cycle error: {}", e)))?;
     let auth_user = AuthenticatedUser::from_db_user(&user);
     auth_session
         .login(&auth_user)
@@ -1068,7 +1137,7 @@ pub(crate) async fn mfa_totp_disable(
     auth_session: AuthSession,
     headers: HeaderMap,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-) -> ApiResult<Json<AuthResponse>> {
+) -> ApiResult<Json<MfaTotpStatusResponse>> {
     let user = auth_session
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
@@ -1100,12 +1169,11 @@ pub(crate) async fn mfa_totp_disable(
         .await
         .map_err(AppError::from)?;
 
-    Ok(Json(AuthResponse {
+    Ok(Json(MfaTotpStatusResponse {
         success: true,
-        message: "MFA disabled".to_string(),
-        user: None,
-        mfa_required: Some(false),
-        mfa_challenge: None,
+        enabled: false,
+        verified_at: None,
+        last_used_at: None,
     }))
 }
 
@@ -1157,7 +1225,10 @@ pub(crate) async fn mfa_verify(
         return Err(AppError::unauthorized("Invalid MFA challenge or code"));
     }
 
-    session.cycle_id().await.map_err(|e| AppError::internal(format!("Session cycle error: {}", e)))?;
+    session
+        .cycle_id()
+        .await
+        .map_err(|e| AppError::internal(format!("Session cycle error: {}", e)))?;
     let auth_user = AuthenticatedUser::from_db_user(&db_user);
     auth_session
         .login(&auth_user)

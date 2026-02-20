@@ -1,8 +1,7 @@
 "use client";
 
-import { useT } from "@/lib/i18n-client";
 import type { DomainCount } from "@/hooks/use-statistics";
-import { DOMAIN_COLORS, DOMAIN_LABELS } from "../constants";
+import { useT } from "@/lib/i18n-client";
 import {
 	Cell,
 	Legend,
@@ -11,6 +10,7 @@ import {
 	ResponsiveContainer,
 	Tooltip,
 } from "recharts";
+import { DOMAIN_COLORS, DOMAIN_LABELS } from "../constants";
 
 interface DomainPieChartProps {
 	items: DomainCount[];

@@ -62,11 +62,19 @@ export function useReports(filters: ReportFilters = {}) {
 	});
 }
 
-export function useReport(id: string) {
+interface UseReportOptions {
+	enabled?: boolean;
+	refetchInterval?: number | false;
+}
+
+export function useReport(id: string, options: UseReportOptions = {}) {
+	const { enabled = true, refetchInterval = false } = options;
+
 	return useQuery({
 		queryKey: ["report", id],
 		queryFn: () => apiClient.get<Report>(`/api/v1/reports/${id}`, assertReport),
-		enabled: !!id,
+		enabled: !!id && enabled,
+		refetchInterval,
 	});
 }
 

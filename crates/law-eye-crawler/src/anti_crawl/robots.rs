@@ -155,11 +155,7 @@ impl RobotsChecker {
     /// Get the `Crawl-delay` for a domain (if specified in robots.txt).
     pub async fn crawl_delay(&self, url: &str) -> Option<Duration> {
         let parsed = url::Url::parse(url).ok()?;
-        let origin = format!(
-            "{}://{}",
-            parsed.scheme(),
-            parsed.host_str()?
-        );
+        let origin = format!("{}://{}", parsed.scheme(), parsed.host_str()?);
 
         // Check cache
         {
@@ -190,10 +186,13 @@ impl RobotsChecker {
 
     /// Number of cached domains.
     pub fn cached_domains(&self) -> usize {
-        self.cache.lock().unwrap_or_else(|poisoned| {
-            tracing::warn!("robots cache mutex was poisoned, recovering");
-            poisoned.into_inner()
-        }).len()
+        self.cache
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                tracing::warn!("robots cache mutex was poisoned, recovering");
+                poisoned.into_inner()
+            })
+            .len()
     }
 
     async fn fetch_and_parse(&self, origin: &str) -> Result<RobotsRules> {
@@ -355,9 +354,8 @@ Disallow: /
     #[test]
     fn longest_match_wins() {
         let c = checker();
-        let rules = c.parse_robots_txt(
-            "User-agent: *\nDisallow: /a\nAllow: /a/b\nDisallow: /a/b/c\n",
-        );
+        let rules =
+            c.parse_robots_txt("User-agent: *\nDisallow: /a\nAllow: /a/b\nDisallow: /a/b/c\n");
 
         assert!(!rules.is_path_allowed("/a/something"));
         assert!(rules.is_path_allowed("/a/b/something"));

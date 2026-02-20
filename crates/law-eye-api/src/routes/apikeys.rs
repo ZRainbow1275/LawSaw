@@ -139,7 +139,13 @@ pub(crate) async fn list_keys(
         let fetch_limit = limit.saturating_add(1);
         let mut items = state
             .apikey_service
-            .list_by_user_cursor(user.tenant_id, user.id, fetch_limit, cursor.created_at, cursor.id)
+            .list_by_user_cursor(
+                user.tenant_id,
+                user.id,
+                fetch_limit,
+                cursor.created_at,
+                cursor.id,
+            )
             .await
             .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?;
 

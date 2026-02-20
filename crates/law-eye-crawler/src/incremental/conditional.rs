@@ -72,26 +72,35 @@ impl ConditionalRequest {
 
     /// Check whether we have any conditional state for `url`.
     pub fn has_state(&self, url: &str) -> bool {
-        self.state.lock().unwrap_or_else(|poisoned| {
-            tracing::warn!("conditional state mutex was poisoned, recovering");
-            poisoned.into_inner()
-        }).contains_key(url)
+        self.state
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                tracing::warn!("conditional state mutex was poisoned, recovering");
+                poisoned.into_inner()
+            })
+            .contains_key(url)
     }
 
     /// Number of tracked URLs.
     pub fn tracked_urls(&self) -> usize {
-        self.state.lock().unwrap_or_else(|poisoned| {
-            tracing::warn!("conditional state mutex was poisoned, recovering");
-            poisoned.into_inner()
-        }).len()
+        self.state
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                tracing::warn!("conditional state mutex was poisoned, recovering");
+                poisoned.into_inner()
+            })
+            .len()
     }
 
     /// Remove state for a specific URL.
     pub fn remove(&self, url: &str) {
-        self.state.lock().unwrap_or_else(|poisoned| {
-            tracing::warn!("conditional state mutex was poisoned, recovering");
-            poisoned.into_inner()
-        }).remove(url);
+        self.state
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                tracing::warn!("conditional state mutex was poisoned, recovering");
+                poisoned.into_inner()
+            })
+            .remove(url);
     }
 }
 

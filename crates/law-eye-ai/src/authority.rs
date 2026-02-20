@@ -8,60 +8,90 @@ pub struct AuthorityDetector;
 
 /// (level, label, keywords)
 const AUTHORITY_LEVELS: &[(u8, &str, &[&str])] = &[
-    (1, "\u{5baa}\u{6cd5}", &["\u{5baa}\u{6cd5}", "\u{4fee}\u{6b63}\u{6848}"]),
+    (
+        1,
+        "\u{5baa}\u{6cd5}",
+        &["\u{5baa}\u{6cd5}", "\u{4fee}\u{6b63}\u{6848}"],
+    ),
     // 宪法, 修正案
-    (2, "\u{6cd5}\u{5f8b}", &[
-        "\u{4e2d}\u{534e}\u{4eba}\u{6c11}\u{5171}\u{548c}\u{56fd}",
-        "\u{4eba}\u{6c11}\u{4ee3}\u{8868}\u{5927}\u{4f1a}",
-    ]),
+    (
+        2,
+        "\u{6cd5}\u{5f8b}",
+        &[
+            "\u{4e2d}\u{534e}\u{4eba}\u{6c11}\u{5171}\u{548c}\u{56fd}",
+            "\u{4eba}\u{6c11}\u{4ee3}\u{8868}\u{5927}\u{4f1a}",
+        ],
+    ),
     // 中华人民共和国, 人民代表大会
-    (3, "\u{884c}\u{653f}\u{6cd5}\u{89c4}", &[
-        "\u{56fd}\u{52a1}\u{9662}",
-        "\u{6761}\u{4f8b}",
-        "\u{6682}\u{884c}\u{6761}\u{4f8b}",
-    ]),
+    (
+        3,
+        "\u{884c}\u{653f}\u{6cd5}\u{89c4}",
+        &[
+            "\u{56fd}\u{52a1}\u{9662}",
+            "\u{6761}\u{4f8b}",
+            "\u{6682}\u{884c}\u{6761}\u{4f8b}",
+        ],
+    ),
     // 国务院, 条例, 暂行条例
-    (4, "\u{90e8}\u{95e8}\u{89c4}\u{7ae0}", &[
-        "\u{90e8}\u{4ee4}",
+    (
+        4,
         "\u{90e8}\u{95e8}\u{89c4}\u{7ae0}",
-        "\u{529e}\u{6cd5}",
-    ]),
+        &[
+            "\u{90e8}\u{4ee4}",
+            "\u{90e8}\u{95e8}\u{89c4}\u{7ae0}",
+            "\u{529e}\u{6cd5}",
+        ],
+    ),
     // 部令, 部门规章, 办法
-    (5, "\u{5730}\u{65b9}\u{6027}\u{6cd5}\u{89c4}", &[
-        "\u{7701}",
-        "\u{81ea}\u{6cbb}\u{533a}",
-    ]),
+    (
+        5,
+        "\u{5730}\u{65b9}\u{6027}\u{6cd5}\u{89c4}",
+        &["\u{7701}", "\u{81ea}\u{6cbb}\u{533a}"],
+    ),
     // 省, 自治区
-    (6, "\u{5730}\u{65b9}\u{653f}\u{5e9c}\u{89c4}\u{7ae0}", &[
-        "\u{5e02}\u{653f}\u{5e9c}",
-        "\u{7701}\u{653f}\u{5e9c}",
-    ]),
+    (
+        6,
+        "\u{5730}\u{65b9}\u{653f}\u{5e9c}\u{89c4}\u{7ae0}",
+        &["\u{5e02}\u{653f}\u{5e9c}", "\u{7701}\u{653f}\u{5e9c}"],
+    ),
     // 市政府, 省政府
-    (7, "\u{53f8}\u{6cd5}\u{89e3}\u{91ca}", &[
-        "\u{6700}\u{9ad8}\u{4eba}\u{6c11}\u{6cd5}\u{9662}",
-        "\u{6700}\u{9ad8}\u{4eba}\u{6c11}\u{68c0}\u{5bdf}\u{9662}",
-        "\u{89e3}\u{91ca}",
-    ]),
+    (
+        7,
+        "\u{53f8}\u{6cd5}\u{89e3}\u{91ca}",
+        &[
+            "\u{6700}\u{9ad8}\u{4eba}\u{6c11}\u{6cd5}\u{9662}",
+            "\u{6700}\u{9ad8}\u{4eba}\u{6c11}\u{68c0}\u{5bdf}\u{9662}",
+            "\u{89e3}\u{91ca}",
+        ],
+    ),
     // 最高人民法院, 最高人民检察院, 解释
-    (8, "\u{89c4}\u{8303}\u{6027}\u{6587}\u{4ef6}", &[
-        "\u{901a}\u{77e5}",
-        "\u{610f}\u{89c1}",
-        "\u{6307}\u{5bfc}",
-        "\u{6307}\u{5357}",
-    ]),
+    (
+        8,
+        "\u{89c4}\u{8303}\u{6027}\u{6587}\u{4ef6}",
+        &[
+            "\u{901a}\u{77e5}",
+            "\u{610f}\u{89c1}",
+            "\u{6307}\u{5bfc}",
+            "\u{6307}\u{5357}",
+        ],
+    ),
     // 通知, 意见, 指导, 指南
-    (9, "\u{884c}\u{4e1a}\u{6807}\u{51c6}", &[
-        "\u{6807}\u{51c6}",
-        "GB",
-        "\u{884c}\u{4e1a}",
-    ]),
+    (
+        9,
+        "\u{884c}\u{4e1a}\u{6807}\u{51c6}",
+        &["\u{6807}\u{51c6}", "GB", "\u{884c}\u{4e1a}"],
+    ),
     // 标准, GB, 行业
-    (10, "\u{975e}\u{6b63}\u{5f0f}", &[
-        "\u{7814}\u{7a76}",
-        "\u{8bc4}\u{8bba}",
-        "\u{5206}\u{6790}",
-        "\u{62a5}\u{544a}",
-    ]),
+    (
+        10,
+        "\u{975e}\u{6b63}\u{5f0f}",
+        &[
+            "\u{7814}\u{7a76}",
+            "\u{8bc4}\u{8bba}",
+            "\u{5206}\u{6790}",
+            "\u{62a5}\u{544a}",
+        ],
+    ),
     // 研究, 评论, 分析, 报告
 ];
 
@@ -120,27 +150,18 @@ mod tests {
     #[test]
     fn detect_state_council_regulation() {
         let detector = AuthorityDetector;
-        assert_eq!(
-            detector.detect("某某条例", Some("国务院")),
-            Some(3)
-        );
+        assert_eq!(detector.detect("某某条例", Some("国务院")), Some(3));
     }
 
     #[test]
     fn detect_normative_document_by_keyword() {
         let detector = AuthorityDetector;
-        assert_eq!(
-            detector.detect("关于加强数据安全管理的通知", None),
-            Some(8)
-        );
+        assert_eq!(detector.detect("关于加强数据安全管理的通知", None), Some(8));
     }
 
     #[test]
     fn defaults_to_normative_when_no_match() {
         let detector = AuthorityDetector;
-        assert_eq!(
-            detector.detect("今日新闻概览", None),
-            Some(8)
-        );
+        assert_eq!(detector.detect("今日新闻概览", None), Some(8));
     }
 }

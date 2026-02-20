@@ -336,7 +336,8 @@ impl SourceService {
         id: Uuid,
         error: Option<&str>,
     ) -> Result<()> {
-        self.update_last_fetch_with_stats(tenant_id, id, error, None).await
+        self.update_last_fetch_with_stats(tenant_id, id, error, None)
+            .await
     }
 
     /// Update source after a crawl run with full crawl statistics.

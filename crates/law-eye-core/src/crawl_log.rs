@@ -16,11 +16,7 @@ impl CrawlLogService {
     /// Start a new crawl log entry (status = 'running').
     ///
     /// Returns the ID of the new crawl log.
-    pub async fn start(
-        &self,
-        tenant_id: Uuid,
-        input: CreateCrawlLog,
-    ) -> Result<Uuid> {
+    pub async fn start(&self, tenant_id: Uuid, input: CreateCrawlLog) -> Result<Uuid> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
                 let id: (Uuid,) = sqlx::query_as(

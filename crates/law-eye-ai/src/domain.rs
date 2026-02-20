@@ -11,11 +11,7 @@ pub struct DomainClassification {
 
 impl DomainClassifier {
     /// Classify an article into domain_root (and optionally domain_sub).
-    pub fn classify(
-        &self,
-        category_slug: &str,
-        title: &str,
-    ) -> DomainClassification {
+    pub fn classify(&self, category_slug: &str, title: &str) -> DomainClassification {
         let domain_root = Self::category_to_domain(category_slug).to_string();
         let domain_sub = Self::detect_sub_domain(&domain_root, title);
         DomainClassification {
@@ -57,7 +53,8 @@ impl DomainClassifier {
                 }
             }
             "regulation" => {
-                if t.contains("\u{91d1}\u{878d}") || t.contains("\u{94f6}\u{884c}")
+                if t.contains("\u{91d1}\u{878d}")
+                    || t.contains("\u{94f6}\u{884c}")
                     || t.contains("\u{8bc1}\u{5238}")
                 {
                     // 金融, 银行, 证券
@@ -119,10 +116,15 @@ impl DomainClassifier {
                 } else if t.contains("\u{98ce}\u{9669}\u{7ba1}\u{7406}") {
                     // 风险管理
                     Some("risk_management".into())
-                } else if t.contains("\u{5c3d}\u{8c03}") || t.contains("\u{5c3d}\u{804c}\u{8c03}\u{67e5}") {
+                } else if t.contains("\u{5c3d}\u{8c03}")
+                    || t.contains("\u{5c3d}\u{804c}\u{8c03}\u{67e5}")
+                {
                     // 尽调, 尽职调查
                     Some("due_diligence".into())
-                } else if t.contains("\u{53cd}\u{6d17}\u{94b1}") || t.contains("aml") || t.contains("kyc") {
+                } else if t.contains("\u{53cd}\u{6d17}\u{94b1}")
+                    || t.contains("aml")
+                    || t.contains("kyc")
+                {
                     // 反洗钱
                     Some("aml_kyc".into())
                 } else {
@@ -130,7 +132,9 @@ impl DomainClassifier {
                 }
             }
             "technology" => {
-                if t.contains("\u{7f51}\u{7edc}\u{5b89}\u{5168}") || t.contains("\u{4fe1}\u{606f}\u{5b89}\u{5168}") {
+                if t.contains("\u{7f51}\u{7edc}\u{5b89}\u{5168}")
+                    || t.contains("\u{4fe1}\u{606f}\u{5b89}\u{5168}")
+                {
                     // 网络安全, 信息安全
                     Some("cybersecurity".into())
                 } else if t.contains("\u{4eba}\u{5de5}\u{667a}\u{80fd}") || t.contains("ai") {

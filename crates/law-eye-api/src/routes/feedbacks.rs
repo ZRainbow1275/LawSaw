@@ -1,7 +1,7 @@
 use axum::{
     extract::ConnectInfo,
     extract::{Path, State},
-    http::{header, HeaderMap, HeaderValue, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
     Json, Router,
@@ -53,6 +53,16 @@ pub struct FeedbackResponse {
     pub version: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FeedbackListResponse {
+    pub data: Vec<FeedbackResponse>,
+    pub total: i64,
+    pub limit: i64,
+    pub offset: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
 }
 
 impl From<law_eye_db::Feedback> for FeedbackResponse {
@@ -116,7 +126,7 @@ pub struct UpdateFeedbackRequest {
         ("session" = [])
     ),
     responses(
-        (status = 200, description = "Feedback list", body = Vec<FeedbackResponse>),
+        (status = 200, description = "Feedback list", body = FeedbackListResponse),
         (status = 401, description = "Not authenticated", body = ApiError),
         (status = 403, description = "Admin permission required", body = ApiError),
         (status = 500, description = "Server error", body = ApiError)
@@ -151,6 +161,12 @@ pub(crate) async fn list_feedbacks(
     if offset < 0 {
         return Err(AppError::validation("offset must be >= 0"));
     }
+
+    let total = state
+        .feedback_service
+        .count_all(user.tenant_id)
+        .await
+        .map_err(AppError::from)?;
 
     let cursor = params
         .cursor
@@ -197,13 +213,14 @@ pub(crate) async fn list_feedbacks(
         })
         .collect();
 
-    let mut response = Json(data).into_response();
-    if let Some(cursor) = next_cursor {
-        let value = HeaderValue::from_str(&cursor)
-            .map_err(|_| AppError::internal("Failed to format cursor header"))?;
-        response.headers_mut().insert("x-next-cursor", value);
-    }
-    Ok(response)
+    Ok(Json(FeedbackListResponse {
+        data,
+        total,
+        limit,
+        offset,
+        next_cursor,
+    })
+    .into_response())
 }
 
 /// Current user: list my feedbacks
@@ -219,7 +236,7 @@ pub(crate) async fn list_feedbacks(
         ("session" = [])
     ),
     responses(
-        (status = 200, description = "My feedback list", body = Vec<FeedbackResponse>),
+        (status = 200, description = "My feedback list", body = FeedbackListResponse),
         (status = 401, description = "Not authenticated", body = ApiError),
         (status = 500, description = "Server error", body = ApiError)
     )
@@ -244,6 +261,12 @@ pub(crate) async fn list_my_feedbacks(
     if offset < 0 {
         return Err(AppError::validation("offset must be >= 0"));
     }
+
+    let total = state
+        .feedback_service
+        .count_by_user(user.tenant_id, user.id)
+        .await
+        .map_err(AppError::from)?;
 
     let cursor = params
         .cursor
@@ -285,18 +308,16 @@ pub(crate) async fn list_my_feedbacks(
             .map_err(AppError::from)?
     };
 
-    let mut response = Json(
-        rows.into_iter()
-            .map(FeedbackResponse::from)
-            .collect::<Vec<_>>(),
-    )
-    .into_response();
-    if let Some(cursor) = next_cursor {
-        let value = HeaderValue::from_str(&cursor)
-            .map_err(|_| AppError::internal("Failed to format cursor header"))?;
-        response.headers_mut().insert("x-next-cursor", value);
-    }
-    Ok(response)
+    let data: Vec<FeedbackResponse> = rows.into_iter().map(FeedbackResponse::from).collect();
+
+    Ok(Json(FeedbackListResponse {
+        data,
+        total,
+        limit,
+        offset,
+        next_cursor,
+    })
+    .into_response())
 }
 
 /// Create a feedback (any authenticated user)

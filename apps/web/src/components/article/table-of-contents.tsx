@@ -188,7 +188,10 @@ export function TOCDrawer({
 												className={cn(
 													"h-3 w-3 shrink-0 transition-transform",
 													activeId === item.id && "text-primary-500",
-												)} aria-hidden="true" focusable="false" />
+												)}
+												aria-hidden="true"
+												focusable="false"
+											/>
 											<span className="line-clamp-2">{item.text}</span>
 										</button>
 									</li>

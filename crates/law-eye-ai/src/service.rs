@@ -185,7 +185,8 @@ impl AiService {
 
     /// 完整的 AI 处理流程
     pub async fn process_article(&self, title: &str, content: &str) -> Result<ArticleAiResult> {
-        self.process_article_with_metadata(title, content, None, None).await
+        self.process_article_with_metadata(title, content, None, None)
+            .await
     }
 
     /// 完整的 AI 处理流程 (含文章元数据, 用于 importance/domain/authority 评估)
@@ -220,9 +221,7 @@ impl AiService {
         info!("AI processing completed for article: {}", title);
 
         // Run rule-based assessors (no LLM call needed)
-        let authority_level = self
-            .authority_detector
-            .detect(title, issuer);
+        let authority_level = self.authority_detector.detect(title, issuer);
         let importance = self.importance_assessor.rule_assess(
             title,
             existing_authority_level.or_else(|| authority_level.map(|v| v as i32)),

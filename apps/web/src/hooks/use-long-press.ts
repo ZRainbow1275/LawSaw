@@ -70,10 +70,13 @@ export function useLongPress({
 		[enabled],
 	);
 
-	const onContextMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
-		if (!enabled) return;
-		event.preventDefault();
-	}, [enabled]);
+	const onContextMenu = useCallback(
+		(event: React.MouseEvent<HTMLElement>) => {
+			if (!enabled) return;
+			event.preventDefault();
+		},
+		[enabled],
+	);
 
 	useEffect(() => {
 		return () => {

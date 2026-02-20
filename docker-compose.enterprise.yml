@@ -26,7 +26,7 @@ services:
       - ${LAW_EYE_ENTERPRISE_PKI_DIR:?missing LAW_EYE_ENTERPRISE_PKI_DIR}:/vault/tls:ro
       - vault_data:/vault/file
     networks:
-      - law-eye-network
+      - backend
     restart: unless-stopped
 
   minio:
@@ -51,7 +51,7 @@ services:
       timeout: 5s
       retries: 10
     networks:
-      - law-eye-network
+      - backend
     restart: unless-stopped
 
   api:
@@ -80,6 +80,7 @@ services:
       LAW_EYE__REDIS__URL: ""
       LAW_EYE__AI__API_KEY: ""
       LAW_EYE__AI__BASE_URL: ""
+      LAW_EYE__METRICS__TOKEN: ${LAW_EYE__METRICS__TOKEN:?LAW_EYE__METRICS__TOKEN is required}
     depends_on:
       vault:
         condition: service_started
@@ -110,6 +111,7 @@ services:
       LAW_EYE__REDIS__URL: ""
       LAW_EYE__AI__API_KEY: ""
       LAW_EYE__AI__BASE_URL: ""
+      LAW_EYE__METRICS__TOKEN: ${LAW_EYE__METRICS__TOKEN:?LAW_EYE__METRICS__TOKEN is required}
     depends_on:
       vault:
         condition: service_started
@@ -127,7 +129,7 @@ services:
       api:
         condition: service_healthy
     networks:
-      - law-eye-network
+      - backend
     restart: unless-stopped
 
   api-mtls:
@@ -142,7 +144,7 @@ services:
       - caddy_api_mtls_data:/data
       - caddy_api_mtls_config:/config
     networks:
-      - law-eye-network
+      - backend
     restart: unless-stopped
 
   gateway:
@@ -161,7 +163,58 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     networks:
-      - law-eye-network
+      - backend
+    restart: unless-stopped
+
+  blackbox-exporter:
+    image: ${BLACKBOX_EXPORTER_IMAGE:-prom/blackbox-exporter:v0.25.0}
+    container_name: law-eye-blackbox-exporter
+    command: ["--config.file=/etc/blackbox_exporter/config.yml"]
+    volumes:
+      - ./infra/monitoring/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    networks:
+      - backend
+    restart: unless-stopped
+
+  alertmanager:
+    image: ${ALERTMANAGER_IMAGE:-prom/alertmanager:v0.27.0}
+    container_name: law-eye-alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./infra/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    networks:
+      - backend
+    restart: unless-stopped
+
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:v2.54.1}
+    container_name: law-eye-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    environment:
+      LAW_EYE__METRICS__TOKEN: ${LAW_EYE__METRICS__TOKEN:?LAW_EYE__METRICS__TOKEN is required}
+    volumes:
+      - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/monitoring/alert_rules.yml:/etc/prometheus/rules/alert_rules.yml:ro
+      - ${LAW_EYE_ENTERPRISE_SECRETS_DIR:?missing LAW_EYE_ENTERPRISE_SECRETS_DIR}/metrics_token:/etc/prometheus/secrets/metrics_token:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+      alertmanager:
+        condition: service_started
+      blackbox-exporter:
+        condition: service_started
+    networks:
+      - backend
     restart: unless-stopped
 
 
@@ -182,7 +235,7 @@ services:
       vault:
         condition: service_started
     networks:
-      - law-eye-network
+      - backend
     restart: unless-stopped
 
   backup-cron:
@@ -201,7 +254,7 @@ services:
       postgres:
         condition: service_started
     networks:
-      - law-eye-network
+      - backend
     restart: unless-stopped
 
   audit-report-cron:
@@ -220,7 +273,7 @@ services:
       postgres:
         condition: service_started
     networks:
-      - law-eye-network
+      - backend
     restart: unless-stopped
 
 volumes:
@@ -232,3 +285,5 @@ volumes:
   minio_data:
   backup_data:
   audit_report_data:
+  alertmanager_data:
+  prometheus_data:

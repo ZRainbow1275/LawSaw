@@ -8,7 +8,7 @@ import { useLocale, useT } from "@/lib/i18n-client";
 import { safeReturnTo } from "@/lib/utils";
 import { useToastStore } from "@/stores/toast-store";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -26,11 +26,16 @@ function validatePassword(value: string): string | null {
 	return null;
 }
 
+interface MfaState {
+	email: string;
+	challenge: string;
+}
+
 export function LoginForm() {
 	const router = useRouter();
 	const locale = useLocale();
 	const t = useT();
-	const { login } = useAuth();
+	const { login, verifyMfa } = useAuth();
 	const [returnTo, setReturnTo] = useState<string | null>(null);
 	const [error, setError] = useState("");
 	const [email, setEmail] = useState("");
@@ -38,11 +43,33 @@ export function LoginForm() {
 	const [touched, setTouched] = useState({ email: false, password: false });
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
+	const [mfaState, setMfaState] = useState<MfaState | null>(null);
+	const [mfaCode, setMfaCode] = useState("");
+	const mfaInputRef = useRef<HTMLInputElement>(null);
+
 	useEffect(() => {
 		setReturnTo(
 			safeReturnTo(new URLSearchParams(window.location.search).get("returnTo")),
 		);
 	}, []);
+
+	useEffect(() => {
+		if (mfaState) {
+			mfaInputRef.current?.focus();
+		}
+	}, [mfaState]);
+
+	const navigateAfterLogin = useCallback(() => {
+		const nextReturnTo =
+			returnTo ||
+			safeReturnTo(new URLSearchParams(window.location.search).get("returnTo"));
+		useToastStore.getState().addToast({
+			type: "success",
+			title: t("Signed in"),
+			description: t("Welcome back"),
+		});
+		router.replace(withLocalePath(locale, nextReturnTo || "/"));
+	}, [returnTo, t, router, locale]);
 
 	const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
 		e.preventDefault();
@@ -62,17 +89,14 @@ export function LoginForm() {
 		try {
 			const result = await login({ email: email.trim(), password });
 			if (result.success) {
-				const nextReturnTo =
-					returnTo ||
-					safeReturnTo(
-						new URLSearchParams(window.location.search).get("returnTo"),
-					);
-				useToastStore.getState().addToast({
-					type: "success",
-					title: t("Signed in"),
-					description: t("Welcome back"),
+				navigateAfterLogin();
+			} else if ("mfaRequired" in result && result.mfaRequired) {
+				setMfaState({
+					email: result.email,
+					challenge: result.mfaChallenge,
 				});
-				router.replace(withLocalePath(locale, nextReturnTo || "/"));
+				setMfaCode("");
+				setError("");
 			} else {
 				setError(result.error || "Sign in failed. Please try again.");
 			}
@@ -80,6 +104,110 @@ export function LoginForm() {
 			setIsSubmitting(false);
 		}
 	};
+
+	const handleMfaSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+		e.preventDefault();
+		if (!mfaState) return;
+
+		const trimmedCode = mfaCode.trim();
+		if (trimmedCode.length !== 6 || !/^\d{6}$/.test(trimmedCode)) {
+			setError("Enter the 6-digit verification code");
+			return;
+		}
+
+		setError("");
+		setIsSubmitting(true);
+
+		try {
+			const result = await verifyMfa({
+				email: mfaState.email,
+				challenge: mfaState.challenge,
+				code: trimmedCode,
+			});
+			if (result.success) {
+				navigateAfterLogin();
+			} else {
+				setError(result.error || "MFA verification failed.");
+			}
+		} finally {
+			setIsSubmitting(false);
+		}
+	};
+
+	const handleBackToLogin = () => {
+		setMfaState(null);
+		setMfaCode("");
+		setError("");
+		setPassword("");
+	};
+
+	if (mfaState) {
+		return (
+			<form onSubmit={handleMfaSubmit} className="space-y-4">
+				{error && (
+					<div className="rounded-lg bg-error-light p-3 text-sm text-error">
+						{t(error)}
+					</div>
+				)}
+
+				<p className="text-center text-sm text-neutral-600">
+					{t("Enter the 6-digit code from your authenticator app")}
+				</p>
+
+				<div className="space-y-2">
+					<label
+						htmlFor="mfa-code"
+						className="text-sm font-medium text-neutral-700"
+					>
+						{t("Verification code")}
+					</label>
+					<Input
+						ref={mfaInputRef}
+						id="mfa-code"
+						name="mfa-code"
+						type="text"
+						inputMode="numeric"
+						pattern="\d{6}"
+						maxLength={6}
+						value={mfaCode}
+						onChange={(e) => {
+							const val = e.target.value.replace(/\D/g, "").slice(0, 6);
+							setMfaCode(val);
+						}}
+						placeholder="000000"
+						required
+						autoComplete="one-time-code"
+						autoFocus
+						aria-label={t("Verification code")}
+						aria-invalid={!!error}
+						aria-describedby={error ? "mfa-error" : undefined}
+						className="text-center text-lg tracking-[0.3em]"
+					/>
+					{error && (
+						<p id="mfa-error" className="sr-only">
+							{t(error)}
+						</p>
+					)}
+				</div>
+
+				<Button
+					type="submit"
+					className="w-full"
+					disabled={isSubmitting || mfaCode.length !== 6}
+				>
+					{isSubmitting ? t("Verifying...") : t("Verify")}
+				</Button>
+
+				<button
+					type="button"
+					onClick={handleBackToLogin}
+					className="w-full text-center text-sm text-neutral-500 hover:text-neutral-700 hover:underline"
+				>
+					{t("Back to login")}
+				</button>
+			</form>
+		);
+	}
 
 	return (
 		<form onSubmit={handleSubmit} className="space-y-4">

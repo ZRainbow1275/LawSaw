@@ -17,7 +17,10 @@ export default function NotFound() {
 				<Card>
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2">
-							<Compass aria-hidden="true" className="h-5 w-5 text-primary-500" />
+							<Compass
+								aria-hidden="true"
+								className="h-5 w-5 text-primary-500"
+							/>
 							{t("Page not found")}
 						</CardTitle>
 					</CardHeader>

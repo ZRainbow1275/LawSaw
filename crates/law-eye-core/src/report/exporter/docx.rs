@@ -131,8 +131,12 @@ impl DocxExporter {
             );
             if !item.description.is_empty() {
                 docx = docx.add_paragraph(
-                    Paragraph::new()
-                        .add_run(Run::new().add_text(&item.description).size(20).color("555555")),
+                    Paragraph::new().add_run(
+                        Run::new()
+                            .add_text(&item.description)
+                            .size(20)
+                            .color("555555"),
+                    ),
                 );
             }
             docx = docx.add_paragraph(Paragraph::new());

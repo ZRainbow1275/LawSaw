@@ -1,13 +1,18 @@
 "use client";
 
+import { useT } from "@/lib/i18n-client";
 import { Wifi, WifiOff } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const ONLINE_TOAST_MS = 2500;
 
 export function NetworkStatusIndicator() {
+	const t = useT();
+	const router = useRouter();
 	const [isOnline, setIsOnline] = useState(true);
 	const [showOnlineHint, setShowOnlineHint] = useState(false);
+	const [isRetrying, setIsRetrying] = useState(false);
 
 	useEffect(() => {
 		const current = typeof navigator === "undefined" ? true : navigator.onLine;
@@ -52,6 +57,16 @@ export function NetworkStatusIndicator() {
 	}
 
 	const offline = !isOnline;
+	const canRetry = !offline && showOnlineHint;
+
+	const handleRetry = () => {
+		setIsRetrying(true);
+		router.refresh();
+		setShowOnlineHint(false);
+		setTimeout(() => {
+			setIsRetrying(false);
+		}, 600);
+	};
 
 	return (
 		<output
@@ -67,7 +82,17 @@ export function NetworkStatusIndicator() {
 			) : (
 				<Wifi className="h-4 w-4" aria-hidden="true" />
 			)}
-			<span>{offline ? "网络已断开" : "网络已恢复"}</span>
+			<span>{offline ? t("Network disconnected") : t("Network restored")}</span>
+			{canRetry && (
+				<button
+					type="button"
+					onClick={handleRetry}
+					disabled={isRetrying}
+					className="rounded-full border border-green-300 bg-white/90 px-2 py-0.5 text-xs font-medium text-green-700 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+				>
+					{isRetrying ? t("Refreshing...") : t("Refresh")}
+				</button>
+			)}
 		</output>
 	);
 }

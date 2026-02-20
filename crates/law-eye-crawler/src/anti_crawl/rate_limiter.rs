@@ -99,16 +99,14 @@ impl DomainRateLimiter {
                 tracing::warn!("rate limiter buckets mutex was poisoned, recovering");
                 poisoned.into_inner()
             });
-            let bucket = buckets
-                .entry(domain.to_string())
-                .or_insert_with(|| {
-                    let config = self
-                        .overrides
-                        .get(domain)
-                        .cloned()
-                        .unwrap_or_else(|| self.default_config.clone());
-                    TokenBucket::new(config)
-                });
+            let bucket = buckets.entry(domain.to_string()).or_insert_with(|| {
+                let config = self
+                    .overrides
+                    .get(domain)
+                    .cloned()
+                    .unwrap_or_else(|| self.default_config.clone());
+                TokenBucket::new(config)
+            });
             bucket.try_acquire()
         };
 
@@ -124,15 +122,20 @@ impl DomainRateLimiter {
 
     /// Extract the domain from a URL string.
     pub fn domain_from_url(url: &str) -> Option<String> {
-        url::Url::parse(url).ok().and_then(|u| u.host_str().map(|h| h.to_string()))
+        url::Url::parse(url)
+            .ok()
+            .and_then(|u| u.host_str().map(|h| h.to_string()))
     }
 
     /// Number of tracked domains.
     pub fn tracked_domains(&self) -> usize {
-        self.buckets.lock().unwrap_or_else(|poisoned| {
-            tracing::warn!("rate limiter buckets mutex was poisoned, recovering");
-            poisoned.into_inner()
-        }).len()
+        self.buckets
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                tracing::warn!("rate limiter buckets mutex was poisoned, recovering");
+                poisoned.into_inner()
+            })
+            .len()
     }
 }
 
@@ -180,10 +183,7 @@ mod tests {
             DomainRateLimiter::domain_from_url("http://localhost:3000/api"),
             Some("localhost".to_string())
         );
-        assert_eq!(
-            DomainRateLimiter::domain_from_url("not a url"),
-            None
-        );
+        assert_eq!(DomainRateLimiter::domain_from_url("not a url"), None);
     }
 
     #[tokio::test]
@@ -235,11 +235,13 @@ mod tests {
 
     #[test]
     fn with_override_sets_domain_specific_config() {
-        let limiter = DomainRateLimiter::new(RateLimiterConfig::default())
-            .with_override("slow.gov.cn", RateLimiterConfig {
+        let limiter = DomainRateLimiter::new(RateLimiterConfig::default()).with_override(
+            "slow.gov.cn",
+            RateLimiterConfig {
                 burst_size: 1,
                 tokens_per_second: 0.1,
-            });
+            },
+        );
 
         assert!(limiter.overrides.contains_key("slow.gov.cn"));
     }

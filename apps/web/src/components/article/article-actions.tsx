@@ -273,7 +273,10 @@ export function MobileArticleActions({
 							className={cn(
 								"h-5 w-5",
 								isBookmarked && "fill-primary-500 text-primary-500",
-							)} aria-hidden="true" focusable="false" />
+							)}
+							aria-hidden="true"
+							focusable="false"
+						/>
 					}
 					label={t("Bookmark")}
 					active={isBookmarked}
@@ -282,7 +285,13 @@ export function MobileArticleActions({
 
 				{/* Settings */}
 				<MobileActionButton
-					icon={<Settings2 className="h-5 w-5" aria-hidden="true" focusable="false" />}
+					icon={
+						<Settings2
+							className="h-5 w-5"
+							aria-hidden="true"
+							focusable="false"
+						/>
+					}
 					label={t("Reading settings")}
 					onClick={onOpenSettings}
 				/>

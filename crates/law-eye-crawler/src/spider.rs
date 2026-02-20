@@ -67,8 +67,7 @@ pub struct WebSpider {
 impl WebSpider {
     pub fn new() -> Result<Self> {
         // Do NOT set a fixed user_agent on the client — we inject a random one per request.
-        let mut builder = Client::builder()
-            .timeout(Duration::from_secs(30));
+        let mut builder = Client::builder().timeout(Duration::from_secs(30));
 
         // Honour LAW_EYE__SPIDER__NO_PROXY=1 to bypass system proxy.
         // Also bypass when NO_PROXY / no_proxy covers all ("*").
@@ -210,7 +209,12 @@ impl WebSpider {
         Ok(articles)
     }
 
-    async fn fetch_html_with_retry(&self, url: &str, context: &str, encoding_hint: Option<&str>) -> Result<String> {
+    async fn fetch_html_with_retry(
+        &self,
+        url: &str,
+        context: &str,
+        encoding_hint: Option<&str>,
+    ) -> Result<String> {
         let max_retries = spider_http_max_retries();
         let base_delay_ms = spider_http_retry_base_delay_ms();
         let max_delay_ms = spider_http_retry_max_delay_ms();
@@ -223,7 +227,9 @@ impl WebSpider {
             let headers = self.randomized_headers.generate();
             let ua = self.randomized_headers.random_user_agent();
 
-            match self.client.get(url)
+            match self
+                .client
+                .get(url)
                 .header(reqwest::header::USER_AGENT, ua)
                 .headers(headers)
                 .send()
@@ -474,21 +480,19 @@ mod tests {
                 .set_nonblocking(false)
                 .expect("set blocking listener");
 
-            let route_map: std::sync::Arc<HashMap<String, String>> =
-                std::sync::Arc::new(
-                    routes
-                        .iter()
-                        .map(|(path, body)| ((*path).to_string(), (*body).to_string()))
-                        .collect(),
-                );
+            let route_map: std::sync::Arc<HashMap<String, String>> = std::sync::Arc::new(
+                routes
+                    .iter()
+                    .map(|(path, body)| ((*path).to_string(), (*body).to_string()))
+                    .collect(),
+            );
 
             let (shutdown_sender, shutdown_receiver) = mpsc::channel::<()>();
 
             let handle = thread::spawn(move || {
                 // Set a short SO timeout on the listener so accept() doesn't block forever.
                 let _ = listener.set_nonblocking(false);
-                let _ = listener
-                    .set_nonblocking(false);
+                let _ = listener.set_nonblocking(false);
 
                 loop {
                     // Use nonblocking check for shutdown, then blocking accept with timeout.

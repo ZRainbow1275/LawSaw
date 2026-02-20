@@ -48,15 +48,14 @@ impl Embedder {
         })
     }
 
-    /// 将文本分块并生成嵌入
+    /// 将文本分块并生成嵌入（并行调用所有 chunk 的 embed 请求）
     pub async fn embed_chunks(&self, text: &str) -> Result<Vec<(String, EmbeddingResult)>> {
         let chunks = self.chunk_text(text);
-        let mut results = Vec::new();
 
-        for chunk in chunks {
-            let embedding = self.embed(&chunk).await?;
-            results.push((chunk, embedding));
-        }
+        let embed_futures: Vec<_> = chunks.iter().map(|chunk| self.embed(chunk)).collect();
+        let embeddings = futures::future::try_join_all(embed_futures).await?;
+
+        let results: Vec<(String, EmbeddingResult)> = chunks.into_iter().zip(embeddings).collect();
 
         info!("Generated {} chunk embeddings", results.len());
         Ok(results)

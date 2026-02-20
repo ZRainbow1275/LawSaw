@@ -46,11 +46,7 @@ impl ReportTemplateService {
     }
 
     /// 获取模板详情
-    pub async fn get_by_id(
-        &self,
-        tenant_id: Uuid,
-        template_id: Uuid,
-    ) -> Result<ReportTemplate> {
+    pub async fn get_by_id(&self, tenant_id: Uuid, template_id: Uuid) -> Result<ReportTemplate> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
                 sqlx::query_as::<_, ReportTemplate>(
@@ -97,9 +93,9 @@ impl ReportTemplateService {
                         "orientation": "portrait"
                     })
                 });
-                let sections_config = input.sections_config.unwrap_or_else(|| {
-                    serde_json::json!([])
-                });
+                let sections_config = input
+                    .sections_config
+                    .unwrap_or_else(|| serde_json::json!([]));
 
                 let template = sqlx::query_as::<_, ReportTemplate>(
                     r#"
@@ -131,11 +127,7 @@ impl ReportTemplateService {
     }
 
     /// 软删除模板（禁止删除内置模板）
-    pub async fn deactivate(
-        &self,
-        tenant_id: Uuid,
-        template_id: Uuid,
-    ) -> Result<()> {
+    pub async fn deactivate(&self, tenant_id: Uuid, template_id: Uuid) -> Result<()> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
                 // 检查是否为内置模板

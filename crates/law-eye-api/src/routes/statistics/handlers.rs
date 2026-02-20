@@ -1,8 +1,6 @@
 use axum::{extract::State, Json};
 use law_eye_common::{CacheService, CacheTtl};
-use law_eye_core::statistics::{
-    CrossDimensionalQuery, StatisticsQuery, TimelineQuery,
-};
+use law_eye_core::statistics::{CrossDimensionalQuery, StatisticsQuery, TimelineQuery};
 
 use super::dto::*;
 use crate::auth::AuthSession;
@@ -26,7 +24,11 @@ pub(crate) async fn get_regional(
     // Cache-Aside: 先查缓存
     let cache_key = CacheService::build_key(user.tenant_id, "statistics:regional", &query);
     if let Some(ref cache) = state.cache_service {
-        if let Some(cached) = cache.get::<RegionalDistributionResponse>(&cache_key).await.unwrap_or(None) {
+        if let Some(cached) = cache
+            .get::<RegionalDistributionResponse>(&cache_key)
+            .await
+            .unwrap_or(None)
+        {
             return Ok(Json(cached));
         }
     }
@@ -79,7 +81,11 @@ pub(crate) async fn get_industry(
     let cache_params = serde_json::json!({"q": &query, "include_sub": include_sub});
     let cache_key = CacheService::build_key(user.tenant_id, "statistics:industry", &cache_params);
     if let Some(ref cache) = state.cache_service {
-        if let Some(cached) = cache.get::<IndustryDistributionResponse>(&cache_key).await.unwrap_or(None) {
+        if let Some(cached) = cache
+            .get::<IndustryDistributionResponse>(&cache_key)
+            .await
+            .unwrap_or(None)
+        {
             return Ok(Json(cached));
         }
     }
@@ -136,7 +142,11 @@ pub(crate) async fn get_importance(
 
     let cache_key = CacheService::build_key(user.tenant_id, "statistics:importance", &query);
     if let Some(ref cache) = state.cache_service {
-        if let Some(cached) = cache.get::<ImportanceDistributionResponse>(&cache_key).await.unwrap_or(None) {
+        if let Some(cached) = cache
+            .get::<ImportanceDistributionResponse>(&cache_key)
+            .await
+            .unwrap_or(None)
+        {
             return Ok(Json(cached));
         }
     }
@@ -177,7 +187,11 @@ pub(crate) async fn get_authority(
 
     let cache_key = CacheService::build_key(user.tenant_id, "statistics:authority", &query);
     if let Some(ref cache) = state.cache_service {
-        if let Some(cached) = cache.get::<AuthorityDistributionResponse>(&cache_key).await.unwrap_or(None) {
+        if let Some(cached) = cache
+            .get::<AuthorityDistributionResponse>(&cache_key)
+            .await
+            .unwrap_or(None)
+        {
             return Ok(Json(cached));
         }
     }
@@ -228,7 +242,11 @@ pub(crate) async fn get_issuer(
     let cache_params = serde_json::json!({"q": &query, "limit": limit});
     let cache_key = CacheService::build_key(user.tenant_id, "statistics:issuer", &cache_params);
     if let Some(ref cache) = state.cache_service {
-        if let Some(cached) = cache.get::<IssuerDistributionResponse>(&cache_key).await.unwrap_or(None) {
+        if let Some(cached) = cache
+            .get::<IssuerDistributionResponse>(&cache_key)
+            .await
+            .unwrap_or(None)
+        {
             return Ok(Json(cached));
         }
     }
@@ -279,7 +297,11 @@ pub(crate) async fn get_cross_dimensional(
 
     let cache_key = CacheService::build_key(user.tenant_id, "statistics:cross", &query);
     if let Some(ref cache) = state.cache_service {
-        if let Some(cached) = cache.get::<CrossDimensionalResponse>(&cache_key).await.unwrap_or(None) {
+        if let Some(cached) = cache
+            .get::<CrossDimensionalResponse>(&cache_key)
+            .await
+            .unwrap_or(None)
+        {
             return Ok(Json(cached));
         }
     }
@@ -329,7 +351,11 @@ pub(crate) async fn get_timeline(
 
     let cache_key = CacheService::build_key(user.tenant_id, "statistics:timeline", &query);
     if let Some(ref cache) = state.cache_service {
-        if let Some(cached) = cache.get::<TimelineByDimensionResponse>(&cache_key).await.unwrap_or(None) {
+        if let Some(cached) = cache
+            .get::<TimelineByDimensionResponse>(&cache_key)
+            .await
+            .unwrap_or(None)
+        {
             return Ok(Json(cached));
         }
     }
@@ -378,7 +404,11 @@ pub(crate) async fn get_overview(
 
     let cache_key = CacheService::build_key_simple(user.tenant_id, "statistics:overview");
     if let Some(ref cache) = state.cache_service {
-        if let Some(cached) = cache.get::<StatisticsOverviewResponse>(&cache_key).await.unwrap_or(None) {
+        if let Some(cached) = cache
+            .get::<StatisticsOverviewResponse>(&cache_key)
+            .await
+            .unwrap_or(None)
+        {
             return Ok(Json(cached));
         }
     }

@@ -124,7 +124,8 @@ impl OAuthIdentityService {
 
                 let mut matched_id: Option<Uuid> = None;
                 for (id, hash) in candidates {
-                    let parsed = PasswordHash::new(&hash).map_err(|e| Error::Internal(e.to_string()))?;
+                    let parsed =
+                        PasswordHash::new(&hash).map_err(|e| Error::Internal(e.to_string()))?;
                     if Argon2::default()
                         .verify_password(raw_state.as_bytes(), &parsed)
                         .is_ok()
@@ -238,11 +239,7 @@ impl OAuthIdentityService {
         .await
     }
 
-    pub async fn get_user_by_email(
-        &self,
-        tenant_id: Uuid,
-        email: &str,
-    ) -> Result<Option<User>> {
+    pub async fn get_user_by_email(&self, tenant_id: Uuid, email: &str) -> Result<Option<User>> {
         let email = normalize_email(email)?;
 
         with_tenant_tx(&self.pool, tenant_id, |tx| {
@@ -283,11 +280,15 @@ fn normalize_provider(provider: &str) -> Result<String> {
 fn normalize_provider_user_id(provider_user_id: &str) -> Result<String> {
     let value = provider_user_id.trim().to_string();
     if value.is_empty() || value.len() > PROVIDER_USER_ID_MAX_LEN {
-        return Err(Error::Validation("Invalid oauth provider user id".to_string()));
+        return Err(Error::Validation(
+            "Invalid oauth provider user id".to_string(),
+        ));
     }
 
     if value.chars().any(|ch| ch.is_control()) {
-        return Err(Error::Validation("Invalid oauth provider user id".to_string()));
+        return Err(Error::Validation(
+            "Invalid oauth provider user id".to_string(),
+        ));
     }
 
     Ok(value)

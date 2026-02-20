@@ -68,17 +68,10 @@ impl RandomizedHeaders {
         }
 
         // Upgrade-Insecure-Requests
-        headers.insert(
-            "Upgrade-Insecure-Requests",
-            HeaderValue::from_static("1"),
-        );
+        headers.insert("Upgrade-Insecure-Requests", HeaderValue::from_static("1"));
 
         // Cache-Control variation
-        let cache_controls: &[&str] = &[
-            "max-age=0",
-            "no-cache",
-            "max-age=0, no-cache",
-        ];
+        let cache_controls: &[&str] = &["max-age=0", "no-cache", "max-age=0, no-cache"];
         let cc_idx = rng.gen_range(0..cache_controls.len());
         if let Ok(val) = HeaderValue::from_str(cache_controls[cc_idx]) {
             headers.insert("Cache-Control", val);

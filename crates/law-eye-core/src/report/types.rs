@@ -104,9 +104,7 @@ impl ExportFormat {
     pub fn content_type(&self) -> &'static str {
         match self {
             Self::Pdf => "application/pdf",
-            Self::Docx => {
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            }
+            Self::Docx => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             Self::Html => "text/html; charset=utf-8",
         }
     }
@@ -289,4 +287,3 @@ pub struct ReportCalendarEvent {
     pub title: String,
     pub event_type: String,
 }
-

@@ -1,8 +1,7 @@
 "use client";
 
-import { useT } from "@/lib/i18n-client";
 import type { AuthorityLevelCount } from "@/hooks/use-statistics";
-import { AUTHORITY_LABELS } from "../constants";
+import { useT } from "@/lib/i18n-client";
 import {
 	Bar,
 	BarChart,
@@ -12,6 +11,7 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
+import { AUTHORITY_LABELS } from "../constants";
 
 interface AuthorityChartProps {
 	levels: AuthorityLevelCount[];

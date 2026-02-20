@@ -133,7 +133,10 @@ export function EntityInspector({
 
 							{articlesQuery.isLoading ? (
 								<div className="mt-2 flex items-center text-sm text-neutral-600">
-									<Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
+									<Loader2
+										aria-hidden="true"
+										className="mr-2 h-4 w-4 animate-spin"
+									/>
 									{t("Loading...")}
 								</div>
 							) : articlesQuery.isError ? (
@@ -153,7 +156,10 @@ export function EntityInspector({
 										>
 											<div className="min-w-0">
 												<div className="flex items-center gap-2">
-													<FileText aria-hidden="true" className="h-4 w-4 shrink-0 text-neutral-400" />
+													<FileText
+														aria-hidden="true"
+														className="h-4 w-4 shrink-0 text-neutral-400"
+													/>
 													<Link
 														href={withLocalePath(
 															locale,

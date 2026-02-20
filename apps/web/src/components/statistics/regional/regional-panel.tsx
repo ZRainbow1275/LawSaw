@@ -91,7 +91,10 @@ export function RegionalPanel() {
 				<Card className="lg:col-span-2">
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2">
-							<MapIcon className="h-5 w-5 text-primary-500" aria-hidden="true" />
+							<MapIcon
+								className="h-5 w-5 text-primary-500"
+								aria-hidden="true"
+							/>
 							{t("Regional Heatmap")}
 						</CardTitle>
 					</CardHeader>
@@ -104,10 +107,7 @@ export function RegionalPanel() {
 				<Card>
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2">
-							<Globe2
-								className="h-5 w-5 text-primary-500"
-								aria-hidden="true"
-							/>
+							<Globe2 className="h-5 w-5 text-primary-500" aria-hidden="true" />
 							{t("Top Regions")}
 						</CardTitle>
 					</CardHeader>

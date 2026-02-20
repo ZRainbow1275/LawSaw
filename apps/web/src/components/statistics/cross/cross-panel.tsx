@@ -14,23 +14,30 @@ import { DOMAIN_LABELS } from "../constants";
 import { CrossHeatmap } from "./cross-heatmap";
 import { TimelineChart } from "./timeline-chart";
 
-type DimensionKey = "domain_root" | "importance" | "authority_level" | "region_code";
+type DimensionKey =
+	| "domain"
+	| "importance"
+	| "authority"
+	| "region"
+	| "risk"
+	| "sentiment"
+	| "issuer";
 
 const DIMENSION_OPTIONS: Array<{
 	key: DimensionKey;
 	labelKey: string;
 }> = [
-	{ key: "domain_root", labelKey: "Domain" },
+	{ key: "domain", labelKey: "Domain" },
 	{ key: "importance", labelKey: "Importance" },
-	{ key: "authority_level", labelKey: "Authority" },
-	{ key: "region_code", labelKey: "Region" },
+	{ key: "authority", labelKey: "Authority" },
+	{ key: "region", labelKey: "Region" },
 ];
 
 export function CrossPanel() {
 	const t = useT();
-	const [dimX, setDimX] = useState<DimensionKey>("domain_root");
+	const [dimX, setDimX] = useState<DimensionKey>("domain");
 	const [dimY, setDimY] = useState<DimensionKey>("importance");
-	const [timelineDim, setTimelineDim] = useState<DimensionKey>("domain_root");
+	const [timelineDim, setTimelineDim] = useState<DimensionKey>("domain");
 
 	const {
 		data: crossData,
@@ -64,10 +71,7 @@ export function CrossPanel() {
 			<Card>
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
-						<Grid3X3
-							className="h-5 w-5 text-primary-500"
-							aria-hidden="true"
-						/>
+						<Grid3X3 className="h-5 w-5 text-primary-500" aria-hidden="true" />
 						{t("Cross-Dimensional Analysis")}
 					</CardTitle>
 				</CardHeader>
@@ -75,9 +79,7 @@ export function CrossPanel() {
 					{/* Dimension selectors */}
 					<div className="mb-4 flex flex-wrap items-center gap-4">
 						<div className="flex items-center gap-2">
-							<span className="text-sm text-neutral-600">
-								{t("X Axis")}:
-							</span>
+							<span className="text-sm text-neutral-600">{t("X Axis")}:</span>
 							<div className="flex gap-1">
 								{DIMENSION_OPTIONS.map(({ key, labelKey }) => (
 									<button
@@ -97,9 +99,7 @@ export function CrossPanel() {
 							</div>
 						</div>
 						<div className="flex items-center gap-2">
-							<span className="text-sm text-neutral-600">
-								{t("Y Axis")}:
-							</span>
+							<span className="text-sm text-neutral-600">{t("Y Axis")}:</span>
 							<div className="flex gap-1">
 								{DIMENSION_OPTIONS.map(({ key, labelKey }) => (
 									<button
@@ -153,12 +153,10 @@ export function CrossPanel() {
 							xLabels={getUniqueValues(crossData.cells, "x")}
 							yLabels={getUniqueValues(crossData.cells, "y")}
 							xTitle={t(
-								DIMENSION_OPTIONS.find((d) => d.key === dimX)
-									?.labelKey ?? dimX,
+								DIMENSION_OPTIONS.find((d) => d.key === dimX)?.labelKey ?? dimX,
 							)}
 							yTitle={t(
-								DIMENSION_OPTIONS.find((d) => d.key === dimY)
-									?.labelKey ?? dimY,
+								DIMENSION_OPTIONS.find((d) => d.key === dimY)?.labelKey ?? dimY,
 							)}
 						/>
 					)}
@@ -179,9 +177,7 @@ export function CrossPanel() {
 				<CardContent>
 					{/* Dimension selector */}
 					<div className="mb-4 flex items-center gap-2">
-						<span className="text-sm text-neutral-600">
-							{t("Dimension")}:
-						</span>
+						<span className="text-sm text-neutral-600">{t("Dimension")}:</span>
 						<div className="flex gap-1">
 							{DIMENSION_OPTIONS.map(({ key, labelKey }) => (
 								<button
@@ -223,9 +219,7 @@ export function CrossPanel() {
 					) : !timelineData || timelineData.series.length === 0 ? (
 						<EmptyState
 							title={t("No timeline data")}
-							description={t(
-								"Insufficient data for timeline analysis.",
-							)}
+							description={t("Insufficient data for timeline analysis.")}
 							className="py-10"
 						/>
 					) : (

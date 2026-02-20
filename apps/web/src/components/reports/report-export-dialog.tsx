@@ -7,7 +7,7 @@ import {
 	ModalFooter,
 	ModalHeader,
 } from "@/components/ui/modal";
-import { useExportReport } from "@/hooks/use-reports";
+import { useExportReport, useReport } from "@/hooks/use-reports";
 import type { Report, ReportExportFormat } from "@/lib/api/types";
 import { useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
@@ -51,7 +51,27 @@ export function ReportExportDialog({
 	const exportReport = useExportReport();
 	const [selectedFormat, setSelectedFormat] =
 		useState<ReportExportFormat>("pdf");
+	const [queuedFormat, setQueuedFormat] = useState<ReportExportFormat | null>(
+		null,
+	);
 	const [showSuccess, setShowSuccess] = useState(false);
+	const pollReport = useReport(report?.id ?? "", {
+		enabled: isOpen && !!report && showSuccess,
+		refetchInterval: showSuccess ? 2_000 : false,
+	});
+
+	const latestReport = pollReport.data ?? report;
+	const activeFormat = queuedFormat ?? selectedFormat;
+	const latestExportKey =
+		activeFormat === "pdf"
+			? latestReport?.export_pdf_key ?? null
+			: activeFormat === "docx"
+				? latestReport?.export_docx_key ?? null
+				: latestReport?.export_html_key ?? null;
+	const readyDownloadUrl =
+		showSuccess && latestReport && latestExportKey
+			? `/api/v1/reports/${latestReport.id}/download/${activeFormat}`
+			: null;
 
 	const formats: FormatOption[] = [
 		{
@@ -77,24 +97,28 @@ export function ReportExportDialog({
 	useEffect(() => {
 		if (!isOpen) {
 			setSelectedFormat("pdf");
+			setQueuedFormat(null);
 			setShowSuccess(false);
 			exportReport.reset();
 		}
 	}, [isOpen, exportReport]);
 
-	useEffect(() => {
-		if (exportReport.isSuccess) {
-			setShowSuccess(true);
-			const timer = setTimeout(() => {
-				onClose();
-			}, 1500);
-			return () => clearTimeout(timer);
-		}
-	}, [exportReport.isSuccess, onClose]);
-
 	const handleExport = () => {
 		if (!report) return;
-		exportReport.mutate({ id: report.id, format: selectedFormat });
+		const format = selectedFormat;
+		setQueuedFormat(format);
+		exportReport.mutate(
+			{ id: report.id, format },
+			{
+				onSuccess: () => {
+					setShowSuccess(true);
+				},
+				onError: () => {
+					setQueuedFormat(null);
+					setShowSuccess(false);
+				},
+			},
+		);
 	};
 
 	if (!report) return null;
@@ -111,10 +135,36 @@ export function ReportExportDialog({
 			<ModalBody>
 				{showSuccess ? (
 					<div className="flex flex-col items-center gap-3 py-8">
-						<CheckCircle className="h-12 w-12 text-green-500" />
-						<p className="text-sm font-medium text-green-700">
-							{t("Export task queued!")}
-						</p>
+						{readyDownloadUrl ? (
+							<>
+								<CheckCircle className="h-12 w-12 text-green-500" />
+								<p className="text-sm font-medium text-green-700">
+									{t("Export file is ready.")}
+								</p>
+								<a
+									href={readyDownloadUrl}
+									download
+									className={cn(
+										"inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium",
+										"border border-primary-200 bg-primary-50 text-primary-700",
+										"hover:border-primary-300 hover:bg-primary-100",
+									)}
+								>
+									<FileDown aria-hidden="true" className="h-4 w-4" />
+									{t("Download file")}
+								</a>
+							</>
+						) : (
+							<>
+								<Loader2 className="h-10 w-10 animate-spin text-primary-500" />
+								<p className="text-sm font-medium text-primary-700">
+									{t("Export task queued!")}
+								</p>
+								<p className="text-xs text-neutral-500">
+									{t("Preparing export file...")}
+								</p>
+							</>
+						)}
 					</div>
 				) : (
 					<div className="grid grid-cols-3 gap-4">
@@ -163,6 +213,13 @@ export function ReportExportDialog({
 							<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
 						)}
 						{t("Export")}
+					</Button>
+				</ModalFooter>
+			)}
+			{showSuccess && (
+				<ModalFooter>
+					<Button variant="outline" onClick={onClose}>
+						{t("Close")}
 					</Button>
 				</ModalFooter>
 			)}

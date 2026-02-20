@@ -168,7 +168,10 @@ fn decode_html_entities(text: &str) -> String {
                 "&trade;" => "\u{2122}".to_string(),
                 _ => {
                     // Try numeric entities: &#123; or &#x1F;
-                    if let Some(rest) = entity.strip_prefix("&#x").or_else(|| entity.strip_prefix("&#X")) {
+                    if let Some(rest) = entity
+                        .strip_prefix("&#x")
+                        .or_else(|| entity.strip_prefix("&#X"))
+                    {
                         if let Some(hex) = rest.strip_suffix(';') {
                             if let Ok(code) = u32::from_str_radix(hex, 16) {
                                 if let Some(ch) = char::from_u32(code) {
@@ -319,9 +322,7 @@ mod tests {
 
     #[test]
     fn empty_content_becomes_none() {
-        let result = CleaningStage
-            .process(make("t", Some("<p>  </p>")))
-            .unwrap();
+        let result = CleaningStage.process(make("t", Some("<p>  </p>"))).unwrap();
         assert!(result.content.is_none());
     }
 }

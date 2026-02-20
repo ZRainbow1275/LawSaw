@@ -1047,54 +1047,32 @@ impl ArticleService {
         Ok((hits, total))
     }
 
-    /// Get statistics for dashboard
+    /// Get statistics for dashboard (single query instead of 5 separate COUNTs)
     pub async fn get_stats(&self, tenant_id: Uuid) -> Result<ArticleStats> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
-                let total: (i64,) =
-                    sqlx::query_as("SELECT COUNT(*) FROM articles WHERE deleted_at IS NULL")
-                    .fetch_one(tx.as_mut())
-                    .await
-                    .map_err(|e| Error::Database(e.to_string()))?;
-
-                let published: (i64,) =
-                    sqlx::query_as(
-                        "SELECT COUNT(*) FROM articles WHERE deleted_at IS NULL AND status = 'published'",
-                    )
-                        .fetch_one(tx.as_mut())
-                        .await
-                        .map_err(|e| Error::Database(e.to_string()))?;
-
-                let pending: (i64,) =
-                    sqlx::query_as(
-                        "SELECT COUNT(*) FROM articles WHERE deleted_at IS NULL AND status = 'pending'",
-                    )
-                        .fetch_one(tx.as_mut())
-                        .await
-                        .map_err(|e| Error::Database(e.to_string()))?;
-
-                // Count high risk articles (risk_score > 70). `NULL` risk_score will be excluded naturally.
-                let high_risk: (i64,) =
-                    sqlx::query_as(
-                        "SELECT COUNT(*) FROM articles WHERE deleted_at IS NULL AND risk_score > 70",
-                    )
-                        .fetch_one(tx.as_mut())
-                        .await
-                        .map_err(|e| Error::Database(e.to_string()))?;
-
-                let today: (i64,) = sqlx::query_as(
-                    "SELECT COUNT(*) FROM articles WHERE deleted_at IS NULL AND created_at >= CURRENT_DATE",
+                let row: (i64, i64, i64, i64, i64) = sqlx::query_as(
+                    r#"
+                    SELECT
+                        COUNT(*)::bigint AS total,
+                        COUNT(*) FILTER (WHERE status = 'published')::bigint AS published,
+                        COUNT(*) FILTER (WHERE status = 'pending')::bigint AS pending,
+                        COUNT(*) FILTER (WHERE risk_score > 70)::bigint AS high_risk,
+                        COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE)::bigint AS today
+                    FROM articles
+                    WHERE deleted_at IS NULL
+                    "#,
                 )
                 .fetch_one(tx.as_mut())
                 .await
                 .map_err(|e| Error::Database(e.to_string()))?;
 
                 Ok(ArticleStats {
-                    total: total.0,
-                    published: published.0,
-                    pending: pending.0,
-                    high_risk: high_risk.0,
-                    today: today.0,
+                    total: row.0,
+                    published: row.1,
+                    pending: row.2,
+                    high_risk: row.3,
+                    today: row.4,
                 })
             })
         })

@@ -23,9 +23,8 @@ static META_CHARSET_RE: Lazy<Option<Regex>> =
     Lazy::new(|| Regex::new(r#"(?i)<meta[^>]+charset\s*=\s*"?([^"\s;>]+)"?"#).ok());
 
 /// Regex to extract charset from `<meta http-equiv="Content-Type" content="text/html; charset=XXX">`.
-static META_HTTP_EQUIV_RE: Lazy<Option<Regex>> = Lazy::new(|| {
-    Regex::new(r#"(?i)<meta[^>]+content\s*=\s*"[^"]*charset\s*=\s*([^"\s;>]+)"#).ok()
-});
+static META_HTTP_EQUIV_RE: Lazy<Option<Regex>> =
+    Lazy::new(|| Regex::new(r#"(?i)<meta[^>]+content\s*=\s*"[^"]*charset\s*=\s*([^"\s;>]+)"#).ok());
 
 /// Detect encoding and decode raw bytes into a UTF-8 string.
 ///
@@ -46,7 +45,11 @@ pub fn detect_and_decode(
     // Level 0: Explicit encoding hint from source configuration
     if let Some(hint) = encoding_hint {
         if let Some(text) = try_decode_with_label(bytes, hint) {
-            debug!(encoding = hint, level = "hint", "decoded with source encoding hint");
+            debug!(
+                encoding = hint,
+                level = "hint",
+                "decoded with source encoding hint"
+            );
             return text;
         }
     }
@@ -181,7 +184,11 @@ fn try_chinese_encodings(bytes: &[u8]) -> Option<String> {
     // Try GBK (covers GB2312 as well, most common for Chinese gov sites)
     let (decoded, _, had_errors) = encoding_rs::GBK.decode(bytes);
     if !had_errors {
-        debug!(encoding = "gbk", level = "heuristic", "decoded with GBK heuristic");
+        debug!(
+            encoding = "gbk",
+            level = "heuristic",
+            "decoded with GBK heuristic"
+        );
         return Some(decoded.into_owned());
     }
 
@@ -216,11 +223,7 @@ mod tests {
         // "法律" in GBK encoding
         let text = "法律";
         let (encoded, _, _) = encoding_rs::GBK.encode(text);
-        let result = detect_and_decode(
-            &encoded,
-            Some("text/html; charset=gbk"),
-            None,
-        );
+        let result = detect_and_decode(&encoded, Some("text/html; charset=gbk"), None);
         assert_eq!(result, text);
     }
 
@@ -233,7 +236,12 @@ mod tests {
         );
         let (encoded, _, _) = encoding_rs::GBK.encode(&html);
         let result = detect_and_decode(&encoded, None, None);
-        assert!(result.contains(text), "Expected '{}' in result: {}", text, result);
+        assert!(
+            result.contains(text),
+            "Expected '{}' in result: {}",
+            text,
+            result
+        );
     }
 
     #[test]
@@ -245,7 +253,12 @@ mod tests {
         );
         let (encoded, _, _) = encoding_rs::GBK.encode(&html);
         let result = detect_and_decode(&encoded, None, None);
-        assert!(result.contains(text), "Expected '{}' in result: {}", text, result);
+        assert!(
+            result.contains(text),
+            "Expected '{}' in result: {}",
+            text,
+            result
+        );
     }
 
     #[test]
@@ -262,11 +275,7 @@ mod tests {
         // GB2312 is a subset of GBK; encoding_rs maps "gb2312" to GBK
         let text = "国家法律法规";
         let (encoded, _, _) = encoding_rs::GBK.encode(text);
-        let result = detect_and_decode(
-            &encoded,
-            Some("text/html; charset=gb2312"),
-            None,
-        );
+        let result = detect_and_decode(&encoded, Some("text/html; charset=gb2312"), None);
         assert_eq!(result, text);
     }
 
@@ -274,11 +283,7 @@ mod tests {
     fn gb18030_decoded_correctly() {
         let text = "中华人民共和国宪法";
         let (encoded, _, _) = encoding_rs::GB18030.encode(text);
-        let result = detect_and_decode(
-            &encoded,
-            Some("text/html; charset=gb18030"),
-            None,
-        );
+        let result = detect_and_decode(&encoded, Some("text/html; charset=gb18030"), None);
         assert_eq!(result, text);
     }
 

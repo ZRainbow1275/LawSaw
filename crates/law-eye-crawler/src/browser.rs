@@ -88,9 +88,9 @@ impl BrowserlessClient {
             builder = builder.default_headers(headers);
         }
 
-        let client = builder
-            .build()
-            .map_err(|e| Error::Config(format!("Failed to create Browserless HTTP client: {}", e)))?;
+        let client = builder.build().map_err(|e| {
+            Error::Config(format!("Failed to create Browserless HTTP client: {}", e))
+        })?;
 
         info!(
             base_url = %base_url,
@@ -115,7 +115,9 @@ impl BrowserlessClient {
             .user_agent("LawEye/1.0")
             .no_proxy()
             .build()
-            .map_err(|e| Error::Config(format!("Failed to create Browserless HTTP client: {}", e)))?;
+            .map_err(|e| {
+                Error::Config(format!("Failed to create Browserless HTTP client: {}", e))
+            })?;
 
         Ok(Self {
             client,
@@ -224,10 +226,7 @@ impl BrowserlessClient {
 
     /// Check if the Browserless service is healthy and reachable.
     pub async fn health_check(&self) -> Result<bool> {
-        let endpoint = format!(
-            "{}/json/version",
-            self.base_url.trim_end_matches('/')
-        );
+        let endpoint = format!("{}/json/version", self.base_url.trim_end_matches('/'));
 
         match self
             .client
@@ -299,10 +298,7 @@ mod tests {
         }
     }
 
-    fn handle_mock_request(
-        mut stream: TcpStream,
-        responses: &HashMap<String, (u16, String)>,
-    ) {
+    fn handle_mock_request(mut stream: TcpStream, responses: &HashMap<String, (u16, String)>) {
         let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
         let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
 
@@ -368,12 +364,14 @@ mod tests {
         let mut responses = HashMap::new();
         responses.insert(
             "/content".to_string(),
-            (200, "<html><body><h1>Rendered</h1></body></html>".to_string()),
+            (
+                200,
+                "<html><body><h1>Rendered</h1></body></html>".to_string(),
+            ),
         );
 
         let mock = MockBrowserless::spawn(responses);
-        let client =
-            BrowserlessClient::with_config(mock.base_url.clone(), 5000).unwrap();
+        let client = BrowserlessClient::with_config(mock.base_url.clone(), 5000).unwrap();
 
         let result = client
             .fetch_rendered_html("https://example.com", None, None)
@@ -387,14 +385,10 @@ mod tests {
     #[tokio::test]
     async fn fetch_rendered_html_handles_server_error() {
         let mut responses = HashMap::new();
-        responses.insert(
-            "/content".to_string(),
-            (500, "internal error".to_string()),
-        );
+        responses.insert("/content".to_string(), (500, "internal error".to_string()));
 
         let mock = MockBrowserless::spawn(responses);
-        let client =
-            BrowserlessClient::with_config(mock.base_url.clone(), 5000).unwrap();
+        let client = BrowserlessClient::with_config(mock.base_url.clone(), 5000).unwrap();
 
         let result = client
             .fetch_rendered_html("https://example.com", None, None)
@@ -414,8 +408,7 @@ mod tests {
         );
 
         let mock = MockBrowserless::spawn(responses);
-        let client =
-            BrowserlessClient::with_config(mock.base_url.clone(), 5000).unwrap();
+        let client = BrowserlessClient::with_config(mock.base_url.clone(), 5000).unwrap();
 
         assert!(client.health_check().await.unwrap());
     }
@@ -424,8 +417,7 @@ mod tests {
     async fn health_check_returns_false_when_unavailable() {
         // Point to a port that's not listening
         let client =
-            BrowserlessClient::with_config("http://127.0.0.1:1".to_string(), 1000)
-                .unwrap();
+            BrowserlessClient::with_config("http://127.0.0.1:1".to_string(), 1000).unwrap();
 
         assert!(!client.health_check().await.unwrap());
     }
@@ -433,8 +425,7 @@ mod tests {
     #[tokio::test]
     async fn fetch_rendered_html_connection_refused() {
         let client =
-            BrowserlessClient::with_config("http://127.0.0.1:1".to_string(), 1000)
-                .unwrap();
+            BrowserlessClient::with_config("http://127.0.0.1:1".to_string(), 1000).unwrap();
 
         let result = client
             .fetch_rendered_html("https://example.com", None, None)

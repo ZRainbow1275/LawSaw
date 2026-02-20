@@ -78,10 +78,8 @@ impl EntityExtractor {
 
         let user_prompt = format!("Title: {}\n\nContent:\n{}", title, content);
 
-        let result: EntityExtractionResult = self
-            .gateway
-            .chat_json(system_prompt, &user_prompt)
-            .await?;
+        let result: EntityExtractionResult =
+            self.gateway.chat_json(system_prompt, &user_prompt).await?;
 
         info!(
             "Extracted {} entities and {} relations",

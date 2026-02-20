@@ -218,7 +218,10 @@ function SearchContent() {
 			{/* Search Form */}
 			<form onSubmit={handleSearch} className="mb-6">
 				<div className="relative">
-					<Search aria-hidden="true" className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-neutral-400" />
+					<Search
+						aria-hidden="true"
+						className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-neutral-400"
+					/>
 					<Input
 						type="search"
 						placeholder={t("Type keywords to search...")}
@@ -281,7 +284,10 @@ function SearchContent() {
 				<Card>
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2">
-							<MessageCircle aria-hidden="true" className="h-5 w-5 text-primary-500" />
+							<MessageCircle
+								aria-hidden="true"
+								className="h-5 w-5 text-primary-500"
+							/>
 							{t("AI Q&A")}
 						</CardTitle>
 					</CardHeader>
@@ -314,9 +320,13 @@ function SearchContent() {
 									</p>
 									<p className="mt-2 text-xs text-neutral-500">
 										{t("Confidence: {value}%", {
-											value: formatNumber(locale, askMutation.data.confidence * 100, {
-											maximumFractionDigits: 0,
-										}),
+											value: formatNumber(
+												locale,
+												askMutation.data.confidence * 100,
+												{
+													maximumFractionDigits: 0,
+												},
+											),
 										})}
 									</p>
 								</div>
@@ -418,8 +428,8 @@ function SearchContent() {
 											<p className="mt-2 text-xs text-neutral-400">
 												{t("Relevance: {value}%", {
 													value: formatNumber(locale, result.score * 100, {
-											maximumFractionDigits: 0,
-										}),
+														maximumFractionDigits: 0,
+													}),
 												})}
 											</p>
 										</div>

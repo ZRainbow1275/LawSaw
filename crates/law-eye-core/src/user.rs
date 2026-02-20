@@ -1,8 +1,8 @@
+use crate::with_tenant_tx;
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
-use crate::with_tenant_tx;
 use law_eye_common::{Error, Result};
 use law_eye_db::{CreateUser, Role, UpdateUser, User};
 use sqlx::{Executor, PgPool, Postgres, Transaction};
@@ -12,11 +12,7 @@ pub struct UserService {
     pool: PgPool,
 }
 
-async fn fetch_user_roles<'e, E>(
-    executor: E,
-    tenant_id: Uuid,
-    user_id: Uuid,
-) -> Result<Vec<Role>>
+async fn fetch_user_roles<'e, E>(executor: E, tenant_id: Uuid, user_id: Uuid) -> Result<Vec<Role>>
 where
     E: Executor<'e, Database = Postgres>,
 {
@@ -347,16 +343,23 @@ impl UserService {
         Ok(user)
     }
 
-    pub async fn update_password(&self, tenant_id: Uuid, id: Uuid, new_password: &str) -> Result<()> {
+    pub async fn update_password(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        new_password: &str,
+    ) -> Result<()> {
         let password_hash = hash_password(new_password)?;
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
-                sqlx::query("UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1")
-                    .bind(id)
-                    .bind(&password_hash)
-                    .execute(tx.as_mut())
-                    .await
-                    .map_err(|e| Error::Database(e.to_string()))?;
+                sqlx::query(
+                    "UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1",
+                )
+                .bind(id)
+                .bind(&password_hash)
+                .execute(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
                 Ok(())
             })
         })
@@ -379,9 +382,7 @@ impl UserService {
 
     pub async fn get_user_roles(&self, tenant_id: Uuid, user_id: Uuid) -> Result<Vec<Role>> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
-            Box::pin(async move {
-                fetch_user_roles(tx.as_mut(), tenant_id, user_id).await
-            })
+            Box::pin(async move { fetch_user_roles(tx.as_mut(), tenant_id, user_id).await })
         })
         .await
     }
@@ -395,7 +396,11 @@ impl UserService {
         fetch_user_roles(&mut **tx, tenant_id, user_id).await
     }
 
-    pub async fn get_user_permissions(&self, tenant_id: Uuid, user_id: Uuid) -> Result<Vec<String>> {
+    pub async fn get_user_permissions(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Vec<String>> {
         let roles = self.get_user_roles(tenant_id, user_id).await?;
 
         let mut permissions = Vec::new();
@@ -459,9 +464,7 @@ impl UserService {
     pub async fn remove_role(&self, tenant_id: Uuid, user_id: Uuid, role_name: &str) -> Result<()> {
         let role_name = role_name.to_string();
         with_tenant_tx(&self.pool, tenant_id, |tx| {
-            Box::pin(async move {
-                remove_role_inner(tx.as_mut(), user_id, &role_name).await
-            })
+            Box::pin(async move { remove_role_inner(tx.as_mut(), user_id, &role_name).await })
         })
         .await
     }
@@ -478,9 +481,7 @@ impl UserService {
     pub async fn validate_roles_exist(&self, tenant_id: Uuid, role_names: &[String]) -> Result<()> {
         let role_names = role_names.to_vec();
         with_tenant_tx(&self.pool, tenant_id, |tx| {
-            Box::pin(async move {
-                validate_roles_exist_inner(tx.as_mut(), &role_names).await
-            })
+            Box::pin(async move { validate_roles_exist_inner(tx.as_mut(), &role_names).await })
         })
         .await
     }
@@ -551,11 +552,12 @@ impl UserService {
     pub async fn count_by_tenant(&self, tenant_id: Uuid) -> Result<i64> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
-                let result: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users WHERE tenant_id = $1")
-                    .bind(tenant_id)
-                    .fetch_one(tx.as_mut())
-                    .await
-                    .map_err(|e| Error::Database(e.to_string()))?;
+                let result: (i64,) =
+                    sqlx::query_as("SELECT COUNT(*) FROM users WHERE tenant_id = $1")
+                        .bind(tenant_id)
+                        .fetch_one(tx.as_mut())
+                        .await
+                        .map_err(|e| Error::Database(e.to_string()))?;
                 Ok(result.0)
             })
         })

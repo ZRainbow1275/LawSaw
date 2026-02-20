@@ -1,7 +1,6 @@
 "use client";
 
 import { useT } from "@/lib/i18n-client";
-import { IMPORTANCE_COLORS, IMPORTANCE_LABELS } from "../constants";
 import {
 	Bar,
 	BarChart,
@@ -11,6 +10,7 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
+import { IMPORTANCE_COLORS, IMPORTANCE_LABELS } from "../constants";
 
 interface ImportanceBarChartProps {
 	levels: [number, number, number, number, number];

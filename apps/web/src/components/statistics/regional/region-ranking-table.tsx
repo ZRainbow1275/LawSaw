@@ -1,7 +1,7 @@
 "use client";
 
-import { useT } from "@/lib/i18n-client";
 import type { RegionalCount } from "@/hooks/use-statistics";
+import { useT } from "@/lib/i18n-client";
 
 interface RegionRankingTableProps {
 	items: RegionalCount[];

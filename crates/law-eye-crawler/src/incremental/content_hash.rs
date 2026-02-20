@@ -65,18 +65,24 @@ impl IncrementalChecker {
 
     /// Number of known hashes.
     pub fn known_count(&self) -> usize {
-        self.known_hashes.lock().unwrap_or_else(|poisoned| {
-            tracing::warn!("content_hash known_hashes mutex was poisoned, recovering");
-            poisoned.into_inner()
-        }).len()
+        self.known_hashes
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                tracing::warn!("content_hash known_hashes mutex was poisoned, recovering");
+                poisoned.into_inner()
+            })
+            .len()
     }
 
     /// Remove a hash (e.g. when an article is deleted from DB).
     pub fn remove(&self, content_hash: &str) {
-        self.known_hashes.lock().unwrap_or_else(|poisoned| {
-            tracing::warn!("content_hash known_hashes mutex was poisoned, recovering");
-            poisoned.into_inner()
-        }).remove(content_hash);
+        self.known_hashes
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                tracing::warn!("content_hash known_hashes mutex was poisoned, recovering");
+                poisoned.into_inner()
+            })
+            .remove(content_hash);
     }
 }
 
@@ -114,7 +120,10 @@ mod tests {
     #[test]
     fn record_adds_new_hash() {
         let checker = IncrementalChecker::new();
-        checker.record("new_hash".to_string(), "https://example.com/new".to_string());
+        checker.record(
+            "new_hash".to_string(),
+            "https://example.com/new".to_string(),
+        );
 
         assert!(checker.is_known("new_hash"));
         assert_eq!(checker.known_count(), 1);

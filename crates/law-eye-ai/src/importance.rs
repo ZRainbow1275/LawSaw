@@ -37,35 +37,37 @@ impl ImportanceAssessor {
         // 2. Title keywords -> scope factor
         let title_lower = title.to_lowercase();
         let high_scope_keywords = [
-            "\u{5168}\u{56fd}",     // 全国
-            "\u{5168}\u{9762}",     // 全面
-            "\u{91cd}\u{5927}",     // 重大
-            "\u{6539}\u{9769}",     // 改革
-            "\u{4fee}\u{8ba2}",     // 修订
-            "\u{65b0}\u{6cd5}",     // 新法
-            "\u{751f}\u{6548}",     // 生效
-            "\u{65bd}\u{884c}",     // 施行
-            "\u{5e9f}\u{6b62}",     // 废止
-            "\u{56fd}\u{52a1}\u{9662}", // 国务院
+            "\u{5168}\u{56fd}",                 // 全国
+            "\u{5168}\u{9762}",                 // 全面
+            "\u{91cd}\u{5927}",                 // 重大
+            "\u{6539}\u{9769}",                 // 改革
+            "\u{4fee}\u{8ba2}",                 // 修订
+            "\u{65b0}\u{6cd5}",                 // 新法
+            "\u{751f}\u{6548}",                 // 生效
+            "\u{65bd}\u{884c}",                 // 施行
+            "\u{5e9f}\u{6b62}",                 // 废止
+            "\u{56fd}\u{52a1}\u{9662}",         // 国务院
             "\u{5168}\u{56fd}\u{4eba}\u{5927}", // 全国人大
         ];
         let medium_scope_keywords = [
-            "\u{884c}\u{4e1a}",     // 行业
-            "\u{9886}\u{57df}",     // 领域
-            "\u{89c4}\u{8303}",     // 规范
-            "\u{6807}\u{51c6}",     // 标准
-            "\u{6307}\u{5357}",     // 指南
-            "\u{901a}\u{77e5}",     // 通知
+            "\u{884c}\u{4e1a}", // 行业
+            "\u{9886}\u{57df}", // 领域
+            "\u{89c4}\u{8303}", // 规范
+            "\u{6807}\u{51c6}", // 标准
+            "\u{6307}\u{5357}", // 指南
+            "\u{901a}\u{77e5}", // 通知
         ];
 
-        let scope_score =
-            if high_scope_keywords.iter().any(|k| title_lower.contains(k)) {
-                4.5
-            } else if medium_scope_keywords.iter().any(|k| title_lower.contains(k)) {
-                3.0
-            } else {
-                1.5
-            };
+        let scope_score = if high_scope_keywords.iter().any(|k| title_lower.contains(k)) {
+            4.5
+        } else if medium_scope_keywords
+            .iter()
+            .any(|k| title_lower.contains(k))
+        {
+            3.0
+        } else {
+            1.5
+        };
         score += scope_score * SCOPE_WEIGHT;
 
         // 3. Issuer significance factor
@@ -121,11 +123,7 @@ mod tests {
     #[test]
     fn high_importance_national_legislation() {
         let assessor = ImportanceAssessor;
-        let score = assessor.rule_assess(
-            "全国人大通过新法修订",
-            Some(2),
-            Some("全国人大常委会"),
-        );
+        let score = assessor.rule_assess("全国人大通过新法修订", Some(2), Some("全国人大常委会"));
         assert!((1..=5).contains(&score));
         assert!(score >= 3);
     }

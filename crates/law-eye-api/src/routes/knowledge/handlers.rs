@@ -190,13 +190,10 @@ pub(crate) async fn backfill_llm(
 
     // Find articles that have content but no article_entities link
     // Must use with_tenant_tx to ensure RLS sees the correct tenant context
-    let article_ids: Vec<uuid::Uuid> = law_eye_core::with_tenant_tx(
-        &state.pool,
-        tenant_id,
-        |tx| {
-            Box::pin(async move {
-                let ids = sqlx::query_scalar(
-                    r#"
+    let article_ids: Vec<uuid::Uuid> = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
+        Box::pin(async move {
+            let ids = sqlx::query_scalar(
+                r#"
                     SELECT a.id
                     FROM articles a
                     LEFT JOIN article_entities ae ON ae.article_id = a.id
@@ -206,15 +203,14 @@ pub(crate) async fn backfill_llm(
                     ORDER BY a.published_at DESC NULLS LAST
                     LIMIT $1
                     "#,
-                )
-                .bind(limit)
-                .fetch_all(tx.as_mut())
-                .await
-                .map_err(|e| law_eye_common::Error::Database(e.to_string()))?;
-                Ok(ids)
-            })
-        },
-    )
+            )
+            .bind(limit)
+            .fetch_all(tx.as_mut())
+            .await
+            .map_err(|e| law_eye_common::Error::Database(e.to_string()))?;
+            Ok(ids)
+        })
+    })
     .await
     .map_err(AppError::from)?;
 
@@ -225,11 +221,7 @@ pub(crate) async fn backfill_llm(
             article_id: *article_id,
             task_type: law_eye_queue::AiTaskType::ExtractEntities,
         };
-        if let Err(e) = state
-            .task_queue
-            .enqueue_retryable("queue:ai", task)
-            .await
-        {
+        if let Err(e) = state.task_queue.enqueue_retryable("queue:ai", task).await {
             tracing::warn!(
                 article_id = %article_id,
                 error = %e,
@@ -277,10 +269,12 @@ pub(crate) async fn semantic_search(
     Ok(Json(
         results
             .into_iter()
-            .map(|(entity, similarity)| super::dto::SemanticSearchEntityResponse {
-                entity: KnowledgeEntityResponse::from(entity),
-                similarity,
-            })
+            .map(
+                |(entity, similarity)| super::dto::SemanticSearchEntityResponse {
+                    entity: KnowledgeEntityResponse::from(entity),
+                    similarity,
+                },
+            )
             .collect(),
     ))
 }
@@ -401,10 +395,7 @@ pub(crate) async fn merge_entities(
         .map_err(AppError::from)?;
 
     Ok(Json(super::dto::MergeEntitiesResponse {
-        message: format!(
-            "Entity {} merged into {}",
-            req.source_id, req.target_id
-        ),
+        message: format!("Entity {} merged into {}", req.source_id, req.target_id),
     }))
 }
 
@@ -429,14 +420,14 @@ pub(crate) async fn get_degree_centrality(
     Ok(Json(
         results
             .into_iter()
-            .map(|(entity, out_deg, in_deg, total)| {
-                super::dto::DegreeCentralityResponse {
+            .map(
+                |(entity, out_deg, in_deg, total)| super::dto::DegreeCentralityResponse {
                     entity: KnowledgeEntityResponse::from(entity),
                     out_degree: out_deg,
                     in_degree: in_deg,
                     total_degree: total,
-                }
-            })
+                },
+            )
             .collect(),
     ))
 }
@@ -501,10 +492,7 @@ pub(crate) async fn get_graph_stats(
         type_distribution: stats
             .type_distribution
             .into_iter()
-            .map(|(entity_type, count)| super::dto::TypeDistributionEntry {
-                entity_type,
-                count,
-            })
+            .map(|(entity_type, count)| super::dto::TypeDistributionEntry { entity_type, count })
             .collect(),
     }))
 }

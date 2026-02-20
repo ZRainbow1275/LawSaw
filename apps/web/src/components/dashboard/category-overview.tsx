@@ -69,7 +69,10 @@ export function CategoryOverview() {
 			<Card className="lg:col-span-1">
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
-						<BarChart3 aria-hidden="true" className="h-5 w-5 text-primary-500" />
+						<BarChart3
+							aria-hidden="true"
+							className="h-5 w-5 text-primary-500"
+						/>
 						{t("Category overview")}
 					</CardTitle>
 				</CardHeader>
@@ -97,7 +100,10 @@ export function CategoryOverview() {
 			<Card className="lg:col-span-1">
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
-						<BarChart3 aria-hidden="true" className="h-5 w-5 text-primary-500" />
+						<BarChart3
+							aria-hidden="true"
+							className="h-5 w-5 text-primary-500"
+						/>
 						{t("Category overview")}
 					</CardTitle>
 					<CardDescription>{t("Load failed")}</CardDescription>

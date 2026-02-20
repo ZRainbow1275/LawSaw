@@ -255,7 +255,10 @@ export default function ArticlesPage() {
 									aria-controls="articles-filters"
 									onClick={() => setFiltersOpen((open) => !open)}
 								>
-									<SlidersHorizontal aria-hidden="true" className="mr-2 h-4 w-4" />
+									<SlidersHorizontal
+										aria-hidden="true"
+										className="mr-2 h-4 w-4"
+									/>
 									{t("Filter")}
 								</Button>
 							</div>
@@ -383,7 +386,10 @@ export default function ArticlesPage() {
 						<Card>
 							<CardHeader>
 								<CardTitle className="flex items-center gap-2">
-									<FileText aria-hidden="true" className="h-5 w-5 text-primary-500" />
+									<FileText
+										aria-hidden="true"
+										className="h-5 w-5 text-primary-500"
+									/>
 									{t("Articles list")}
 								</CardTitle>
 							</CardHeader>

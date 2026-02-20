@@ -14,6 +14,7 @@ const SEGMENT_LABELS: Record<string, string> = {
 	data: "Data Sources",
 	feedback: "Feedback",
 	knowledge: "Knowledge Graph",
+	reports: "Reports",
 	search: "Search",
 	settings: "Settings",
 	sources: "Sources",
@@ -87,13 +88,16 @@ export function Breadcrumbs({ pathname, className }: BreadcrumbsProps) {
 						href={withLocalePath(locale, "/")}
 						className="inline-flex items-center rounded px-1 py-0.5 hover:bg-neutral-100 hover:text-neutral-700"
 					>
-						<Home aria-hidden="true" className="h-3.5 w-3.5"  />
+						<Home aria-hidden="true" className="h-3.5 w-3.5" />
 						<span className="sr-only">{t("Home")}</span>
 					</Link>
 				</li>
 				{items.map((item) => (
 					<li key={item.key} className="inline-flex items-center gap-1">
-						<ChevronRight aria-hidden="true" className="h-3.5 w-3.5 text-neutral-400"  />
+						<ChevronRight
+							aria-hidden="true"
+							className="h-3.5 w-3.5 text-neutral-400"
+						/>
 						{item.isLast ? (
 							<span
 								aria-current="page"

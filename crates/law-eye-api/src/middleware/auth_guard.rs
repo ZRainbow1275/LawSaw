@@ -22,6 +22,9 @@ where
             .map_err(|e| e.into_response())?;
 
         match auth_session.user {
+            Some(ref user) if !user.is_active => {
+                Err(AppError::forbidden("User account is disabled").into_response())
+            }
             Some(_) => Ok(RequireAuth),
             None => Err(AppError::unauthorized("Authentication required").into_response()),
         }
@@ -77,6 +80,10 @@ where
         let user = auth_session
             .user
             .ok_or_else(|| AppError::unauthorized("Authentication required").into_response())?;
+
+        if !user.is_active {
+            return Err(AppError::forbidden("User account is disabled").into_response());
+        }
 
         let allowed = auth_session
             .backend

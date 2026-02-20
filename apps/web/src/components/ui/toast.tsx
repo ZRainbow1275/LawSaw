@@ -105,7 +105,10 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
 			<div className="p-4">
 				<div className="flex items-start gap-3">
 					{/* Icon */}
-					<Icon aria-hidden="true" className={cn("h-5 w-5 shrink-0 mt-0.5", styles.iconColor)} />
+					<Icon
+						aria-hidden="true"
+						className={cn("h-5 w-5 shrink-0 mt-0.5", styles.iconColor)}
+					/>
 
 					{/* Content */}
 					<div className="flex-1 min-w-0">

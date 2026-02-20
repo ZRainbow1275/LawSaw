@@ -77,7 +77,6 @@ pub struct SlowQueryResponse {
     pub error: Option<String>,
 }
 
-
 fn allow_slow_query_access(state: &AppState, headers: &HeaderMap) -> bool {
     if std::env::var_os("PRODUCTION").is_none() {
         return true;
@@ -278,7 +277,6 @@ pub(crate) async fn live_check() -> (StatusCode, Json<LivenessResponse>) {
     )
 }
 
-
 #[utoipa::path(
     get,
     path = "/health/slow-queries",
@@ -329,13 +327,15 @@ pub(crate) async fn slow_queries(
         Ok(rows) => {
             let entries = rows
                 .into_iter()
-                .map(|(query, calls, total_exec_time, mean_exec_time, rows)| SlowQueryItem {
-                    query,
-                    calls,
-                    total_exec_time_ms: total_exec_time,
-                    mean_exec_time_ms: mean_exec_time,
-                    rows: rows.round().max(0.0) as i64,
-                })
+                .map(
+                    |(query, calls, total_exec_time, mean_exec_time, rows)| SlowQueryItem {
+                        query,
+                        calls,
+                        total_exec_time_ms: total_exec_time,
+                        mean_exec_time_ms: mean_exec_time,
+                        rows: rows.round().max(0.0) as i64,
+                    },
+                )
                 .collect();
 
             (

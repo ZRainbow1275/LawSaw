@@ -5,6 +5,20 @@ services:
       dockerfile: Dockerfile.postgres-pgvector
     image: lawsaw-postgres-pgvector:local
     user: "postgres"
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=128MB"
+      - "-c"
+      - "work_mem=4MB"
+      - "-c"
+      - "effective_cache_size=256MB"
+      - "-c"
+      - "maintenance_work_mem=64MB"
+      - "-c"
+      - "wal_buffers=4MB"
+      - "-c"
+      - "max_wal_size=1GB"
     environment:
       POSTGRES_DB: law_eye
       POSTGRES_USER: law_eye
@@ -16,6 +30,10 @@ services:
       - "127.0.0.1:${POSTGRES_HOST_PORT:-5435}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       postgres-init:
         condition: service_completed_successfully
@@ -24,6 +42,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
     deploy:
       resources:
         limits:
@@ -33,7 +52,7 @@ services:
           cpus: '0.5'
           memory: 512M
     networks:
-      - law-eye-network
+      - backend
     restart: unless-stopped
 
   postgres-init:
@@ -78,6 +97,10 @@ services:
       context: .
       dockerfile: Dockerfile.redis
     image: lawsaw-redis:local
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     ports:
@@ -92,6 +115,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
     deploy:
       resources:
         limits:
@@ -101,7 +125,7 @@ services:
           cpus: '0.25'
           memory: 128M
     networks:
-      - law-eye-network
+      - backend
     restart: unless-stopped
 
   minio-init:
@@ -126,6 +150,10 @@ services:
     image: ${MINIO_IMAGE:-alpine/minio:RELEASE.2025-10-15T17-29-55Z@sha256:cf23643a6cf9ce159c57643ceb88279e431262282428c9e0bf3a7ef1a97e84b4}
     user: "1000:1000"
     command: server /data --console-address ":9001"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
@@ -151,13 +179,20 @@ services:
           cpus: '0.25'
           memory: 256M
     networks:
-      - law-eye-network
+      - backend
     restart: unless-stopped
 
   rss-fixture:
     # Avoid pulling from DockerHub in restricted environments by reusing the local web runtime image.
     image: lawsaw-web
     profiles: ["e2e"]
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     command:
       [
         "node",
@@ -183,13 +218,21 @@ services:
           cpus: '0.1'
           memory: 64M
     networks:
-      - law-eye-network
+      - frontend
+      - backend
     restart: unless-stopped
 
   api:
     build:
       context: .
       dockerfile: Dockerfile.api
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       # 使用 LAW_EYE__ 前缀匹配 config.rs 中的环境变量解析
       LAW_EYE__SERVER__HOST: "0.0.0.0"
@@ -242,13 +285,21 @@ services:
           cpus: '0.5'
           memory: 256M
     networks:
-      - law-eye-network
+      - frontend
+      - backend
     restart: unless-stopped
 
   worker:
     build:
       context: .
       dockerfile: Dockerfile.worker
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       LAW_EYE__SERVER__HOST: "0.0.0.0"
       LAW_EYE__SERVER__PORT: "3002"
@@ -302,13 +353,21 @@ services:
           cpus: '0.5'
           memory: 512M
     networks:
-      - law-eye-network
+      - backend
     restart: unless-stopped
 
   web:
     build:
       context: .
       dockerfile: Dockerfile.web
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       LAW_EYE_API_PROXY_TARGET: http://api:3001
       NEXT_TELEMETRY_DISABLED: "1"
@@ -338,7 +397,8 @@ services:
           cpus: '0.25'
           memory: 128M
     networks:
-      - law-eye-network
+      - frontend
+      - backend
     restart: unless-stopped
 
   n8n:
@@ -346,6 +406,10 @@ services:
     # Optional automation service. Keep behind a profile so `docker compose up`
     # remains usable in restricted networks where docker.n8n.io may be unreachable.
     profiles: ["n8n"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       - N8N_HOST=localhost
       - N8N_PORT=5678
@@ -377,12 +441,19 @@ services:
           cpus: '0.25'
           memory: 256M
     networks:
-      - law-eye-network
+      - frontend
+      - backend
     restart: unless-stopped
 
   browserless:
-    image: ${BROWSERLESS_IMAGE:-ghcr.io/browserless/chromium:v2.24.2}
+    image: ${BROWSERLESS_IMAGE:-ghcr.io/browserless/chromium:v2.24.2@sha256:16444c486f709844d6b9a472352a20f0dee924e5421e38a096a7f521b6bec560}
     profiles: ["crawler", "worker", "report"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
     environment:
       MAX_CONCURRENT_SESSIONS: ${BROWSERLESS_MAX_CONCURRENT:-5}
       CONNECTION_TIMEOUT: ${BROWSERLESS_CONNECTION_TIMEOUT:-60000}
@@ -405,12 +476,15 @@ services:
           cpus: '0.5'
           memory: 512M
     networks:
-      - law-eye-network
+      - backend
     restart: unless-stopped
 
 networks:
-  law-eye-network:
+  frontend:
     driver: bridge
+  backend:
+    driver: bridge
+    internal: true
 
 volumes:
   postgres_data:

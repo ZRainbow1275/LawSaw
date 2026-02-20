@@ -53,7 +53,10 @@ export const swipeActionPresets = {
 	bookmark: (onClick: () => void, isBookmarked = false): SwipeAction => ({
 		id: "bookmark",
 		icon: (
-			<Bookmark aria-hidden="true" className={cn("h-5 w-5", isBookmarked && "fill-current")} />
+			<Bookmark
+				aria-hidden="true"
+				className={cn("h-5 w-5", isBookmarked && "fill-current")}
+			/>
 		),
 		label: isBookmarked ? "Remove bookmark" : "Bookmark",
 		color: "text-white",

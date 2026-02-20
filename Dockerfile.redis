@@ -12,4 +12,4 @@ USER 1000:1000
 
 EXPOSE 6379
 
-CMD ["sh", "-c", "test -n \"$REDIS_PASSWORD\" || { echo \"REDIS_PASSWORD is required\" >&2; exit 1; }; exec redis-server --appendonly yes --protected-mode yes --bind 0.0.0.0 --port 6379 --requirepass \"$REDIS_PASSWORD\""]
+CMD ["sh", "-c", "test -n \"$REDIS_PASSWORD\" || { echo \"REDIS_PASSWORD is required\" >&2; exit 1; }; exec redis-server --appendonly yes --protected-mode yes --bind 0.0.0.0 --port 6379 --requirepass \"$REDIS_PASSWORD\" --maxmemory ${REDIS_MAXMEMORY:-256mb} --maxmemory-policy allkeys-lru"]

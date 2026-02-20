@@ -1,3 +1,4 @@
+import enTranslations from "../messages/en.json";
 import zhTranslations from "../messages/zh.json";
 
 export const SUPPORTED_LOCALES = ["zh", "en"] as const;
@@ -99,7 +100,9 @@ export function t(
 	params?: TranslationParams,
 ): string {
 	const zh = zhTranslations as Record<string, string>;
-	const template = locale === "zh" ? (zh[key] ?? key) : key;
+	const en = enTranslations as Record<string, string>;
+	const template =
+		locale === "zh" ? (zh[key] ?? key) : (en[key] ?? key);
 	return interpolate(template, params);
 }
 

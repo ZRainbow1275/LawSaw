@@ -1,8 +1,7 @@
 "use client";
 
-import { useT } from "@/lib/i18n-client";
 import type { TimelineSeries } from "@/hooks/use-statistics";
-import { DIMENSION_COLORS } from "../constants";
+import { useT } from "@/lib/i18n-client";
 import {
 	Legend,
 	Line,
@@ -12,6 +11,7 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
+import { DIMENSION_COLORS } from "../constants";
 
 interface TimelineChartProps {
 	series: TimelineSeries[];
@@ -68,11 +68,7 @@ export function TimelineChart({ series }: TimelineChartProps) {
 						fontSize: "13px",
 					}}
 				/>
-				<Legend
-					verticalAlign="bottom"
-					height={36}
-					iconType="line"
-				/>
+				<Legend verticalAlign="bottom" height={36} iconType="line" />
 				{series.map((s, i) => (
 					<Line
 						key={s.dimension_value}

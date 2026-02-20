@@ -1,8 +1,8 @@
 "use client";
 
-import { useT } from "@/lib/i18n-client";
 import type { ArticleTrendPoint } from "@/lib/api/types";
 import { type Locale, formatDateTime } from "@/lib/i18n";
+import { useT } from "@/lib/i18n-client";
 import { useLocale } from "@/lib/i18n-client";
 import {
 	Area,

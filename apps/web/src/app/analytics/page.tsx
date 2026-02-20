@@ -5,12 +5,12 @@ import { Header } from "@/components/layout/header";
 import { MainContent } from "@/components/layout/main-content";
 import { Sidebar } from "@/components/layout/sidebar";
 import {
-	AnalyticsTabs,
 	type AnalyticsTab,
+	AnalyticsTabs,
 } from "@/components/statistics/analytics-tabs";
 import { CrossPanel } from "@/components/statistics/cross/cross-panel";
-import { IndustryPanel } from "@/components/statistics/industry/industry-panel";
 import { ImportancePanel } from "@/components/statistics/importance/importance-panel";
+import { IndustryPanel } from "@/components/statistics/industry/industry-panel";
 import { RiskDistributionChart } from "@/components/statistics/overview/risk-distribution-chart";
 import { SentimentChart } from "@/components/statistics/overview/sentiment-chart";
 import { TrendChart } from "@/components/statistics/overview/trend-chart";
@@ -87,10 +87,7 @@ export default function AnalyticsPage() {
 						</div>
 
 						{/* Tab Navigation */}
-						<AnalyticsTabs
-							activeTab={activeTab}
-							onTabChange={setActiveTab}
-						/>
+						<AnalyticsTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
 						{/* Tab Content */}
 						{activeTab === "overview" && <OverviewTab />}
@@ -215,7 +212,10 @@ function OverviewTab() {
 					<CardContent className="p-4">
 						<div className="flex items-center gap-3">
 							<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-100">
-								<FileText aria-hidden="true" className="h-5 w-5 text-primary-600" />
+								<FileText
+									aria-hidden="true"
+									className="h-5 w-5 text-primary-600"
+								/>
 							</div>
 							<div>
 								<p className="text-2xl font-bold">
@@ -255,9 +255,7 @@ function OverviewTab() {
 								<p className="text-2xl font-bold">
 									{categoriesCount ?? "\u2014"}
 								</p>
-								<p className="text-sm text-neutral-500">
-									{t("Categories")}
-								</p>
+								<p className="text-sm text-neutral-500">{t("Categories")}</p>
 							</div>
 						</div>
 					</CardContent>
@@ -266,12 +264,13 @@ function OverviewTab() {
 					<CardContent className="p-4">
 						<div className="flex items-center gap-3">
 							<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
-								<AlertTriangle aria-hidden="true" className="h-5 w-5 text-destructive" />
+								<AlertTriangle
+									aria-hidden="true"
+									className="h-5 w-5 text-destructive"
+								/>
 							</div>
 							<div>
-								<p className="text-2xl font-bold">
-									{errorSources ?? "\u2014"}
-								</p>
+								<p className="text-2xl font-bold">{errorSources ?? "\u2014"}</p>
 								<p className="text-sm text-neutral-500">
 									{t("Sources with errors")}
 								</p>
@@ -307,7 +306,10 @@ function OverviewTab() {
 				<Card>
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2">
-							<PieChart aria-hidden="true" className="h-5 w-5 text-primary-500" />
+							<PieChart
+								aria-hidden="true"
+								className="h-5 w-5 text-primary-500"
+							/>
 							{t("Risk distribution")}
 						</CardTitle>
 					</CardHeader>
@@ -319,10 +321,7 @@ function OverviewTab() {
 						) : analyticsReady && analyticsSummary?.risk ? (
 							<RiskDistributionChart data={analyticsSummary.risk} />
 						) : (
-							<EmptyState
-								title={t("No risk data")}
-								className="py-10"
-							/>
+							<EmptyState title={t("No risk data")} className="py-10" />
 						)}
 					</CardContent>
 				</Card>
@@ -331,7 +330,10 @@ function OverviewTab() {
 				<Card>
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2">
-							<BarChart3 aria-hidden="true" className="h-5 w-5 text-primary-500" />
+							<BarChart3
+								aria-hidden="true"
+								className="h-5 w-5 text-primary-500"
+							/>
 							{t("Sentiment analysis")}
 						</CardTitle>
 					</CardHeader>
@@ -343,10 +345,7 @@ function OverviewTab() {
 						) : analyticsReady && analyticsSummary?.sentiment ? (
 							<SentimentChart data={analyticsSummary.sentiment} />
 						) : (
-							<EmptyState
-								title={t("No sentiment data")}
-								className="py-10"
-							/>
+							<EmptyState title={t("No sentiment data")} className="py-10" />
 						)}
 					</CardContent>
 				</Card>
@@ -355,7 +354,10 @@ function OverviewTab() {
 				<Card>
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2">
-							<CheckCircle aria-hidden="true" className="h-5 w-5 text-primary-500" />
+							<CheckCircle
+								aria-hidden="true"
+								className="h-5 w-5 text-primary-500"
+							/>
 							{t("Article status")}
 						</CardTitle>
 					</CardHeader>
@@ -382,7 +384,10 @@ function OverviewTab() {
 				<Card>
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2">
-							<TrendingUp aria-hidden="true" className="h-5 w-5 text-primary-500" />
+							<TrendingUp
+								aria-hidden="true"
+								className="h-5 w-5 text-primary-500"
+							/>
 							{t("Last 7 days trend")}
 						</CardTitle>
 					</CardHeader>
@@ -423,7 +428,10 @@ function OverviewTab() {
 			<Card className="mt-6">
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
-						<BarChart3 aria-hidden="true" className="h-5 w-5 text-primary-500" />
+						<BarChart3
+							aria-hidden="true"
+							className="h-5 w-5 text-primary-500"
+						/>
 						{t("Category statistics")}
 					</CardTitle>
 				</CardHeader>
@@ -478,7 +486,10 @@ function OverviewTab() {
 							) : null}
 							{uncategorizedCount > 0 && (
 								<div className="flex flex-col items-center rounded-lg border border-neutral-100 p-4 text-center">
-									<FileText aria-hidden="true" className="h-6 w-6 text-neutral-500" />
+									<FileText
+										aria-hidden="true"
+										className="h-6 w-6 text-neutral-500"
+									/>
 									<span className="mt-2 text-sm font-medium">
 										{t("Uncategorized")}
 									</span>
@@ -497,11 +508,12 @@ function OverviewTab() {
 										className="flex flex-col items-center rounded-lg border border-neutral-100 p-4 text-center"
 									>
 										{IconComponent ? (
-											<IconComponent
-												className={`h-6 w-6 ${iconInfo.color}`}
-											/>
+											<IconComponent className={`h-6 w-6 ${iconInfo.color}`} />
 										) : (
-											<BarChart3 aria-hidden="true" className="h-6 w-6 text-neutral-400" />
+											<BarChart3
+												aria-hidden="true"
+												className="h-6 w-6 text-neutral-400"
+											/>
 										)}
 										<span className="mt-2 text-sm font-medium">
 											{category.name}

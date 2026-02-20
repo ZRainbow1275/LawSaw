@@ -1,3 +1,4 @@
+use law_eye_common::{Error, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
@@ -28,7 +29,7 @@ impl Default for ConcurrencyConfig {
 /// Usage:
 /// ```ignore
 /// let controller = ConcurrencyController::new(ConcurrencyConfig::default());
-/// let permit = controller.acquire("www.court.gov.cn").await;
+/// let permit = controller.acquire("www.court.gov.cn").await?;
 /// // ... make request while holding permit ...
 /// drop(permit); // releases the slot
 /// ```
@@ -46,7 +47,7 @@ impl ConcurrencyController {
     }
 
     /// Acquire a permit for `domain`. Blocks until a slot is available.
-    pub async fn acquire(&self, domain: &str) -> tokio::sync::OwnedSemaphorePermit {
+    pub async fn acquire(&self, domain: &str) -> Result<tokio::sync::OwnedSemaphorePermit> {
         let semaphore = {
             let mut sems = self.semaphores.lock().await;
             sems.entry(domain.to_string())
@@ -62,10 +63,12 @@ impl ConcurrencyController {
                 .clone()
         };
 
-        semaphore
-            .acquire_owned()
-            .await
-            .expect("semaphore should not be closed")
+        semaphore.acquire_owned().await.map_err(|e| {
+            Error::Internal(format!(
+                "failed to acquire concurrency permit for domain {}: {}",
+                domain, e
+            ))
+        })
     }
 
     /// Number of tracked domains.
@@ -106,7 +109,10 @@ mod tests {
         let controller = ConcurrencyController::default();
         assert_eq!(controller.tracked_domains().await, 0);
 
-        let _permit = controller.acquire("example.com").await;
+        let _permit = controller
+            .acquire("example.com")
+            .await
+            .expect("acquire permit");
         assert_eq!(controller.tracked_domains().await, 1);
     }
 
@@ -114,8 +120,14 @@ mod tests {
     async fn different_domains_have_independent_semaphores() {
         let controller = ConcurrencyController::default();
 
-        let _p1 = controller.acquire("domain-a.com").await;
-        let _p2 = controller.acquire("domain-b.com").await;
+        let _p1 = controller
+            .acquire("domain-a.com")
+            .await
+            .expect("acquire permit for domain-a");
+        let _p2 = controller
+            .acquire("domain-b.com")
+            .await
+            .expect("acquire permit for domain-b");
 
         assert_eq!(controller.tracked_domains().await, 2);
     }
@@ -131,14 +143,20 @@ mod tests {
         }));
 
         // Acquire the single permit for "limited.com"
-        let permit = controller.acquire("limited.com").await;
+        let permit = controller
+            .acquire("limited.com")
+            .await
+            .expect("acquire first permit");
 
         // Try to acquire another — should block
         let controller_clone = controller.clone();
         let start = Instant::now();
 
         let handle = tokio::spawn(async move {
-            let _p = controller_clone.acquire("limited.com").await;
+            let _p = controller_clone
+                .acquire("limited.com")
+                .await
+                .expect("acquire second permit");
         });
 
         // Release the first permit after a short delay
@@ -178,14 +196,20 @@ mod tests {
         });
 
         {
-            let _permit = controller.acquire("test.com").await;
+            let _permit = controller
+                .acquire("test.com")
+                .await
+                .expect("acquire permit");
             // permit held here
         }
         // permit dropped
 
         // Should be able to acquire immediately
         let start = Instant::now();
-        let _permit = controller.acquire("test.com").await;
+        let _permit = controller
+            .acquire("test.com")
+            .await
+            .expect("acquire permit after drop");
         assert!(start.elapsed() < Duration::from_millis(50));
     }
 }

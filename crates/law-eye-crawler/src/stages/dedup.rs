@@ -224,7 +224,11 @@ mod tests {
         let stage = DeduplicationStage::new();
         let a1 = make("Unique A", "https://a.com/1", Some("Content alpha"));
         let a2 = make("Unique B", "https://b.com/2", Some("Content beta"));
-        let a3 = make("Completely Different", "https://c.com/3", Some("Something else"));
+        let a3 = make(
+            "Completely Different",
+            "https://c.com/3",
+            Some("Something else"),
+        );
 
         assert!(stage.process(a1).is_some());
         assert!(stage.process(a2).is_some());

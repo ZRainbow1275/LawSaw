@@ -1,7 +1,7 @@
 "use client";
 
-import { useT } from "@/lib/i18n-client";
 import type { IssuerCount } from "@/hooks/use-statistics";
+import { useT } from "@/lib/i18n-client";
 
 interface IssuerRankingProps {
 	items: IssuerCount[];

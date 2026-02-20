@@ -13,10 +13,11 @@ use std::{
     net::SocketAddr,
     pin::Pin,
     sync::Arc,
+    sync::OnceLock,
     task::{Context, Poll},
     time::{Duration, Instant},
 };
-use tokio::sync::RwLock;
+use tokio::sync::{broadcast, RwLock};
 use tower::{Layer, Service};
 use tracing::warn;
 
@@ -46,6 +47,23 @@ return {1, ttl}
 
 const DEFAULT_RATE_LIMIT_REDIS_PREFIX: &str = "law-eye:rate-limit";
 const DEFAULT_RATE_LIMIT_REDIS_FAIL_OPEN: bool = true;
+const RATE_LIMIT_CLEANUP_SHUTDOWN_CHANNEL_SIZE: usize = 8;
+
+fn rate_limit_cleanup_shutdown_sender() -> &'static broadcast::Sender<()> {
+    static SENDER: OnceLock<broadcast::Sender<()>> = OnceLock::new();
+    SENDER.get_or_init(|| {
+        let (sender, _receiver) = broadcast::channel(RATE_LIMIT_CLEANUP_SHUTDOWN_CHANNEL_SIZE);
+        sender
+    })
+}
+
+fn subscribe_rate_limit_cleanup_shutdown() -> broadcast::Receiver<()> {
+    rate_limit_cleanup_shutdown_sender().subscribe()
+}
+
+pub fn signal_rate_limit_cleanup_shutdown() {
+    let _ = rate_limit_cleanup_shutdown_sender().send(());
+}
 
 fn env_u32(name: &str) -> Option<u32> {
     std::env::var(name)
@@ -287,11 +305,18 @@ impl RateLimitLayer {
 
         if state.needs_cleanup() {
             let cleanup_state = state.clone();
+            let mut shutdown_rx = subscribe_rate_limit_cleanup_shutdown();
             tokio::spawn(async move {
                 let mut interval = tokio::time::interval(Duration::from_secs(60));
                 loop {
-                    interval.tick().await;
-                    cleanup_state.cleanup_expired().await;
+                    tokio::select! {
+                        _ = shutdown_rx.recv() => {
+                            break;
+                        }
+                        _ = interval.tick() => {
+                            cleanup_state.cleanup_expired().await;
+                        }
+                    }
                 }
             });
         }

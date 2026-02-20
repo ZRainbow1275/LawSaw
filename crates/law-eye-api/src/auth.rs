@@ -49,11 +49,20 @@ impl AuthUser for AuthenticatedUser {
 }
 
 // Credentials for login
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Clone, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Credentials {
     pub email: String,
     pub password: String,
+}
+
+impl std::fmt::Debug for Credentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Credentials")
+            .field("email", &self.email)
+            .field("password", &"[REDACTED]")
+            .finish()
+    }
 }
 
 // Auth backend implementation
@@ -84,7 +93,7 @@ impl AuthBackend {
 impl AuthnBackend for AuthBackend {
     type User = AuthenticatedUser;
     type Credentials = Credentials;
-    type Error = std::convert::Infallible;
+    type Error = law_eye_common::Error;
 
     async fn authenticate(
         &self,
@@ -96,14 +105,28 @@ impl AuthnBackend for AuthBackend {
             .await
         {
             Ok(user) => Ok(Some(AuthenticatedUser::from_db_user(&user))),
-            Err(_) => Ok(None),
+            Err(law_eye_common::Error::Unauthorized(_) | law_eye_common::Error::NotFound(_)) => {
+                tracing::warn!(email = %creds.email, "authentication failed: invalid credentials or user not found");
+                Ok(None)
+            }
+            Err(err) => {
+                tracing::error!(email = %creds.email, error = %err, "authentication failed due to internal error");
+                Err(err)
+            }
         }
     }
 
     async fn get_user(&self, user_id: &UserId<Self>) -> Result<Option<Self::User>, Self::Error> {
         match self.user_service.get_by_id(*user_id).await {
             Ok(user) => Ok(Some(AuthenticatedUser::from_db_user(&user))),
-            Err(_) => Ok(None),
+            Err(law_eye_common::Error::NotFound(_)) => {
+                tracing::warn!(user_id = %user_id, "session referenced a non-existent user");
+                Ok(None)
+            }
+            Err(err) => {
+                tracing::error!(user_id = %user_id, error = %err, "failed to load user from session");
+                Err(err)
+            }
         }
     }
 }

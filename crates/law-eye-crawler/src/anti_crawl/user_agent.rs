@@ -16,7 +16,10 @@ static DEFAULT_POOL: Lazy<UserAgentPool> = Lazy::new(UserAgentPool::default_pool
 impl UserAgentPool {
     /// Create a pool with a custom list of User-Agent strings.
     pub fn new(agents: Vec<&'static str>) -> Self {
-        assert!(!agents.is_empty(), "UserAgentPool must have at least one agent");
+        assert!(
+            !agents.is_empty(),
+            "UserAgentPool must have at least one agent"
+        );
         Self { agents }
     }
 

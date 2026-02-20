@@ -28,6 +28,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_API_URL=
 ENV LAW_EYE_API_PROXY_TARGET=$LAW_EYE_API_PROXY_TARGET
 RUN pnpm build
+RUN pnpm prune --prod
 
 
 FROM mcr.microsoft.com/devcontainers/javascript-node:22@sha256:b5eeec8d65d42328b885022935fc790d439e1882b77352cf8a4c8d5831d871e6 AS runner

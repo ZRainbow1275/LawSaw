@@ -144,8 +144,7 @@ impl CrawlOrchestrator {
     /// 9. Returns the processed articles + stats
     pub async fn run_job(&self, job: &CrawlJobConfig) -> CrawlJobResult {
         let start = Instant::now();
-        let mut logger =
-            CrawlLogger::start(job.tenant_id, job.source_id, &job.source_name);
+        let mut logger = CrawlLogger::start(job.tenant_id, job.source_id, &job.source_name);
 
         // --- Step 1: robots.txt check ---
         if job.respect_robots {
@@ -169,8 +168,8 @@ impl CrawlOrchestrator {
         }
 
         // --- Step 2: domain extraction for rate limiting / concurrency ---
-        let domain = DomainRateLimiter::domain_from_url(&job.url)
-            .unwrap_or_else(|| "unknown".to_string());
+        let domain =
+            DomainRateLimiter::domain_from_url(&job.url).unwrap_or_else(|| "unknown".to_string());
 
         // --- Step 3: acquire concurrency permit ---
         let _permit = match self.concurrency.acquire(&domain).await {
@@ -357,13 +356,12 @@ impl CrawlOrchestrator {
         }
 
         let max_concurrency = jobs.len().min(DEFAULT_BATCH_MAX_CONCURRENCY).max(1);
-        let mut indexed_results: Vec<(usize, CrawlJobResult)> = stream::iter(
-            jobs.iter().cloned().enumerate(),
-        )
-        .map(|(index, job)| async move { (index, self.run_job(&job).await) })
-        .buffer_unordered(max_concurrency)
-        .collect()
-        .await;
+        let mut indexed_results: Vec<(usize, CrawlJobResult)> =
+            stream::iter(jobs.iter().cloned().enumerate())
+                .map(|(index, job)| async move { (index, self.run_job(&job).await) })
+                .buffer_unordered(max_concurrency)
+                .collect()
+                .await;
 
         indexed_results.sort_by_key(|(index, _)| *index);
         indexed_results
@@ -444,8 +442,8 @@ mod tests {
 
     #[test]
     fn orchestrator_with_ai_service() {
-        let orch = make_orchestrator()
-            .with_ai_service(Arc::new(AiService::new("test-key", None, None)));
+        let orch =
+            make_orchestrator().with_ai_service(Arc::new(AiService::new("test-key", None, None)));
         assert!(orch.ai_service.is_some());
     }
 

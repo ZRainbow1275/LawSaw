@@ -157,8 +157,7 @@ mod tests {
             stop_on_empty: true,
         };
 
-        let pages: Vec<String> =
-            PageIterator::new("https://example.com/list", &config).collect();
+        let pages: Vec<String> = PageIterator::new("https://example.com/list", &config).collect();
 
         assert_eq!(pages.len(), 3);
         assert_eq!(pages[0], "https://example.com/list?page=1");
@@ -215,8 +214,7 @@ mod tests {
             stop_on_empty: true,
         };
 
-        let pages: Vec<String> =
-            PageIterator::new("https://example.com/api", &config).collect();
+        let pages: Vec<String> = PageIterator::new("https://example.com/api", &config).collect();
 
         assert_eq!(pages.len(), 3);
         assert_eq!(pages[0], "https://example.com/api?offset=0&limit=20");

@@ -38,7 +38,15 @@ impl CsrfLayer {
     }
 
     fn is_auth_path(path: &str) -> bool {
-        path == "/api/v1/auth" || path.starts_with("/api/v1/auth/")
+        // Match both /api/v1/auth and /api/v2/auth (and any future version).
+        let Some(rest) = path.strip_prefix("/api/") else {
+            return false;
+        };
+        // Skip the version segment (e.g. "v1/", "v2/").
+        let Some(after_version) = rest.find('/').map(|i| &rest[i + 1..]) else {
+            return false;
+        };
+        after_version == "auth" || after_version.starts_with("auth/")
     }
 
     fn should_enforce(req: &Request<Body>) -> bool {
@@ -121,6 +129,58 @@ where
                 .into_response())
         })
     }
+}
+
+fn is_allowed_origin(origin: &HeaderValue, allowed_origins: &HashSet<String>) -> bool {
+    let origin = match origin.to_str() {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    if origin == "null" {
+        return false;
+    }
+
+    allowed_origins.contains(origin)
+}
+
+fn is_allowed_referer(referer: &HeaderValue, allowed_origins: &HashSet<String>) -> bool {
+    let referer = match referer.to_str() {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    let url = match Url::parse(referer) {
+        Ok(url) => url,
+        Err(_) => return false,
+    };
+
+    let scheme = url.scheme();
+    let host = match url.host() {
+        Some(Host::Domain(host)) => host.to_string(),
+        Some(Host::Ipv4(ip)) => ip.to_string(),
+        Some(Host::Ipv6(ip)) => format!("[{ip}]"),
+        None => return false,
+    };
+
+    let port = match url.port_or_known_default() {
+        Some(p) => p,
+        None => return false,
+    };
+
+    let default_port = match scheme {
+        "http" => 80,
+        "https" => 443,
+        _ => port,
+    };
+
+    let origin = if port == default_port {
+        format!("{scheme}://{host}")
+    } else {
+        format!("{scheme}://{host}:{port}")
+    };
+
+    allowed_origins.contains(&origin)
 }
 
 #[cfg(test)]
@@ -209,56 +269,27 @@ mod tests {
 
         assert_eq!(call(req).await, StatusCode::FORBIDDEN);
     }
-}
 
-fn is_allowed_origin(origin: &HeaderValue, allowed_origins: &HashSet<String>) -> bool {
-    let origin = match origin.to_str() {
-        Ok(s) => s,
-        Err(_) => return false,
-    };
+    #[tokio::test]
+    async fn v2_auth_path_write_requires_origin_validation() {
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("/api/v2/auth/login")
+            .body(Body::empty())
+            .unwrap();
 
-    if origin == "null" {
-        return false;
+        assert_eq!(call(req).await, StatusCode::FORBIDDEN);
     }
 
-    allowed_origins.contains(origin)
-}
+    #[tokio::test]
+    async fn v2_auth_path_with_allowed_origin_is_permitted() {
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("/api/v2/auth/login")
+            .header(header::ORIGIN, "https://app.example.com")
+            .body(Body::empty())
+            .unwrap();
 
-fn is_allowed_referer(referer: &HeaderValue, allowed_origins: &HashSet<String>) -> bool {
-    let referer = match referer.to_str() {
-        Ok(s) => s,
-        Err(_) => return false,
-    };
-
-    let url = match Url::parse(referer) {
-        Ok(url) => url,
-        Err(_) => return false,
-    };
-
-    let scheme = url.scheme();
-    let host = match url.host() {
-        Some(Host::Domain(host)) => host.to_string(),
-        Some(Host::Ipv4(ip)) => ip.to_string(),
-        Some(Host::Ipv6(ip)) => format!("[{ip}]"),
-        None => return false,
-    };
-
-    let port = match url.port_or_known_default() {
-        Some(p) => p,
-        None => return false,
-    };
-
-    let default_port = match scheme {
-        "http" => 80,
-        "https" => 443,
-        _ => port,
-    };
-
-    let origin = if port == default_port {
-        format!("{scheme}://{host}")
-    } else {
-        format!("{scheme}://{host}:{port}")
-    };
-
-    allowed_origins.contains(&origin)
+        assert_eq!(call(req).await, StatusCode::OK);
+    }
 }

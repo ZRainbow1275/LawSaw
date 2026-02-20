@@ -20,7 +20,6 @@ pub struct RawArticle {
     pub published_at: Option<DateTime<Utc>>,
 
     // ---- Enriched by pipeline stages ----
-
     /// Content hash for deduplication (MD5 hex, set by DeduplicationStage).
     #[serde(default)]
     pub content_hash: Option<String>,
@@ -42,7 +41,6 @@ pub struct RawArticle {
     pub extracted_region_code: Option<String>,
 
     // ---- AI enrichment fields (set by AiEnrichmentStage) ----
-
     /// AI-assigned category slug (e.g. "legislation", "regulation").
     #[serde(default)]
     pub ai_category: Option<String>,

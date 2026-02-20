@@ -80,7 +80,10 @@ export default function LoginPage() {
 								ease: "easeInOut",
 							}}
 						>
-							<Sparkles aria-hidden="true" className="h-4 w-4 text-primary-300" />
+							<Sparkles
+								aria-hidden="true"
+								className="h-4 w-4 text-primary-300"
+							/>
 						</motion.div>
 					</motion.div>
 					<motion.h1

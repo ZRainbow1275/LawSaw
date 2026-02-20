@@ -95,11 +95,7 @@ pub struct CrawlLogger {
 
 impl CrawlLogger {
     /// Start a new crawl run. Emits the `crawler_active_runs` gauge increment.
-    pub fn start(
-        tenant_id: Uuid,
-        source_id: Uuid,
-        source_name: impl Into<String>,
-    ) -> Self {
+    pub fn start(tenant_id: Uuid, source_id: Uuid, source_name: impl Into<String>) -> Self {
         let name = source_name.into();
         CrawlMetrics::run_started();
 

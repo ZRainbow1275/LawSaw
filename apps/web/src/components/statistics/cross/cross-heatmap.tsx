@@ -11,11 +11,7 @@ interface CrossHeatmapProps {
 	yTitle: string;
 }
 
-export function CrossHeatmap({
-	cells,
-	xLabels,
-	yLabels,
-}: CrossHeatmapProps) {
+export function CrossHeatmap({ cells, xLabels, yLabels }: CrossHeatmapProps) {
 	const chartRef = useRef<HTMLDivElement>(null);
 	const chartInstanceRef = useRef<unknown>(null);
 
@@ -76,13 +72,7 @@ export function CrossHeatmap({
 				left: "center",
 				bottom: "2%",
 				inRange: {
-					color: [
-						"#f0f9ff",
-						"#bfdbfe",
-						"#60a5fa",
-						"#2563eb",
-						"#1e40af",
-					],
+					color: ["#f0f9ff", "#bfdbfe", "#60a5fa", "#2563eb", "#1e40af"],
 				},
 			},
 			series: [

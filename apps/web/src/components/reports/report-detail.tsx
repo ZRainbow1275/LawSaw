@@ -137,6 +137,16 @@ export function ReportDetail({
 	}
 
 	const hasContent = report.content && Object.keys(report.content).length > 0;
+	const hasAnyExportKey = Boolean(
+		report.export_pdf_key || report.export_docx_key || report.export_html_key,
+	);
+	const isDownloadReady = report.status === "published";
+	const showDownloadPanel =
+		hasAnyExportKey ||
+		report.status === "generated" ||
+		report.status === "review" ||
+		report.status === "approved" ||
+		report.status === "published";
 
 	return (
 		<motion.div
@@ -217,6 +227,14 @@ export function ReportDetail({
 							>
 								<XCircle aria-hidden="true" className="h-4 w-4" />
 								{t("Reject")}
+							</Button>
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => onExportClick(report)}
+							>
+								<Download aria-hidden="true" className="h-4 w-4" />
+								{t("Export")}
 							</Button>
 						</>
 					)}
@@ -345,6 +363,108 @@ export function ReportDetail({
 					}
 				/>
 			</div>
+
+			{/* Available Downloads */}
+			{showDownloadPanel && (
+				<Card className="mb-6">
+					<div className="p-4">
+						<h3 className="text-sm font-semibold text-neutral-900 mb-3 flex items-center gap-2">
+							<Download aria-hidden="true" className="h-4 w-4 text-primary-500" />
+							{t("Available Downloads")}
+						</h3>
+						{!isDownloadReady && (
+							<div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+								{t("Exports are not downloadable until the report is published.")}
+							</div>
+						)}
+						<div className="flex items-center gap-3 flex-wrap">
+							{report.export_pdf_key && (
+								<a
+									href={
+										isDownloadReady
+											? `/api/v1/reports/${report.id}/download/pdf`
+											: undefined
+									}
+									className={cn(
+										"inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium",
+										"border border-neutral-200 bg-white text-neutral-700",
+										isDownloadReady &&
+											"hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700",
+										!isDownloadReady && "cursor-not-allowed opacity-50",
+										"transition-all",
+									)}
+									download={isDownloadReady}
+									aria-disabled={!isDownloadReady}
+									onClick={(event) => {
+										if (isDownloadReady) return;
+										event.preventDefault();
+									}}
+								>
+									<FileText aria-hidden="true" className="h-4 w-4" />
+									{t("Download PDF")}
+								</a>
+							)}
+							{report.export_docx_key && (
+								<a
+									href={
+										isDownloadReady
+											? `/api/v1/reports/${report.id}/download/docx`
+											: undefined
+									}
+									className={cn(
+										"inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium",
+										"border border-neutral-200 bg-white text-neutral-700",
+										isDownloadReady &&
+											"hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700",
+										!isDownloadReady && "cursor-not-allowed opacity-50",
+										"transition-all",
+									)}
+									download={isDownloadReady}
+									aria-disabled={!isDownloadReady}
+									onClick={(event) => {
+										if (isDownloadReady) return;
+										event.preventDefault();
+									}}
+								>
+									<FileText aria-hidden="true" className="h-4 w-4" />
+									{t("Download DOCX")}
+								</a>
+							)}
+							{report.export_html_key && (
+								<a
+									href={
+										isDownloadReady
+											? `/api/v1/reports/${report.id}/download/html`
+											: undefined
+									}
+									className={cn(
+										"inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium",
+										"border border-neutral-200 bg-white text-neutral-700",
+										isDownloadReady &&
+											"hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700",
+										!isDownloadReady && "cursor-not-allowed opacity-50",
+										"transition-all",
+									)}
+									download={isDownloadReady}
+									aria-disabled={!isDownloadReady}
+									onClick={(event) => {
+										if (isDownloadReady) return;
+										event.preventDefault();
+									}}
+								>
+									<FileText aria-hidden="true" className="h-4 w-4" />
+									{t("Download HTML")}
+								</a>
+							)}
+							{!hasAnyExportKey && (
+								<p className="text-xs text-neutral-500">
+									{t("No export file is ready yet. Please trigger export first.")}
+								</p>
+							)}
+						</div>
+					</div>
+				</Card>
+			)}
 
 			{/* Content */}
 			<Card>

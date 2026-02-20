@@ -33,9 +33,8 @@ static EFFECTIVE_DATE_RE: Lazy<Option<Regex>> = Lazy::new(|| {
 });
 
 /// Fallback date extraction: just year-month-day in Chinese format.
-static CN_DATE_RE: Lazy<Option<Regex>> = Lazy::new(|| {
-    Regex::new(r"(\d{4})[\s]*年[\s]*(\d{1,2})[\s]*月[\s]*(\d{1,2})[\s]*日").ok()
-});
+static CN_DATE_RE: Lazy<Option<Regex>> =
+    Lazy::new(|| Regex::new(r"(\d{4})[\s]*年[\s]*(\d{1,2})[\s]*月[\s]*(\d{1,2})[\s]*日").ok());
 
 /// Known issuing authorities and their canonical names.
 /// Order matters: more specific entries first.
@@ -262,7 +261,10 @@ mod tests {
     #[test]
     fn extracts_doc_number() {
         let stage = MetadataExtractionStage;
-        let a = make("国务院关于印发通知", Some("国发〔2026〕1号 各省、自治区..."));
+        let a = make(
+            "国务院关于印发通知",
+            Some("国发〔2026〕1号 各省、自治区..."),
+        );
         let result = stage.process(a).unwrap();
         assert_eq!(
             result.extracted_doc_number.as_deref(),
@@ -327,7 +329,10 @@ mod tests {
     #[test]
     fn no_metadata_when_absent() {
         let stage = MetadataExtractionStage;
-        let a = make("Hello World", Some("This is English content with no legal info."));
+        let a = make(
+            "Hello World",
+            Some("This is English content with no legal info."),
+        );
         let result = stage.process(a).unwrap();
         assert!(result.extracted_issuer.is_none());
         assert!(result.extracted_doc_number.is_none());

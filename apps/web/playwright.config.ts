@@ -40,6 +40,7 @@ export default defineConfig({
 		: [["list"], ["html", { open: "never" }]],
 	use: {
 		baseURL,
+		locale: "zh-CN",
 		trace: "on-first-retry",
 		screenshot: "only-on-failure",
 		video: "retain-on-failure",

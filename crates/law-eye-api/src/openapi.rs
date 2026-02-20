@@ -87,6 +87,8 @@ impl Modify for SecurityAddon {
         crate::routes::users::update_user,
         crate::routes::users::upload_user_avatar,
         crate::routes::users::update_user_roles,
+        crate::routes::users::change_password,
+        crate::routes::users::login_activity,
         crate::routes::webhooks::list_webhooks,
         crate::routes::webhooks::create_webhook,
         crate::routes::webhooks::update_webhook,

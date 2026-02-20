@@ -379,12 +379,36 @@ mod tests {
     #[test]
     fn all_profiles_have_non_empty_fields() {
         for profile in all_profiles() {
-            assert!(!profile.kind.is_empty(), "kind is empty for {}", profile.display_name);
-            assert!(!profile.display_name.is_empty(), "display_name is empty for {}", profile.kind);
-            assert!(!profile.default_url.is_empty(), "default_url is empty for {}", profile.kind);
-            assert!(!profile.list_selector.is_empty(), "list_selector is empty for {}", profile.kind);
-            assert!(!profile.title_selector.is_empty(), "title_selector is empty for {}", profile.kind);
-            assert!(!profile.link_selector.is_empty(), "link_selector is empty for {}", profile.kind);
+            assert!(
+                !profile.kind.is_empty(),
+                "kind is empty for {}",
+                profile.display_name
+            );
+            assert!(
+                !profile.display_name.is_empty(),
+                "display_name is empty for {}",
+                profile.kind
+            );
+            assert!(
+                !profile.default_url.is_empty(),
+                "default_url is empty for {}",
+                profile.kind
+            );
+            assert!(
+                !profile.list_selector.is_empty(),
+                "list_selector is empty for {}",
+                profile.kind
+            );
+            assert!(
+                !profile.title_selector.is_empty(),
+                "title_selector is empty for {}",
+                profile.kind
+            );
+            assert!(
+                !profile.link_selector.is_empty(),
+                "link_selector is empty for {}",
+                profile.kind
+            );
         }
     }
 
@@ -410,7 +434,10 @@ mod tests {
     #[test]
     fn court_gov_has_higher_delay() {
         let profile = court_gov();
-        assert!(profile.delay_ms >= 3000, "court.gov.cn should have higher delay for anti-crawl");
+        assert!(
+            profile.delay_ms >= 3000,
+            "court.gov.cn should have higher delay for anti-crawl"
+        );
     }
 
     #[test]

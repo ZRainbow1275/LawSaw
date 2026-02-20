@@ -285,6 +285,7 @@ export function ReportList({
 												</Button>
 											)}
 											{(report.status === "generated" ||
+												report.status === "review" ||
 												report.status === "approved" ||
 												report.status === "published") && (
 												<Button

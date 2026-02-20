@@ -11,11 +11,12 @@ use super::exporter::chart::ChartRenderer;
 use super::types::{
     CreateReportInput, DomainBreakdown, ExportFormat, ListReportsQuery, RegionBreakdown,
     ReportAggregatedData, ReportArticleSummary, ReportCalendarEvent, ReportOverview,
-    ReportRiskItem, ReportStatus,
-    UpdateReportInput,
+    ReportRiskItem, ReportStatus, UpdateReportInput,
 };
 use crate::statistics::{domain_root_label, region_code_to_name};
 use crate::tenant::with_tenant_tx;
+
+const VALID_REPORT_PERIOD_TYPES: [&str; 4] = ["weekly", "monthly", "quarterly", "custom"];
 
 pub struct ReportService {
     pool: PgPool,
@@ -67,35 +68,117 @@ impl ReportService {
         Ok(format!("RPT-{}-{:04}", date_part, seq))
     }
 
-    // ======================================================================
-    // 创建报告
-    // ======================================================================
+    fn validate_create_report_input(input: &CreateReportInput) -> Result<()> {
+        if input.title.trim().is_empty() {
+            return Err(Error::Validation("title must not be empty".to_string()));
+        }
 
-    pub async fn create_report(
-        &self,
-        tenant_id: Uuid,
-        input: CreateReportInput,
-    ) -> Result<Report> {
-        // 校验日期范围
         if input.period_end < input.period_start {
             return Err(Error::Validation(
                 "period_end must not be earlier than period_start".to_string(),
             ));
         }
 
-        // 校验 period_type
-        let valid_types = ["weekly", "monthly", "quarterly", "custom"];
-        if !valid_types.contains(&input.period_type.as_str()) {
+        if !VALID_REPORT_PERIOD_TYPES.contains(&input.period_type.as_str()) {
             return Err(Error::Validation(format!(
                 "Invalid period_type: {}. Allowed: weekly, monthly, quarterly, custom",
                 input.period_type
             )));
         }
 
+        Ok(())
+    }
+
+    async fn ensure_author_exists_in_tenant(
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        tenant_id: Uuid,
+        author_id: Uuid,
+    ) -> Result<()> {
+        let exists: bool = sqlx::query_scalar(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM users
+                WHERE id = $1
+                  AND tenant_id = $2
+            )
+            "#,
+        )
+        .bind(author_id)
+        .bind(tenant_id)
+        .fetch_one(tx.as_mut())
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        if !exists {
+            return Err(Error::Validation(format!(
+                "Author {} does not belong to tenant {}",
+                author_id, tenant_id
+            )));
+        }
+
+        Ok(())
+    }
+
+    async fn ensure_template_is_active_in_tenant(
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        tenant_id: Uuid,
+        template_id: Option<Uuid>,
+    ) -> Result<()> {
+        let Some(template_id) = template_id else {
+            return Ok(());
+        };
+
+        let exists: bool = sqlx::query_scalar(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM report_templates
+                WHERE id = $1
+                  AND tenant_id = $2
+                  AND is_active = true
+            )
+            "#,
+        )
+        .bind(template_id)
+        .bind(tenant_id)
+        .fetch_one(tx.as_mut())
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        if !exists {
+            return Err(Error::NotFound(format!(
+                "Template {} not found or inactive in current tenant",
+                template_id
+            )));
+        }
+
+        Ok(())
+    }
+
+    // ======================================================================
+    // 创建报告
+    // ======================================================================
+
+    pub async fn create_report(&self, tenant_id: Uuid, input: CreateReportInput) -> Result<Report> {
+        Self::validate_create_report_input(&input)?;
+
+        let CreateReportInput {
+            title,
+            period_type,
+            period_start,
+            period_end,
+            template_id,
+            author_id,
+        } = input;
+
         let date_part = Utc::now().format("%Y%m%d").to_string();
 
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
+                Self::ensure_author_exists_in_tenant(tx, tenant_id, author_id).await?;
+                Self::ensure_template_is_active_in_tenant(tx, tenant_id, template_id).await?;
+
                 let report_number = Self::next_report_number(tx, &date_part).await?;
 
                 let report = sqlx::query_as::<_, Report>(
@@ -110,12 +193,12 @@ impl ReportService {
                 )
                 .bind(tenant_id)
                 .bind(&report_number)
-                .bind(&input.title)
-                .bind(input.template_id)
-                .bind(input.author_id)
-                .bind(&input.period_type)
-                .bind(input.period_start)
-                .bind(input.period_end)
+                .bind(&title)
+                .bind(template_id)
+                .bind(author_id)
+                .bind(&period_type)
+                .bind(period_start)
+                .bind(period_end)
                 .fetch_one(tx.as_mut())
                 .await
                 .map_err(|e| Error::Database(e.to_string()))?;
@@ -315,9 +398,10 @@ impl ReportService {
                     )));
                 }
 
-                let current_status = ReportStatus::from_db_str(&current.status).ok_or_else(
-                    || Error::Internal(format!("Unknown report status: {}", current.status)),
-                )?;
+                let current_status =
+                    ReportStatus::from_db_str(&current.status).ok_or_else(|| {
+                        Error::Internal(format!("Unknown report status: {}", current.status))
+                    })?;
 
                 if !current_status.can_transition_to(target_status) {
                     return Err(Error::Validation(format!(
@@ -503,6 +587,31 @@ impl ReportService {
             ));
         }
 
+        let (overview, highlights, risk_items, calendar_events) = tokio::try_join!(
+            self.aggregate_overview(tenant_id, period_start, period_end),
+            self.aggregate_highlights(tenant_id, period_start, period_end),
+            self.aggregate_risk_items(tenant_id, period_start, period_end),
+            self.aggregate_calendar_events(tenant_id, period_start, period_end),
+        )?;
+
+        // Charts: 使用 ChartRenderer 渲染 SVG 图表
+        let charts = ChartRenderer::render_charts(&overview).unwrap_or_else(|_| Vec::new());
+
+        Ok(ReportAggregatedData {
+            overview,
+            highlights,
+            risk_items,
+            charts,
+            calendar_events,
+        })
+    }
+
+    async fn aggregate_overview(
+        &self,
+        tenant_id: Uuid,
+        period_start: NaiveDate,
+        period_end: NaiveDate,
+    ) -> Result<ReportOverview> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
                 // ---- 1. Overview 统计 ----
@@ -580,15 +689,27 @@ impl ReportService {
                     })
                     .collect();
 
-                let overview = ReportOverview {
+                Ok(ReportOverview {
                     total_articles: overview_row.0,
                     high_importance_count: overview_row.1,
                     high_risk_count: overview_row.2,
                     ai_summary: None, // AI 摘要由 worker 后续填充
                     domain_breakdown,
                     region_breakdown,
-                };
+                })
+            })
+        })
+        .await
+    }
 
+    async fn aggregate_highlights(
+        &self,
+        tenant_id: Uuid,
+        period_start: NaiveDate,
+        period_end: NaiveDate,
+    ) -> Result<Vec<ReportArticleSummary>> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
                 // ---- 4. Highlights: 高重要性文章摘要 (top 10) ----
                 #[allow(clippy::type_complexity)]
                 let highlight_rows: Vec<(
@@ -633,7 +754,17 @@ impl ReportService {
                 let highlights: Vec<ReportArticleSummary> = highlight_rows
                     .into_iter()
                     .map(
-                        |(id, title, summary, domain_label, issuer, published_at, importance, risk_score, link)| {
+                        |(
+                            id,
+                            title,
+                            summary,
+                            domain_label,
+                            issuer,
+                            published_at,
+                            importance,
+                            risk_score,
+                            link,
+                        )| {
                             ReportArticleSummary {
                                 id,
                                 title,
@@ -650,11 +781,29 @@ impl ReportService {
                     )
                     .collect();
 
+                Ok(highlights)
+            })
+        })
+        .await
+    }
+
+    async fn aggregate_risk_items(
+        &self,
+        tenant_id: Uuid,
+        period_start: NaiveDate,
+        period_end: NaiveDate,
+    ) -> Result<Vec<ReportRiskItem>> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
                 // ---- 5. Risk items: 高风险文章 ----
                 #[allow(clippy::type_complexity)]
-                let risk_rows: Vec<(String, Option<String>, Option<i32>, Option<Uuid>)> =
-                    sqlx::query_as(
-                        r#"
+                let risk_rows: Vec<(
+                    String,
+                    Option<String>,
+                    Option<i32>,
+                    Option<Uuid>,
+                )> = sqlx::query_as(
+                    r#"
                         SELECT
                             title,
                             summary,
@@ -668,12 +817,12 @@ impl ReportService {
                         ORDER BY risk_score DESC
                         LIMIT 20
                         "#,
-                    )
-                    .bind(period_start)
-                    .bind(period_end)
-                    .fetch_all(tx.as_mut())
-                    .await
-                    .map_err(|e| Error::Database(e.to_string()))?;
+                )
+                .bind(period_start)
+                .bind(period_end)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
                 let risk_items: Vec<ReportRiskItem> = risk_rows
                     .into_iter()
@@ -696,6 +845,20 @@ impl ReportService {
                     })
                     .collect();
 
+                Ok(risk_items)
+            })
+        })
+        .await
+    }
+
+    async fn aggregate_calendar_events(
+        &self,
+        tenant_id: Uuid,
+        period_start: NaiveDate,
+        period_end: NaiveDate,
+    ) -> Result<Vec<ReportCalendarEvent>> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
                 // ---- 6. Calendar events: 生效日期相关事件 ----
                 let calendar_rows: Vec<(chrono::NaiveDate, String, Option<String>)> =
                     sqlx::query_as(
@@ -728,19 +891,97 @@ impl ReportService {
                     })
                     .collect();
 
-                // Charts: 使用 ChartRenderer 渲染 SVG 图表
-                let charts = ChartRenderer::render_charts(&overview)
-                    .unwrap_or_else(|_| Vec::new());
-
-                Ok(ReportAggregatedData {
-                    overview,
-                    highlights,
-                    risk_items,
-                    charts,
-                    calendar_events,
-                })
+                Ok(calendar_events)
             })
         })
         .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_input(
+        title: &str,
+        period_type: &str,
+        period_start: NaiveDate,
+        period_end: NaiveDate,
+    ) -> CreateReportInput {
+        CreateReportInput {
+            title: title.to_string(),
+            period_type: period_type.to_string(),
+            period_start,
+            period_end,
+            template_id: Some(Uuid::new_v4()),
+            author_id: Uuid::new_v4(),
+        }
+    }
+
+    #[test]
+    fn validate_create_report_input_rejects_empty_title() {
+        let input = sample_input(
+            "   ",
+            "weekly",
+            NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+            NaiveDate::from_ymd_opt(2026, 1, 7).unwrap(),
+        );
+
+        let err = ReportService::validate_create_report_input(&input).unwrap_err();
+        match err {
+            Error::Validation(msg) => {
+                assert!(msg.contains("title"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_create_report_input_rejects_invalid_period_range() {
+        let input = sample_input(
+            "合规周报",
+            "weekly",
+            NaiveDate::from_ymd_opt(2026, 1, 8).unwrap(),
+            NaiveDate::from_ymd_opt(2026, 1, 7).unwrap(),
+        );
+
+        let err = ReportService::validate_create_report_input(&input).unwrap_err();
+        match err {
+            Error::Validation(msg) => {
+                assert!(msg.contains("period_end"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_create_report_input_rejects_invalid_period_type() {
+        let input = sample_input(
+            "合规周报",
+            "yearly",
+            NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+            NaiveDate::from_ymd_opt(2026, 1, 7).unwrap(),
+        );
+
+        let err = ReportService::validate_create_report_input(&input).unwrap_err();
+        match err {
+            Error::Validation(msg) => {
+                assert!(msg.contains("Invalid period_type"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_create_report_input_accepts_valid_payload() {
+        let input = sample_input(
+            "合规周报",
+            "weekly",
+            NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+            NaiveDate::from_ymd_opt(2026, 1, 7).unwrap(),
+        );
+
+        let result = ReportService::validate_create_report_input(&input);
+        assert!(result.is_ok());
     }
 }

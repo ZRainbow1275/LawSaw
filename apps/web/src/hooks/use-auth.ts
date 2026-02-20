@@ -130,17 +130,63 @@ export function useAuth() {
 					credentials,
 					assertAuthResponse,
 				);
+				if (
+					response.success &&
+					response.mfa_required &&
+					response.mfa_challenge
+				) {
+					setLoading(false);
+					return {
+						success: false as const,
+						mfaRequired: true as const,
+						mfaChallenge: response.mfa_challenge,
+						email: credentials.email,
+					};
+				}
 				if (response.success && response.user) {
 					setUser(response.user);
 					await refreshAuthz(response.user);
-					return { success: true };
+					return { success: true as const };
 				}
 				return {
-					success: false,
+					success: false as const,
 					error: t(localeFromDocument(), "Sign in failed. Please try again."),
 				};
 			} catch (error) {
-				return { success: false, error: authErrorMessage("login", error) };
+				return {
+					success: false as const,
+					error: authErrorMessage("login", error),
+				};
+			} finally {
+				setLoading(false);
+			}
+		},
+		[setUser, setLoading, refreshAuthz],
+	);
+
+	const verifyMfa = useCallback(
+		async (params: { email: string; challenge: string; code: string }) => {
+			setLoading(true);
+			try {
+				const response = await apiClient.post(
+					"/api/v1/auth/mfa/verify",
+					params,
+					assertAuthResponse,
+				);
+				if (response.success && response.user) {
+					setUser(response.user);
+					await refreshAuthz(response.user);
+					return { success: true as const };
+				}
+				return {
+					success: false as const,
+					error: t(localeFromDocument(), "MFA verification failed."),
+				};
+			} catch (error) {
+				return {
+					success: false as const,
+					error: authErrorMessage("login", error),
+				};
 			} finally {
 				setLoading(false);
 			}
@@ -193,6 +239,7 @@ export function useAuth() {
 		isLoading,
 		refreshSession,
 		login,
+		verifyMfa,
 		register,
 		logout,
 	};

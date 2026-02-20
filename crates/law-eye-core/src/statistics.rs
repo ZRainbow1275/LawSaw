@@ -71,7 +71,10 @@ mod tests {
 
     #[test]
     fn region_code_to_name_falls_back_to_unknown() {
-        assert_eq!(region_code_to_name("000000"), "\u{672a}\u{77e5}\u{5730}\u{533a}");
+        assert_eq!(
+            region_code_to_name("000000"),
+            "\u{672a}\u{77e5}\u{5730}\u{533a}"
+        );
     }
 }
 

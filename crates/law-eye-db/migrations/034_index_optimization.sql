@@ -109,9 +109,30 @@ CREATE INDEX IF NOT EXISTS idx_article_entities_tenant_entity
 -- 6. Source health monitoring indexes
 -- =============================================================================
 
-CREATE INDEX IF NOT EXISTS idx_sources_tenant_active_schedule
-    ON sources (tenant_id, is_active, next_crawl_at NULLS FIRST)
-    WHERE deleted_at IS NULL;
+DO $$
+BEGIN
+    -- `next_crawl_at` is not present in every schema history variant.
+    -- Keep this migration executable on fresh databases by falling back to `last_fetch`.
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'sources'
+          AND column_name = 'next_crawl_at'
+    ) THEN
+        EXECUTE '
+            CREATE INDEX IF NOT EXISTS idx_sources_tenant_active_schedule
+            ON sources (tenant_id, is_active, next_crawl_at NULLS FIRST)
+            WHERE deleted_at IS NULL
+        ';
+    ELSE
+        EXECUTE '
+            CREATE INDEX IF NOT EXISTS idx_sources_tenant_active_schedule
+            ON sources (tenant_id, is_active, last_fetch NULLS FIRST)
+            WHERE deleted_at IS NULL
+        ';
+    END IF;
+END $$;
 
 -- =============================================================================
 -- 7. Audit log indexes for compliance queries

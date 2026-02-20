@@ -212,7 +212,10 @@ export default function SourcesPage() {
 								<CardContent className="p-4">
 									<div className="flex items-center gap-3">
 										<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-100">
-											<Rss aria-hidden="true" className="h-5 w-5 text-primary-600" />
+											<Rss
+												aria-hidden="true"
+												className="h-5 w-5 text-primary-600"
+											/>
 										</div>
 										<div>
 											<p className="text-2xl font-bold">
@@ -229,7 +232,10 @@ export default function SourcesPage() {
 								<CardContent className="p-4">
 									<div className="flex items-center gap-3">
 										<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success-light">
-											<CheckCircle2 aria-hidden="true" className="h-5 w-5 text-success" />
+											<CheckCircle2
+												aria-hidden="true"
+												className="h-5 w-5 text-success"
+											/>
 										</div>
 										<div>
 											<p className="text-2xl font-bold">{activeCount}</p>
@@ -244,7 +250,10 @@ export default function SourcesPage() {
 								<CardContent className="p-4">
 									<div className="flex items-center gap-3">
 										<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
-											<AlertCircle aria-hidden="true" className="h-5 w-5 text-destructive" />
+											<AlertCircle
+												aria-hidden="true"
+												className="h-5 w-5 text-destructive"
+											/>
 										</div>
 										<div>
 											<p className="text-2xl font-bold">{errorCount}</p>
@@ -495,7 +504,10 @@ export default function SourcesPage() {
 						<Card>
 							<CardHeader>
 								<CardTitle className="flex items-center gap-2">
-									<Rss aria-hidden="true" className="h-5 w-5 text-primary-500" />
+									<Rss
+										aria-hidden="true"
+										className="h-5 w-5 text-primary-500"
+									/>
 									{t("Sources list")}
 								</CardTitle>
 							</CardHeader>
@@ -591,7 +603,10 @@ export default function SourcesPage() {
 														<RefreshCw
 															className={`mr-1 h-3 w-3 ${
 																triggerFetch.isPending ? "animate-spin" : ""
-															}`} aria-hidden="true" focusable="false" />
+															}`}
+															aria-hidden="true"
+															focusable="false"
+														/>
 														{t("Fetch")}
 													</Button>
 												</div>

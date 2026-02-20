@@ -1,0 +1,32 @@
+groups:
+  - name: law-eye-readiness
+    rules:
+      - alert: LawEyeApiMetricsDown
+        expr: up{job="law-eye-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: api
+        annotations:
+          summary: "law-eye-api /metrics is unreachable"
+          description: "Prometheus cannot scrape api:3001/metrics for 2 minutes."
+
+      - alert: LawEyeWorkerMetricsDown
+        expr: up{job="law-eye-worker"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: worker
+        annotations:
+          summary: "law-eye-worker /metrics is unreachable"
+          description: "Prometheus cannot scrape worker:3002/metrics for 2 minutes."
+
+      - alert: LawEyeEndpointProbeFailed
+        expr: probe_success{job="blackbox-http"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: edge
+        annotations:
+          summary: "Law Eye endpoint health probe failed"
+          description: "Blackbox probe failed for {{ $labels.instance }} continuously for 2 minutes."

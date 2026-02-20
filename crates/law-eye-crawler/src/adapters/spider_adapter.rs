@@ -29,7 +29,8 @@ impl SourceAdapter for SpiderAdapter {
     }
 
     async fn fetch(&self, ctx: &FetchContext) -> Result<Vec<RawArticle>> {
-        let config: SpiderConfig = match serde_json::from_value::<SpiderConfig>(ctx.config.clone()) {
+        let config: SpiderConfig = match serde_json::from_value::<SpiderConfig>(ctx.config.clone())
+        {
             Ok(mut cfg) => {
                 // Merge top-level fields into SpiderConfig when present
                 if cfg.encoding.is_none() {
@@ -53,7 +54,9 @@ impl SourceAdapter for SpiderAdapter {
             }
         };
 
-        self.spider.fetch(&ctx.url, &config, ctx.allow_internal).await
+        self.spider
+            .fetch(&ctx.url, &config, ctx.allow_internal)
+            .await
     }
 }
 

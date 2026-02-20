@@ -180,7 +180,10 @@ mod tests {
     #[test]
     fn filters_short_title() {
         let stage = ContentQualityStage::new();
-        let a = make("短", Some("这是一段足够长的内容用于测试质量检查阶段的最小长度要求"));
+        let a = make(
+            "短",
+            Some("这是一段足够长的内容用于测试质量检查阶段的最小长度要求"),
+        );
         assert!(stage.process(a).is_none()); // title 1 char < 2
     }
 

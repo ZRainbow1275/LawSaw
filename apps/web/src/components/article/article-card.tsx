@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useLongPress } from "@/hooks/use-long-press";
 import {
 	type Article,
 	type ArticleRiskLevel,
@@ -13,11 +14,10 @@ import {
 	formatTimeAgo,
 	withLocalePath,
 } from "@/lib/i18n";
-import { useLongPress } from "@/hooks/use-long-press";
 import { useLocale, useT } from "@/lib/i18n-client";
-import { useToast } from "@/stores/toast-store";
 import { buttonTapEffect, cardHoverEffect, fadeVariants } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/stores/toast-store";
 import { motion } from "framer-motion";
 import {
 	AlertTriangle,
@@ -255,7 +255,10 @@ export const ArticleCard = forwardRef<HTMLDivElement, ArticleCardProps>(
 							onClick={handleBookmarkClick}
 						>
 							{isBookmarked ? (
-								<BookmarkCheck aria-hidden="true" className="h-4 w-4 text-primary-500" />
+								<BookmarkCheck
+									aria-hidden="true"
+									className="h-4 w-4 text-primary-500"
+								/>
 							) : (
 								<Bookmark aria-hidden="true" className="h-4 w-4" />
 							)}
@@ -299,7 +302,10 @@ export const ArticleCard = forwardRef<HTMLDivElement, ArticleCardProps>(
 
 					{/* External */}
 					{article.link && (
-						<ExternalLink aria-hidden="true" className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+						<ExternalLink
+							aria-hidden="true"
+							className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity"
+						/>
 					)}
 				</div>
 			</motion.div>

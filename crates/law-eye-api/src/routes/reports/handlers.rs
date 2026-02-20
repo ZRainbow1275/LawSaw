@@ -20,8 +20,7 @@ use crate::state::AppState;
 use crate::{ApiJson, ApiQuery, ApiResult, AppError};
 
 use law_eye_core::report::{
-    CreateReportInput, ExportFormat, ListReportsQuery, ReportStatus,
-    UpdateReportInput,
+    CreateReportInput, ExportFormat, ListReportsQuery, ReportStatus, UpdateReportInput,
 };
 use law_eye_queue::{ReportExportTask, ReportGenerateTask};
 
@@ -219,7 +218,7 @@ pub(crate) async fn transition_status(
 
     let target_status = ReportStatus::from_db_str(&req.target_status).ok_or_else(|| {
         AppError::validation(format!(
-            "Invalid target status: {}. Valid values: draft, generating, review, approved, published, archived",
+            "Invalid target status: {}. Valid values: draft, generating, generated, review, approved, published, archived, error",
             req.target_status
         ))
     })?;
@@ -261,13 +260,12 @@ pub(crate) async fn generate_report(
         .await
         .map_err(AppError::from)?;
 
-    let current_status = ReportStatus::from_db_str(&report.status).ok_or_else(|| {
-        AppError::internal(format!("Unknown report status: {}", report.status))
-    })?;
+    let current_status = ReportStatus::from_db_str(&report.status)
+        .ok_or_else(|| AppError::internal(format!("Unknown report status: {}", report.status)))?;
 
     if !current_status.can_transition_to(ReportStatus::Generating) {
         return Err(AppError::validation(format!(
-            "Cannot generate report in status '{}'. Report must be in 'draft' status.",
+            "Cannot generate report in status '{}'. Report must be in 'draft' or 'error' status.",
             report.status
         )));
     }
@@ -429,11 +427,7 @@ pub(crate) async fn download_report_export(
 
     // Build response with correct headers
     let content_type = HeaderValue::from_static(export_format.content_type());
-    let filename = format!(
-        "{}.{}",
-        report.report_number,
-        export_format.extension()
-    );
+    let filename = format!("{}.{}", report.report_number, export_format.extension());
     let disposition = HeaderValue::from_str(&format!("attachment; filename=\"{}\"", filename))
         .map_err(|_| AppError::internal("Failed to build Content-Disposition header"))?;
 
@@ -583,11 +577,7 @@ pub(crate) async fn update_template(
         return Err(AppError::validation("Built-in templates cannot be updated"));
     }
 
-    let name = req
-        .name
-        .as_deref()
-        .map(str::trim)
-        .unwrap_or(&existing.name);
+    let name = req.name.as_deref().map(str::trim).unwrap_or(&existing.name);
     if name.is_empty() {
         return Err(AppError::validation("name cannot be empty"));
     }

@@ -1,4 +1,4 @@
-﻿use crate::tenant::with_tenant_tx;
+use crate::tenant::with_tenant_tx;
 use law_eye_common::{Error, Result};
 use law_eye_db::{CreateDomainEvent, DomainEvent};
 use sqlx::{PgPool, Postgres, Transaction};
@@ -44,7 +44,11 @@ impl DomainEventService {
         Self { pool }
     }
 
-    pub async fn append(&self, tenant_id: Uuid, input: DomainEventInput) -> Result<Option<DomainEvent>> {
+    pub async fn append(
+        &self,
+        tenant_id: Uuid,
+        input: DomainEventInput,
+    ) -> Result<Option<DomainEvent>> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move { self.append_tx(tenant_id, tx, input).await })
         })
@@ -59,7 +63,9 @@ impl DomainEventService {
     ) -> Result<Option<DomainEvent>> {
         let aggregate_type = input.aggregate_type.trim().to_string();
         if aggregate_type.is_empty() {
-            return Err(Error::Validation("aggregate_type cannot be empty".to_string()));
+            return Err(Error::Validation(
+                "aggregate_type cannot be empty".to_string(),
+            ));
         }
 
         let event_type = input.event_type.trim().to_string();
@@ -68,7 +74,9 @@ impl DomainEventService {
         }
 
         if input.event_version <= 0 {
-            return Err(Error::Validation("event_version must be positive".to_string()));
+            return Err(Error::Validation(
+                "event_version must be positive".to_string(),
+            ));
         }
 
         let dedupe_key = input.dedupe_key.trim().to_string();
@@ -179,7 +187,9 @@ impl DomainEventService {
     ) -> Result<Vec<DomainEvent>> {
         let aggregate_type = aggregate_type.trim().to_string();
         if aggregate_type.is_empty() {
-            return Err(Error::Validation("aggregate_type cannot be empty".to_string()));
+            return Err(Error::Validation(
+                "aggregate_type cannot be empty".to_string(),
+            ));
         }
 
         let from_version = from_version.unwrap_or(1).max(1);
