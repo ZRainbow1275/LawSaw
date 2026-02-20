@@ -166,7 +166,7 @@
 ## 前端专项待修（Top 10）
 
 - [x] `apps/web/src/components/layout/sidebar.tsx`：移动抽屉已改为语义化 `dialog`，lint warning 已清零
-- [ ] `apps/web/src/app/settings/page.tsx`：单文件体量过大，建议拆分为 profile/security/api/tenant/webhook 子组件
+- [ ] `apps/web/src/app/settings/page.tsx`：单文件体量过大，建议拆分为 profile/security/api/tenant/webhook 子组件（进展：`Security/Tenant/Webhook` 已拆至 `apps/web/src/app/settings/tabs.tsx`，`Profile/API` 仍在主文件）
 - [x] `apps/web/src/app/settings/page.tsx`：页签状态与 URL 深链已打通，补齐 tablist/tab/tabpanel 可访问语义
 - [x] `apps/web/src/lib/i18n.ts`：新增 `apps/web/src/messages/en.json`，英文词条从隐式回退改为显式词条表
 - [x] `apps/web/src/app/settings/page.tsx`：tenant/webhook 管理页已补齐细粒度错误码提示映射（401/403/404/409/412/428/429/5xx），并统一扩展到 WebPush/APIKey/Security/LoginActivity 操作
