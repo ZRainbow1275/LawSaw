@@ -917,6 +917,13 @@ if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]] && [[ -n "${WINDOWS_HOST_IP:-}" ]]; then
   ALLOWED_ORIGINS="${ALLOWED_ORIGINS},http://${WINDOWS_HOST_IP}:${WEB_PORT}"
 fi
 export LAW_EYE__SERVER__ALLOWED_ORIGINS="$ALLOWED_ORIGINS"
+# Optional PDF renderer fallback: reuse a locally running Gotenberg when available.
+# This keeps PDF export usable in no-dockerhub mode when browserless is unavailable.
+if [[ -z "${LAW_EYE__GOTENBERG__URL:-}" ]]; then
+  if curl -fsS "http://127.0.0.1:33012/health" >/dev/null 2>&1; then
+    export LAW_EYE__GOTENBERG__URL="http://127.0.0.1:33012"
+  fi
+fi
 # E2E/local runs can trigger repeated auth redirects/logins while validating flows.
 # Keep limits configurable, but use generous defaults in this local stack runner.
 export LAW_EYE__RATE_LIMIT__LOGIN_MAX_REQUESTS="${LAW_EYE__RATE_LIMIT__LOGIN_MAX_REQUESTS:-200}"
@@ -940,9 +947,27 @@ start_bg() {
   local log_file="$LOG_DIR/$name.log"
   shift 2
 
-  if [[ -f "$pid_file" ]] && pid_exists "$(cat "$pid_file")"; then
-    echo "Process already running: $name (pid=$(cat "$pid_file"))"
-    return 0
+  if [[ -f "$pid_file" ]]; then
+    local existing_pid
+    existing_pid="$(cat "$pid_file" 2>/dev/null || true)"
+    if [[ -n "$existing_pid" ]] && pid_exists "$existing_pid"; then
+      # API can be alive with a stale pid file but bound to a different port
+      # from a previous stack run. Treat that as stale and restart it.
+      if [[ "$name" == "api" ]]; then
+        local existing_pid_raw="${existing_pid#wsl:}"
+        local listening_pid
+        listening_pid="$(wsl_listen_pid "$API_PORT")"
+        if [[ -n "$listening_pid" && "$listening_pid" == "$existing_pid_raw" ]]; then
+          echo "Process already running: $name (pid=$existing_pid)"
+          return 0
+        fi
+        echo "WARN: stale api pid file detected (pid=$existing_pid, api_port=$API_PORT, listening_pid=${listening_pid:-none}); restarting api." >&2
+        rm -f "$pid_file"
+      else
+        echo "Process already running: $name (pid=$existing_pid)"
+        return 0
+      fi
+    fi
   fi
 
   echo "Starting $name..."
@@ -978,6 +1003,14 @@ pid_exists() {
 
   # Safety default: treat unknown format as WSL PID.
   kill -0 "$pid" >/dev/null 2>&1
+}
+
+wsl_listen_pid() {
+  local port="$1"
+  ss -ltnp 2>/dev/null \
+    | awk -v p=":${port}" '$4 ~ p { print }' \
+    | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' \
+    | head -n 1
 }
 
 windows_listen_pid() {

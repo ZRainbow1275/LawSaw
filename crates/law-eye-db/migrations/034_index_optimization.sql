@@ -159,15 +159,13 @@ CREATE INDEX IF NOT EXISTS idx_crawl_logs_tenant_status
 -- =============================================================================
 
 CREATE INDEX IF NOT EXISTS idx_users_tenant_email
-    ON users (tenant_id, email)
-    WHERE deleted_at IS NULL;
+    ON users (tenant_id, email);
 
 CREATE INDEX IF NOT EXISTS idx_user_roles_tenant_user
     ON user_roles (tenant_id, user_id);
 
 CREATE INDEX IF NOT EXISTS idx_api_keys_tenant_active
-    ON api_keys (tenant_id, is_active, expires_at)
-    WHERE deleted_at IS NULL;
+    ON api_keys (tenant_id, is_active, expires_at);
 
 -- =============================================================================
 -- 10. Content deduplication index (content_hash)
@@ -181,9 +179,34 @@ CREATE INDEX IF NOT EXISTS idx_articles_tenant_content_hash
 -- 11. Feedback and domain event indexes
 -- =============================================================================
 
-CREATE INDEX IF NOT EXISTS idx_feedbacks_tenant_article
-    ON feedbacks (tenant_id, article_id)
-    WHERE deleted_at IS NULL;
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'feedbacks'
+          AND column_name = 'user_id'
+    ) THEN
+        EXECUTE '
+            CREATE INDEX IF NOT EXISTS idx_feedbacks_tenant_user
+            ON feedbacks (tenant_id, user_id)
+            WHERE deleted_at IS NULL
+        ';
+    ELSIF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'feedbacks'
+          AND column_name = 'article_id'
+    ) THEN
+        EXECUTE '
+            CREATE INDEX IF NOT EXISTS idx_feedbacks_tenant_article
+            ON feedbacks (tenant_id, article_id)
+            WHERE deleted_at IS NULL
+        ';
+    END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_domain_events_tenant_aggregate
     ON domain_events (tenant_id, aggregate_type, aggregate_id);
@@ -195,9 +218,34 @@ CREATE INDEX IF NOT EXISTS idx_domain_events_tenant_created
 -- 12. Webhook and push subscription indexes
 -- =============================================================================
 
-CREATE INDEX IF NOT EXISTS idx_webhook_endpoints_tenant_active
-    ON webhook_endpoints (tenant_id, is_active)
-    WHERE deleted_at IS NULL;
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'webhook_endpoints'
+          AND column_name = 'enabled'
+    ) THEN
+        EXECUTE '
+            CREATE INDEX IF NOT EXISTS idx_webhook_endpoints_tenant_enabled
+            ON webhook_endpoints (tenant_id, enabled)
+            WHERE deleted_at IS NULL
+        ';
+    ELSIF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'webhook_endpoints'
+          AND column_name = 'is_active'
+    ) THEN
+        EXECUTE '
+            CREATE INDEX IF NOT EXISTS idx_webhook_endpoints_tenant_active
+            ON webhook_endpoints (tenant_id, is_active)
+            WHERE deleted_at IS NULL
+        ';
+    END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_web_push_subscriptions_tenant_user
     ON web_push_subscriptions (tenant_id, user_id);

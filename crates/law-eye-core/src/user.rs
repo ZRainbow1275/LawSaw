@@ -44,7 +44,7 @@ async fn assign_role_inner<'e, E>(
 where
     E: Executor<'e, Database = Postgres>,
 {
-    sqlx::query(
+    let result = sqlx::query(
         r#"
         INSERT INTO user_roles (tenant_id, user_id, role_id, granted_by)
         SELECT u.tenant_id, u.id, r.id, $3
@@ -60,6 +60,13 @@ where
     .execute(executor)
     .await
     .map_err(|e| Error::Database(e.to_string()))?;
+
+    if result.rows_affected() == 0 {
+        return Err(Error::Validation(format!(
+            "Role '{}' does not exist for user {} tenant",
+            role_name, user_id
+        )));
+    }
 
     Ok(())
 }

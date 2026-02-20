@@ -33,7 +33,9 @@ pub use email::{CategorySection, DailyDigest, DigestArticle, EmailTemplate, Emai
 pub use email_verification::EmailVerificationService;
 pub use feedback::FeedbackService;
 pub use knowledge::{GraphStats, KnowledgeService};
-pub use object::{ObjectService, UploadUserAvatarInput, OBJECT_KIND_USER_AVATAR};
+pub use object::{
+    ObjectService, UploadUserAvatarInput, OBJECT_KIND_REPORT_EXPORT, OBJECT_KIND_USER_AVATAR,
+};
 pub use password_reset::PasswordResetService;
 pub use push::{parse_expiration_time_millis, WebPushSubscriptionService};
 pub use rag::{RagAnswer, RagSearchResult, RagService, RagSource};

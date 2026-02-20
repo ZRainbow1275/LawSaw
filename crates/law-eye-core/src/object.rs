@@ -21,6 +21,7 @@ use crate::tenant::with_tenant_tx;
 use crate::AuditService;
 
 pub const OBJECT_KIND_USER_AVATAR: &str = "user.avatar";
+pub const OBJECT_KIND_REPORT_EXPORT: &str = "report.export";
 
 const MAX_AVATAR_BYTES: usize = 1_048_576; // 1 MiB
 const ENSURE_BUCKET_MAX_ATTEMPTS: usize = 10;
@@ -487,6 +488,82 @@ impl ObjectService {
             .await
             .map_err(|e| Error::Http(format!("Put object failed: {e:?}")))?;
         Ok(())
+    }
+
+    /// 上传原始字节并写入 objects 元数据表，避免被对象清理任务误删。
+    pub async fn upload_raw_bytes_with_record(
+        &self,
+        tenant_id: Uuid,
+        owner_user_id: Option<Uuid>,
+        kind: &str,
+        object_key: &str,
+        content_type: &str,
+        bytes: Vec<u8>,
+    ) -> Result<Object> {
+        let object_id = Uuid::new_v4();
+        let bucket = self.bucket.clone();
+        let object_key_owned = object_key.to_string();
+        let content_type_owned = content_type.to_string();
+        let byte_size = bytes.len() as i64;
+
+        let mut put_req = self
+            .client
+            .put_object()
+            .bucket(&bucket)
+            .key(&object_key_owned)
+            .content_type(&content_type_owned)
+            .body(ByteStream::from(bytes));
+        if self.sse_enabled {
+            put_req = put_req.server_side_encryption(ServerSideEncryption::Aes256);
+        }
+        put_req
+            .send()
+            .await
+            .map_err(|e| Error::Http(format!("Put object failed: {e:?}")))?;
+
+        let insert_result = with_tenant_tx(&self.pool, tenant_id, |tx| {
+            let bucket = bucket.clone();
+            let object_key = object_key_owned.clone();
+            let content_type = content_type_owned.clone();
+            let kind = kind.to_string();
+            Box::pin(async move {
+                let object = sqlx::query_as::<_, Object>(
+                    r#"
+                    INSERT INTO objects (id, owner_user_id, kind, bucket, object_key, content_type, byte_size, sha256)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    RETURNING *
+                    "#,
+                )
+                .bind(object_id)
+                .bind(owner_user_id)
+                .bind(&kind)
+                .bind(&bucket)
+                .bind(&object_key)
+                .bind(&content_type)
+                .bind(byte_size)
+                .bind(None::<Vec<u8>>)
+                .fetch_one(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
+
+                Ok(object)
+            })
+        })
+        .await;
+
+        match insert_result {
+            Ok(object) => Ok(object),
+            Err(err) => {
+                let _ = self
+                    .client
+                    .delete_object()
+                    .bucket(&bucket)
+                    .key(&object_key_owned)
+                    .send()
+                    .await;
+                Err(err)
+            }
+        }
     }
 
     /// 直接通过 object_key 从对象存储获取文件流（无需 objects 表记录）。

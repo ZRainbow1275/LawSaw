@@ -18,7 +18,7 @@ use law_eye_common::AppConfig;
 use law_eye_core::{
     source::CrawlFetchStats, ArticleService, CrawlLogService, DomainEventInput, DomainEventService,
     KnowledgeService, ObjectService, ReportService, ReportTemplateService, SourceService,
-    OBJECT_KIND_USER_AVATAR,
+    OBJECT_KIND_REPORT_EXPORT, OBJECT_KIND_USER_AVATAR,
 };
 use law_eye_crawler::{
     AdapterRegistry, ConcurrencyConfig, ConcurrencyController, CrawlJobConfig, CrawlOrchestrator,
@@ -549,6 +549,123 @@ async fn validate_webhook_url(raw: &str, allow_internal: bool) -> anyhow::Result
         .await
         .map_err(|e| anyhow::anyhow!("{}: {}", e.code(), e))?;
     Ok(url)
+}
+
+fn classify_slug_to_domain_root(slug: &str) -> &'static str {
+    match slug {
+        "legislation" => "legislation",
+        "regulation" => "regulation",
+        "enforcement" => "enforcement",
+        "industry" => "industry",
+        "international" => "international",
+        // Fallback classifier emits "data"/"security"; map them to technology domain.
+        "data" | "security" | "technology" => "technology",
+        "academic" => "academic",
+        _ => "compliance",
+    }
+}
+
+fn derive_domain_sub_from_host(host: &str) -> Option<String> {
+    host.split('.')
+        .find(|part| !part.is_empty() && *part != "www")
+        .map(|part| part.to_string())
+}
+
+fn derive_ingest_legal_metadata(
+    source_type: &str,
+    source_priority: Option<i32>,
+    link: &str,
+    title: &str,
+    content: Option<&str>,
+    issuer: Option<&str>,
+) -> (Option<String>, Option<String>, Option<i32>, Option<i32>) {
+    let host = reqwest::Url::parse(link)
+        .ok()
+        .and_then(|url| url.host_str().map(|h| h.to_ascii_lowercase()));
+
+    let content_snippet = content
+        .map(|value| truncate_chars(value, 1200))
+        .unwrap_or_default();
+    let classify = ai_fallback_classify(title, &content_snippet);
+    let mut domain_root = classify_slug_to_domain_root(&classify.category_slug).to_string();
+
+    if domain_root == "industry"
+        && host.as_deref().is_some_and(|h| h.ends_with(".gov.cn"))
+    {
+        domain_root = "regulation".to_string();
+    }
+
+    let mut domain_sub = host
+        .as_deref()
+        .and_then(derive_domain_sub_from_host)
+        .or_else(|| {
+            let normalized = source_type.trim().to_ascii_lowercase();
+            (!normalized.is_empty()).then_some(normalized)
+        });
+    if domain_sub.as_deref() == Some("gov") {
+        domain_sub = Some("government".to_string());
+    }
+
+    let authority_level = if host
+        .as_deref()
+        .is_some_and(|h| h.ends_with(".gov.cn"))
+    {
+        Some(match domain_root.as_str() {
+            "legislation" => 2,
+            "regulation" => 3,
+            "enforcement" => 7,
+            _ => 4,
+        })
+    } else if issuer.is_some_and(|value| value.contains("国务院") || value.contains("人大")) {
+        Some(2)
+    } else if domain_root == "academic" {
+        Some(9)
+    } else {
+        None
+    };
+
+    let risk = ai_fallback_risk(title, &content_snippet);
+    let mut importance = match risk.score {
+        0..=20 => 1,
+        21..=40 => 2,
+        41..=60 => 3,
+        61..=80 => 4,
+        _ => 5,
+    };
+    if authority_level.is_some_and(|level| level <= 3) {
+        importance = importance.max(4);
+    }
+    if let Some(priority) = source_priority {
+        if priority >= 8 {
+            importance = (importance + 1).min(5);
+        } else if priority <= 2 {
+            importance = (importance - 1).max(1);
+        }
+    }
+
+    (Some(domain_root), domain_sub, authority_level, Some(importance))
+}
+
+fn derive_region_code(extracted_region_code: Option<String>, link: &str) -> Option<String> {
+    if extracted_region_code.is_some() {
+        return extracted_region_code;
+    }
+
+    let host = reqwest::Url::parse(link)
+        .ok()
+        .and_then(|url| url.host_str().map(|h| h.to_ascii_lowercase()));
+
+    let code = match host.as_deref() {
+        Some(h) if h.contains("beijing") || h.starts_with("bj.") || h.contains(".bj.") => "110000",
+        Some(h) if h.contains("shanghai") || h.starts_with("sh.") || h.contains(".sh.") => "310000",
+        Some(h) if h.contains("guangdong") || h.starts_with("gd.") || h.contains(".gd.") => "440000",
+        Some(h) if h.contains("zhejiang") || h.starts_with("zj.") || h.contains(".zj.") => "330000",
+        Some(h) if h.contains("jiangsu") || h.starts_with("js.") || h.contains(".js.") => "320000",
+        // Unknown/foreign source still maps to a stable bucket so regional stats remain queryable.
+        _ => "000000",
+    };
+
+    Some(code.to_string())
 }
 
 struct Worker {
@@ -2588,6 +2705,16 @@ impl Worker {
                             law_eye_core::article::MAX_ARTICLE_CONTENT_BYTES,
                         )
                     });
+                    let (domain_root, domain_sub, authority_level, importance) =
+                        derive_ingest_legal_metadata(
+                            &task.source_type,
+                            Some(source.priority),
+                            &link,
+                            &title,
+                            content.as_deref(),
+                            article.extracted_issuer.as_deref(),
+                        );
+                    let region_code = derive_region_code(article.extracted_region_code.clone(), &link);
 
                     create_articles.push(CreateArticle {
                         source_id: task.source_id,
@@ -2596,10 +2723,14 @@ impl Worker {
                         content,
                         author,
                         published_at,
+                        domain_root,
+                        domain_sub,
+                        authority_level,
+                        importance,
                         issuer: article.extracted_issuer,
                         doc_number: article.extracted_doc_number,
                         effective_date: article.extracted_effective_date,
-                        region_code: article.extracted_region_code,
+                        region_code,
                         content_hash: article.content_hash,
                     });
                 }
@@ -3746,10 +3877,17 @@ impl Worker {
             ext
         );
 
-        // 5. 上传到对象存储并更新导出路径
+        // 5. 上传到对象存储并登记 objects 元数据，避免被 orphan 清理误删
         if let Some(ref object_service) = self.object_service {
             object_service
-                .upload_raw_bytes(&object_key, content_type, bytes)
+                .upload_raw_bytes_with_record(
+                    tenant_id,
+                    Some(task.requested_by),
+                    OBJECT_KIND_REPORT_EXPORT,
+                    &object_key,
+                    content_type,
+                    bytes,
+                )
                 .await
                 .map_err(|e| anyhow::anyhow!("上传导出文件失败: {}", e))?;
 
@@ -4492,6 +4630,10 @@ mod crawler_integration_tests {
             content: Some("正文内容".to_string()),
             author: None,
             published_at: None,
+            domain_root: Some("regulation".to_string()),
+            domain_sub: Some("government".to_string()),
+            authority_level: Some(3),
+            importance: Some(4),
             issuer: Some("国务院".to_string()),
             doc_number: Some("国发〔2026〕1号".to_string()),
             effective_date: Some(chrono::NaiveDate::from_ymd_opt(2026, 3, 1).unwrap()),
@@ -4504,6 +4646,9 @@ mod crawler_integration_tests {
         assert!(article.effective_date.is_some());
         assert_eq!(article.region_code.as_deref(), Some("000000"));
         assert_eq!(article.content_hash.as_deref(), Some("abc123"));
+        assert_eq!(article.domain_root.as_deref(), Some("regulation"));
+        assert_eq!(article.authority_level, Some(3));
+        assert_eq!(article.importance, Some(4));
     }
 
     #[test]

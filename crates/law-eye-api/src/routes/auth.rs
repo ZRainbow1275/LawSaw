@@ -27,6 +27,52 @@ static EMAIL_RE: Lazy<Option<Regex>> =
 static TENANT_SLUG_RE: Lazy<Option<Regex>> =
     Lazy::new(|| Regex::new(r"^[a-z][a-z0-9-]{2,31}$").ok());
 
+async fn ensure_tenant_roles_seeded(state: &AppState, tenant_id: uuid::Uuid) -> Result<(), AppError> {
+    law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
+        Box::pin(async move {
+            sqlx::query(
+                r#"
+                INSERT INTO roles (id, tenant_id, name, permissions, description, created_at)
+                VALUES
+                    (
+                        gen_random_uuid(),
+                        $1,
+                        'admin',
+                        '["*"]'::jsonb,
+                        '系统管理员，拥有所有权限',
+                        NOW()
+                    ),
+                    (
+                        gen_random_uuid(),
+                        $1,
+                        'editor',
+                        '["articles:read","articles:write","articles:publish","sources:read","categories:read","feedbacks:write","feedbacks:read","users:read","objects:read","apikeys:manage"]'::jsonb,
+                        '编辑，可以管理文章',
+                        NOW()
+                    ),
+                    (
+                        gen_random_uuid(),
+                        $1,
+                        'viewer',
+                        '["articles:read","sources:read","categories:read","feedbacks:write","feedbacks:read","users:read","objects:read"]'::jsonb,
+                        '只读用户',
+                        NOW()
+                    )
+                ON CONFLICT (tenant_id, name) DO NOTHING
+                "#,
+            )
+            .bind(tenant_id)
+            .execute(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
+            Ok(())
+        })
+    })
+    .await
+    .map_err(AppError::from)
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route(
@@ -361,6 +407,8 @@ pub(crate) async fn register(
         .upsert_by_slug(&tenant_slug, &tenant_name)
         .await
         .map_err(AppError::from)?;
+
+    ensure_tenant_roles_seeded(&state, tenant.id).await?;
 
     let existing_users = state
         .user_service
@@ -905,6 +953,8 @@ pub(crate) async fn oauth_callback(
     let user = match user {
         Some(user) => user,
         None => {
+            ensure_tenant_roles_seeded(&state, tenant.id).await?;
+
             let existing_users = state
                 .user_service
                 .count_by_tenant(tenant.id)

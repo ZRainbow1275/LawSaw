@@ -131,6 +131,10 @@ pub struct CreateArticle {
     pub author: Option<String>,
     pub published_at: Option<DateTime<Utc>>,
     // Crawler enhancement: legal domain metadata (migration 030)
+    pub domain_root: Option<String>,
+    pub domain_sub: Option<String>,
+    pub authority_level: Option<i32>,
+    pub importance: Option<i32>,
     pub issuer: Option<String>,
     pub doc_number: Option<String>,
     pub effective_date: Option<chrono::NaiveDate>,

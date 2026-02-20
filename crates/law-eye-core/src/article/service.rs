@@ -189,8 +189,12 @@ impl ArticleService {
             Box::pin(async move {
                 sqlx::query_as::<_, Article>(
                     r#"
-                INSERT INTO articles (source_id, title, link, content, author, published_at, issuer, doc_number, effective_date, region_code, content_hash)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                INSERT INTO articles (
+                    source_id, title, link, content, author, published_at,
+                    domain_root, domain_sub, authority_level, importance,
+                    issuer, doc_number, effective_date, region_code, content_hash
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
                 RETURNING *
                 "#,
                 )
@@ -200,6 +204,10 @@ impl ArticleService {
                 .bind(&input.content)
                 .bind(&input.author)
                 .bind(input.published_at)
+                .bind(&input.domain_root)
+                .bind(&input.domain_sub)
+                .bind(input.authority_level)
+                .bind(input.importance)
                 .bind(&input.issuer)
                 .bind(&input.doc_number)
                 .bind(input.effective_date)
@@ -240,7 +248,7 @@ impl ArticleService {
             }
         }
 
-        // PG max bind params = 65535; each row uses 11 params → safe batch = 500
+        // PG max bind params = 65535; each row uses 15 params → safe batch = 500
         const UPSERT_BATCH_SIZE: usize = 500;
 
         if inputs.len() > UPSERT_BATCH_SIZE {
@@ -254,7 +262,11 @@ impl ArticleService {
 
         let mut qb: QueryBuilder<'_, Postgres> = QueryBuilder::new(
             r#"
-                    INSERT INTO articles (source_id, title, link, content, author, published_at, issuer, doc_number, effective_date, region_code, content_hash)
+                    INSERT INTO articles (
+                        source_id, title, link, content, author, published_at,
+                        domain_root, domain_sub, authority_level, importance,
+                        issuer, doc_number, effective_date, region_code, content_hash
+                    )
                     "#,
         );
 
@@ -265,6 +277,10 @@ impl ArticleService {
                 .push_bind(&input.content)
                 .push_bind(&input.author)
                 .push_bind(input.published_at)
+                .push_bind(&input.domain_root)
+                .push_bind(&input.domain_sub)
+                .push_bind(input.authority_level)
+                .push_bind(input.importance)
                 .push_bind(&input.issuer)
                 .push_bind(&input.doc_number)
                 .push_bind(input.effective_date)
@@ -280,6 +296,10 @@ impl ArticleService {
                         content = COALESCE(EXCLUDED.content, articles.content),
                         author = COALESCE(EXCLUDED.author, articles.author),
                         published_at = COALESCE(EXCLUDED.published_at, articles.published_at),
+                        domain_root = COALESCE(EXCLUDED.domain_root, articles.domain_root),
+                        domain_sub = COALESCE(EXCLUDED.domain_sub, articles.domain_sub),
+                        authority_level = COALESCE(EXCLUDED.authority_level, articles.authority_level),
+                        importance = COALESCE(EXCLUDED.importance, articles.importance),
                         issuer = COALESCE(EXCLUDED.issuer, articles.issuer),
                         doc_number = COALESCE(EXCLUDED.doc_number, articles.doc_number),
                         effective_date = COALESCE(EXCLUDED.effective_date, articles.effective_date),
@@ -294,6 +314,10 @@ impl ArticleService {
                             OR articles.content IS DISTINCT FROM COALESCE(EXCLUDED.content, articles.content)
                             OR articles.author IS DISTINCT FROM COALESCE(EXCLUDED.author, articles.author)
                             OR articles.published_at IS DISTINCT FROM COALESCE(EXCLUDED.published_at, articles.published_at)
+                            OR articles.domain_root IS DISTINCT FROM COALESCE(EXCLUDED.domain_root, articles.domain_root)
+                            OR articles.domain_sub IS DISTINCT FROM COALESCE(EXCLUDED.domain_sub, articles.domain_sub)
+                            OR articles.authority_level IS DISTINCT FROM COALESCE(EXCLUDED.authority_level, articles.authority_level)
+                            OR articles.importance IS DISTINCT FROM COALESCE(EXCLUDED.importance, articles.importance)
                             OR articles.content_hash IS DISTINCT FROM COALESCE(EXCLUDED.content_hash, articles.content_hash)
                         )
                     RETURNING id
@@ -324,7 +348,11 @@ impl ArticleService {
 
         let mut qb: QueryBuilder<'_, Postgres> = QueryBuilder::new(
             r#"
-                    INSERT INTO articles (source_id, title, link, content, author, published_at, issuer, doc_number, effective_date, region_code, content_hash)
+                    INSERT INTO articles (
+                        source_id, title, link, content, author, published_at,
+                        domain_root, domain_sub, authority_level, importance,
+                        issuer, doc_number, effective_date, region_code, content_hash
+                    )
                     "#,
         );
 
@@ -335,6 +363,10 @@ impl ArticleService {
                 .push_bind(&input.content)
                 .push_bind(&input.author)
                 .push_bind(input.published_at)
+                .push_bind(&input.domain_root)
+                .push_bind(&input.domain_sub)
+                .push_bind(input.authority_level)
+                .push_bind(input.importance)
                 .push_bind(&input.issuer)
                 .push_bind(&input.doc_number)
                 .push_bind(input.effective_date)
@@ -350,6 +382,10 @@ impl ArticleService {
                         content = COALESCE(EXCLUDED.content, articles.content),
                         author = COALESCE(EXCLUDED.author, articles.author),
                         published_at = COALESCE(EXCLUDED.published_at, articles.published_at),
+                        domain_root = COALESCE(EXCLUDED.domain_root, articles.domain_root),
+                        domain_sub = COALESCE(EXCLUDED.domain_sub, articles.domain_sub),
+                        authority_level = COALESCE(EXCLUDED.authority_level, articles.authority_level),
+                        importance = COALESCE(EXCLUDED.importance, articles.importance),
                         issuer = COALESCE(EXCLUDED.issuer, articles.issuer),
                         doc_number = COALESCE(EXCLUDED.doc_number, articles.doc_number),
                         effective_date = COALESCE(EXCLUDED.effective_date, articles.effective_date),
@@ -364,6 +400,10 @@ impl ArticleService {
                             OR articles.content IS DISTINCT FROM COALESCE(EXCLUDED.content, articles.content)
                             OR articles.author IS DISTINCT FROM COALESCE(EXCLUDED.author, articles.author)
                             OR articles.published_at IS DISTINCT FROM COALESCE(EXCLUDED.published_at, articles.published_at)
+                            OR articles.domain_root IS DISTINCT FROM COALESCE(EXCLUDED.domain_root, articles.domain_root)
+                            OR articles.domain_sub IS DISTINCT FROM COALESCE(EXCLUDED.domain_sub, articles.domain_sub)
+                            OR articles.authority_level IS DISTINCT FROM COALESCE(EXCLUDED.authority_level, articles.authority_level)
+                            OR articles.importance IS DISTINCT FROM COALESCE(EXCLUDED.importance, articles.importance)
                             OR articles.content_hash IS DISTINCT FROM COALESCE(EXCLUDED.content_hash, articles.content_hash)
                         )
                     RETURNING id

@@ -102,6 +102,57 @@
 - `LAW_EYE_BASE_URL=http://127.0.0.1:13000 bash scripts/enterprise/post-deploy-verify.sh`：通过
 - `LAW_EYE_BASE_URL=http://127.0.0.1:13000 LAW_EYE__DATABASE__URL=postgres://law_eye:***@localhost:15435/law_eye bash scripts/enterprise/post-deploy-verify.sh`：通过
 
+### 7) 四项核心功能真实联测闭环（2026-02-20/21，本轮新增）
+- 更新脚本：`scripts/no-dockerhub/start-stack.sh`
+- 更新迁移：`crates/law-eye-db/migrations/034_index_optimization.sql`
+- 更新迁移：`crates/law-eye-db/migrations/044_add_feedbacks_read_permission.sql`
+- 更新后端：`crates/law-eye-api/src/routes/auth.rs`
+- 更新后端：`crates/law-eye-core/src/user.rs`
+- 更新后端：`crates/law-eye-core/src/report/exporter/pdf.rs`
+- 更新后端：`crates/law-eye-core/src/object.rs`
+- 更新后端：`crates/law-eye-core/src/lib.rs`
+- 更新后端：`crates/law-eye-db/src/models.rs`
+- 更新后端：`crates/law-eye-core/src/article/service.rs`
+- 更新后端：`crates/law-eye-worker/src/main.rs`
+
+失败点与根因：
+- PDF 导出失败（`browserless` 不可达，且 `gotenberg` 回退表单文件名错误，返回 `index.html is required`）。
+- PDF 下载 `500`（导出文件未登记 `objects` 元数据，被 orphan 清理任务删除，`NoSuchKey`）。
+- 统计接口可调用但“行业/重要性/地域覆盖率”低（入库缺少 `domain_root/importance/region_code` 的稳定填充）。
+- 新租户首用户偶发“注册成功但角色未分配”风险（角色种子与分配静默失败边界）。
+- fresh DB 在部分历史 schema 上迁移不兼容（对不存在列/旧表结构的硬依赖）。
+
+修复要点：
+- 启动器增强：`api.pid` 端口一致性校验 + 自动注入 `LAW_EYE__GOTENBERG__URL`。
+- 迁移兼容化：`034/044` 改为“按列/模式存在性”执行，支持新旧 schema。
+- 认证与权限硬化：注册前确保租户角色种子存在；角色分配 `rows_affected==0` 显式报错。
+- PDF 双回退闭环：`browserless -> gotenberg`，并修正 gotenberg 输入文件名为 `index.html`。
+- 导出对象持久化：新增 `upload_raw_bytes_with_record`，导出文件上传后同步写入 `objects` 元数据，避免被 orphan 清理误删。
+- 入库统计元数据填充：抓取入库时补齐 `domain_root/domain_sub/authority_level/importance/region_code`（优先抽取，缺失时规则推断与 `000000` 保底）。
+
+实测证据（本机，无 mock）：
+- 爬虫：
+  - `POST /api/v1/sources/{id}/fetch` 入队成功。
+  - `GET /api/v1/sources/{id}` 显示 `health_status=healthy`、`total_articles_fetched=20`。
+  - `GET /api/v1/articles?limit=3` 返回真实文章，且包含 `domain_root/importance/region_code`。
+- 知识图谱：
+  - `POST /api/v1/knowledge/backfill` 返回 `articles_considered/entities_upserted/article_entities_inserted`。
+  - `GET /api/v1/knowledge/entities/top`、`GET /api/v1/knowledge/stats` 返回 `200` 且有实体数据。
+- 统计：
+  - `GET /api/v1/statistics/regional`：`coverage_rate=1.0`（`000000/未知地区`）。
+  - `GET /api/v1/statistics/industry`：`coverage_rate=1.0`（`industry`）。
+  - `GET /api/v1/statistics/importance`：`coverage_rate=1.0`，`average=2.0`。
+  - `GET /api/v1/statistics/overview`：`with_region/with_domain/with_importance` 均为非零。
+- 日报（生成/导出/下载）：
+  - `POST /api/v1/reports/{id}/generate` 后状态进入 `review`。
+  - `POST /api/v1/reports/{id}/export`（pdf）后 `export_pdf_key` 成功落库。
+  - `GET /api/v1/reports/{id}/download/pdf` 返回 `200 OK`，`content-type=application/pdf`，在清理周期后仍可下载（已验证元数据行存在于 `objects`）。
+
+本轮验证结果（2026-02-20/21）：
+- `cargo check -p law-eye-db -p law-eye-core -p law-eye-worker -p law-eye-api`：通过
+- `bash -n scripts/no-dockerhub/start-stack.sh`：通过
+- 本机联测：爬虫/知识图谱/统计/日报四项核心链路全部通过
+
 ## 42 维状态总览（摘要）
 
 - `✅` 已达标或可运行：13 项
