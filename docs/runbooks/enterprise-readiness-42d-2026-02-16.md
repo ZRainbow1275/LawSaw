@@ -481,3 +481,23 @@ Round 3 增量修复验证：
 - `cargo test -p law-eye-core knowledge::tests -- --nocapture` ✅（3/3）
 - `cargo check -p law-eye-core -p law-eye-worker -p law-eye-crawler -p law-eye-api` ✅
 - `node tmp/core-e2e-local.mjs` ✅（爬虫/知识图谱/统计/日报全链路 `ok: true`）
+
+## 本轮验证记录（2026-02-21，Round 9：DLQ 自动重放与可观测）
+
+失败点与根因：
+- 风险：任务超过重试上限后进入 `queue:*:dlq`，但维护流程仅处理 delayed/stuck，不会重放 DLQ，导致外部临时故障恢复后任务仍可能长期滞留。
+
+修复：
+- 文件：`crates/law-eye-queue/src/lib.rs`
+  - 新增 `replay_dead_letter_tasks<T>`：按批次从 `:dlq` 取任务、清零 `retry_count/last_error` 后重新入主队列。
+  - 新增辅助函数 `reset_task_for_replay` 与对应单测。
+- 文件：`crates/law-eye-worker/src/main.rs`
+  - `run_queue_maintenance` 增加 DLQ 长度观测告警（按队列输出）。
+  - 新增自动重放开关 `LAW_EYE_WORKER_DLQ_REPLAY_ENABLED`（默认开启）。
+  - 新增 `DLQ_REPLAY_MAX_BATCH=20`，对 ingest/ai/push/report-export/report-generate 队列做批量重放。
+
+验证证据（无 mock，本机真实链路）：
+- `cargo test -p law-eye-queue reset_task_for_replay -- --nocapture` ✅
+- `cargo test -p law-eye-worker parse_env_ -- --nocapture` ✅（4/4）
+- `cargo check -p law-eye-queue -p law-eye-worker -p law-eye-crawler -p law-eye-core -p law-eye-api` ✅
+- `node tmp/core-e2e-local.mjs` ✅（爬虫/知识图谱/统计/日报全链路 `ok: true`）

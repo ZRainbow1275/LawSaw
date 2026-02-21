@@ -80,6 +80,7 @@ const TASK_TIMEOUT_AI_SECS: u64 = 10 * 60;
 const TASK_TIMEOUT_PUSH_SECS: u64 = 60;
 const TASK_TIMEOUT_REPORT_EXPORT_SECS: u64 = 10 * 60;
 const TASK_TIMEOUT_REPORT_GENERATE_SECS: u64 = 15 * 60;
+const DLQ_REPLAY_MAX_BATCH: usize = 20;
 const DEFAULT_INCREMENTAL_SEED_LIMIT: i64 = 200_000;
 const MAX_INCREMENTAL_SEED_LIMIT: i64 = 2_000_000;
 
@@ -740,6 +741,7 @@ struct Worker {
     allow_internal_source_urls: bool,
     allow_internal_webhook_urls: bool,
     scheduler_enabled: bool,
+    dlq_replay_enabled: bool,
     worker_id: uuid::Uuid,
     shutdown: Arc<AtomicBool>,
     object_purge: Option<ObjectPurgeConfig>,
@@ -905,9 +907,12 @@ impl Worker {
             MAX_INCREMENTAL_SEED_LIMIT,
         );
         let scheduler_enabled = env_bool_with_default("LAW_EYE_WORKER_SCHEDULER_ENABLED", true);
+        let dlq_replay_enabled = env_bool_with_default("LAW_EYE_WORKER_DLQ_REPLAY_ENABLED", true);
         info!(
             scheduler_enabled,
-            incremental_seed_limit, "worker source scheduler configuration loaded"
+            dlq_replay_enabled,
+            incremental_seed_limit,
+            "worker source scheduler configuration loaded"
         );
 
         Ok(Self {
@@ -926,6 +931,7 @@ impl Worker {
             allow_internal_source_urls: init.allow_internal_source_urls,
             allow_internal_webhook_urls: init.allow_internal_webhook_urls,
             scheduler_enabled,
+            dlq_replay_enabled,
             worker_id: uuid::Uuid::new_v4(),
             shutdown: init.shutdown,
             object_purge: init.object_purge,
@@ -1082,6 +1088,70 @@ impl Worker {
                 .await
             {
                 error!("Failed to re-queue stuck tasks for {}: {}", queue, e);
+            }
+            match self.task_queue.dlq_length(queue).await {
+                Ok(dlq_len) if dlq_len > 0 => {
+                    warn!(
+                        queue,
+                        dlq_len,
+                        dlq_replay_enabled = self.dlq_replay_enabled,
+                        "DLQ contains pending tasks"
+                    );
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    error!("Failed to check DLQ length for {}: {}", queue, e);
+                }
+            }
+        }
+
+        if self.dlq_replay_enabled {
+            if let Err(e) = self
+                .task_queue
+                .replay_dead_letter_tasks::<IngestTask>(QUEUE_INGEST, DLQ_REPLAY_MAX_BATCH)
+                .await
+            {
+                error!("Failed to replay DLQ tasks for {}: {}", QUEUE_INGEST, e);
+            }
+            if let Err(e) = self
+                .task_queue
+                .replay_dead_letter_tasks::<AiTask>(QUEUE_AI, DLQ_REPLAY_MAX_BATCH)
+                .await
+            {
+                error!("Failed to replay DLQ tasks for {}: {}", QUEUE_AI, e);
+            }
+            if let Err(e) = self
+                .task_queue
+                .replay_dead_letter_tasks::<PushTask>(QUEUE_PUSH, DLQ_REPLAY_MAX_BATCH)
+                .await
+            {
+                error!("Failed to replay DLQ tasks for {}: {}", QUEUE_PUSH, e);
+            }
+            if let Err(e) = self
+                .task_queue
+                .replay_dead_letter_tasks::<ReportExportTask>(
+                    QUEUE_REPORT_EXPORT,
+                    DLQ_REPLAY_MAX_BATCH,
+                )
+                .await
+            {
+                error!(
+                    "Failed to replay DLQ tasks for {}: {}",
+                    QUEUE_REPORT_EXPORT, e
+                );
+            }
+            if let Err(e) = self
+                .task_queue
+                .replay_dead_letter_tasks::<ReportGenerateTask>(
+                    QUEUE_REPORT_GENERATE,
+                    DLQ_REPLAY_MAX_BATCH,
+                )
+                .await
+            {
+                error!(
+                    "Failed to replay DLQ tasks for {}: {}",
+                    QUEUE_REPORT_GENERATE, e
+                );
             }
         }
 

@@ -747,6 +747,52 @@ impl TaskQueue {
 
         Ok(len)
     }
+
+    pub async fn replay_dead_letter_tasks<T>(&self, queue: &str, max_batch: usize) -> Result<u32>
+    where
+        T: Serialize + DeserializeOwned + Clone,
+    {
+        if max_batch == 0 {
+            return Ok(0);
+        }
+
+        let dlq = format!("{}:dlq", queue);
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| Error::Internal(e.to_string()))?;
+
+        let mut moved: u32 = 0;
+        for _ in 0..max_batch {
+            let raw_payload: Option<String> = conn
+                .lpop(&dlq, None)
+                .await
+                .map_err(|e| Error::Internal(e.to_string()))?;
+            let Some(raw_payload) = raw_payload else {
+                break;
+            };
+
+            let task = parse_retryable_or_wrap::<T>(&raw_payload)?;
+            let replay_task = reset_task_for_replay(task);
+            let replay_payload =
+                serde_json::to_string(&replay_task).map_err(|e| Error::Internal(e.to_string()))?;
+
+            conn.rpush::<_, _, ()>(queue, replay_payload)
+                .await
+                .map_err(|e| Error::Internal(e.to_string()))?;
+            moved = moved.saturating_add(1);
+        }
+
+        if moved > 0 {
+            warn!(
+                queue,
+                moved, "Replayed tasks from DLQ back to main queue for re-processing"
+            );
+        }
+
+        Ok(moved)
+    }
 }
 
 fn parse_retryable_or_wrap<T: DeserializeOwned>(raw_payload: &str) -> Result<RetryableTask<T>> {
@@ -771,6 +817,12 @@ fn retry_backoff_ms(retry_count: u32) -> u64 {
         delay = delay.saturating_mul(2);
     }
     delay.min(RETRY_MAX_DELAY_MS)
+}
+
+fn reset_task_for_replay<T>(mut task: RetryableTask<T>) -> RetryableTask<T> {
+    task.retry_count = 0;
+    task.last_error = None;
+    task
 }
 
 fn retry_backoff_ms_rate_limited(retry_count: u32) -> u64 {
@@ -978,5 +1030,25 @@ mod tests {
 
         let task: RetryableTask<IngestTask> = serde_json::from_str(&raw).unwrap();
         assert_ne!(task.id, uuid::Uuid::nil());
+    }
+
+    #[test]
+    fn reset_task_for_replay_clears_retry_state() {
+        let payload = IngestTask {
+            tenant_id: uuid::Uuid::new_v4(),
+            source_id: uuid::Uuid::new_v4(),
+            source_type: "rss".to_string(),
+            url: "https://example.com/feed".to_string(),
+            config: json!({}),
+        };
+
+        let mut task = RetryableTask::new(payload);
+        task.retry_count = 7;
+        task.last_error = Some("timeout".to_string());
+
+        let replay_task = reset_task_for_replay(task.clone());
+        assert_eq!(replay_task.retry_count, 0);
+        assert!(replay_task.last_error.is_none());
+        assert_eq!(replay_task.id, task.id);
     }
 }
