@@ -38,7 +38,7 @@ use sha2::Sha256;
 use sqlx::{types::Json as DbJson, PgPool, Postgres, QueryBuilder};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::net::TcpListener;
 use tokio::signal;
@@ -80,6 +80,8 @@ const TASK_TIMEOUT_AI_SECS: u64 = 10 * 60;
 const TASK_TIMEOUT_PUSH_SECS: u64 = 60;
 const TASK_TIMEOUT_REPORT_EXPORT_SECS: u64 = 10 * 60;
 const TASK_TIMEOUT_REPORT_GENERATE_SECS: u64 = 15 * 60;
+const DEFAULT_INCREMENTAL_SEED_LIMIT: i64 = 200_000;
+const MAX_INCREMENTAL_SEED_LIMIT: i64 = 2_000_000;
 
 fn contains_any_keyword(haystack: &str, keywords: &[&str]) -> bool {
     keywords.iter().any(|keyword| haystack.contains(keyword))
@@ -111,6 +113,32 @@ fn env_bool_with_default(name: &str, default: bool) -> bool {
                     value = %raw,
                     default,
                     "invalid boolean env value; using default"
+                );
+                default
+            }
+        },
+        Err(_) => default,
+    }
+}
+
+fn parse_env_i64(raw: &str) -> Option<i64> {
+    raw.trim().parse::<i64>().ok()
+}
+
+fn env_i64_with_bounds(name: &str, default: i64, min: i64, max: i64) -> i64 {
+    if min > max {
+        return default;
+    }
+
+    match std::env::var(name) {
+        Ok(raw) => match parse_env_i64(&raw) {
+            Some(value) => value.clamp(min, max),
+            None => {
+                warn!(
+                    env = name,
+                    value = %raw,
+                    default,
+                    "invalid integer env value; using default"
                 );
                 default
             }
@@ -700,6 +728,9 @@ struct Worker {
     pool: PgPool,
     task_queue: Arc<TaskQueue>,
     orchestrator: CrawlOrchestrator,
+    incremental_checker: Arc<IncrementalChecker>,
+    incremental_seeded_tenants: Mutex<HashSet<uuid::Uuid>>,
+    incremental_seed_limit: i64,
     ai_service: Option<AiService>,
     knowledge_service: Option<KnowledgeService>,
     object_service: Option<ObjectService>,
@@ -866,11 +897,17 @@ impl Worker {
 
         // Configure incremental checker for cross-session content deduplication
         let incremental_checker = Arc::new(IncrementalChecker::new());
-        orchestrator = orchestrator.with_incremental_checker(incremental_checker);
+        orchestrator = orchestrator.with_incremental_checker(incremental_checker.clone());
+        let incremental_seed_limit = env_i64_with_bounds(
+            "LAW_EYE_WORKER_INCREMENTAL_SEED_LIMIT",
+            DEFAULT_INCREMENTAL_SEED_LIMIT,
+            1,
+            MAX_INCREMENTAL_SEED_LIMIT,
+        );
         let scheduler_enabled = env_bool_with_default("LAW_EYE_WORKER_SCHEDULER_ENABLED", true);
         info!(
             scheduler_enabled,
-            "worker source scheduler configuration loaded"
+            incremental_seed_limit, "worker source scheduler configuration loaded"
         );
 
         Ok(Self {
@@ -879,6 +916,9 @@ impl Worker {
             pool: init.pool,
             task_queue: Arc::new(init.task_queue),
             orchestrator,
+            incremental_checker,
+            incremental_seeded_tenants: Mutex::new(HashSet::new()),
+            incremental_seed_limit,
             ai_service: init.ai_service,
             knowledge_service: init.knowledge_service,
             object_service: init.object_service,
@@ -1432,6 +1472,61 @@ impl Worker {
             .execute(&mut *tx)
             .await?;
         Ok(tx)
+    }
+
+    async fn ensure_incremental_seed_for_tenant(
+        &self,
+        tenant_id: uuid::Uuid,
+    ) -> anyhow::Result<()> {
+        let already_seeded = self
+            .incremental_seeded_tenants
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                warn!("incremental_seeded_tenants mutex was poisoned, recovering");
+                poisoned.into_inner()
+            })
+            .contains(&tenant_id);
+
+        if already_seeded {
+            return Ok(());
+        }
+
+        let mut tx = self.begin_tenant_tx(tenant_id).await?;
+        let seed_rows = sqlx::query_as::<_, (uuid::Uuid, String, String)>(
+            r#"
+            SELECT tenant_id, content_hash, link
+            FROM articles
+            WHERE tenant_id = $1
+              AND deleted_at IS NULL
+              AND content_hash IS NOT NULL
+            ORDER BY updated_at DESC
+            LIMIT $2
+            "#,
+        )
+        .bind(tenant_id)
+        .bind(self.incremental_seed_limit)
+        .fetch_all(tx.as_mut())
+        .await?;
+        tx.commit().await?;
+
+        let seeded_count = seed_rows.len();
+        self.incremental_checker.seed(seed_rows);
+        self.incremental_seeded_tenants
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                warn!("incremental_seeded_tenants mutex was poisoned, recovering");
+                poisoned.into_inner()
+            })
+            .insert(tenant_id);
+
+        info!(
+            %tenant_id,
+            seeded_count,
+            seed_limit = self.incremental_seed_limit,
+            "Seeded incremental checker from persisted article hashes"
+        );
+
+        Ok(())
     }
 
     async fn resolve_tenant_id(&self, tenant_id: uuid::Uuid) -> anyhow::Result<uuid::Uuid> {
@@ -2668,6 +2763,9 @@ impl Worker {
             warn!("Ingest task missing tenant_id; falling back to default tenant");
         }
         let tenant_id = self.resolve_tenant_id(tenant_id).await?;
+        self.ensure_incremental_seed_for_tenant(tenant_id)
+            .await
+            .context("seed incremental checker from existing hashes")?;
 
         let source_service = SourceService::new(self.pool.clone());
         let crawl_log_service = CrawlLogService::new(self.pool.clone());
@@ -4784,6 +4882,20 @@ mod crawler_integration_tests {
     fn parse_env_bool_rejects_invalid_values() {
         for value in ["", "2", "enabled", "maybe"] {
             assert_eq!(parse_env_bool(value), None, "value={value}");
+        }
+    }
+
+    #[test]
+    fn parse_env_i64_accepts_valid_values() {
+        assert_eq!(parse_env_i64("200000"), Some(200000));
+        assert_eq!(parse_env_i64(" 42 "), Some(42));
+        assert_eq!(parse_env_i64("-1"), Some(-1));
+    }
+
+    #[test]
+    fn parse_env_i64_rejects_invalid_values() {
+        for value in ["", "abc", "12x", "true"] {
+            assert_eq!(parse_env_i64(value), None, "value={value}");
         }
     }
 

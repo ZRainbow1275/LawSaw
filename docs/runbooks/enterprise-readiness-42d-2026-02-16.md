@@ -444,3 +444,22 @@ Round 3 增量修复验证：
 
 补充说明：
 - 仓库根目录不存在统一的 `pnpm typecheck/lint/test` 脚本（`typecheck`/`test` 缺失，`lint` 命令冲突到系统 Android lint），本轮以 Rust 侧 `cargo test/cargo check` 与核心四链路联测作为质量门槛。
+
+## 本轮验证记录（2026-02-21，Round 7：跨会话增量去重 seed）
+
+失败点与根因：
+- 风险：`worker` 启动时为 `CrawlOrchestrator` 注入了 `IncrementalChecker`，但未从数据库加载历史 `content_hash`，导致“跨会话增量去重”事实上未生效。
+- 影响：历史文章在后续批次仍会进入处理链路，引发重复 AI 任务、重复 upsert 冲突与额外队列压力。
+
+修复：
+- 文件：`crates/law-eye-worker/src/main.rs`
+  - 新增 `incremental_checker` 实例字段、租户 seed 状态缓存 `incremental_seeded_tenants`。
+  - 新增配置项解析：`LAW_EYE_WORKER_INCREMENTAL_SEED_LIMIT`（默认 `200000`，上限 `2000000`）。
+  - 新增 `ensure_incremental_seed_for_tenant`：在每个租户首个 ingest 任务前，从 `articles` 读取历史 `(tenant_id, content_hash, link)` 并 `seed` 到内存检查器。
+  - `process_ingest_task` 在 `resolve_tenant_id` 后强制执行 seed，失败即返回重试，避免静默降级。
+  - 增加 `parse_env_i64` 单测覆盖。
+
+验证证据（无 mock，本机真实链路）：
+- `cargo test -p law-eye-worker parse_env_ -- --nocapture` ✅（4/4）
+- `cargo check -p law-eye-worker -p law-eye-crawler -p law-eye-core -p law-eye-api` ✅
+- `node tmp/core-e2e-local.mjs` ✅（爬虫/知识图谱/统计/日报全链路 `ok: true`）
