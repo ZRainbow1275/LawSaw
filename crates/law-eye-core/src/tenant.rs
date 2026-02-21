@@ -31,6 +31,23 @@ impl TenantService {
         Self { pool }
     }
 
+    pub async fn create_by_slug(&self, slug: &str, name: &str) -> Result<Tenant> {
+        sqlx::query_as::<_, Tenant>(
+            r#"
+            INSERT INTO tenants (slug, name)
+            VALUES ($1, $2)
+            ON CONFLICT (slug) DO NOTHING
+            RETURNING *
+            "#,
+        )
+        .bind(slug)
+        .bind(name)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?
+        .ok_or_else(|| Error::Conflict(format!("Tenant slug '{}' already exists", slug)))
+    }
+
     pub async fn upsert_by_slug(&self, slug: &str, name: &str) -> Result<Tenant> {
         sqlx::query_as::<_, Tenant>(
             r#"

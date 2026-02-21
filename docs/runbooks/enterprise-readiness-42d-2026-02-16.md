@@ -516,3 +516,21 @@ Round 3 增量修复验证：
 验证证据（无 mock，本机真实链路）：
 - `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
 - `node tmp/core-e2e-local.mjs` ✅（含 `generate -> export -> download` 报告链路）
+
+## 本轮验证记录（2026-02-21，Round 11：租户加入越权防护）
+
+失败点与根因：
+- 风险 1：`register` 使用 `upsert_by_slug`，只要知道 `tenant_slug` 即可加入已有租户并分配默认角色。
+- 风险 2：`oauth_callback` 在已有租户中对“未知身份”自动建号并分配角色，缺少邀请/审批边界。
+
+修复：
+- 文件：`crates/law-eye-core/src/tenant.rs`
+  - 新增 `create_by_slug`：仅创建新租户，slug 冲突返回 `Conflict`。
+- 文件：`crates/law-eye-api/src/routes/auth.rs`
+  - `register` 改用 `create_by_slug`，对已存在 slug 返回冲突，阻断“凭 slug 直接加入已有租户”。
+  - `oauth_callback` 对已初始化租户（`existing_users > 0`）禁止自动创建新成员，返回 `forbidden`，要求走邀请流程。
+  - 对租户首用户（`existing_users == 0`）保留初始化建号能力，确保冷启动可用。
+
+验证证据（无 mock，本机真实链路）：
+- `cargo check -p law-eye-core -p law-eye-api -p law-eye-worker -p law-eye-crawler -p law-eye-queue` ✅
+- `node tmp/core-e2e-local.mjs` ✅（注册/登录、爬虫、知识图谱、统计、日报全链路通过）

@@ -27,7 +27,10 @@ static EMAIL_RE: Lazy<Option<Regex>> =
 static TENANT_SLUG_RE: Lazy<Option<Regex>> =
     Lazy::new(|| Regex::new(r"^[a-z][a-z0-9-]{2,31}$").ok());
 
-async fn ensure_tenant_roles_seeded(state: &AppState, tenant_id: uuid::Uuid) -> Result<(), AppError> {
+async fn ensure_tenant_roles_seeded(
+    state: &AppState,
+    tenant_id: uuid::Uuid,
+) -> Result<(), AppError> {
     law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
         Box::pin(async move {
             sqlx::query(
@@ -404,9 +407,12 @@ pub(crate) async fn register(
 
     let tenant = state
         .tenant_service
-        .upsert_by_slug(&tenant_slug, &tenant_name)
+        .create_by_slug(&tenant_slug, &tenant_name)
         .await
-        .map_err(AppError::from)?;
+        .map_err(|e| match e {
+            Error::Conflict(_) => AppError::conflict("Tenant slug already exists"),
+            other => AppError::from(other),
+        })?;
 
     ensure_tenant_roles_seeded(&state, tenant.id).await?;
 
@@ -961,6 +967,12 @@ pub(crate) async fn oauth_callback(
                 .await
                 .map_err(AppError::from)?;
 
+            if existing_users > 0 {
+                return Err(AppError::forbidden(
+                    "Tenant already initialized; invitation is required for new members",
+                ));
+            }
+
             let create_user = CreateUser {
                 tenant_id: tenant.id,
                 email: req.email.clone(),
@@ -979,11 +991,7 @@ pub(crate) async fn oauth_callback(
                 Err(err) => return Err(AppError::from(err)),
             };
 
-            let default_role = if existing_users == 0 {
-                "admin"
-            } else {
-                "viewer"
-            };
+            let default_role = "admin";
             state
                 .user_service
                 .assign_role(tenant.id, created.id, default_role, None)
