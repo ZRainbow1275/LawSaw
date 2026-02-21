@@ -271,7 +271,7 @@ pub(crate) async fn generate_report(
     }
 
     // Transition to generating status
-    state
+    let generating_report = state
         .report_service
         .transition_status(user.tenant_id, id, ReportStatus::Generating, report.version)
         .await
@@ -286,11 +286,23 @@ pub(crate) async fn generate_report(
         requested_at: Some(Utc::now().to_rfc3339()),
     };
 
-    state
+    if let Err(e) = state
         .task_queue
         .enqueue_retryable("queue:report", task)
         .await
-        .map_err(|e| AppError::internal_with_code("ENQUEUE_ERROR", e.to_string()))?;
+    {
+        // Compensation: avoid leaving report stuck in `generating` when enqueue fails.
+        let _ = state
+            .report_service
+            .transition_status(
+                user.tenant_id,
+                id,
+                ReportStatus::Error,
+                generating_report.version,
+            )
+            .await;
+        return Err(AppError::internal_with_code("ENQUEUE_ERROR", e.to_string()));
+    }
 
     Ok(Json(TaskEnqueuedResponse {
         message: "Report generation task enqueued".to_string(),

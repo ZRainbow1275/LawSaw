@@ -501,3 +501,18 @@ Round 3 增量修复验证：
 - `cargo test -p law-eye-worker parse_env_ -- --nocapture` ✅（4/4）
 - `cargo check -p law-eye-queue -p law-eye-worker -p law-eye-crawler -p law-eye-core -p law-eye-api` ✅
 - `node tmp/core-e2e-local.mjs` ✅（爬虫/知识图谱/统计/日报全链路 `ok: true`）
+
+## 本轮验证记录（2026-02-21，Round 10：报告生成入队失败补偿）
+
+失败点与根因：
+- 风险：`POST /reports/:id/generate` 先将状态切到 `generating`，再入队 `queue:report`。若入队失败，报告会停留在 `generating`，业务侧无法自行恢复。
+
+修复：
+- 文件：`crates/law-eye-api/src/routes/reports/handlers.rs`
+  - `generate_report` 中保留“先转 generating”流程，但在 `enqueue_retryable` 失败时增加补偿逻辑：
+    - 使用最新版本将报告状态从 `generating` 回滚到 `error`。
+  - 这样失败路径不会把报告永久锁死，后续可按 `error -> generating` 重试。
+
+验证证据（无 mock，本机真实链路）：
+- `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
+- `node tmp/core-e2e-local.mjs` ✅（含 `generate -> export -> download` 报告链路）
