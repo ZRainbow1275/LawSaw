@@ -463,3 +463,21 @@ Round 3 增量修复验证：
 - `cargo test -p law-eye-worker parse_env_ -- --nocapture` ✅（4/4）
 - `cargo check -p law-eye-worker -p law-eye-crawler -p law-eye-core -p law-eye-api` ✅
 - `node tmp/core-e2e-local.mjs` ✅（爬虫/知识图谱/统计/日报全链路 `ok: true`）
+
+## 本轮验证记录（2026-02-21，Round 8：知识图谱合并并发一致性）
+
+失败点与根因：
+- 风险：`KnowledgeService::merge_entities` 在合并 alias 时直接 `UPDATE ... unnest(aliases || $2)`，并发 merge 同一 target 时可能发生“后写覆盖前写”，导致 alias 丢失。
+
+修复：
+- 文件：`crates/law-eye-core/src/knowledge.rs`
+  - `merge_entities` 增加 `target_id == source_id` 保护。
+  - 读取 source/target 时使用 `FOR UPDATE` 锁定行，确保并发合并顺序化。
+  - alias 合并改为内存去重函数 `merge_unique_aliases`，再回写到目标实体，避免基于过期快照计算。
+  - `mention_count` 合并由显式 `source_mention_count` 累加，减少子查询竞态窗口。
+  - 新增单测：alias 合并顺序与去重行为。
+
+验证证据（无 mock，本机真实链路）：
+- `cargo test -p law-eye-core knowledge::tests -- --nocapture` ✅（3/3）
+- `cargo check -p law-eye-core -p law-eye-worker -p law-eye-crawler -p law-eye-api` ✅
+- `node tmp/core-e2e-local.mjs` ✅（爬虫/知识图谱/统计/日报全链路 `ok: true`）

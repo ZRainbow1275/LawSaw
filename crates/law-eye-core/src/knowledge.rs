@@ -592,41 +592,46 @@ impl KnowledgeService {
         target_id: Uuid,
         source_id: Uuid,
     ) -> Result<()> {
+        if target_id == source_id {
+            return Ok(());
+        }
+
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
                 // 1. Get source entity aliases to merge
-                let source_aliases: Vec<String> = sqlx::query_scalar(
-                    "SELECT aliases FROM entities WHERE id = $1"
-                )
+                let (source_aliases, source_name, source_mention_count): (Vec<String>, String, i32) =
+                    sqlx::query_as(
+                        "SELECT aliases, name, mention_count FROM entities WHERE id = $1 FOR UPDATE"
+                    )
                 .bind(source_id)
                 .fetch_one(tx.as_mut())
                 .await
                 .map_err(|e| Error::Database(e.to_string()))?;
 
-                let source_name: String = sqlx::query_scalar(
-                    "SELECT name FROM entities WHERE id = $1"
-                )
-                .bind(source_id)
-                .fetch_one(tx.as_mut())
-                .await
-                .map_err(|e| Error::Database(e.to_string()))?;
+                let target_aliases: Vec<String> =
+                    sqlx::query_scalar("SELECT aliases FROM entities WHERE id = $1 FOR UPDATE")
+                        .bind(target_id)
+                        .fetch_one(tx.as_mut())
+                        .await
+                        .map_err(|e| Error::Database(e.to_string()))?;
 
                 // 2. Merge aliases: add source's name and aliases to target
                 let mut all_new_aliases = source_aliases;
                 all_new_aliases.push(source_name);
+                let merged_aliases = merge_unique_aliases(target_aliases, &all_new_aliases);
 
                 sqlx::query(
                     r#"
                     UPDATE entities SET
-                        aliases = (SELECT array_agg(DISTINCT a) FROM unnest(aliases || $2) AS a),
-                        mention_count = mention_count + (SELECT mention_count FROM entities WHERE id = $3),
+                        aliases = $2,
+                        mention_count = mention_count + $3,
                         updated_at = NOW()
                     WHERE id = $1
                     "#,
                 )
                 .bind(target_id)
-                .bind(&all_new_aliases)
-                .bind(source_id)
+                .bind(&merged_aliases)
+                .bind(source_mention_count)
                 .execute(tx.as_mut())
                 .await
                 .map_err(|e| Error::Database(e.to_string()))?;
@@ -925,9 +930,22 @@ fn mention_increment_from_link_insert(link_inserted: bool) -> i32 {
     }
 }
 
+fn merge_unique_aliases(base: Vec<String>, extras: &[String]) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut merged = Vec::new();
+
+    for alias in base.into_iter().chain(extras.iter().cloned()) {
+        if seen.insert(alias.clone()) {
+            merged.push(alias);
+        }
+    }
+
+    merged
+}
+
 #[cfg(test)]
 mod tests {
-    use super::mention_increment_from_link_insert;
+    use super::{mention_increment_from_link_insert, merge_unique_aliases};
 
     #[test]
     fn mention_increment_is_one_for_new_link() {
@@ -937,5 +955,17 @@ mod tests {
     #[test]
     fn mention_increment_is_zero_for_existing_link() {
         assert_eq!(mention_increment_from_link_insert(false), 0);
+    }
+
+    #[test]
+    fn merge_unique_aliases_preserves_order_and_deduplicates() {
+        let merged = merge_unique_aliases(
+            vec!["A".to_string(), "B".to_string()],
+            &["B".to_string(), "C".to_string(), "A".to_string()],
+        );
+        assert_eq!(
+            merged,
+            vec!["A".to_string(), "B".to_string(), "C".to_string()]
+        );
     }
 }
