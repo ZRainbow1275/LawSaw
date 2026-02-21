@@ -358,3 +358,33 @@ Round 3 增量修复验证：
 - `cargo test -p law-eye-core report::exporter::pdf::tests -- --nocapture` ✅
 - `cargo test -p law-eye-core report::service::tests -- --nocapture` ✅
 - `cargo check -p law-eye-crawler -p law-eye-core -p law-eye-worker -p law-eye-api` ✅
+
+## 本轮验证记录（2026-02-21，Round 4：本机稳定性与端口漂移修复）
+
+失败点与根因（环境稳定性）：
+- 现象：`Origin=http://localhost:8849` 在动态 `WEB_PORT` 场景下会触发 `403 CSRF_FAILED`。
+- 根因：`scripts/no-dockerhub/start-stack.sh` 仅注入当前 `WEB_PORT` 到 `LAW_EYE__SERVER__ALLOWED_ORIGINS`，未保留 canonical dev 源 `8849`。
+
+修复：
+- 文件：`scripts/no-dockerhub/start-stack.sh`
+- 调整 `ALLOWED_ORIGINS` 生成逻辑：
+  - 保留动态 `WEB_PORT` 源；
+  - 固定追加 `http://localhost:8849` 与 `http://127.0.0.1:8849`；
+  - 增加去重函数，避免重复 origin。
+
+验证证据（无 mock，本机真实链路）：
+- 语法检查：`bash -n scripts/no-dockerhub/start-stack.sh` ✅
+- 栈重启：`stop-stack.sh --name law-eye-local-codex --purge` + `start-stack.sh --name law-eye-local-codex` ✅
+- 认证写接口（8849 源）：
+  - `POST /api/v1/auth/register`（`Origin=http://localhost:8849`）=> `201` ✅
+- 四项核心链路联测（`tmp/core-e2e-local.mjs`）：
+  - 首轮（`Origin=http://localhost:18849`）✅
+  - 第二轮（`Origin=http://localhost:18849`）✅
+  - 第三轮（`Origin=http://localhost:18849`）✅
+  - 第四轮（`Origin=http://localhost:8849`）✅
+
+四项结果（Round 4 抽样）：
+- 爬虫：`total_articles_fetched=20`，`health_status=healthy`。
+- 知识图谱：`article_entities_inserted=20`，`entity_count=11`。
+- 统计：`regional/industry/importance/overview` 全部 `200`，覆盖率 `1.0`。
+- 日报：`generate -> export(pdf) -> download(pdf)` 全链路 `200`，`content-type=application/pdf`，下载大小 `25644` bytes。

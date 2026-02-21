@@ -912,11 +912,28 @@ fi
 export LAW_EYE__DATABASE__SESSION_ROLE="law_eye_app"
 export LAW_EYE__SERVER__HOST="${LAW_EYE__SERVER__HOST:-0.0.0.0}"
 export LAW_EYE__SERVER__PORT="$API_PORT"
-ALLOWED_ORIGINS="http://localhost:${WEB_PORT},http://127.0.0.1:${WEB_PORT}"
+allowed_origins=()
+append_allowed_origin() {
+  local origin="${1:-}"
+  [[ -z "$origin" ]] && return 0
+  for existing in "${allowed_origins[@]:-}"; do
+    if [[ "$existing" == "$origin" ]]; then
+      return 0
+    fi
+  done
+  allowed_origins+=("$origin")
+}
+
+# Always allow the current web port and the canonical dev port (8849) so
+# local restarts with dynamic ports do not accidentally break CSRF checks.
+append_allowed_origin "http://localhost:${WEB_PORT}"
+append_allowed_origin "http://127.0.0.1:${WEB_PORT}"
+append_allowed_origin "http://localhost:8849"
+append_allowed_origin "http://127.0.0.1:8849"
 if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]] && [[ -n "${WINDOWS_HOST_IP:-}" ]]; then
-  ALLOWED_ORIGINS="${ALLOWED_ORIGINS},http://${WINDOWS_HOST_IP}:${WEB_PORT}"
+  append_allowed_origin "http://${WINDOWS_HOST_IP}:${WEB_PORT}"
 fi
-export LAW_EYE__SERVER__ALLOWED_ORIGINS="$ALLOWED_ORIGINS"
+export LAW_EYE__SERVER__ALLOWED_ORIGINS="$(IFS=,; echo "${allowed_origins[*]}")"
 # Optional PDF renderer fallback: reuse a locally running Gotenberg when available.
 # This keeps PDF export usable in no-dockerhub mode when browserless is unavailable.
 if [[ -z "${LAW_EYE__GOTENBERG__URL:-}" ]]; then
