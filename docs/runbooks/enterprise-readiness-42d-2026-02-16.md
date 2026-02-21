@@ -345,11 +345,13 @@
 待办风险清单（explorer 并行审查，需进一步验证后落地）：
 - [x] [R3-CG-001] 动态渲染源对 Browserless 依赖较强，缺少“失败后自动降级静态抓取”策略 ✅ 已修复  
   证据：`crates/law-eye-crawler/src/spider.rs`（dynamic -> static fallback）；回归测试 `fetch_dynamic_mode_falls_back_to_static_when_browserless_is_unreachable`。
-- [ ] [R3-CG-002] 知识图谱 LLM 回填入队需要补强同租户同文章幂等保护（候选文件：`crates/law-eye-api/src/routes/knowledge/handlers.rs`）。
+- [x] [R3-CG-002] 知识图谱 LLM 回填入队需要补强同租户同文章幂等保护 ✅ 已修复（改为写入 `queue_outbox`，`dedupe_key=ai:{article_id}:extract_entities`，依赖 `(tenant_id,queue,dedupe_key)` 唯一键防重；文件：`crates/law-eye-api/src/routes/knowledge/handlers.rs`）。
 - [ ] [R3-RS-001] 统计缓存 key 需要进一步约束 query 参数规范，防止异常参数导致 key 污染（候选文件：`crates/law-eye-api/src/routes/statistics/handlers.rs`）。
 - [ ] [R3-RS-002] PDF 导出链路建议补充 request-id 级别可观测日志与有限重试策略（候选文件：`crates/law-eye-core/src/report/exporter/pdf.rs`）。
 - [ ] [R3-RS-003] 导出 key 更新建议补充并发 CAS 校验与对象元数据一致性检查（候选文件：`crates/law-eye-core/src/report/service.rs`）。
 
 Round 3 增量修复验证：
 - `cargo test -p law-eye-crawler fetch_dynamic_mode_falls_back_to_static_when_browserless_is_unreachable -- --nocapture` ✅
+- `cargo test -p law-eye-api ai_extract_entities_dedupe_key_matches_worker_format -- --nocapture` ✅
+- `cargo test -p law-eye-api extract_entities_outbox_payload_uses_retryable_task_shape -- --nocapture` ✅
 - `cargo check -p law-eye-crawler -p law-eye-core -p law-eye-worker -p law-eye-api` ✅

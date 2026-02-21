@@ -15,6 +15,57 @@ use crate::auth::AuthSession;
 use crate::state::AppState;
 use crate::{ApiJson, ApiQuery, ApiResult, AppError};
 
+const QUEUE_AI: &str = "queue:ai";
+
+fn ai_extract_entities_dedupe_key(article_id: Uuid) -> String {
+    format!("ai:{article_id}:extract_entities")
+}
+
+async fn enqueue_extract_entities_outbox_tasks(
+    pool: &sqlx::PgPool,
+    tenant_id: Uuid,
+    article_ids: &[Uuid],
+) -> Result<i64, law_eye_common::Error> {
+    if article_ids.is_empty() {
+        return Ok(0);
+    }
+
+    let article_ids = article_ids.to_vec();
+    law_eye_core::with_tenant_tx(pool, tenant_id, |tx| {
+        Box::pin(async move {
+            let mut inserted: i64 = 0;
+            for article_id in article_ids {
+                let retryable_task = law_eye_queue::RetryableTask::new(law_eye_queue::AiTask {
+                    tenant_id,
+                    article_id,
+                    task_type: law_eye_queue::AiTaskType::ExtractEntities,
+                });
+                let payload = serde_json::to_value(retryable_task)
+                    .map_err(|e| law_eye_common::Error::Internal(e.to_string()))?;
+
+                let result = sqlx::query(
+                    r#"
+                    INSERT INTO queue_outbox (queue, dedupe_key, payload)
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT (tenant_id, queue, dedupe_key) WHERE delivered_at IS NULL DO NOTHING
+                    "#,
+                )
+                .bind(QUEUE_AI)
+                .bind(ai_extract_entities_dedupe_key(article_id))
+                .bind(payload)
+                .execute(tx.as_mut())
+                .await
+                .map_err(|e| law_eye_common::Error::Database(e.to_string()))?;
+
+                inserted += result.rows_affected() as i64;
+            }
+
+            Ok(inserted)
+        })
+    })
+    .await
+}
+
 pub(crate) async fn list_top_entities(
     State(state): State<AppState>,
     auth_session: AuthSession,
@@ -214,28 +265,15 @@ pub(crate) async fn backfill_llm(
     .await
     .map_err(AppError::from)?;
 
-    let mut enqueued: i64 = 0;
-    for article_id in &article_ids {
-        let task = law_eye_queue::AiTask {
-            tenant_id: user.tenant_id,
-            article_id: *article_id,
-            task_type: law_eye_queue::AiTaskType::ExtractEntities,
-        };
-        if let Err(e) = state.task_queue.enqueue_retryable("queue:ai", task).await {
-            tracing::warn!(
-                article_id = %article_id,
-                error = %e,
-                "Failed to enqueue entity extraction task"
-            );
-            continue;
-        }
-        enqueued += 1;
-    }
+    let enqueued = enqueue_extract_entities_outbox_tasks(&state.pool, tenant_id, &article_ids)
+        .await
+        .map_err(AppError::from)?;
 
     tracing::info!(
         enqueued = enqueued,
         total_candidates = article_ids.len(),
-        "LLM backfill: enqueued articles for entity extraction"
+        deduped_existing = article_ids.len() as i64 - enqueued,
+        "LLM backfill: enqueued deduped article tasks for entity extraction"
     );
 
     Ok(Json(super::dto::LlmBackfillResponse {
@@ -495,4 +533,39 @@ pub(crate) async fn get_graph_stats(
             .map(|(entity_type, count)| super::dto::TypeDistributionEntry { entity_type, count })
             .collect(),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ai_extract_entities_dedupe_key_matches_worker_format() {
+        let article_id = Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+            .expect("fixed uuid should parse");
+        assert_eq!(
+            ai_extract_entities_dedupe_key(article_id),
+            "ai:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:extract_entities"
+        );
+    }
+
+    #[test]
+    fn extract_entities_outbox_payload_uses_retryable_task_shape() {
+        let payload =
+            serde_json::to_value(law_eye_queue::RetryableTask::new(law_eye_queue::AiTask {
+                tenant_id: Uuid::nil(),
+                article_id: Uuid::nil(),
+                task_type: law_eye_queue::AiTaskType::ExtractEntities,
+            }))
+            .expect("retryable task serialization should succeed");
+
+        assert!(payload.get("payload").is_some());
+        assert_eq!(
+            payload
+                .get("payload")
+                .and_then(|value| value.get("task_type"))
+                .and_then(serde_json::Value::as_str),
+            Some("extract_entities")
+        );
+    }
 }
