@@ -7,6 +7,54 @@ use crate::auth::AuthSession;
 use crate::state::AppState;
 use crate::{ApiQuery, ApiResult, AppError};
 
+fn normalize_date_range(
+    date_from: Option<chrono::NaiveDate>,
+    date_to: Option<chrono::NaiveDate>,
+) -> Result<StatisticsQuery, AppError> {
+    if let (Some(from), Some(to)) = (date_from, date_to) {
+        if from > to {
+            return Err(AppError::validation("date_from must be <= date_to"));
+        }
+    }
+    Ok(StatisticsQuery { date_from, date_to })
+}
+
+fn normalize_dimension(raw: &str, field: &str) -> Result<String, AppError> {
+    let normalized = raw.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return Err(AppError::validation(format!("{field} must not be empty")));
+    }
+    Ok(normalized)
+}
+
+fn normalize_cross_limit(limit: Option<i64>) -> i64 {
+    limit.unwrap_or(200).clamp(1, 1000)
+}
+
+fn normalize_timeline_granularity(raw: Option<&str>) -> Result<String, AppError> {
+    let normalized = raw.unwrap_or("daily").trim().to_ascii_lowercase();
+    if normalized.is_empty() || normalized == "daily" {
+        return Ok("daily".to_string());
+    }
+    if normalized == "weekly" {
+        return Ok("weekly".to_string());
+    }
+    if normalized == "monthly" {
+        return Ok("monthly".to_string());
+    }
+    Err(AppError::validation(
+        "granularity must be one of: daily, weekly, monthly",
+    ))
+}
+
+fn normalize_timeline_days(days: Option<i32>) -> i32 {
+    days.unwrap_or(30).clamp(1, 365)
+}
+
+fn normalize_timeline_top_n(top_n: Option<i32>) -> i32 {
+    top_n.unwrap_or(5).clamp(1, 20)
+}
+
 pub(crate) async fn get_regional(
     State(state): State<AppState>,
     auth_session: AuthSession,
@@ -16,10 +64,7 @@ pub(crate) async fn get_regional(
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let query = StatisticsQuery {
-        date_from: params.date_from,
-        date_to: params.date_to,
-    };
+    let query = normalize_date_range(params.date_from, params.date_to)?;
 
     // Cache-Aside: 先查缓存
     let cache_key = CacheService::build_key(user.tenant_id, "statistics:regional", &query);
@@ -71,10 +116,7 @@ pub(crate) async fn get_industry(
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let query = StatisticsQuery {
-        date_from: params.date_from,
-        date_to: params.date_to,
-    };
+    let query = normalize_date_range(params.date_from, params.date_to)?;
     let include_sub = params.include_sub.unwrap_or(false);
 
     // Cache-Aside: 先查缓存
@@ -135,10 +177,7 @@ pub(crate) async fn get_importance(
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let query = StatisticsQuery {
-        date_from: params.date_from,
-        date_to: params.date_to,
-    };
+    let query = normalize_date_range(params.date_from, params.date_to)?;
 
     let cache_key = CacheService::build_key(user.tenant_id, "statistics:importance", &query);
     if let Some(ref cache) = state.cache_service {
@@ -180,10 +219,7 @@ pub(crate) async fn get_authority(
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let query = StatisticsQuery {
-        date_from: params.date_from,
-        date_to: params.date_to,
-    };
+    let query = normalize_date_range(params.date_from, params.date_to)?;
 
     let cache_key = CacheService::build_key(user.tenant_id, "statistics:authority", &query);
     if let Some(ref cache) = state.cache_service {
@@ -233,10 +269,7 @@ pub(crate) async fn get_issuer(
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    let query = StatisticsQuery {
-        date_from: params.date_from,
-        date_to: params.date_to,
-    };
+    let query = normalize_date_range(params.date_from, params.date_to)?;
     let limit = params.limit.unwrap_or(20).clamp(1, 200);
 
     let cache_params = serde_json::json!({"q": &query, "limit": limit});
@@ -287,12 +320,13 @@ pub(crate) async fn get_cross_dimensional(
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
+    let date_query = normalize_date_range(params.date_from, params.date_to)?;
     let query = CrossDimensionalQuery {
-        dimension_x: params.dimension_x,
-        dimension_y: params.dimension_y,
-        date_from: params.date_from,
-        date_to: params.date_to,
-        limit: params.limit,
+        dimension_x: normalize_dimension(&params.dimension_x, "dimension_x")?,
+        dimension_y: normalize_dimension(&params.dimension_y, "dimension_y")?,
+        date_from: date_query.date_from,
+        date_to: date_query.date_to,
+        limit: Some(normalize_cross_limit(params.limit)),
     };
 
     let cache_key = CacheService::build_key(user.tenant_id, "statistics:cross", &query);
@@ -343,10 +377,12 @@ pub(crate) async fn get_timeline(
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
     let query = TimelineQuery {
-        dimension: params.dimension,
-        granularity: params.granularity,
-        days: params.days,
-        top_n: params.top_n,
+        dimension: normalize_dimension(&params.dimension, "dimension")?,
+        granularity: Some(normalize_timeline_granularity(
+            params.granularity.as_deref(),
+        )?),
+        days: Some(normalize_timeline_days(params.days)),
+        top_n: Some(normalize_timeline_top_n(params.top_n)),
     };
 
     let cache_key = CacheService::build_key(user.tenant_id, "statistics:timeline", &query);
@@ -392,6 +428,39 @@ pub(crate) async fn get_timeline(
     }
 
     Ok(Json(response))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDate;
+
+    #[test]
+    fn normalize_date_range_rejects_inverted_range() {
+        let from = NaiveDate::from_ymd_opt(2026, 2, 21).expect("valid date");
+        let to = NaiveDate::from_ymd_opt(2026, 2, 20).expect("valid date");
+        let err = normalize_date_range(Some(from), Some(to)).expect_err("should reject range");
+        assert_eq!(err.body.code.as_deref(), Some("VALIDATION_ERROR"));
+    }
+
+    #[test]
+    fn normalize_dimension_trims_and_lowercases() {
+        let normalized = normalize_dimension("  Domain  ", "dimension").expect("normalize");
+        assert_eq!(normalized, "domain");
+    }
+
+    #[test]
+    fn normalize_timeline_granularity_rejects_unknown_value() {
+        let err = normalize_timeline_granularity(Some("hourly")).expect_err("invalid granularity");
+        assert_eq!(err.body.code.as_deref(), Some("VALIDATION_ERROR"));
+    }
+
+    #[test]
+    fn normalize_numeric_params_clamp_to_expected_range() {
+        assert_eq!(normalize_cross_limit(Some(9_999)), 1_000);
+        assert_eq!(normalize_timeline_days(Some(0)), 1);
+        assert_eq!(normalize_timeline_top_n(Some(200)), 20);
+    }
 }
 
 pub(crate) async fn get_overview(
