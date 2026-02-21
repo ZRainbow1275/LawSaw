@@ -388,3 +388,28 @@ Round 3 增量修复验证：
 - 知识图谱：`article_entities_inserted=20`，`entity_count=11`。
 - 统计：`regional/industry/importance/overview` 全部 `200`，覆盖率 `1.0`。
 - 日报：`generate -> export(pdf) -> download(pdf)` 全链路 `200`，`content-type=application/pdf`，下载大小 `25644` bytes。
+
+## 本轮验证记录（2026-02-21，Round 5：本地调度降噪与队列稳定性）
+
+失败点与根因（本地运行稳定性）：
+- 现象：worker 在本机联测时会持续调度预置源抓取，外部源 403/404/anti-crawl 失败日志密集，影响核心链路排队时延与信噪比。
+- 根因：scheduler 在本地栈无开关，默认周期触发（60s）且与人工触发任务共享队列。
+
+修复：
+- 文件：`crates/law-eye-worker/src/main.rs`
+  - 新增环境开关：`LAW_EYE_WORKER_SCHEDULER_ENABLED`（默认 `true`，非法值回退默认并告警）。
+  - 当开关为 `false` 时跳过周期 `run_scheduler`，保留手工触发抓取与其他队列能力。
+  - 新增单元测试：布尔值解析（true/false 与非法值）。
+- 文件：`scripts/no-dockerhub/start-stack.sh`
+  - 本地默认注入：`LAW_EYE_WORKER_SCHEDULER_ENABLED=false`（可手工覆盖）。
+
+验证证据：
+- `cargo test -p law-eye-worker parse_env_bool -- --nocapture` ✅
+- `cargo check -p law-eye-worker` ✅
+- `bash -n scripts/no-dockerhub/start-stack.sh` ✅
+- 栈重启（非 `SKIP_BUILD`）：`start-stack.sh --name law-eye-local-codex` ✅
+- 核心四链路回归（`Origin=http://localhost:8849`）✅
+  - 爬虫：`total_articles_fetched=20`
+  - 知识图谱：`article_entities_inserted=20`
+  - 统计：核心接口全部 `200`
+  - 日报：`generate -> export(pdf) -> download(pdf)` 全链路 `200`，`application/pdf`，`25599` bytes

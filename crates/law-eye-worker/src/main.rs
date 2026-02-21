@@ -93,6 +93,32 @@ fn truncate_chars(input: &str, max_chars: usize) -> String {
     }
 }
 
+fn parse_env_bool(raw: &str) -> Option<bool> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Some(true),
+        "0" | "false" | "no" | "off" => Some(false),
+        _ => None,
+    }
+}
+
+fn env_bool_with_default(name: &str, default: bool) -> bool {
+    match std::env::var(name) {
+        Ok(raw) => match parse_env_bool(&raw) {
+            Some(value) => value,
+            None => {
+                warn!(
+                    env = name,
+                    value = %raw,
+                    default,
+                    "invalid boolean env value; using default"
+                );
+                default
+            }
+        },
+        Err(_) => default,
+    }
+}
+
 fn ai_fallback_classify(title: &str, content: &str) -> ClassifyResult {
     let text = format!("{} {}", title, content).to_lowercase();
 
@@ -589,9 +615,7 @@ fn derive_ingest_legal_metadata(
     let classify = ai_fallback_classify(title, &content_snippet);
     let mut domain_root = classify_slug_to_domain_root(&classify.category_slug).to_string();
 
-    if domain_root == "industry"
-        && host.as_deref().is_some_and(|h| h.ends_with(".gov.cn"))
-    {
+    if domain_root == "industry" && host.as_deref().is_some_and(|h| h.ends_with(".gov.cn")) {
         domain_root = "regulation".to_string();
     }
 
@@ -606,10 +630,7 @@ fn derive_ingest_legal_metadata(
         domain_sub = Some("government".to_string());
     }
 
-    let authority_level = if host
-        .as_deref()
-        .is_some_and(|h| h.ends_with(".gov.cn"))
-    {
+    let authority_level = if host.as_deref().is_some_and(|h| h.ends_with(".gov.cn")) {
         Some(match domain_root.as_str() {
             "legislation" => 2,
             "regulation" => 3,
@@ -643,7 +664,12 @@ fn derive_ingest_legal_metadata(
         }
     }
 
-    (Some(domain_root), domain_sub, authority_level, Some(importance))
+    (
+        Some(domain_root),
+        domain_sub,
+        authority_level,
+        Some(importance),
+    )
 }
 
 fn derive_region_code(extracted_region_code: Option<String>, link: &str) -> Option<String> {
@@ -658,7 +684,9 @@ fn derive_region_code(extracted_region_code: Option<String>, link: &str) -> Opti
     let code = match host.as_deref() {
         Some(h) if h.contains("beijing") || h.starts_with("bj.") || h.contains(".bj.") => "110000",
         Some(h) if h.contains("shanghai") || h.starts_with("sh.") || h.contains(".sh.") => "310000",
-        Some(h) if h.contains("guangdong") || h.starts_with("gd.") || h.contains(".gd.") => "440000",
+        Some(h) if h.contains("guangdong") || h.starts_with("gd.") || h.contains(".gd.") => {
+            "440000"
+        }
         Some(h) if h.contains("zhejiang") || h.starts_with("zj.") || h.contains(".zj.") => "330000",
         Some(h) if h.contains("jiangsu") || h.starts_with("js.") || h.contains(".js.") => "320000",
         // Unknown/foreign source still maps to a stable bucket so regional stats remain queryable.
@@ -680,6 +708,7 @@ struct Worker {
     push_http_client: reqwest::Client,
     allow_internal_source_urls: bool,
     allow_internal_webhook_urls: bool,
+    scheduler_enabled: bool,
     worker_id: uuid::Uuid,
     shutdown: Arc<AtomicBool>,
     object_purge: Option<ObjectPurgeConfig>,
@@ -838,6 +867,11 @@ impl Worker {
         // Configure incremental checker for cross-session content deduplication
         let incremental_checker = Arc::new(IncrementalChecker::new());
         orchestrator = orchestrator.with_incremental_checker(incremental_checker);
+        let scheduler_enabled = env_bool_with_default("LAW_EYE_WORKER_SCHEDULER_ENABLED", true);
+        info!(
+            scheduler_enabled,
+            "worker source scheduler configuration loaded"
+        );
 
         Ok(Self {
             report_service: ReportService::new(init.pool.clone()),
@@ -851,6 +885,7 @@ impl Worker {
             push_http_client: init.push_http_client,
             allow_internal_source_urls: init.allow_internal_source_urls,
             allow_internal_webhook_urls: init.allow_internal_webhook_urls,
+            scheduler_enabled,
             worker_id: uuid::Uuid::new_v4(),
             shutdown: init.shutdown,
             object_purge: init.object_purge,
@@ -890,7 +925,7 @@ impl Worker {
             }
 
             // Scheduled source crawl trigger
-            if last_scheduler.elapsed() >= scheduler_interval {
+            if self.scheduler_enabled && last_scheduler.elapsed() >= scheduler_interval {
                 if let Err(e) = self.run_scheduler().await {
                     error!("Scheduler run failed: {}", e);
                 }
@@ -2714,7 +2749,8 @@ impl Worker {
                             content.as_deref(),
                             article.extracted_issuer.as_deref(),
                         );
-                    let region_code = derive_region_code(article.extracted_region_code.clone(), &link);
+                    let region_code =
+                        derive_region_code(article.extracted_region_code.clone(), &link);
 
                     create_articles.push(CreateArticle {
                         source_id: task.source_id,
@@ -4732,6 +4768,23 @@ mod crawler_integration_tests {
             SCHEDULER_INTERVAL_SECS <= 300,
             "Scheduler should run at least every 5 minutes"
         );
+    }
+
+    #[test]
+    fn parse_env_bool_accepts_common_true_and_false_values() {
+        for value in ["1", "true", "TRUE", " yes ", "on"] {
+            assert_eq!(parse_env_bool(value), Some(true), "value={value}");
+        }
+        for value in ["0", "false", "FALSE", " no ", "off"] {
+            assert_eq!(parse_env_bool(value), Some(false), "value={value}");
+        }
+    }
+
+    #[test]
+    fn parse_env_bool_rejects_invalid_values() {
+        for value in ["", "2", "enabled", "maybe"] {
+            assert_eq!(parse_env_bool(value), None, "value={value}");
+        }
     }
 
     #[test]

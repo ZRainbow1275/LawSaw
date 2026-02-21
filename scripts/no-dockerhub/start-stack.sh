@@ -948,6 +948,9 @@ export LAW_EYE__RATE_LIMIT__LOGIN_WINDOW_SECONDS="${LAW_EYE__RATE_LIMIT__LOGIN_W
 export LAW_EYE__RATE_LIMIT__REGISTER_MAX_REQUESTS="${LAW_EYE__RATE_LIMIT__REGISTER_MAX_REQUESTS:-50}"
 export LAW_EYE__RATE_LIMIT__REGISTER_WINDOW_SECONDS="${LAW_EYE__RATE_LIMIT__REGISTER_WINDOW_SECONDS:-3600}"
 export LAW_EYE__SECURITY__ALLOW_INTERNAL_SOURCE_URLS="${LAW_EYE__SECURITY__ALLOW_INTERNAL_SOURCE_URLS:-true}"
+# Keep local verification deterministic: disable periodic scheduler by default.
+# Manual fetch endpoints still work and can be explicitly enabled via env override.
+export LAW_EYE_WORKER_SCHEDULER_ENABLED="${LAW_EYE_WORKER_SCHEDULER_ENABLED:-false}"
 export WEB_PORT="$WEB_PORT"
 
 # Avoid Windows-mounted target dir issues by placing build artifacts in the WSL filesystem.
