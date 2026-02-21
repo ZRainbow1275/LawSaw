@@ -108,13 +108,12 @@ impl KnowledgeService {
                 let entity = sqlx::query_as::<_, Entity>(
                     r#"
                 INSERT INTO entities (name, entity_type, aliases, embedding, mention_count)
-                VALUES ($1, $2, $3, $4::vector, 1)
+                VALUES ($1, $2, $3, $4::vector, 0)
                 ON CONFLICT (tenant_id, name, entity_type) DO UPDATE SET
                     aliases = CASE
                         WHEN entities.aliases @> $3 THEN entities.aliases
                         ELSE entities.aliases || $3
                     END,
-                    mention_count = entities.mention_count + 1,
                     last_seen = NOW(),
                     updated_at = NOW()
                 RETURNING *
@@ -141,26 +140,62 @@ impl KnowledgeService {
         entity_id: Uuid,
         extracted: &ExtractedEntity,
     ) -> Result<()> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
-            sqlx::query(
-                r#"
-                INSERT INTO article_entities (article_id, entity_id, mention_count, relevance_score, context)
-                VALUES ($1, $2, 1, $3, $4)
-                ON CONFLICT (tenant_id, article_id, entity_id) DO UPDATE SET
-                    mention_count = article_entities.mention_count + 1,
-                    relevance_score = GREATEST(article_entities.relevance_score, $3)
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let link_inserted = sqlx::query_scalar::<_, bool>(
+                    r#"
+                WITH inserted_link AS (
+                    INSERT INTO article_entities (article_id, entity_id, mention_count, relevance_score, context)
+                    VALUES ($1, $2, 1, $3, $4)
+                    ON CONFLICT (tenant_id, article_id, entity_id) DO NOTHING
+                    RETURNING TRUE
+                )
+                SELECT EXISTS(SELECT 1 FROM inserted_link)
                 "#,
-            )
-            .bind(article_id)
-            .bind(entity_id)
-            .bind(extracted.relevance as f64)
-            .bind(&extracted.context)
-            .execute(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+                )
+                .bind(article_id)
+                .bind(entity_id)
+                .bind(extracted.relevance as f64)
+                .bind(&extracted.context)
+                .fetch_one(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
 
-            Ok(())
-        }))
+                sqlx::query(
+                    r#"
+                UPDATE article_entities
+                SET relevance_score = GREATEST(article_entities.relevance_score, $3)
+                WHERE article_id = $1 AND entity_id = $2
+                "#,
+                )
+                .bind(article_id)
+                .bind(entity_id)
+                .bind(extracted.relevance as f64)
+                .execute(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
+
+                let mention_increment = mention_increment_from_link_insert(link_inserted);
+                if mention_increment > 0 {
+                    sqlx::query(
+                        r#"
+                    UPDATE entities
+                    SET mention_count = mention_count + $2,
+                        last_seen = NOW(),
+                        updated_at = NOW()
+                    WHERE id = $1
+                    "#,
+                    )
+                    .bind(entity_id)
+                    .bind(mention_increment)
+                    .execute(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?;
+                }
+
+                Ok(())
+            })
+        })
         .await
     }
 
@@ -880,4 +915,27 @@ pub struct GraphStats {
     pub article_entity_count: i64,
     pub entities_with_embedding: i64,
     pub type_distribution: Vec<(String, i64)>,
+}
+
+fn mention_increment_from_link_insert(link_inserted: bool) -> i32 {
+    if link_inserted {
+        1
+    } else {
+        0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::mention_increment_from_link_insert;
+
+    #[test]
+    fn mention_increment_is_one_for_new_link() {
+        assert_eq!(mention_increment_from_link_insert(true), 1);
+    }
+
+    #[test]
+    fn mention_increment_is_zero_for_existing_link() {
+        assert_eq!(mention_increment_from_link_insert(false), 0);
+    }
 }

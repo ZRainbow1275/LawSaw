@@ -413,3 +413,34 @@ Round 3 增量修复验证：
   - 知识图谱：`article_entities_inserted=20`
   - 统计：核心接口全部 `200`
   - 日报：`generate -> export(pdf) -> download(pdf)` 全链路 `200`，`application/pdf`，`25599` bytes
+
+## 本轮验证记录（2026-02-21，Round 6：robots 合规与知识图谱幂等）
+
+失败点与根因：
+- 爬虫合规风险：`robots.txt` 仅执行 allow/disallow，未执行 `crawl-delay`，对目标站点存在礼貌性与限速合规缺口。
+- 知识图谱幂等风险：文章重试/并发回填时，`mention_count` 可能被重复累加，导致统计口径失真。
+
+修复：
+- 文件：`crates/law-eye-crawler/src/orchestrator.rs`
+  - 新增 `MAX_ROBOTS_CRAWL_DELAY=30s` 与 `cap_robots_crawl_delay`。
+  - 当 `respect_robots=true` 且 checker 可用时，在 `is_allowed` 通过后读取 `crawl_delay`，执行上限裁剪后延时。
+  - 新增单测：小延迟保持不变、超大延迟裁剪到 30s。
+- 文件：`crates/law-eye-core/src/knowledge.rs`
+  - `upsert_entity` 不再在冲突更新路径直接 `mention_count + 1`。
+  - `link_article_entity` 改为：先 `INSERT ... DO NOTHING` 判断是否首次建立 `(tenant, article, entity)` 关联，再仅在首次关联时递增 `entities.mention_count`。
+  - 新增单测：`mention_increment` 在首次/重复关联下分别为 `1/0`。
+
+验证证据（无 mock，本机真实链路）：
+- `cargo test -p law-eye-crawler cap_robots_crawl_delay -- --nocapture` ✅（2/2）
+- `cargo test -p law-eye-crawler run_job_with_robots_blocked -- --nocapture` ✅
+- `cargo test -p law-eye-core mention_increment -- --nocapture` ✅（2/2）
+- `cargo test -p law-eye-core --lib -- --nocapture` ✅（23/23）
+- `cargo check -p law-eye-crawler -p law-eye-core -p law-eye-worker -p law-eye-api` ✅
+- `ORIGIN=http://localhost:8849 BASE_URL=http://127.0.0.1:13000 node tmp/core-e2e-local.mjs` ✅
+  - 爬虫：`total_articles_fetched=20`，`health_status=healthy`
+  - 知识图谱：`article_entities_inserted=20`
+  - 统计：`regional/industry/importance/overview` 全部 `200`
+  - 日报：`generate -> export(pdf) -> download(pdf)` 全链路成功，`application/pdf`
+
+补充说明：
+- 仓库根目录不存在统一的 `pnpm typecheck/lint/test` 脚本（`typecheck`/`test` 缺失，`lint` 命令冲突到系统 Android lint），本轮以 Rust 侧 `cargo test/cargo check` 与核心四链路联测作为质量门槛。

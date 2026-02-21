@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use futures::stream::{self, StreamExt};
 use law_eye_ai::AiService;
@@ -80,6 +80,11 @@ pub struct CrawlOrchestrator {
 }
 
 const DEFAULT_BATCH_MAX_CONCURRENCY: usize = 8;
+const MAX_ROBOTS_CRAWL_DELAY: Duration = Duration::from_secs(30);
+
+fn cap_robots_crawl_delay(delay: Duration) -> Duration {
+    delay.min(MAX_ROBOTS_CRAWL_DELAY)
+}
 
 impl CrawlOrchestrator {
     /// Create an orchestrator with default adapters and subsystems.
@@ -163,6 +168,18 @@ impl CrawlOrchestrator {
                         articles: Vec::new(),
                         duration_ms: start.elapsed().as_millis() as i32,
                     };
+                }
+
+                if let Some(delay) = checker.crawl_delay(&job.url).await {
+                    let capped_delay = cap_robots_crawl_delay(delay);
+                    if capped_delay > Duration::from_millis(0) {
+                        info!(
+                            source = %job.source_name,
+                            delay_ms = capped_delay.as_millis() as u64,
+                            "respecting robots.txt crawl-delay before fetch"
+                        );
+                        tokio::time::sleep(capped_delay).await;
+                    }
                 }
             }
         }
@@ -274,16 +291,16 @@ impl CrawlOrchestrator {
         // --- Step 6b: cross-session incremental deduplication ---
         let processed = if let Some(ref checker) = self.incremental_checker {
             let before_incr = processed.len();
-                let mut kept = Vec::with_capacity(before_incr);
-                for article in processed {
-                    if let Some(ref hash) = article.content_hash {
-                        if checker.is_known(job.tenant_id, hash) {
-                            continue;
-                        }
-                        checker.record(job.tenant_id, hash.clone(), article.link.clone());
+            let mut kept = Vec::with_capacity(before_incr);
+            for article in processed {
+                if let Some(ref hash) = article.content_hash {
+                    if checker.is_known(job.tenant_id, hash) {
+                        continue;
                     }
-                    kept.push(article);
+                    checker.record(job.tenant_id, hash.clone(), article.link.clone());
                 }
+                kept.push(article);
+            }
             let incr_skipped = (before_incr - kept.len()) as i32;
             if incr_skipped > 0 {
                 logger.stats_mut().articles_skipped += incr_skipped;
@@ -584,5 +601,21 @@ mod tests {
         // Ensure Debug trait is implemented
         let debug_str = format!("{:?}", result);
         assert!(debug_str.contains("Success"));
+    }
+
+    #[test]
+    fn cap_robots_crawl_delay_keeps_small_values() {
+        assert_eq!(
+            cap_robots_crawl_delay(Duration::from_secs(3)),
+            Duration::from_secs(3)
+        );
+    }
+
+    #[test]
+    fn cap_robots_crawl_delay_limits_large_values() {
+        assert_eq!(
+            cap_robots_crawl_delay(Duration::from_secs(120)),
+            Duration::from_secs(30)
+        );
     }
 }
