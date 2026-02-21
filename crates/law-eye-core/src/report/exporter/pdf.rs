@@ -3,6 +3,14 @@
 
 use law_eye_common::{Error, Result};
 use reqwest::multipart::{Form, Part};
+use reqwest::StatusCode;
+use tracing::{info, warn};
+
+const BROWSERLESS_TIMEOUT_SECS: u64 = 120;
+const BROWSERLESS_MAX_ATTEMPTS: u32 = 3;
+const GOTENBERG_MAX_ATTEMPTS: u32 = 2;
+const RETRY_BACKOFF_BASE_MS: u64 = 500;
+const RETRY_BACKOFF_MAX_MS: u64 = 2_000;
 
 /// PDF 导出器，通过 browserless HTTP API 将 HTML 渲染为 PDF。
 ///
@@ -38,12 +46,35 @@ impl PdfExporter {
         Ok(Self::new(&url))
     }
 
+    fn export_retry_delay(attempt: u32) -> std::time::Duration {
+        let shift = attempt.saturating_sub(1).min(8);
+        let delay_ms = RETRY_BACKOFF_BASE_MS
+            .saturating_mul(1u64 << shift)
+            .min(RETRY_BACKOFF_MAX_MS);
+        std::time::Duration::from_millis(delay_ms)
+    }
+
+    fn should_retry_status(status: StatusCode) -> bool {
+        status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
+    }
+
+    fn normalize_request_id(raw: &str) -> String {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            "unknown".to_string()
+        } else {
+            trimmed.to_string()
+        }
+    }
+
     /// 将 HTML 转换为 PDF 字节
     pub async fn html_to_pdf(
         &self,
         html_content: &str,
         page_config: &serde_json::Value,
+        request_id: &str,
     ) -> Result<Vec<u8>> {
+        let request_id = Self::normalize_request_id(request_id);
         let margin_top = page_config
             .get("margin_top")
             .and_then(|v| v.as_str())
@@ -87,54 +118,86 @@ impl PdfExporter {
         });
 
         let browserless_url = format!("{}/chromium/pdf", self.browserless_url);
-        let browserless_response = self
-            .http_client
-            .post(&browserless_url)
-            .json(&browserless_payload)
-            .timeout(std::time::Duration::from_secs(120))
-            .send()
-            .await;
+        info!(request_id = %request_id, %browserless_url, "pdf_export browserless start");
 
-        match browserless_response {
-            Ok(response) if response.status().is_success() => {
-                let bytes = response
-                    .bytes()
-                    .await
-                    .map_err(|e| Error::Http(format!("读取 browserless PDF 响应失败: {}", e)))?;
-                Ok(bytes.to_vec())
-            }
-            Ok(response) => {
-                let status = response.status();
-                let body = response
-                    .text()
-                    .await
-                    .unwrap_or_else(|_| "unknown".to_string());
-                self.try_gotenberg_fallback(
-                    html_content,
-                    margin_top,
-                    margin_bottom,
-                    margin_left,
-                    margin_right,
-                    landscape,
-                    format,
-                    format!("browserless PDF 生成失败 ({}): {}", status, body),
-                )
-                .await
-            }
-            Err(err) => {
-                self.try_gotenberg_fallback(
-                    html_content,
-                    margin_top,
-                    margin_bottom,
-                    margin_left,
-                    margin_right,
-                    landscape,
-                    format,
-                    format!("browserless PDF 请求失败: {}", err),
-                )
-                .await
+        let mut browserless_error = String::new();
+        for attempt in 1..=BROWSERLESS_MAX_ATTEMPTS {
+            let browserless_response = self
+                .http_client
+                .post(&browserless_url)
+                .json(&browserless_payload)
+                .timeout(std::time::Duration::from_secs(BROWSERLESS_TIMEOUT_SECS))
+                .send()
+                .await;
+
+            match browserless_response {
+                Ok(response) if response.status().is_success() => {
+                    let bytes = response.bytes().await.map_err(|e| {
+                        Error::Http(format!(
+                            "request_id={} 读取 browserless PDF 响应失败: {}",
+                            request_id, e
+                        ))
+                    })?;
+                    info!(
+                        request_id = %request_id,
+                        attempt,
+                        bytes = bytes.len(),
+                        "pdf_export browserless success"
+                    );
+                    return Ok(bytes.to_vec());
+                }
+                Ok(response) => {
+                    let status = response.status();
+                    let body = response
+                        .text()
+                        .await
+                        .unwrap_or_else(|_| "unknown".to_string());
+                    browserless_error =
+                        format!("request_id={} browserless PDF 生成失败 ({}): {}", request_id, status, body);
+
+                    if attempt < BROWSERLESS_MAX_ATTEMPTS && Self::should_retry_status(status) {
+                        warn!(
+                            request_id = %request_id,
+                            attempt,
+                            status = %status,
+                            "pdf_export browserless retry"
+                        );
+                        tokio::time::sleep(Self::export_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    break;
+                }
+                Err(err) => {
+                    browserless_error =
+                        format!("request_id={} browserless PDF 请求失败: {}", request_id, err);
+
+                    if attempt < BROWSERLESS_MAX_ATTEMPTS {
+                        warn!(
+                            request_id = %request_id,
+                            attempt,
+                            error = %err,
+                            "pdf_export browserless retry after request error"
+                        );
+                        tokio::time::sleep(Self::export_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    break;
+                }
             }
         }
+
+        self.try_gotenberg_fallback(
+            html_content,
+            margin_top,
+            margin_bottom,
+            margin_left,
+            margin_right,
+            landscape,
+            format,
+            browserless_error,
+            &request_id,
+        )
+        .await
     }
 
     async fn try_gotenberg_fallback(
@@ -147,59 +210,121 @@ impl PdfExporter {
         landscape: bool,
         format: &str,
         browserless_error: String,
+        request_id: &str,
     ) -> Result<Vec<u8>> {
         let Some(gotenberg_url) = &self.gotenberg_url else {
             return Err(Error::Http(browserless_error));
         };
 
         let endpoint = format!("{}/forms/chromium/convert/html", gotenberg_url);
-        let html_part = Part::bytes(html_content.as_bytes().to_vec())
-            // Gotenberg chromium html conversion expects an input file named index.html.
-            .file_name("index.html")
-            .mime_str("text/html; charset=utf-8")
-            .map_err(|e| Error::Http(format!("构造 gotenberg HTML 文件失败: {}", e)))?;
 
-        let form = Form::new()
-            .part("files", html_part)
-            .text("paperSize", format.to_string())
-            .text("landscape", landscape.to_string())
-            .text("marginTop", margin_top.to_string())
-            .text("marginBottom", margin_bottom.to_string())
-            .text("marginLeft", margin_left.to_string())
-            .text("marginRight", margin_right.to_string())
-            .text("printBackground", "true".to_string());
+        for attempt in 1..=GOTENBERG_MAX_ATTEMPTS {
+            let html_part = Part::bytes(html_content.as_bytes().to_vec())
+                // Gotenberg chromium html conversion expects an input file named index.html.
+                .file_name("index.html")
+                .mime_str("text/html; charset=utf-8")
+                .map_err(|e| Error::Http(format!("构造 gotenberg HTML 文件失败: {}", e)))?;
 
-        let response = self
-            .http_client
-            .post(&endpoint)
-            .multipart(form)
-            .timeout(std::time::Duration::from_secs(120))
-            .send()
-            .await
-            .map_err(|e| {
-                Error::Http(format!(
-                    "{}; gotenberg PDF 请求失败: {}",
-                    browserless_error, e
-                ))
-            })?;
+            let form = Form::new()
+                .part("files", html_part)
+                .text("paperSize", format.to_string())
+                .text("landscape", landscape.to_string())
+                .text("marginTop", margin_top.to_string())
+                .text("marginBottom", margin_bottom.to_string())
+                .text("marginLeft", margin_left.to_string())
+                .text("marginRight", margin_right.to_string())
+                .text("printBackground", "true".to_string());
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "unknown".to_string());
-            return Err(Error::Http(format!(
-                "{}; gotenberg PDF 生成失败 ({}): {}",
-                browserless_error, status, body
-            )));
+            let response = self
+                .http_client
+                .post(&endpoint)
+                .multipart(form)
+                .timeout(std::time::Duration::from_secs(BROWSERLESS_TIMEOUT_SECS))
+                .send()
+                .await;
+
+            match response {
+                Ok(resp) if resp.status().is_success() => {
+                    let bytes = resp.bytes().await.map_err(|e| {
+                        Error::Http(format!(
+                            "request_id={} 读取 gotenberg PDF 响应失败: {}",
+                            request_id, e
+                        ))
+                    })?;
+                    info!(
+                        request_id = %request_id,
+                        attempt,
+                        bytes = bytes.len(),
+                        "pdf_export gotenberg success"
+                    );
+                    return Ok(bytes.to_vec());
+                }
+                Ok(resp) => {
+                    let status = resp.status();
+                    let body = resp.text().await.unwrap_or_else(|_| "unknown".to_string());
+                    if attempt < GOTENBERG_MAX_ATTEMPTS && Self::should_retry_status(status) {
+                        warn!(
+                            request_id = %request_id,
+                            attempt,
+                            status = %status,
+                            "pdf_export gotenberg retry"
+                        );
+                        tokio::time::sleep(Self::export_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    return Err(Error::Http(format!(
+                        "{}; request_id={} gotenberg PDF 生成失败 ({}): {}",
+                        browserless_error, request_id, status, body
+                    )));
+                }
+                Err(e) => {
+                    if attempt < GOTENBERG_MAX_ATTEMPTS {
+                        warn!(
+                            request_id = %request_id,
+                            attempt,
+                            error = %e,
+                            "pdf_export gotenberg retry after request error"
+                        );
+                        tokio::time::sleep(Self::export_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    return Err(Error::Http(format!(
+                        "{}; request_id={} gotenberg PDF 请求失败: {}",
+                        browserless_error, request_id, e
+                    )));
+                }
+            }
         }
 
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| Error::Http(format!("读取 gotenberg PDF 响应失败: {}", e)))?;
+        Err(Error::Http(format!(
+            "{}; request_id={} gotenberg retry exhausted",
+            browserless_error, request_id
+        )))
+    }
+}
 
-        Ok(bytes.to_vec())
+#[cfg(test)]
+mod tests {
+    use super::PdfExporter;
+    use reqwest::StatusCode;
+
+    #[test]
+    fn should_retry_status_matches_retryable_http_codes() {
+        assert!(PdfExporter::should_retry_status(StatusCode::TOO_MANY_REQUESTS));
+        assert!(PdfExporter::should_retry_status(StatusCode::BAD_GATEWAY));
+        assert!(!PdfExporter::should_retry_status(StatusCode::BAD_REQUEST));
+    }
+
+    #[test]
+    fn export_retry_delay_is_bounded() {
+        assert_eq!(PdfExporter::export_retry_delay(1).as_millis(), 500);
+        assert_eq!(PdfExporter::export_retry_delay(2).as_millis(), 1000);
+        assert_eq!(PdfExporter::export_retry_delay(10).as_millis(), 2000);
+    }
+
+    #[test]
+    fn normalize_request_id_uses_unknown_for_empty() {
+        assert_eq!(PdfExporter::normalize_request_id(""), "unknown");
+        assert_eq!(PdfExporter::normalize_request_id("  req-123  "), "req-123");
     }
 }

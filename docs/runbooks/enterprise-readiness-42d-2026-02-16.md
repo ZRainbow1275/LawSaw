@@ -347,12 +347,14 @@
   证据：`crates/law-eye-crawler/src/spider.rs`（dynamic -> static fallback）；回归测试 `fetch_dynamic_mode_falls_back_to_static_when_browserless_is_unreachable`。
 - [x] [R3-CG-002] 知识图谱 LLM 回填入队需要补强同租户同文章幂等保护 ✅ 已修复（改为写入 `queue_outbox`，`dedupe_key=ai:{article_id}:extract_entities`，依赖 `(tenant_id,queue,dedupe_key)` 唯一键防重；文件：`crates/law-eye-api/src/routes/knowledge/handlers.rs`）。
 - [x] [R3-RS-001] 统计缓存 key 需要进一步约束 query 参数规范，防止异常参数导致 key 污染 ✅ 已修复（新增 date range 校验、dimension/granularity 规范化、limit/days/top_n 归一化后参与缓存 key；文件：`crates/law-eye-api/src/routes/statistics/handlers.rs`）。
-- [ ] [R3-RS-002] PDF 导出链路建议补充 request-id 级别可观测日志与有限重试策略（候选文件：`crates/law-eye-core/src/report/exporter/pdf.rs`）。
-- [ ] [R3-RS-003] 导出 key 更新建议补充并发 CAS 校验与对象元数据一致性检查（候选文件：`crates/law-eye-core/src/report/service.rs`）。
+- [x] [R3-RS-002] PDF 导出链路建议补充 request-id 级别可观测日志与有限重试策略 ✅ 已修复（Browserless/Gotenberg 增加有限重试与退避，贯穿 request-id 日志；文件：`crates/law-eye-core/src/report/exporter/pdf.rs`、`crates/law-eye-worker/src/main.rs`）。
+- [x] [R3-RS-003] 导出 key 更新建议补充并发 CAS 校验与对象元数据一致性检查 ✅ 已修复（`set_export_key` 引入 version CAS、objects 元数据 kind/content-type 校验，worker 对 CAS 冲突改为记录并跳过陈旧更新；文件：`crates/law-eye-core/src/report/service.rs`、`crates/law-eye-worker/src/main.rs`）。
 
 Round 3 增量修复验证：
 - `cargo test -p law-eye-crawler fetch_dynamic_mode_falls_back_to_static_when_browserless_is_unreachable -- --nocapture` ✅
 - `cargo test -p law-eye-api ai_extract_entities_dedupe_key_matches_worker_format -- --nocapture` ✅
 - `cargo test -p law-eye-api extract_entities_outbox_payload_uses_retryable_task_shape -- --nocapture` ✅
 - `cargo test -p law-eye-api routes::statistics::handlers::tests -- --nocapture` ✅
+- `cargo test -p law-eye-core report::exporter::pdf::tests -- --nocapture` ✅
+- `cargo test -p law-eye-core report::service::tests -- --nocapture` ✅
 - `cargo check -p law-eye-crawler -p law-eye-core -p law-eye-worker -p law-eye-api` ✅

@@ -13,6 +13,7 @@ use super::types::{
     ReportAggregatedData, ReportArticleSummary, ReportCalendarEvent, ReportOverview,
     ReportRiskItem, ReportStatus, UpdateReportInput,
 };
+use crate::object::OBJECT_KIND_REPORT_EXPORT;
 use crate::statistics::{domain_root_label, region_code_to_name};
 use crate::tenant::with_tenant_tx;
 
@@ -482,48 +483,134 @@ impl ReportService {
         report_id: Uuid,
         format: ExportFormat,
         object_key: &str,
+        expected_report_version: i64,
     ) -> Result<()> {
-        let sql = match format {
-            ExportFormat::Pdf => {
+        let (update_sql, current_sql) = match format {
+            ExportFormat::Pdf => (
                 r#"
                 UPDATE reports SET export_pdf_key = $2, version = version + 1, updated_at = NOW()
+                WHERE id = $1 AND deleted_at IS NULL AND version = $3
+                "#,
+                r#"
+                SELECT version, export_pdf_key
+                FROM reports
                 WHERE id = $1 AND deleted_at IS NULL
-                "#
-            }
-            ExportFormat::Docx => {
+                "#,
+            ),
+            ExportFormat::Docx => (
                 r#"
                 UPDATE reports SET export_docx_key = $2, version = version + 1, updated_at = NOW()
+                WHERE id = $1 AND deleted_at IS NULL AND version = $3
+                "#,
+                r#"
+                SELECT version, export_docx_key
+                FROM reports
                 WHERE id = $1 AND deleted_at IS NULL
-                "#
-            }
-            ExportFormat::Html => {
+                "#,
+            ),
+            ExportFormat::Html => (
                 r#"
                 UPDATE reports SET export_html_key = $2, version = version + 1, updated_at = NOW()
+                WHERE id = $1 AND deleted_at IS NULL AND version = $3
+                "#,
+                r#"
+                SELECT version, export_html_key
+                FROM reports
                 WHERE id = $1 AND deleted_at IS NULL
-                "#
-            }
+                "#,
+            ),
         };
 
         let object_key = object_key.to_string();
 
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
-                let rows_affected = sqlx::query(sql)
+                let object_meta = sqlx::query_as::<_, (String, String)>(
+                    r#"
+                    SELECT kind, content_type
+                    FROM objects
+                    WHERE object_key = $1
+                      AND deleted_at IS NULL
+                      AND purged_at IS NULL
+                    LIMIT 1
+                    "#,
+                )
+                .bind(&object_key)
+                .fetch_optional(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?
+                .ok_or_else(|| {
+                    Error::Conflict(format!(
+                        "Export object metadata missing or deleted for key {}",
+                        object_key
+                    ))
+                })?;
+
+                Self::validate_export_object_metadata(&object_meta.0, &object_meta.1, format)?;
+
+                let rows_affected = sqlx::query(update_sql)
                     .bind(report_id)
                     .bind(&object_key)
+                    .bind(expected_report_version)
                     .execute(tx.as_mut())
                     .await
                     .map_err(|e| Error::Database(e.to_string()))?
                     .rows_affected();
 
-                if rows_affected == 0 {
-                    return Err(Error::NotFound(format!("Report {} not found", report_id)));
+                if rows_affected == 1 {
+                    return Ok(());
                 }
 
-                Ok(())
+                let current = sqlx::query_as::<_, (i64, Option<String>)>(current_sql)
+                    .bind(report_id)
+                    .fetch_optional(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?
+                    .ok_or_else(|| Error::NotFound(format!("Report {} not found", report_id)))?;
+
+                let (current_version, current_key) = current;
+                if current_key.as_deref() == Some(object_key.as_str()) {
+                    return Ok(());
+                }
+
+                Err(Error::Conflict(format!(
+                    "Report {} export key update conflict: expected version {}, current version {}",
+                    report_id, expected_report_version, current_version
+                )))
             })
         })
         .await
+    }
+
+    fn validate_export_object_metadata(
+        object_kind: &str,
+        content_type: &str,
+        format: ExportFormat,
+    ) -> Result<()> {
+        if object_kind != OBJECT_KIND_REPORT_EXPORT {
+            return Err(Error::Conflict(format!(
+                "Invalid object kind for report export: expected {}, got {}",
+                OBJECT_KIND_REPORT_EXPORT, object_kind
+            )));
+        }
+
+        let expected_content_type = format.content_type();
+        let content_type_matches = if matches!(format, ExportFormat::Html) {
+            content_type
+                .to_ascii_lowercase()
+                .starts_with("text/html")
+        } else {
+            content_type.eq_ignore_ascii_case(expected_content_type)
+        };
+
+        if !content_type_matches {
+            return Err(Error::Conflict(format!(
+                "Export object content_type mismatch: expected {}, got {}",
+                expected_content_type, content_type
+            )));
+        }
+
+        Ok(())
     }
 
     // ======================================================================
@@ -982,6 +1069,44 @@ mod tests {
         );
 
         let result = ReportService::validate_create_report_input(&input);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_export_object_metadata_rejects_wrong_kind() {
+        let err = ReportService::validate_export_object_metadata(
+            "report.snapshot",
+            "application/pdf",
+            ExportFormat::Pdf,
+        )
+        .unwrap_err();
+        match err {
+            Error::Conflict(msg) => assert!(msg.contains("Invalid object kind")),
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_export_object_metadata_rejects_wrong_content_type() {
+        let err = ReportService::validate_export_object_metadata(
+            OBJECT_KIND_REPORT_EXPORT,
+            "application/json",
+            ExportFormat::Pdf,
+        )
+        .unwrap_err();
+        match err {
+            Error::Conflict(msg) => assert!(msg.contains("content_type mismatch")),
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_export_object_metadata_accepts_html_charset_variant() {
+        let result = ReportService::validate_export_object_metadata(
+            OBJECT_KIND_REPORT_EXPORT,
+            "text/html; charset=UTF-8",
+            ExportFormat::Html,
+        );
         assert!(result.is_ok());
     }
 }

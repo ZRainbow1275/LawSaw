@@ -3674,9 +3674,10 @@ impl Worker {
         let export_report_id = payload.report_id;
         let export_tenant_id = payload.tenant_id;
         let export_format = payload.format.clone();
+        let request_id = task_id.to_string();
         let result = timeout(
             Duration::from_secs(TASK_TIMEOUT_REPORT_EXPORT_SECS),
-            self.process_report_export_task(payload),
+            self.process_report_export_task(payload, &request_id),
         )
         .await;
 
@@ -3764,7 +3765,11 @@ impl Worker {
     }
 
     /// 处理报告导出任务：获取报告 → 获取模板 → 聚合数据 → 渲染 → 上传到对象存储 → 更新报告
-    async fn process_report_export_task(&self, task: ReportExportTask) -> anyhow::Result<()> {
+    async fn process_report_export_task(
+        &self,
+        task: ReportExportTask,
+        request_id: &str,
+    ) -> anyhow::Result<()> {
         use law_eye_core::report::{DocxExporter, ExportFormat, HtmlExporter, PdfExporter};
 
         let tenant_id = task.tenant_id;
@@ -3777,6 +3782,7 @@ impl Worker {
         info!(
             %report_id,
             %tenant_id,
+            request_id = %request_id,
             format = %task.format,
             "Processing report export task"
         );
@@ -3846,7 +3852,7 @@ impl Worker {
                     .map_err(|e| anyhow::anyhow!("PDF 导出器初始化失败: {}", e))?;
                 let page_config = template.page_config.clone();
                 let pdf_bytes = pdf_exporter
-                    .html_to_pdf(&html, &page_config)
+                    .html_to_pdf(&html, &page_config, request_id)
                     .await
                     .map_err(|e| anyhow::anyhow!("PDF 生成失败: {}", e))?;
                 (pdf_bytes, "application/pdf")
@@ -3894,15 +3900,31 @@ impl Worker {
             info!(
                 %report_id,
                 %object_key,
+                request_id = %request_id,
                 byte_size,
                 "Report export uploaded to object storage"
             );
 
             // 6. 只在上传成功后才更新报告中的导出路径
-            self.report_service
-                .set_export_key(tenant_id, report_id, format, &object_key)
+            match self
+                .report_service
+                .set_export_key(tenant_id, report_id, format, &object_key, report.version)
                 .await
-                .map_err(|e| anyhow::anyhow!("更新导出路径失败: {}", e))?;
+            {
+                Ok(()) => {}
+                Err(law_eye_common::Error::Conflict(err_msg)) => {
+                    warn!(
+                        %report_id,
+                        %tenant_id,
+                        request_id = %request_id,
+                        %object_key,
+                        error = %err_msg,
+                        "Skip stale report export key update due to CAS conflict"
+                    );
+                    return Ok(());
+                }
+                Err(e) => return Err(anyhow::anyhow!("更新导出路径失败: {}", e)),
+            }
         } else {
             return Err(anyhow::anyhow!(
                 "Object storage not configured, cannot complete report export for report {}",
@@ -3913,6 +3935,7 @@ impl Worker {
         info!(
             %report_id,
             %tenant_id,
+            request_id = %request_id,
             format = %task.format,
             %object_key,
             "Report export task completed successfully"
