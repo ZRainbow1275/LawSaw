@@ -641,3 +641,18 @@ Round 3 增量修复验证：
 - `cargo test -p law-eye-core report::service::tests -- --nocapture` ✅（9 passed）
 - `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
 - `node tmp/core-e2e-local.mjs` ✅（`ok: true`，爬虫/知识图谱/统计/日报全链路通过）
+## 本轮验证记录（2026-02-22，Round 18：动态渲染 HTML 上限防护）
+
+失败点与根因：
+- 风险（R18-CG-001）：动态渲染（Browserless）返回内容此前未做大小上限校验，存在超大 HTML 绕过静态抓取限流的风险。
+
+修复：
+- 文件：`crates/law-eye-crawler/src/spider.rs`
+  - 新增 `spider_html_over_limit`。
+  - 动态渲染成功后先校验 HTML 字节大小，超限则记录告警并回退静态抓取路径。
+  - 新增单测 `spider_html_limit_check_works`。
+
+验证证据：
+- `cargo test -p law-eye-crawler spider_ -- --nocapture` ✅（6 passed）
+- `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
+- `node tmp/core-e2e-local.mjs` ✅（`ok: true`，爬虫/知识图谱/统计/日报全链路通过）

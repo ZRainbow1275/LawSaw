@@ -125,7 +125,20 @@ impl WebSpider {
                     )
                     .await
                 {
-                    Ok(rendered_html) => rendered_html,
+                    Ok(rendered_html) => {
+                        if spider_html_over_limit(&rendered_html, MAX_SPIDER_RESPONSE_BYTES) {
+                            warn!(
+                                url = %page_url,
+                                limit_bytes = MAX_SPIDER_RESPONSE_BYTES,
+                                actual_bytes = rendered_html.len(),
+                                "dynamic rendered html too large; falling back to static mode"
+                            );
+                            self.fetch_html_with_retry(page_url.as_str(), "list", encoding_hint)
+                                .await?
+                        } else {
+                            rendered_html
+                        }
+                    }
                     Err(err) => {
                         warn!(
                             url = %page_url,
@@ -416,6 +429,10 @@ fn spider_content_length_over_limit(content_length: Option<u64>, max_bytes: usiz
 
 fn spider_chunk_append_over_limit(current_len: usize, append_len: usize, max_bytes: usize) -> bool {
     current_len.saturating_add(append_len) > max_bytes
+}
+
+fn spider_html_over_limit(html: &str, max_bytes: usize) -> bool {
+    html.len() > max_bytes
 }
 
 fn parse_required_selector(raw: &str) -> Result<Selector> {
@@ -903,6 +920,12 @@ mod tests {
             1,
             MAX_SPIDER_RESPONSE_BYTES
         ));
+    }
+
+    #[test]
+    fn spider_html_limit_check_works() {
+        assert!(!spider_html_over_limit("abc", 3));
+        assert!(spider_html_over_limit("abcd", 3));
     }
 
     #[tokio::test]
