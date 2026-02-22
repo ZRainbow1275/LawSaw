@@ -673,3 +673,21 @@ Round 3 增量修复验证：
 - 实测重启栈：`stop-stack.sh --name law-eye-local-codex` + `start-stack.sh --name law-eye-local-codex` ✅
 - `node tmp/core-e2e-local.mjs` ✅（`ok: true`，四链路通过）
 - 关键校验：导出 key 已体现新策略（含毫秒时间戳+UUID 后缀），确认运行实例已加载新代码。
+
+## 本轮验证记录（2026-02-22，Round 20：报告任务有序入队与同报告串行消费）
+
+失败点与根因：
+- 风险（R20-RP-001）：`generate_report/export_report` 入队均未携带 `ordering_key`，且 worker 的 `queue:report` / `queue:report-export` 消费器未启用 ordering gate。同一报告并发导出时会并行执行，可能触发 `set_export_key` CAS 冲突，导致导出 key 更新丢失或行为不一致。
+
+修复：
+- 文件：`crates/law-eye-api/src/routes/reports/handlers.rs`
+  - `generate_report` 与 `export_report` 改为 `enqueue_retryable_with_ordering`。
+  - 统一使用 `ordering_key = report:{report_id}`，`ordering_seq = None`（当前先保证串行一致性，避免错误使用非连续序号）。
+- 文件：`crates/law-eye-worker/src/main.rs`
+  - `handle_report_export_reserved` 与 `handle_report_generate_reserved` 增加 ordering gate 全流程：`try_acquire_ordering_gate`、`Blocked` 回退、`Stale` 丢弃、完成/失败/超时后的 `release_ordering_gate`。
+  - 补齐 done-check 异常路径上的 gate 释放，防止锁泄漏导致后续任务饥饿。
+
+验证证据（无 mock，本机真实链路）：
+- `cargo test -p law-eye-api routes::reports::handlers::tests -- --nocapture` ✅（3 passed）
+- `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
+- `node tmp/core-e2e-local.mjs` ✅（`ok: true`，爬虫/知识图谱/统计/日报全链路通过，日报 `generate -> export(pdf) -> download(pdf)` 返回 200）

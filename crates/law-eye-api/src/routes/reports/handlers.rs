@@ -288,7 +288,12 @@ pub(crate) async fn generate_report(
 
     if let Err(e) = state
         .task_queue
-        .enqueue_retryable("queue:report", task)
+        .enqueue_retryable_with_ordering(
+            "queue:report",
+            task,
+            Some(format!("report:{id}")),
+            None,
+        )
         .await
     {
         // Compensation: avoid leaving report stuck in `generating` when enqueue fails.
@@ -372,7 +377,12 @@ pub(crate) async fn export_report(
 
     state
         .task_queue
-        .enqueue_retryable("queue:report-export", task)
+        .enqueue_retryable_with_ordering(
+            "queue:report-export",
+            task,
+            Some(format!("report:{id}")),
+            None,
+        )
         .await
         .map_err(|e| AppError::internal_with_code("ENQUEUE_ERROR", e.to_string()))?;
 

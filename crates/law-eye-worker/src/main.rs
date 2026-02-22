@@ -3864,8 +3864,78 @@ impl Worker {
         let queue = QUEUE_REPORT_EXPORT;
         let task = reserved.task;
         let task_id = task.id;
+        let ordering_key = task.ordering_key.clone();
+        let ordering_seq = task.ordering_seq;
 
-        // 无需 ordering gate，报告导出不需要顺序保证
+        match self
+            .task_queue
+            .try_acquire_ordering_gate(
+                queue,
+                task_id,
+                ordering_key.as_deref(),
+                ordering_seq,
+                VISIBILITY_TIMEOUT_REPORT_EXPORT_MS,
+            )
+            .await
+        {
+            Ok(OrderedTaskGate::Unordered | OrderedTaskGate::Acquired) => {}
+            Ok(OrderedTaskGate::Blocked) => {
+                if let Err(e) = self
+                    .task_queue
+                    .release_reserved_back_to_queue(queue, &reserved.raw_payload)
+                    .await
+                {
+                    error!(
+                        "Failed to release blocked report export task {} back to queue: {}",
+                        task_id, e
+                    );
+                }
+                return;
+            }
+            Ok(OrderedTaskGate::Stale) => {
+                warn!(
+                    task_id = %task_id,
+                    ordering_key = ?ordering_key,
+                    ordering_seq,
+                    "Dropping stale ordered report export task"
+                );
+                if let Err(e) = self.task_queue.mark_done(queue, task_id).await {
+                    error!("Failed to mark stale report export task {} done: {}", task_id, e);
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .ack_reserved(queue, &reserved.raw_payload)
+                    .await
+                {
+                    error!("Failed to ack stale report export task {}: {}", task_id, e);
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        false,
+                    )
+                    .await
+                {
+                    error!(
+                        "Failed to release report export ordering gate for {}: {}",
+                        task_id, e
+                    );
+                }
+                return;
+            }
+            Err(e) => {
+                error!(
+                    "Failed to acquire report export ordering gate for {}: {}",
+                    task_id, e
+                );
+                return;
+            }
+        }
+
         match self.task_queue.is_done(queue, task_id).await {
             Ok(true) => {
                 if let Err(e) = self
@@ -3878,11 +3948,43 @@ impl Worker {
                         task_id, e
                     );
                 }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        true,
+                    )
+                    .await
+                {
+                    error!(
+                        "Failed to release report export ordering gate for {}: {}",
+                        task_id, e
+                    );
+                }
                 return;
             }
             Ok(false) => {}
             Err(e) => {
                 error!("Failed to check report export task {} done: {}", task_id, e);
+                if let Err(release_err) = self
+                    .task_queue
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        false,
+                    )
+                    .await
+                {
+                    error!(
+                        "Failed to release report export ordering gate after done-check error for {}: {}",
+                        task_id, release_err
+                    );
+                }
                 return;
             }
         }
@@ -3909,6 +4011,22 @@ impl Worker {
                     .await
                 {
                     error!("Failed to ack report export task {}: {}", task_id, e);
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        true,
+                    )
+                    .await
+                {
+                    error!(
+                        "Failed to release report export ordering gate for {}: {}",
+                        task_id, e
+                    );
                 }
             }
             Ok(Err(e)) => {
@@ -3941,6 +4059,22 @@ impl Worker {
                             task_id, e
                         );
                     }
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        false,
+                    )
+                    .await
+                {
+                    error!(
+                        "Failed to release report export ordering gate for {}: {}",
+                        task_id, e
+                    );
                 }
             }
             Err(_) => {
@@ -3976,6 +4110,22 @@ impl Worker {
                             task_id, e
                         );
                     }
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        false,
+                    )
+                    .await
+                {
+                    error!(
+                        "Failed to release report export ordering gate for {}: {}",
+                        task_id, e
+                    );
                 }
             }
         }
@@ -4163,8 +4313,78 @@ impl Worker {
         let queue = QUEUE_REPORT_GENERATE;
         let task = reserved.task;
         let task_id = task.id;
+        let ordering_key = task.ordering_key.clone();
+        let ordering_seq = task.ordering_seq;
 
-        // 幂等检查
+        match self
+            .task_queue
+            .try_acquire_ordering_gate(
+                queue,
+                task_id,
+                ordering_key.as_deref(),
+                ordering_seq,
+                VISIBILITY_TIMEOUT_REPORT_GENERATE_MS,
+            )
+            .await
+        {
+            Ok(OrderedTaskGate::Unordered | OrderedTaskGate::Acquired) => {}
+            Ok(OrderedTaskGate::Blocked) => {
+                if let Err(e) = self
+                    .task_queue
+                    .release_reserved_back_to_queue(queue, &reserved.raw_payload)
+                    .await
+                {
+                    error!(
+                        "Failed to release blocked report generate task {} back to queue: {}",
+                        task_id, e
+                    );
+                }
+                return;
+            }
+            Ok(OrderedTaskGate::Stale) => {
+                warn!(
+                    task_id = %task_id,
+                    ordering_key = ?ordering_key,
+                    ordering_seq,
+                    "Dropping stale ordered report generate task"
+                );
+                if let Err(e) = self.task_queue.mark_done(queue, task_id).await {
+                    error!("Failed to mark stale report generate task {} done: {}", task_id, e);
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .ack_reserved(queue, &reserved.raw_payload)
+                    .await
+                {
+                    error!("Failed to ack stale report generate task {}: {}", task_id, e);
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        false,
+                    )
+                    .await
+                {
+                    error!(
+                        "Failed to release report generate ordering gate for {}: {}",
+                        task_id, e
+                    );
+                }
+                return;
+            }
+            Err(e) => {
+                error!(
+                    "Failed to acquire report generate ordering gate for {}: {}",
+                    task_id, e
+                );
+                return;
+            }
+        }
+
         match self.task_queue.is_done(queue, task_id).await {
             Ok(true) => {
                 if let Err(e) = self
@@ -4177,6 +4397,22 @@ impl Worker {
                         task_id, e
                     );
                 }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        true,
+                    )
+                    .await
+                {
+                    error!(
+                        "Failed to release report generate ordering gate for {}: {}",
+                        task_id, e
+                    );
+                }
                 return;
             }
             Ok(false) => {}
@@ -4185,6 +4421,22 @@ impl Worker {
                     "Failed to check report generate task {} done: {}",
                     task_id, e
                 );
+                if let Err(release_err) = self
+                    .task_queue
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        false,
+                    )
+                    .await
+                {
+                    error!(
+                        "Failed to release report generate ordering gate after done-check error for {}: {}",
+                        task_id, release_err
+                    );
+                }
                 return;
             }
         }
@@ -4211,6 +4463,22 @@ impl Worker {
                 {
                     error!("Failed to ack report generate task {}: {}", task_id, e);
                 }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        true,
+                    )
+                    .await
+                {
+                    error!(
+                        "Failed to release report generate ordering gate for {}: {}",
+                        task_id, e
+                    );
+                }
             }
             Ok(Err(e)) => {
                 let error_msg = sanitize_error_message(e.to_string());
@@ -4219,7 +4487,6 @@ impl Worker {
                     %error_msg,
                     "Report generate task failed"
                 );
-                // 失败时回退状态到 draft，以允许用户重新触发生成
                 if let Err(rollback_err) =
                     self.rollback_report_status_on_failure(&task.payload).await
                 {
@@ -4252,6 +4519,22 @@ impl Worker {
                             task_id, e
                         );
                     }
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        false,
+                    )
+                    .await
+                {
+                    error!(
+                        "Failed to release report generate ordering gate for {}: {}",
+                        task_id, e
+                    );
                 }
             }
             Err(_) => {
@@ -4294,6 +4577,22 @@ impl Worker {
                             task_id, e
                         );
                     }
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .release_ordering_gate(
+                        queue,
+                        task_id,
+                        ordering_key.as_deref(),
+                        ordering_seq,
+                        false,
+                    )
+                    .await
+                {
+                    error!(
+                        "Failed to release report generate ordering gate for {}: {}",
+                        task_id, e
+                    );
                 }
             }
         }
