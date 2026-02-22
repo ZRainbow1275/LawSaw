@@ -606,3 +606,19 @@ Round 3 增量修复验证：
 - `cargo test -p law-eye-worker build_report_export_object_key_is_scoped_and_unique -- --nocapture` ✅（1 passed）
 - `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
 - `node tmp/core-e2e-local.mjs` ✅（`ok: true`，爬虫/知识图谱/统计/日报全链路通过）
+## 本轮验证记录（2026-02-22，Round 16：Spider 静态抓取响应体限流）
+
+失败点与根因：
+- 风险（R16-CG-001）：`WebSpider::fetch_html_with_retry` 成功分支直接 `response.bytes()` 全量读入，缺少响应体上限；超大页面可能触发内存放大，影响 worker 稳定性。
+
+修复：
+- 文件：`crates/law-eye-crawler/src/spider.rs`
+  - 新增 `MAX_SPIDER_RESPONSE_BYTES=10MB`。
+  - 成功响应先检查 `content_length` 是否超限。
+  - 响应体读取改为 `bytes_stream()` 分块累加，超限即时中断。
+  - 新增边界单测：`spider_content_length_limit_check_works`、`spider_chunk_append_limit_check_works`。
+
+验证证据：
+- `cargo test -p law-eye-crawler spider_ -- --nocapture` ✅（5 passed）
+- `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
+- `node tmp/core-e2e-local.mjs` ✅（`ok: true`，爬虫/知识图谱/统计/日报全链路通过）

@@ -3,6 +3,7 @@ use crate::browser::BrowserlessClient;
 use crate::encoding;
 use crate::RawArticle;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use futures::StreamExt;
 use law_eye_common::egress::{validate_outbound_url, OutboundUrlPolicy};
 use law_eye_common::{Error, Result};
 use reqwest::Client;
@@ -14,6 +15,7 @@ use tracing::{info, warn};
 const DEFAULT_HTTP_MAX_RETRIES: u32 = 3;
 const DEFAULT_HTTP_RETRY_BASE_DELAY_MS: u64 = 300;
 const DEFAULT_HTTP_RETRY_MAX_DELAY_MS: u64 = 5_000;
+const MAX_SPIDER_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
 
 fn spider_http_max_retries() -> u32 {
     std::env::var("LAW_EYE__SPIDER__HTTP_MAX_RETRIES")
@@ -267,10 +269,13 @@ impl WebSpider {
                             .get(reqwest::header::CONTENT_TYPE)
                             .and_then(|v| v.to_str().ok())
                             .map(|s| s.to_string());
-                        let bytes = response
-                            .bytes()
-                            .await
-                            .map_err(|e| Error::Http(e.to_string()))?;
+                        let bytes = read_spider_body_with_limit(
+                            response,
+                            url,
+                            context,
+                            MAX_SPIDER_RESPONSE_BYTES,
+                        )
+                        .await?;
                         return Ok(encoding::detect_and_decode(
                             &bytes,
                             content_type.as_deref(),
@@ -364,6 +369,53 @@ fn retry_delay_ms(attempt: u32, base_delay_ms: u64, max_delay_ms: u64) -> u64 {
     base_delay_ms
         .saturating_mul(1u64 << shift)
         .min(max_delay_ms)
+}
+
+async fn read_spider_body_with_limit(
+    response: reqwest::Response,
+    url: &str,
+    context: &str,
+    max_bytes: usize,
+) -> Result<Vec<u8>> {
+    if spider_content_length_over_limit(response.content_length(), max_bytes) {
+        return Err(Error::Http(format!(
+            "spider {} response too large: content_length={:?} limit={} url={}",
+            context,
+            response.content_length(),
+            max_bytes,
+            url
+        )));
+    }
+
+    let initial_capacity = response
+        .content_length()
+        .map(|len| len.min(max_bytes as u64) as usize)
+        .unwrap_or(8 * 1024);
+    let mut body = Vec::with_capacity(initial_capacity);
+    let mut stream = response.bytes_stream();
+
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result.map_err(|e| Error::Http(e.to_string()))?;
+        if spider_chunk_append_over_limit(body.len(), chunk.len(), max_bytes) {
+            return Err(Error::Http(format!(
+                "spider {} response exceeded streaming limit: limit={} url={}",
+                context, max_bytes, url
+            )));
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    Ok(body)
+}
+
+fn spider_content_length_over_limit(content_length: Option<u64>, max_bytes: usize) -> bool {
+    content_length
+        .map(|len| len > max_bytes as u64)
+        .unwrap_or(false)
+}
+
+fn spider_chunk_append_over_limit(current_len: usize, append_len: usize, max_bytes: usize) -> bool {
+    current_len.saturating_add(append_len) > max_bytes
 }
 
 fn parse_required_selector(raw: &str) -> Result<Selector> {
@@ -823,6 +875,34 @@ mod tests {
         assert_eq!(retry_delay_ms(5, 300, 5_000), 4_800);
         assert_eq!(retry_delay_ms(6, 300, 5_000), 5_000);
         assert_eq!(retry_delay_ms(20, 300, 5_000), 5_000);
+    }
+
+    #[test]
+    fn spider_content_length_limit_check_works() {
+        assert!(!spider_content_length_over_limit(
+            None,
+            MAX_SPIDER_RESPONSE_BYTES
+        ));
+        assert!(!spider_content_length_over_limit(
+            Some(MAX_SPIDER_RESPONSE_BYTES as u64),
+            MAX_SPIDER_RESPONSE_BYTES
+        ));
+        assert!(spider_content_length_over_limit(
+            Some((MAX_SPIDER_RESPONSE_BYTES + 1) as u64),
+            MAX_SPIDER_RESPONSE_BYTES
+        ));
+    }
+
+    #[test]
+    fn spider_chunk_append_limit_check_works() {
+        assert!(!spider_chunk_append_over_limit(1024, 2048, 4096));
+        assert!(!spider_chunk_append_over_limit(2048, 2048, 4096));
+        assert!(spider_chunk_append_over_limit(2048, 2049, 4096));
+        assert!(spider_chunk_append_over_limit(
+            usize::MAX,
+            1,
+            MAX_SPIDER_RESPONSE_BYTES
+        ));
     }
 
     #[tokio::test]
