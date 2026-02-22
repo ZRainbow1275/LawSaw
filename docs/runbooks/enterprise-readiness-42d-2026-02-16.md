@@ -864,3 +864,35 @@ Validation
     - knowledge embeddings 12
     - statistics overview `with_authority=20`, `with_issuer=20`
     - report pdf download status 200
+
+## 2026-02-22 Round 28: no-web backend start mode and startup conflict hardening
+
+Failure points
+- R28-OPS-001: `start-stack.sh` always waited for Web readiness, which blocked backend-only verification loops when local web startup was unstable.
+- R28-OPS-002: stale local worker processes could keep port `3002` occupied, causing the new worker health endpoint bind failure.
+
+Fixes
+- `scripts/no-dockerhub/start-stack.sh`
+  - Added `LAW_EYE_SKIP_WEB=1` support (`WEB_ENABLED=0`) to skip web startup and readiness checks for backend-only runs.
+  - Added `WEB_ENABLED` to `stack.env` output and refined stack summary output when web is skipped.
+  - Kept API/worker startup flow unchanged so crawler/knowledge/statistics/report backend chains stay testable.
+- Local recovery runbook execution
+  - cleaned stale local worker process occupying 3002 (project process only)
+  - restarted stack with:
+    - `LAW_EYE_SKIP_WEB=1`
+    - AI provider env enabled
+    - `LAW_EYE_WORKER_SCHEDULER_ENABLED=false`
+    - `LAW_EYE_WORKER_DLQ_REPLAY_ENABLED=false`
+
+Validation
+- `bash -n scripts/no-dockerhub/start-stack.sh` passed.
+- startup command returns successfully without waiting web:
+  - `LAW_EYE_SKIP_WEB=1 ... bash scripts/no-dockerhub/start-stack.sh --name law-eye-local-codex`
+- health checks:
+  - `GET http://127.0.0.1:13001/health` -> `ok`
+  - `GET http://127.0.0.1:3002/health` -> `ready`
+- core e2e 3 rounds passed on backend-only stack:
+  - `tmp/core-e2e-r27.json`
+  - `tmp/core-e2e-r27-round2.json`
+  - `tmp/core-e2e-r27-round3.json`
+  - all rounds: `crawler=20`, `embed=12`, `with_authority=20`, `with_issuer=20`, `pdf=200`

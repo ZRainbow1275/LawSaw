@@ -280,6 +280,11 @@ if [[ "$WEB_MODE" != "dev" && "$WEB_MODE" != "prod" ]]; then
   exit 1
 fi
 
+WEB_ENABLED=1
+if [[ "${LAW_EYE_SKIP_WEB:-0}" == "1" ]]; then
+  WEB_ENABLED=0
+fi
+
 get_primary_ipv4() {
   ip -4 addr show eth0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1 | head -n 1
 }
@@ -1288,63 +1293,67 @@ fi
 
 export NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL"
 export LAW_EYE_API_PROXY_TARGET="$LAW_EYE_API_PROXY_TARGET"
-if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
-  start_web_windows
-else
-  if [[ "$WEB_MODE" == "prod" ]]; then
-    echo "Building Web (prod)..."
-    rm -f "$ROOT/apps/web/.next/lock"
-    (cd "$ROOT/apps/web" && env NODE_ENV=production pnpm build >"$LOG_DIR/web.build.log" 2>&1)
-    start_bg web "$ROOT/apps/web" env NODE_ENV=production node ./node_modules/next/dist/bin/next start -p "$WEB_PORT" -H 0.0.0.0
+if [[ "$WEB_ENABLED" -eq 1 ]]; then
+  if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
+    start_web_windows
   else
-    start_bg web "$ROOT/apps/web" env WEB_PORT="$WEB_PORT" PORT="$WEB_PORT" pnpm dev
-  fi
-fi
-
-echo "Waiting for Web /login..."
-WEB_READY_WAIT_SECONDS=90
-if [[ "$WEB_MODE" == "prod" ]]; then
-  WEB_READY_WAIT_SECONDS=240
-fi
-if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
-  web_ready_windows() {
-    if powershell.exe -NoProfile -Command "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:${WEB_PORT}/login).StatusCode } catch { exit 1 }" >/dev/null 2>&1; then
-      return 0
+    if [[ "$WEB_MODE" == "prod" ]]; then
+      echo "Building Web (prod)..."
+      rm -f "$ROOT/apps/web/.next/lock"
+      (cd "$ROOT/apps/web" && env NODE_ENV=production pnpm build >"$LOG_DIR/web.build.log" 2>&1)
+      start_bg web "$ROOT/apps/web" env NODE_ENV=production node ./node_modules/next/dist/bin/next start -p "$WEB_PORT" -H 0.0.0.0
+    else
+      start_bg web "$ROOT/apps/web" env WEB_PORT="$WEB_PORT" PORT="$WEB_PORT" pnpm dev
     fi
-    if [[ -n "${WINDOWS_HOST_IP:-}" ]] && curl -fsS "http://${WINDOWS_HOST_IP}:${WEB_PORT}/login" >/dev/null 2>&1; then
-      return 0
-    fi
-    return 1
-  }
-
-  for _ in $(seq 1 "$WEB_READY_WAIT_SECONDS"); do
-    if web_ready_windows; then
-      break
-    fi
-    sleep 1
-  done
-  if ! web_ready_windows; then
-    echo "ERROR: Web did not become ready. See: $LOG_DIR/web.log ($LOG_DIR/web.err.log)" >&2
-    exit 1
   fi
 
-  if [[ ! -f "$PID_DIR/web.pid" ]]; then
-    win_pid="$(windows_listen_pid "$WEB_PORT")"
-    if [[ -n "$win_pid" ]]; then
-      echo "win:$win_pid" >"$PID_DIR/web.pid"
+  echo "Waiting for Web /login..."
+  WEB_READY_WAIT_SECONDS=90
+  if [[ "$WEB_MODE" == "prod" ]]; then
+    WEB_READY_WAIT_SECONDS=240
+  fi
+  if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
+    web_ready_windows() {
+      if powershell.exe -NoProfile -Command "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:${WEB_PORT}/login).StatusCode } catch { exit 1 }" >/dev/null 2>&1; then
+        return 0
+      fi
+      if [[ -n "${WINDOWS_HOST_IP:-}" ]] && curl -fsS "http://${WINDOWS_HOST_IP}:${WEB_PORT}/login" >/dev/null 2>&1; then
+        return 0
+      fi
+      return 1
+    }
+
+    for _ in $(seq 1 "$WEB_READY_WAIT_SECONDS"); do
+      if web_ready_windows; then
+        break
+      fi
+      sleep 1
+    done
+    if ! web_ready_windows; then
+      echo "ERROR: Web did not become ready. See: $LOG_DIR/web.log ($LOG_DIR/web.err.log)" >&2
+      exit 1
+    fi
+
+    if [[ ! -f "$PID_DIR/web.pid" ]]; then
+      win_pid="$(windows_listen_pid "$WEB_PORT")"
+      if [[ -n "$win_pid" ]]; then
+        echo "win:$win_pid" >"$PID_DIR/web.pid"
+      fi
+    fi
+  else
+    for _ in $(seq 1 "$WEB_READY_WAIT_SECONDS"); do
+      if curl -fsS "http://localhost:${WEB_PORT}/login" >/dev/null 2>&1; then
+        break
+      fi
+      sleep 1
+    done
+    if ! curl -fsS "http://localhost:${WEB_PORT}/login" >/dev/null 2>&1; then
+      echo "ERROR: Web did not become ready. See: $LOG_DIR/web.log" >&2
+      exit 1
     fi
   fi
 else
-  for _ in $(seq 1 "$WEB_READY_WAIT_SECONDS"); do
-    if curl -fsS "http://localhost:${WEB_PORT}/login" >/dev/null 2>&1; then
-      break
-    fi
-    sleep 1
-  done
-  if ! curl -fsS "http://localhost:${WEB_PORT}/login" >/dev/null 2>&1; then
-    echo "ERROR: Web did not become ready. See: $LOG_DIR/web.log" >&2
-    exit 1
-  fi
+  echo "Skipping web startup because LAW_EYE_SKIP_WEB=1"
 fi
 
 cat >"$STATE_DIR/stack.env" <<EOF
@@ -1359,6 +1368,7 @@ WEB_PORT=$WEB_PORT
 NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 LAW_EYE_API_PROXY_TARGET=$LAW_EYE_API_PROXY_TARGET
 WEB_RUNS_ON_WINDOWS=$WEB_RUNS_ON_WINDOWS
+WEB_ENABLED=$WEB_ENABLED
 WSL_HOST_IP=${WSL_HOST_IP:-}
 WINDOWS_HOST_IP=${WINDOWS_HOST_IP:-}
 EOF
@@ -1368,8 +1378,14 @@ echo "  Postgres: localhost:${POSTGRES_PORT}"
 echo "  Redis:    localhost:${REDIS_PORT}"
 echo "  MinIO:    http://localhost:${MINIO_API_PORT} (console :${MINIO_CONSOLE_PORT})"
 echo "  API:      http://localhost:${API_PORT}"
-echo "  Web:      http://localhost:${WEB_PORT}"
-if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
+if [[ "$WEB_ENABLED" -eq 1 ]]; then
+  echo "  Web:      http://localhost:${WEB_PORT}"
+elif [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
+  echo "  Web:      skipped (LAW_EYE_SKIP_WEB=1)"
+else
+  echo "  Web:      skipped (LAW_EYE_SKIP_WEB=1)"
+fi
+if [[ "$WEB_ENABLED" -eq 1 ]] && [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
   echo "  Web (WSL access): http://${WINDOWS_HOST_IP:-<unknown>}:${WEB_PORT}"
 fi
 echo "State: $STATE_DIR"
