@@ -431,6 +431,8 @@ pub(crate) async fn download_report_export(
         ))
     })?;
 
+    validate_report_export_key_scope(export_key, user.tenant_id, id, export_format)?;
+
     // Stream the file from object storage
     let stream = object_service
         .get_stream_by_key(export_key)
@@ -459,6 +461,31 @@ pub(crate) async fn download_report_export(
     Ok(response)
 }
 
+fn validate_report_export_key_scope(
+    export_key: &str,
+    tenant_id: Uuid,
+    report_id: Uuid,
+    format: ExportFormat,
+) -> ApiResult<()> {
+    let expected_prefix = format!("tenants/{}/reports/{}/", tenant_id, report_id);
+    if !export_key.starts_with(&expected_prefix) {
+        return Err(AppError::conflict(format!(
+            "Invalid export key scope for report {}",
+            report_id
+        )));
+    }
+
+    let expected_extension = format!(".{}", format.extension());
+    if !export_key.ends_with(&expected_extension) {
+        return Err(AppError::conflict(format!(
+            "Export key extension mismatch: expected {}",
+            expected_extension
+        )));
+    }
+
+    Ok(())
+}
+
 // ══════════════════════════════════════════════════════════════
 // Template handlers
 // ══════════════════════════════════════════════════════════════
@@ -485,6 +512,51 @@ pub(crate) async fn list_templates(
             .map(ReportTemplateResponse::from)
             .collect(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_report_export_key_scope_accepts_valid_key() {
+        let tenant_id = Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
+        let report_id = Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
+        let key = format!(
+            "tenants/{}/reports/{}/export_20260222120000.pdf",
+            tenant_id, report_id
+        );
+
+        let result = validate_report_export_key_scope(&key, tenant_id, report_id, ExportFormat::Pdf);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_report_export_key_scope_rejects_wrong_tenant_prefix() {
+        let tenant_id = Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
+        let report_id = Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
+        let wrong_tenant = Uuid::parse_str("cccccccc-cccc-cccc-cccc-cccccccccccc").unwrap();
+        let key = format!(
+            "tenants/{}/reports/{}/export_20260222120000.pdf",
+            wrong_tenant, report_id
+        );
+
+        let result = validate_report_export_key_scope(&key, tenant_id, report_id, ExportFormat::Pdf);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_report_export_key_scope_rejects_wrong_extension() {
+        let tenant_id = Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
+        let report_id = Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
+        let key = format!(
+            "tenants/{}/reports/{}/export_20260222120000.docx",
+            tenant_id, report_id
+        );
+
+        let result = validate_report_export_key_scope(&key, tenant_id, report_id, ExportFormat::Pdf);
+        assert!(result.is_err());
+    }
 }
 
 /// POST /api/v1/report-templates - Create a template

@@ -575,3 +575,19 @@ Round 3 增量修复验证：
 - `cargo test -p law-eye-core --lib -- --nocapture` ✅（24 passed）
 - `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
 - `node tmp/core-e2e-local.mjs` ✅（`ok: true`，爬虫/知识图谱/统计/日报全链路通过）
+## 本轮验证记录（2026-02-22，Round 14：日报下载路径越权防护）
+
+失败点与根因：
+- 风险（R14-AU-001）：下载接口按报告记录中的 `export_key` 直接回源对象存储，缺少“key 与 tenant_id/report_id/format”一致性校验。若上游数据被污染，存在跨租户对象读取面。
+
+修复：
+- 文件：`crates/law-eye-api/src/routes/reports/handlers.rs`
+  - 新增 `validate_report_export_key_scope`：强制校验 key 前缀 `tenants/{tenant_id}/reports/{report_id}/`。
+  - 新增扩展名校验：key 必须匹配当前下载格式（`.pdf/.docx/.html`）。
+  - `download_report_export` 在对象读取前执行该校验，失败即返回冲突错误并阻断下载。
+  - 新增 3 个单测覆盖：合法 key、错误租户前缀、错误扩展名。
+
+验证证据（无 mock，本机真实链路）：
+- `cargo test -p law-eye-api routes::reports::handlers::tests -- --nocapture` ✅（3 passed）
+- `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
+- `node tmp/core-e2e-local.mjs` ✅（`ok: true`，爬虫/知识图谱/统计/日报全链路通过）
