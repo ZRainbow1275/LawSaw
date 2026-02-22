@@ -728,3 +728,22 @@ Round 3 增量修复验证：
   - 修复前：`knowledge.relation_count = 0`
   - 修复后：`knowledge.relation_count = 1`
   - 同时 `entities_upserted: 12`、`article_entities_inserted: 40`，报告链路 `generate -> export -> download` 仍保持成功
+
+
+## 本轮验证记录（2026-02-22，Round 23：语义检索降级保障可用性）
+
+失败点与根因：
+- 风险（R23-KG-001）：当 embedding 服务不可用或无可用向量时，`semantic_search` 直接失败，`hybrid_search` 使用 `try_join!` 会被语义分支连带打爆，接口返回 500，影响知识图谱检索可用性。
+
+修复：
+- 文件：`crates/law-eye-core/src/knowledge.rs`
+  - `semantic_search` 在 embedding 生成失败时降级为词法搜索结果（相似度置 0.0），不再直接报错。
+  - `hybrid_search` 改为“词法主路径 + 语义 best-effort”，语义分支失败仅告警并回落，不再使整体请求失败。
+
+验证证据（无 mock，本机真实链路）：
+- `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
+- 重启本项目栈：`stop-stack.sh --name law-eye-local-codex` + `start-stack.sh --name law-eye-local-codex` ✅
+- 四链路回归：`node tmp/core-e2e-local.mjs` ✅
+- 语义检索专项实测（新租户+真实抓取+backfill 后调用）✅
+  - `GET /api/v1/knowledge/entities/semantic-search?q=industry&limit=5` → 200
+  - `GET /api/v1/knowledge/entities/hybrid-search?q=industry&limit=5` → 200

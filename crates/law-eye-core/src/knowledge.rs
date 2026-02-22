@@ -4,7 +4,7 @@ use law_eye_common::{Error, Result};
 use law_eye_db::Entity;
 use sqlx::PgPool;
 use std::sync::Arc;
-use tracing::info;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 pub struct KnowledgeService {
@@ -278,8 +278,20 @@ impl KnowledgeService {
         query: &str,
         limit: i64,
     ) -> Result<Vec<(Entity, f64)>> {
-        // Generate embedding for the query text
-        let query_embedding = self.embedder.embed(query).await?;
+        // Generate embedding for the query text. If the embedding provider is
+        // unavailable, degrade to lexical search so API calls remain usable.
+        let query_embedding = match self.embedder.embed(query).await {
+            Ok(embedding) => embedding,
+            Err(err) => {
+                warn!(
+                    %tenant_id,
+                    error = %err,
+                    "Semantic embedding unavailable, falling back to lexical knowledge search"
+                );
+                let fallback = self.search_entities(tenant_id, query, limit).await?;
+                return Ok(fallback.into_iter().map(|entity| (entity, 0.0_f64)).collect());
+            }
+        };
 
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             let vector = query_embedding.vector.clone();
@@ -372,11 +384,20 @@ impl KnowledgeService {
         query: &str,
         limit: i64,
     ) -> Result<Vec<Entity>> {
-        // Run text search and semantic search in parallel
-        let (text_results, semantic_results) = tokio::try_join!(
-            self.search_entities(tenant_id, query, limit),
-            self.semantic_search(tenant_id, query, limit),
-        )?;
+        // Keep lexical search as the primary availability path. Semantic search
+        // is best-effort and can degrade independently.
+        let text_results = self.search_entities(tenant_id, query, limit).await?;
+        let semantic_results = match self.semantic_search(tenant_id, query, limit).await {
+            Ok(results) => results,
+            Err(err) => {
+                warn!(
+                    %tenant_id,
+                    error = %err,
+                    "Hybrid search degraded: semantic branch failed"
+                );
+                Vec::new()
+            }
+        };
 
         // Merge results: use a map to deduplicate by entity ID
         let mut entity_scores: std::collections::HashMap<Uuid, (Entity, f64)> =
