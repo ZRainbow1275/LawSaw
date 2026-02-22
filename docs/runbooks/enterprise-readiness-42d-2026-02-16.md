@@ -561,3 +561,17 @@ Round 3 增量修复验证：
   - 知识图谱：`article_entities_inserted=20`
   - 统计：`regional/industry/importance/overview` 全部成功
   - 日报：`generate -> export(pdf) -> download(pdf)` 全链路成功，`status=200`
+## 本轮验证记录（2026-02-22，Round 13：报表编号脏数据容错）
+
+失败点与根因：
+- 风险（R13-RP-001）：`next_report_number` 在计算当日最大序号时直接对后缀 `CAST(... AS bigint)`，若历史存在异常编号（如手工写入非数字后缀），会触发转换错误并阻断新报告创建。
+
+修复：
+- 文件：`crates/law-eye-core/src/report/service.rs`
+  - 将 `MAX(CAST(...))` 改为 `MAX(CASE WHEN suffix ~ ''^[0-9]+$'' THEN CAST(...) END)`。
+  - 对非数字后缀自动忽略，避免单条脏数据拖垮当日报告创建。
+
+验证证据（无 mock，本机真实链路）：
+- `cargo test -p law-eye-core --lib -- --nocapture` ✅（24 passed）
+- `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
+- `node tmp/core-e2e-local.mjs` ✅（`ok: true`，爬虫/知识图谱/统计/日报全链路通过）

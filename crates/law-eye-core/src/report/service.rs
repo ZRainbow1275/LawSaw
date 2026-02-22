@@ -53,10 +53,14 @@ impl ReportService {
         let max_seq: (Option<i64>,) = sqlx::query_as(
             r#"
             SELECT MAX(
-                CAST(
-                    SUBSTRING(report_number FROM LENGTH($1) + 1)
-                    AS bigint
-                )
+                CASE
+                    WHEN SUBSTRING(report_number FROM LENGTH($1) + 1) ~ '^[0-9]+$'
+                    THEN CAST(
+                        SUBSTRING(report_number FROM LENGTH($1) + 1)
+                        AS bigint
+                    )
+                    ELSE NULL
+                END
             )
             FROM reports
             WHERE report_number LIKE $1 || '%'
