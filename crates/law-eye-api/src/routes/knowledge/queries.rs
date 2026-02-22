@@ -196,6 +196,30 @@ pub(super) async fn run_backfill(
     .map_err(|e| AppError::internal(format!("Database error: {}", e)))?
     .rows_affected();
 
+    let domain_entities_upserted = sqlx::query(
+        r#"
+        WITH recent_articles AS (
+            SELECT TRIM(domain_root) AS domain_root
+            FROM articles
+            WHERE domain_root IS NOT NULL
+              AND TRIM(domain_root) <> ''
+            ORDER BY published_at DESC NULLS LAST, created_at DESC
+            LIMIT $1
+        )
+        INSERT INTO entities (name, entity_type, aliases, mention_count)
+        SELECT DISTINCT ra.domain_root AS name, 'concept' AS entity_type, '{}'::text[] AS aliases, 0 AS mention_count
+        FROM recent_articles ra
+        ON CONFLICT (tenant_id, name, entity_type) DO UPDATE SET
+            last_seen = NOW(),
+            updated_at = NOW()
+        "#,
+    )
+    .bind(limit)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| AppError::internal(format!("Database error: {}", e)))?
+    .rows_affected();
+
     let source_links = sqlx::query(
         r#"
         WITH recent_articles AS (
@@ -249,7 +273,35 @@ pub(super) async fn run_backfill(
     .map_err(|e| AppError::internal(format!("Database error: {}", e)))?
     .rows_affected();
 
-    let relations_upserted = sqlx::query(
+    let domain_links = sqlx::query(
+        r#"
+        WITH recent_articles AS (
+            SELECT id, TRIM(domain_root) AS domain_root
+            FROM articles
+            WHERE domain_root IS NOT NULL
+              AND TRIM(domain_root) <> ''
+            ORDER BY published_at DESC NULLS LAST, created_at DESC
+            LIMIT $1
+        ),
+        domain_entities AS (
+            SELECT e.id AS entity_id, e.name
+            FROM entities e
+            WHERE e.entity_type = 'concept'
+        )
+        INSERT INTO article_entities (article_id, entity_id, mention_count, context)
+        SELECT a.id, de.entity_id, 1, 'domain_root'
+        FROM recent_articles a
+        JOIN domain_entities de ON de.name = a.domain_root
+        ON CONFLICT (tenant_id, article_id, entity_id) DO NOTHING
+        "#,
+    )
+    .bind(limit)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| AppError::internal(format!("Database error: {}", e)))?
+    .rows_affected();
+
+    let source_category_relations_upserted = sqlx::query(
         r#"
         WITH recent_articles AS (
             SELECT source_id, category_id
@@ -284,6 +336,42 @@ pub(super) async fn run_backfill(
     .map_err(|e| AppError::internal(format!("Database error: {}", e)))?
     .rows_affected();
 
+    let source_domain_relations_upserted = sqlx::query(
+        r#"
+        WITH recent_articles AS (
+            SELECT source_id, TRIM(domain_root) AS domain_root
+            FROM articles
+            WHERE domain_root IS NOT NULL
+              AND TRIM(domain_root) <> ''
+            ORDER BY published_at DESC NULLS LAST, created_at DESC
+            LIMIT $1
+        ),
+        source_entities AS (
+            SELECT s.id AS source_id, e.id AS entity_id
+            FROM sources s
+            JOIN entities e ON e.name = s.name AND e.entity_type = 'organization'
+        ),
+        domain_entities AS (
+            SELECT e.id AS entity_id, e.name
+            FROM entities e
+            WHERE e.entity_type = 'concept'
+        )
+        INSERT INTO entity_relations (source_entity_id, target_entity_id, relation_type, weight, properties)
+        SELECT se.entity_id, de.entity_id, 'publishes_in' AS relation_type, COUNT(*)::float AS weight, '{}'::jsonb AS properties
+        FROM recent_articles a
+        JOIN source_entities se ON se.source_id = a.source_id
+        JOIN domain_entities de ON de.name = a.domain_root
+        GROUP BY se.entity_id, de.entity_id
+        ON CONFLICT (tenant_id, source_entity_id, target_entity_id, relation_type) DO UPDATE SET
+            weight = EXCLUDED.weight
+        "#,
+    )
+    .bind(limit)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| AppError::internal(format!("Database error: {}", e)))?
+    .rows_affected();
+
     sqlx::query(
         r#"
         UPDATE entities e
@@ -307,8 +395,10 @@ pub(super) async fn run_backfill(
 
     Ok(BackfillResponse {
         articles_considered: limit,
-        entities_upserted: (sources_upserted + categories_upserted) as i64,
-        article_entities_inserted: (source_links + category_links) as i64,
-        relations_upserted: relations_upserted as i64,
+        entities_upserted: (sources_upserted + categories_upserted + domain_entities_upserted)
+            as i64,
+        article_entities_inserted: (source_links + category_links + domain_links) as i64,
+        relations_upserted: (source_category_relations_upserted + source_domain_relations_upserted)
+            as i64,
     })
 }

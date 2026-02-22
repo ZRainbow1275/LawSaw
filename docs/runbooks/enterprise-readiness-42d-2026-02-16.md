@@ -707,3 +707,24 @@ Round 3 增量修复验证：
 - `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
 - `node tmp/core-e2e-local.mjs` ✅（`ok: true`，爬虫/知识图谱/统计/日报全链路通过）
 - 并发导出实测（同一报告并发触发 `pdf/docx/html` 导出）✅：三种导出 key 均成功落库且可读取
+
+
+## 本轮验证记录（2026-02-22，Round 22：知识图谱回填纳入 domain_root 关系）
+
+失败点与根因：
+- 风险（R22-KG-001）：`knowledge/backfill` 仅基于 `categories` 建立概念实体与 `publishes_in` 关系；当数据源主要填充 `articles.domain_root`（而 `category_id` 为空）时，会出现 `relation_count=0`，图谱结构不可用。
+
+修复：
+- 文件：`crates/law-eye-api/src/routes/knowledge/queries.rs`
+  - `run_backfill` 新增 `domain_root` 概念实体回填（按最近文章窗口）。
+  - 新增 `domain_root` 到 `article_entities` 的链接回填（`context='domain_root'`）。
+  - 新增 `source -> domain_root` 的 `publishes_in` 关系回填与 upsert。
+  - 回填统计字段同步纳入 `domain_root` 贡献（entities/article_entities/relations）。
+
+验证证据（无 mock，本机真实链路）：
+- `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
+- 重启本项目栈：`stop-stack.sh --name law-eye-local-codex` + `start-stack.sh --name law-eye-local-codex` ✅
+- `node tmp/core-e2e-local.mjs` ✅
+  - 修复前：`knowledge.relation_count = 0`
+  - 修复后：`knowledge.relation_count = 1`
+  - 同时 `entities_upserted: 12`、`article_entities_inserted: 40`，报告链路 `generate -> export -> download` 仍保持成功
