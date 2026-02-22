@@ -152,8 +152,10 @@ impl PdfExporter {
                         .text()
                         .await
                         .unwrap_or_else(|_| "unknown".to_string());
-                    browserless_error =
-                        format!("request_id={} browserless PDF 生成失败 ({}): {}", request_id, status, body);
+                    browserless_error = format!(
+                        "request_id={} browserless PDF 生成失败 ({}): {}",
+                        request_id, status, body
+                    );
 
                     if attempt < BROWSERLESS_MAX_ATTEMPTS && Self::should_retry_status(status) {
                         warn!(
@@ -168,8 +170,10 @@ impl PdfExporter {
                     break;
                 }
                 Err(err) => {
-                    browserless_error =
-                        format!("request_id={} browserless PDF 请求失败: {}", request_id, err);
+                    browserless_error = format!(
+                        "request_id={} browserless PDF 请求失败: {}",
+                        request_id, err
+                    );
 
                     if attempt < BROWSERLESS_MAX_ATTEMPTS {
                         warn!(
@@ -310,7 +314,9 @@ mod tests {
 
     #[test]
     fn should_retry_status_matches_retryable_http_codes() {
-        assert!(PdfExporter::should_retry_status(StatusCode::TOO_MANY_REQUESTS));
+        assert!(PdfExporter::should_retry_status(
+            StatusCode::TOO_MANY_REQUESTS
+        ));
         assert!(PdfExporter::should_retry_status(StatusCode::BAD_GATEWAY));
         assert!(!PdfExporter::should_retry_status(StatusCode::BAD_REQUEST));
     }
