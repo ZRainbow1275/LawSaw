@@ -591,3 +591,18 @@ Round 3 增量修复验证：
 - `cargo test -p law-eye-api routes::reports::handlers::tests -- --nocapture` ✅（3 passed）
 - `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
 - `node tmp/core-e2e-local.mjs` ✅（`ok: true`，爬虫/知识图谱/统计/日报全链路通过）
+## 本轮验证记录（2026-02-22，Round 15：日报导出对象 key 并发碰撞修复）
+
+失败点与根因：
+- 风险（R15-RP-001）：报告导出对象 key 仅使用秒级时间戳，若同一报告同一格式在同秒并发导出，可能命中同 key；在对象写入成功但元数据插入冲突时，补偿删除会误删已成功导出的对象。
+
+修复：
+- 文件：`crates/law-eye-worker/src/main.rs`
+  - 新增 `build_report_export_object_key`，key 改为：`export_{timestamp_ms}_{uuid}.{ext}`。
+  - `handle_report_export_task` 使用该函数生成 key，确保并发导出 key 唯一。
+  - 新增单测 `build_report_export_object_key_is_scoped_and_unique`，验证租户/报告路径边界与调用间唯一性。
+
+验证证据：
+- `cargo test -p law-eye-worker build_report_export_object_key_is_scoped_and_unique -- --nocapture` ✅（1 passed）
+- `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
+- `node tmp/core-e2e-local.mjs` ✅（`ok: true`，爬虫/知识图谱/统计/日报全链路通过）

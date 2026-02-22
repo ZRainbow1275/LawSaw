@@ -148,6 +148,19 @@ fn env_i64_with_bounds(name: &str, default: i64, min: i64, max: i64) -> i64 {
     }
 }
 
+fn build_report_export_object_key(
+    tenant_id: uuid::Uuid,
+    report_id: uuid::Uuid,
+    extension: &str,
+) -> String {
+    let timestamp = chrono::Utc::now().format("%Y%m%d%H%M%S%3f");
+    let unique_suffix = uuid::Uuid::new_v4().simple().to_string();
+    format!(
+        "tenants/{}/reports/{}/export_{}_{}.{}",
+        tenant_id, report_id, timestamp, unique_suffix, extension
+    )
+}
+
 fn ai_fallback_classify(title: &str, content: &str) -> ClassifyResult {
     let text = format!("{} {}", title, content).to_lowercase();
 
@@ -4079,13 +4092,7 @@ impl Worker {
 
         let byte_size = bytes.len();
         let ext = format.extension();
-        let object_key = format!(
-            "tenants/{}/reports/{}/export_{}.{}",
-            tenant_id,
-            report_id,
-            chrono::Utc::now().format("%Y%m%d%H%M%S"),
-            ext
-        );
+        let object_key = build_report_export_object_key(tenant_id, report_id, ext);
 
         // 5. 上传到对象存储并登记 objects 元数据，避免被 orphan 清理误删
         if let Some(ref object_service) = self.object_service {
@@ -4995,5 +5002,23 @@ mod crawler_integration_tests {
         let first = iter.next().unwrap();
         let second = iter.next().unwrap();
         assert!(second > first);
+    }
+
+    #[test]
+    fn build_report_export_object_key_is_scoped_and_unique() {
+        let tenant_id = uuid::Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+            .expect("valid tenant uuid");
+        let report_id = uuid::Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+            .expect("valid report uuid");
+
+        let first = build_report_export_object_key(tenant_id, report_id, "pdf");
+        let second = build_report_export_object_key(tenant_id, report_id, "pdf");
+
+        let expected_prefix = format!("tenants/{}/reports/{}/", tenant_id, report_id);
+        assert!(first.starts_with(&expected_prefix));
+        assert!(first.ends_with(".pdf"));
+        assert!(second.starts_with(&expected_prefix));
+        assert!(second.ends_with(".pdf"));
+        assert_ne!(first, second, "object keys should be unique across calls");
     }
 }
