@@ -932,3 +932,23 @@ Validation
   - `tmp/core-e2e-r29-round2.json`
   - `tmp/core-e2e-r29-round3.json`
   - all rounds: `crawler=20`, `embed=12`, `with_authority=20`, `with_issuer=20`, `pdf=200`
+
+## 2026-02-22 Round 30: post-commit integrity verification (worker startup hardening)
+
+Failure points
+- R30-OPS-001: after commit churn, startup script integrity needed explicit verification to ensure worker readiness and no regression in backend-only flow.
+
+Fixes
+- Consolidated startup script hardening into committed state:
+  - worker health port reclaim/auto-select logic
+  - worker `/health` readiness gate
+  - stack state export of `LAW_EYE__WORKER__HEALTH_PORT`
+
+Validation
+- Rust backend compile gate:
+  - `cargo check -p law-eye-worker -p law-eye-api -p law-eye-core -p law-eye-crawler` passed
+- Worker regression tests:
+  - `cargo test -p law-eye-worker derive_issuer_ -- --nocapture` passed
+- Core real-path E2E:
+  - `tmp/core-e2e-r30.json`
+  - key metrics: `crawler=20`, `embed=12`, `with_authority=20`, `with_issuer=20`, `pdf=200`
