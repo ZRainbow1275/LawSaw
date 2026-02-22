@@ -533,6 +533,8 @@ impl ReportService {
 
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
+                Self::validate_export_object_key_scope(tenant_id, report_id, format, &object_key)?;
+
                 let object_meta = sqlx::query_as::<_, (String, String)>(
                     r#"
                     SELECT kind, content_type
@@ -588,6 +590,31 @@ impl ReportService {
             })
         })
         .await
+    }
+
+    fn validate_export_object_key_scope(
+        tenant_id: Uuid,
+        report_id: Uuid,
+        format: ExportFormat,
+        object_key: &str,
+    ) -> Result<()> {
+        let expected_prefix = format!("tenants/{}/reports/{}/", tenant_id, report_id);
+        if !object_key.starts_with(&expected_prefix) {
+            return Err(Error::Conflict(format!(
+                "Export object key scope mismatch for report {}",
+                report_id
+            )));
+        }
+
+        let expected_extension = format!(".{}", format.extension());
+        if !object_key.ends_with(&expected_extension) {
+            return Err(Error::Conflict(format!(
+                "Export object key extension mismatch: expected {}",
+                expected_extension
+            )));
+        }
+
+        Ok(())
     }
 
     fn validate_export_object_metadata(
@@ -1116,5 +1143,51 @@ mod tests {
             ExportFormat::Html,
         );
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_export_object_key_scope_accepts_valid_key() {
+        let tenant_id = Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
+        let report_id = Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
+        let key = format!(
+            "tenants/{}/reports/{}/export_20260222120000.pdf",
+            tenant_id, report_id
+        );
+
+        let result =
+            ReportService::validate_export_object_key_scope(tenant_id, report_id, ExportFormat::Pdf, &key);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_export_object_key_scope_rejects_wrong_scope_or_extension() {
+        let tenant_id = Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
+        let report_id = Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
+
+        let wrong_scope_key = format!(
+            "tenants/{}/reports/{}/export_20260222120000.pdf",
+            Uuid::parse_str("cccccccc-cccc-cccc-cccc-cccccccccccc").unwrap(),
+            report_id
+        );
+        let wrong_extension_key = format!(
+            "tenants/{}/reports/{}/export_20260222120000.docx",
+            tenant_id, report_id
+        );
+
+        let wrong_scope_result = ReportService::validate_export_object_key_scope(
+            tenant_id,
+            report_id,
+            ExportFormat::Pdf,
+            &wrong_scope_key,
+        );
+        assert!(matches!(wrong_scope_result, Err(Error::Conflict(_))));
+
+        let wrong_extension_result = ReportService::validate_export_object_key_scope(
+            tenant_id,
+            report_id,
+            ExportFormat::Pdf,
+            &wrong_extension_key,
+        );
+        assert!(matches!(wrong_extension_result, Err(Error::Conflict(_))));
     }
 }

@@ -622,3 +622,22 @@ Round 3 增量修复验证：
 - `cargo test -p law-eye-crawler spider_ -- --nocapture` ✅（5 passed）
 - `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
 - `node tmp/core-e2e-local.mjs` ✅（`ok: true`，爬虫/知识图谱/统计/日报全链路通过）
+## 本轮验证记录（2026-02-22，Round 17：导出 key 作用域校验下沉到 Core Service）
+
+失败点与根因：
+- 风险（R17-RP-001）：此前导出 key 作用域校验仅位于 API 下载入口；若内部链路误写 key（错误 tenant/report/format），`set_export_key` 仍可能落库，导致后续行为不一致。
+
+修复：
+- 文件：`crates/law-eye-core/src/report/service.rs`
+  - 在 `set_export_key` 前置执行 `validate_export_object_key_scope`。
+  - 校验规则：
+    - key 前缀必须匹配 `tenants/{tenant_id}/reports/{report_id}/`
+    - key 扩展名必须匹配 `ExportFormat`
+  - 新增单测：
+    - `validate_export_object_key_scope_accepts_valid_key`
+    - `validate_export_object_key_scope_rejects_wrong_scope_or_extension`
+
+验证证据：
+- `cargo test -p law-eye-core report::service::tests -- --nocapture` ✅（9 passed）
+- `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
+- `node tmp/core-e2e-local.mjs` ✅（`ok: true`，爬虫/知识图谱/统计/日报全链路通过）
