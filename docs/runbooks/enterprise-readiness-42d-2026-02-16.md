@@ -656,3 +656,20 @@ Round 3 增量修复验证：
 - `cargo test -p law-eye-crawler spider_ -- --nocapture` ✅（6 passed）
 - `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
 - `node tmp/core-e2e-local.mjs` ✅（`ok: true`，爬虫/知识图谱/统计/日报全链路通过）
+## 本轮验证记录（2026-02-22，Round 19：本机栈构建 OOM 自愈重试）
+
+失败点与根因：
+- 风险（R19-OPS-001）：`start-stack.sh` 构建 API/Worker 仅执行一次；当 `CARGO_BUILD_JOBS` 偏大导致 OOM（`SIGKILL`）时，栈启动直接失败，影响本机演示与部署验证连续性。
+
+修复：
+- 文件：`scripts/no-dockerhub/start-stack.sh`
+  - 新增 `build_api_and_worker` 封装构建命令。
+  - 首次构建失败时，自动回退 `CARGO_BUILD_JOBS=1` 重试一次。
+  - 重试失败时给出明确日志路径，避免静默失败。
+  - 构建启动日志补充 `CARGO_BUILD_JOBS` 显示，便于排障。
+
+验证证据：
+- `bash -n scripts/no-dockerhub/start-stack.sh` ✅
+- 实测重启栈：`stop-stack.sh --name law-eye-local-codex` + `start-stack.sh --name law-eye-local-codex` ✅
+- `node tmp/core-e2e-local.mjs` ✅（`ok: true`，四链路通过）
+- 关键校验：导出 key 已体现新策略（含毫秒时间戳+UUID 后缀），确认运行实例已加载新代码。

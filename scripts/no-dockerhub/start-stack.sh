@@ -1134,6 +1134,27 @@ PY
 API_BIN="$CARGO_TARGET_DIR/debug/law-eye-api"
 WORKER_BIN="$CARGO_TARGET_DIR/debug/law-eye-worker"
 
+build_api_and_worker() {
+  local jobs="$1"
+  local redirect_mode="$2"
+  local log_file="$LOG_DIR/cargo-build.log"
+
+  local redir=">"
+  if [[ "$redirect_mode" == "append" ]]; then
+    redir=">>"
+  fi
+
+  if [[ "$redir" == ">>" ]]; then
+    (
+      cd "$ROOT" && CARGO_PROFILE_DEV_DEBUG="$CARGO_PROFILE_DEV_DEBUG" cargo build -j "$jobs" -p law-eye-api -p law-eye-worker
+    ) >>"$log_file" 2>&1
+  else
+    (
+      cd "$ROOT" && CARGO_PROFILE_DEV_DEBUG="$CARGO_PROFILE_DEV_DEBUG" cargo build -j "$jobs" -p law-eye-api -p law-eye-worker
+    ) >"$log_file" 2>&1
+  fi
+}
+
 if [[ "$LAW_EYE_SKIP_BUILD" == "1" ]]; then
   echo "Skipping API + worker build (LAW_EYE_SKIP_BUILD=1)..."
   if [[ ! -f "$API_BIN" || ! -f "$WORKER_BIN" ]]; then
@@ -1143,8 +1164,21 @@ if [[ "$LAW_EYE_SKIP_BUILD" == "1" ]]; then
     exit 1
   fi
 else
-  echo "Building API + worker (CARGO_TARGET_DIR=$CARGO_TARGET_DIR)..."
-  (cd "$ROOT" && CARGO_PROFILE_DEV_DEBUG="$CARGO_PROFILE_DEV_DEBUG" cargo build -j "$CARGO_BUILD_JOBS" -p law-eye-api -p law-eye-worker >"$LOG_DIR/cargo-build.log" 2>&1)
+  echo "Building API + worker (CARGO_TARGET_DIR=$CARGO_TARGET_DIR, CARGO_BUILD_JOBS=$CARGO_BUILD_JOBS)..."
+  if ! build_api_and_worker "$CARGO_BUILD_JOBS" "truncate"; then
+    if [[ "$CARGO_BUILD_JOBS" != "1" ]]; then
+      echo "WARN: cargo build failed with CARGO_BUILD_JOBS=$CARGO_BUILD_JOBS; retrying with CARGO_BUILD_JOBS=1..." >&2
+      echo "" >>"$LOG_DIR/cargo-build.log"
+      echo "[retry] cargo build -j 1 -p law-eye-api -p law-eye-worker" >>"$LOG_DIR/cargo-build.log"
+      if ! build_api_and_worker "1" "append"; then
+        echo "ERROR: cargo build failed even after retry with CARGO_BUILD_JOBS=1. See: $LOG_DIR/cargo-build.log" >&2
+        exit 1
+      fi
+    else
+      echo "ERROR: cargo build failed with CARGO_BUILD_JOBS=1. See: $LOG_DIR/cargo-build.log" >&2
+      exit 1
+    fi
+  fi
 fi
 
 start_bg api "$ROOT" "$API_BIN"
