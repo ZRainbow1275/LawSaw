@@ -830,3 +830,37 @@ Validation
   - `knowledge.stats.entities_with_embedding=12`
   - `statistics coverage_rate(regional/industry/importance)=1`
   - `report download status=200`, `content_type=application/pdf`
+
+## 2026-02-22 Round 27: statistics completeness hardening for authority/issuer
+
+Failure points
+- R27-ST-001: core e2e on a fresh local stack showed `statistics.overview.with_authority=0` and `with_issuer=0` for valid ingested articles from non-gov RSS sources.
+- R27-OPS-001: after a network interruption and stack restart, `/health` degraded and one e2e run failed at `knowledge_embeddings` due AI/dependency runtime mismatch.
+
+Fixes
+- `crates/law-eye-worker/src/main.rs`
+  - Added `derive_issuer(...)` fallback:
+    - prefer extracted issuer when present
+    - fallback to normalized host from article link (e.g. `www.hnrss.org` -> `hnrss.org`)
+  - Updated ingest path to persist derived issuer and pass it into metadata derivation.
+  - Updated `derive_ingest_legal_metadata(...)` fallback for non-gov sources:
+    - when issuer exists but no high-authority signal, assign default `authority_level=8`.
+  - Added regression tests:
+    - `derive_issuer_prefers_extracted_value`
+    - `derive_issuer_falls_back_to_link_host`
+    - `derive_ingest_legal_metadata_sets_default_authority_for_non_gov_issuer`
+- Runtime stabilization (local only, no repo secrets committed):
+  - restarted stack with explicit AI env and disabled scheduler/DLQ replay during core e2e validation to avoid unrelated ingest noise.
+
+Validation
+- `cargo test -p law-eye-worker derive_issuer_ -- --nocapture` passed.
+- `cargo test -p law-eye-worker derive_ingest_legal_metadata_sets_default_authority_for_non_gov_issuer -- --nocapture` passed.
+- `cargo check -p law-eye-worker -p law-eye-api -p law-eye-core -p law-eye-crawler` passed.
+- Core e2e passed twice on real path:
+  - `tmp/core-e2e-r27.json`
+  - `tmp/core-e2e-r27-round2.json`
+  - key metrics (both rounds):
+    - crawler fetched 20
+    - knowledge embeddings 12
+    - statistics overview `with_authority=20`, `with_issuer=20`
+    - report pdf download status 200

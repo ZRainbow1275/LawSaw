@@ -684,6 +684,9 @@ fn derive_ingest_legal_metadata(
         Some(2)
     } else if domain_root == "academic" {
         Some(9)
+    } else if issuer.is_some() {
+        // Keep authority analytics queryable even when source is not a gov domain.
+        Some(8)
     } else {
         None
     };
@@ -713,6 +716,26 @@ fn derive_ingest_legal_metadata(
         authority_level,
         Some(importance),
     )
+}
+
+fn derive_issuer(extracted_issuer: Option<String>, link: &str) -> Option<String> {
+    if let Some(issuer) = extracted_issuer {
+        let issuer = issuer.trim();
+        if !issuer.is_empty() {
+            return Some(truncate_chars(issuer, 128));
+        }
+    }
+
+    let host = reqwest::Url::parse(link)
+        .ok()
+        .and_then(|url| url.host_str().map(|h| h.to_ascii_lowercase()))?;
+
+    let normalized = host.strip_prefix("www.").unwrap_or(host.as_str()).trim();
+    if normalized.is_empty() {
+        return None;
+    }
+
+    Some(truncate_chars(normalized, 128))
 }
 
 fn derive_region_code(extracted_region_code: Option<String>, link: &str) -> Option<String> {
@@ -2968,6 +2991,7 @@ impl Worker {
                             law_eye_core::article::MAX_ARTICLE_CONTENT_BYTES,
                         )
                     });
+                    let issuer = derive_issuer(article.extracted_issuer, &link);
                     let (domain_root, domain_sub, authority_level, importance) =
                         derive_ingest_legal_metadata(
                             &task.source_type,
@@ -2975,7 +2999,7 @@ impl Worker {
                             &link,
                             &title,
                             content.as_deref(),
-                            article.extracted_issuer.as_deref(),
+                            issuer.as_deref(),
                         );
                     let region_code =
                         derive_region_code(article.extracted_region_code.clone(), &link);
@@ -2991,7 +3015,7 @@ impl Worker {
                         domain_sub,
                         authority_level,
                         importance,
-                        issuer: article.extracted_issuer,
+                        issuer,
                         doc_number: article.extracted_doc_number,
                         effective_date: article.extracted_effective_date,
                         region_code,
@@ -5275,6 +5299,35 @@ mod crawler_integration_tests {
         };
         assert_eq!(stats_no_duration.articles_fetched, 0);
         assert!(stats_no_duration.duration_ms.is_none());
+    }
+
+    #[test]
+    fn derive_issuer_prefers_extracted_value() {
+        let issuer = derive_issuer(
+            Some("Ministry of Justice".to_string()),
+            "https://www.gov.cn/a",
+        );
+        assert_eq!(issuer.as_deref(), Some("Ministry of Justice"));
+    }
+
+    #[test]
+    fn derive_issuer_falls_back_to_link_host() {
+        let issuer = derive_issuer(None, "https://www.hnrss.org/frontpage");
+        assert_eq!(issuer.as_deref(), Some("hnrss.org"));
+    }
+
+    #[test]
+    fn derive_ingest_legal_metadata_sets_default_authority_for_non_gov_issuer() {
+        let (_domain_root, _domain_sub, authority_level, importance) = derive_ingest_legal_metadata(
+            "rss",
+            Some(5),
+            "https://www.hnrss.org/frontpage",
+            "policy roundup",
+            Some("weekly legal market updates"),
+            Some("hnrss.org"),
+        );
+        assert_eq!(authority_level, Some(8));
+        assert!(importance.is_some());
     }
 
     #[test]
