@@ -357,6 +357,53 @@ port_free() {
   port_free_wsl "$port" && port_free_windows "$port"
 }
 
+wsl_listen_pid() {
+  local port="$1"
+  ss -ltnp 2>/dev/null \
+    | awk -v p=":${port}" '$4 ~ p { print }' \
+    | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' \
+    | head -n 1
+}
+
+wsl_pid_cmdline() {
+  local pid="$1"
+  if [[ -z "$pid" ]]; then
+    return 1
+  fi
+  ps -p "$pid" -o args= 2>/dev/null | tr -d '\r' | tr -d '\n' || true
+}
+
+try_reclaim_worker_health_port() {
+  local port="$1"
+  local owner_pid=""
+  owner_pid="$(wsl_listen_pid "$port")"
+  if [[ -z "$owner_pid" ]]; then
+    return 0
+  fi
+
+  local cmdline=""
+  cmdline="$(wsl_pid_cmdline "$owner_pid")"
+  if [[ "$cmdline" != *"law-eye-worker"* ]]; then
+    return 1
+  fi
+
+  if [[ "$cmdline" != *"$ROOT"* && "$cmdline" != *"lawsaw-cargo-target"* ]]; then
+    return 1
+  fi
+
+  echo "WARN: reclaiming worker health port ${port} from stale process pid=${owner_pid}" >&2
+  kill "$owner_pid" >/dev/null 2>&1 || true
+  for _ in $(seq 1 20); do
+    if port_free_wsl "$port"; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  kill -9 "$owner_pid" >/dev/null 2>&1 || true
+  sleep 0.2
+  port_free_wsl "$port"
+}
+
 choose_port_wsl() {
   local name="$1"
   shift
@@ -477,6 +524,14 @@ if [[ -n "${MINIO_CONSOLE_PORT:-}" ]] && ! port_free_wsl "${MINIO_CONSOLE_PORT}"
   unset MINIO_CONSOLE_PORT
 fi
 
+WORKER_HEALTH_PORT="${LAW_EYE__WORKER__HEALTH_PORT:-3002}"
+if ! port_free_wsl "${WORKER_HEALTH_PORT}"; then
+  if ! try_reclaim_worker_health_port "${WORKER_HEALTH_PORT}"; then
+    echo "WARN: WORKER_HEALTH_PORT=${WORKER_HEALTH_PORT} is not available; auto-selecting a free port." >&2
+    unset WORKER_HEALTH_PORT
+  fi
+fi
+
 POSTGRES_PORT="${POSTGRES_PORT:-$(choose_port_range_wsl postgres 15435 15550 2>/dev/null || choose_port_wsl postgres 5435 5436)}"
 REDIS_PORT="${REDIS_PORT:-$(choose_port_range_wsl redis 16380 16450 2>/dev/null || choose_port_wsl redis 6380 6381)}"
 API_PORT="${API_PORT:-$(choose_port_range_wsl api 13000 13150 2>/dev/null || choose_port_wsl api 3001 3003 3005)}"
@@ -489,6 +544,8 @@ WEB_PORT="${WEB_PORT:-$(
 )}"
 MINIO_API_PORT="${MINIO_API_PORT:-$(choose_port_range_wsl minio-api 19000 19100 2>/dev/null || choose_port_wsl minio-api 9000)}"
 MINIO_CONSOLE_PORT="${MINIO_CONSOLE_PORT:-$(choose_port_range_wsl minio-console 19101 19200 2>/dev/null || choose_port_wsl minio-console 9001)}"
+WORKER_HEALTH_PORT="${WORKER_HEALTH_PORT:-$(choose_port_range_wsl worker-health 3002 3099 2>/dev/null || choose_port_wsl worker-health 3012 3013 3014)}"
+export LAW_EYE__WORKER__HEALTH_PORT="$WORKER_HEALTH_PORT"
 
 if ! port_free_wsl "$POSTGRES_PORT"; then
   echo "ERROR: POSTGRES_PORT=$POSTGRES_PORT is not available" >&2
@@ -518,9 +575,13 @@ if ! port_free_wsl "$MINIO_CONSOLE_PORT"; then
   echo "ERROR: MINIO_CONSOLE_PORT=$MINIO_CONSOLE_PORT is not available" >&2
   exit 1
 fi
+if ! port_free_wsl "$WORKER_HEALTH_PORT"; then
+  echo "ERROR: WORKER_HEALTH_PORT=$WORKER_HEALTH_PORT is not available" >&2
+  exit 1
+fi
 
 echo "Stack: $STACK_NAME"
-echo "Using ports: postgres=$POSTGRES_PORT redis=$REDIS_PORT minio=$MINIO_API_PORT api=$API_PORT web=$WEB_PORT"
+echo "Using ports: postgres=$POSTGRES_PORT redis=$REDIS_PORT minio=$MINIO_API_PORT api=$API_PORT web=$WEB_PORT worker-health=$WORKER_HEALTH_PORT"
 
 image_exists() {
   docker image inspect "$1" >/dev/null 2>&1
@@ -1030,14 +1091,6 @@ pid_exists() {
   kill -0 "$pid" >/dev/null 2>&1
 }
 
-wsl_listen_pid() {
-  local port="$1"
-  ss -ltnp 2>/dev/null \
-    | awk -v p=":${port}" '$4 ~ p { print }' \
-    | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' \
-    | head -n 1
-}
-
 windows_listen_pid() {
   local port="$1"
   if ! command -v powershell.exe >/dev/null 2>&1; then
@@ -1275,7 +1328,94 @@ SQL
   exit 1
 done
 
+check_api_ai_health() {
+  local health_url="http://localhost:${API_PORT}/health"
+  # AI providers can need additional warmup/network retries after API health turns green.
+  # Wait longer by default to avoid false negatives during startup gates.
+  local attempts="${LAW_EYE_AI_READY_WAIT_SECONDS:-120}"
+  local payload=""
+  local parsed=""
+  local ai_available="unknown"
+  local ai_reason=""
+
+  for _ in $(seq 1 "$attempts"); do
+    payload="$(curl -fsS "$health_url" 2>/dev/null || true)"
+    if [[ -z "$payload" ]]; then
+      sleep 1
+      continue
+    fi
+
+    parsed="$(
+      python3 - "$payload" <<'PY'
+import json
+import sys
+
+raw = sys.argv[1].strip()
+if not raw:
+    print("unknown\t")
+    sys.exit(0)
+
+try:
+    data = json.loads(raw)
+except Exception:
+    print("unknown\t")
+    sys.exit(0)
+
+ai = data.get("ai") if isinstance(data, dict) else None
+if not isinstance(ai, dict):
+    print("unknown\t")
+    sys.exit(0)
+
+available = ai.get("available")
+degraded_reason = ai.get("degraded_reason") or ""
+if available is True:
+    print("true\t")
+else:
+    print(f"false\t{degraded_reason}")
+PY
+    )"
+
+    IFS=$'\t' read -r ai_available ai_reason <<<"$parsed"
+    if [[ "$ai_available" == "true" ]]; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  if [[ "${LAW_EYE_REQUIRE_AI:-0}" == "1" ]]; then
+    echo "ERROR: API health reports ai.available=false (reason='${ai_reason:-unknown}')." >&2
+    echo "Set LAW_EYE__AI__API_KEY / model env correctly, or unset LAW_EYE_REQUIRE_AI." >&2
+    return 1
+  fi
+
+  echo "WARN: API health reports ai.available=false (reason='${ai_reason:-unknown}')." >&2
+  echo "      LLM/embedding features may degrade; set LAW_EYE_REQUIRE_AI=1 to fail fast." >&2
+}
+
+check_api_ai_health
+
 start_bg worker "$ROOT" "$WORKER_BIN"
+wait_for_worker_health() {
+  local attempts="${1:-90}"
+  for _ in $(seq 1 "$attempts"); do
+    if curl -fsS "http://localhost:${WORKER_HEALTH_PORT}/health" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  curl -fsS "http://localhost:${WORKER_HEALTH_PORT}/health" >/dev/null 2>&1
+}
+
+echo "Waiting for Worker /health..."
+if ! wait_for_worker_health 90; then
+  listening_pid="$(wsl_listen_pid "$WORKER_HEALTH_PORT")"
+  if [[ -n "$listening_pid" ]]; then
+    listening_cmdline="$(wsl_pid_cmdline "$listening_pid")"
+    echo "INFO: worker health port ${WORKER_HEALTH_PORT} currently owned by pid=${listening_pid} cmd='${listening_cmdline:-<unknown>}'" >&2
+  fi
+  echo "ERROR: Worker did not become ready. See: $LOG_DIR/worker.log" >&2
+  exit 1
+fi
 
 if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]] && [[ "${LAW_EYE_ALLOW_WSL_IP_PROXY:-0}" == "1" ]]; then
   if ! powershell.exe -NoProfile -Command "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:${API_PORT}/health).StatusCode } catch { exit 1 }" >/dev/null 2>&1; then
@@ -1367,6 +1507,7 @@ API_PORT=$API_PORT
 WEB_PORT=$WEB_PORT
 NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 LAW_EYE_API_PROXY_TARGET=$LAW_EYE_API_PROXY_TARGET
+LAW_EYE__WORKER__HEALTH_PORT=$WORKER_HEALTH_PORT
 WEB_RUNS_ON_WINDOWS=$WEB_RUNS_ON_WINDOWS
 WEB_ENABLED=$WEB_ENABLED
 WSL_HOST_IP=${WSL_HOST_IP:-}
@@ -1378,20 +1519,6 @@ echo "  Postgres: localhost:${POSTGRES_PORT}"
 echo "  Redis:    localhost:${REDIS_PORT}"
 echo "  MinIO:    http://localhost:${MINIO_API_PORT} (console :${MINIO_CONSOLE_PORT})"
 echo "  API:      http://localhost:${API_PORT}"
-if [[ "$WEB_ENABLED" -eq 1 ]]; then
-  echo "  Web:      http://localhost:${WEB_PORT}"
-elif [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
-  echo "  Web:      skipped (LAW_EYE_SKIP_WEB=1)"
-else
-  echo "  Web:      skipped (LAW_EYE_SKIP_WEB=1)"
-fi
-if [[ "$WEB_ENABLED" -eq 1 ]] && [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
-  echo "  Web (WSL access): http://${WINDOWS_HOST_IP:-<unknown>}:${WEB_PORT}"
-fi
-echo "State: $STATE_DIR"
-
-RUNNING=0
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               I_PORT}"
 echo "  Worker:   http://localhost:${WORKER_HEALTH_PORT}"
 if [[ "$WEB_ENABLED" -eq 1 ]]; then
   echo "  Web:      http://localhost:${WEB_PORT}"
@@ -1406,4 +1533,3 @@ fi
 echo "State: $STATE_DIR"
 
 RUNNING=0
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
