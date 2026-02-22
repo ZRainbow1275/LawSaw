@@ -4280,9 +4280,34 @@ impl Worker {
                         request_id = %request_id,
                         %object_key,
                         error = %err_msg,
-                        "Skip stale report export key update due to CAS conflict"
+                        "Report export key CAS conflict; retrying with latest report version"
                     );
-                    return Ok(());
+                    let latest_report = self
+                        .report_service
+                        .get_report_by_id(tenant_id, report_id)
+                        .await
+                        .map_err(|e| {
+                            anyhow::anyhow!(
+                                "CAS conflict retry failed: unable to load latest report: {}",
+                                e
+                            )
+                        })?;
+
+                    self.report_service
+                        .set_export_key(
+                            tenant_id,
+                            report_id,
+                            format,
+                            &object_key,
+                            latest_report.version,
+                        )
+                        .await
+                        .map_err(|e| {
+                            anyhow::anyhow!(
+                                "CAS conflict retry failed: unable to set export key with latest version: {}",
+                                e
+                            )
+                        })?;
                 }
                 Err(e) => return Err(anyhow::anyhow!("更新导出路径失败: {}", e)),
             }

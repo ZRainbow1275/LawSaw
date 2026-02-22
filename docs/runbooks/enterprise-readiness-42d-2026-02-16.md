@@ -691,3 +691,19 @@ Round 3 增量修复验证：
 - `cargo test -p law-eye-api routes::reports::handlers::tests -- --nocapture` ✅（3 passed）
 - `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
 - `node tmp/core-e2e-local.mjs` ✅（`ok: true`，爬虫/知识图谱/统计/日报全链路通过，日报 `generate -> export(pdf) -> download(pdf)` 返回 200）
+
+
+## 本轮验证记录（2026-02-22，Round 21：导出 key CAS 冲突自动重试）
+
+失败点与根因：
+- 风险（R21-RP-001）：报告导出任务在 `set_export_key` 遇到版本冲突时此前直接 `return Ok(())`，会出现“对象已上传但报告未挂载导出 key”的静默不一致，影响下载可用性与后续追踪。
+
+修复：
+- 文件：`crates/law-eye-worker/src/main.rs`
+  - `process_report_export_task` 中 `set_export_key` 冲突分支改为“读取最新报告版本并重试一次写入”。
+  - 若重试仍失败，明确返回错误，让任务进入重试/DLQ 通道，避免静默丢失。
+
+验证证据（无 mock，本机真实链路）：
+- `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
+- `node tmp/core-e2e-local.mjs` ✅（`ok: true`，爬虫/知识图谱/统计/日报全链路通过）
+- 并发导出实测（同一报告并发触发 `pdf/docx/html` 导出）✅：三种导出 key 均成功落库且可读取
