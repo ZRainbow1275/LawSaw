@@ -781,3 +781,18 @@ Round 3 增量修复验证：
   - `pnpm -C apps/web typecheck` ✅
   - `pnpm -C apps/web lint` ✅
   - `pnpm -C apps/web test:unit` ✅（10 passed）
+
+## 本轮验证记录（2026-02-22，Round 25：n8n 自动化抓取路由对齐）
+
+失败点与根因：
+- 风险（R25-OPS-001）：`n8n/workflows/rss-crawler.json` 仍调用旧路由 `/api/sources` 与 `/api/sources/{id}/crawl`，与当前 API 实际路由 `/api/v1/sources`、`/api/v1/sources/{id}/fetch` 不一致，自动化抓取在生产会直接失效。
+
+修复：
+- 文件：`n8n/workflows/rss-crawler.json`
+  - `Fetch Active Sources` 改为 `{{LAW_EYE_API_URL}}/api/v1/sources`
+  - `Trigger Crawl` 改为 `{{LAW_EYE_API_URL}}/api/v1/sources/{{ $json.id }}/fetch`
+  - `Log Result` 改为记录“已入队”语义，避免继续读取旧接口的 `new_count` 字段。
+
+验证证据：
+- `node -e "JSON.parse(fs.readFileSync('n8n/workflows/rss-crawler.json','utf8'))"` ✅（JSON 结构合法）
+- 与当前后端路由定义一致：`crates/law-eye-api/src/routes/sources.rs` 中 `GET /api/v1/sources` 与 `POST /api/v1/sources/{id}/fetch`。

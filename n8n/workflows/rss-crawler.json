@@ -26,7 +26,7 @@
       "position": [220, 0],
       "parameters": {
         "method": "GET",
-        "url": "={{ $env.LAW_EYE_API_URL }}/api/sources",
+        "url": "={{ $env.LAW_EYE_API_URL }}/api/v1/sources",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "httpHeaderAuth",
         "sendQuery": true,
@@ -70,7 +70,7 @@
       "position": [660, 0],
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.LAW_EYE_API_URL }}/api/sources/{{ $json.id }}/crawl",
+        "url": "={{ $env.LAW_EYE_API_URL }}/api/v1/sources/{{ $json.id }}/fetch",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "httpHeaderAuth",
         "options": {
@@ -100,7 +100,7 @@
       "typeVersion": 2,
       "position": [1100, 0],
       "parameters": {
-        "jsCode": "const source = $('Trigger Crawl').first().json;\nconsole.log(`Crawled source: ${source.name}, new articles: ${source.new_count || 0}`);\nreturn $input.all();"
+        "jsCode": "const source = $('Split Sources').first().json;\nconst result = $('Trigger Crawl').first().json;\nconsole.log(`Enqueued source fetch: ${source.id} (${source.name}) => ${result.message || 'accepted'}`);\nreturn $input.all();"
       }
     }
   ],
