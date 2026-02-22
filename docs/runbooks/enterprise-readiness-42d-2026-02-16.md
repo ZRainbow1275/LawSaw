@@ -820,6 +820,11 @@ Validation
 - `cargo test -p law-eye-api -- --nocapture` passed (41 tests).
 - Core E2E real-path validation passed:
   - `node tmp/core-e2e-local.mjs --base-url http://127.0.0.1:13000 --origin http://localhost:8849 --assert-knowledge-embedding 1 > tmp/core-e2e-r26.json`
+  - `node tmp/core-e2e-local.mjs --base-url http://127.0.0.1:13000 --origin http://localhost:8849 --assert-knowledge-embedding 1 > tmp/core-e2e-r26-round2.json`
+  - `node tmp/core-e2e-local.mjs --base-url http://127.0.0.1:13000 --origin http://localhost:8849 --assert-knowledge-embedding 1 > tmp/core-e2e-r26-round3.json`
+  - Round1: crawler=20, embed=12, pdf=200
+  - Round2: crawler=20, embed=12, pdf=200
+  - Round3: crawler=20, embed=12, pdf=200
   - `crawler.total_articles_fetched=20`
   - `knowledge.llm_backfill.articles_enqueued=20`
   - `knowledge.stats.entities_with_embedding=12`
