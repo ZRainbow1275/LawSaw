@@ -896,3 +896,39 @@ Validation
   - `tmp/core-e2e-r27-round2.json`
   - `tmp/core-e2e-r27-round3.json`
   - all rounds: `crawler=20`, `embed=12`, `with_authority=20`, `with_issuer=20`, `pdf=200`
+
+## 2026-02-22 Round 29: worker health-port conflict auto-recovery + readiness gate
+
+Failure points
+- R29-OPS-001: local stack startup did not enforce worker readiness; when worker failed to bind health port (e.g. `3002` occupied), script could still continue and report partially-ready state.
+- R29-OPS-002: worker health port conflict handling relied on manual cleanup, which is fragile during repeated recovery loops.
+- R29-AI-001: after restart without AI runtime env, health degraded (`ai.available=false`) and embedding-dependent checks become non-deterministic.
+
+Fixes
+- `scripts/no-dockerhub/start-stack.sh`
+  - Added worker health port conflict handling:
+    - detect current listener pid for worker health port
+    - reclaim stale local `law-eye-worker` process when safe
+    - fallback to auto-select free worker health port (`3002..3099`) if still occupied
+  - Added worker readiness gate:
+    - wait for `GET /health` on `LAW_EYE__WORKER__HEALTH_PORT`
+    - on failure, print port owner pid/cmdline for diagnostics and fail fast
+  - Exported worker health port into stack state:
+    - `LAW_EYE__WORKER__HEALTH_PORT` in `stack.env`
+    - startup summary now prints worker endpoint
+- Runtime execution hardening
+  - restarted stack in backend-only mode with explicit AI provider runtime env (SiliconFlow compatible OpenAI API), without writing key into repo files.
+
+Validation
+- `bash -n scripts/no-dockerhub/start-stack.sh` passed.
+- startup now blocks until worker is ready:
+  - log includes `Waiting for Worker /health...`
+  - stack summary includes `Worker: http://localhost:3002`
+- health checks:
+  - `GET http://127.0.0.1:13001/health` -> `ok` and `ai.available=true`
+  - `GET http://127.0.0.1:3002/health` -> `ready`
+- core e2e 3 rounds passed on updated startup path:
+  - `tmp/core-e2e-r29.json`
+  - `tmp/core-e2e-r29-round2.json`
+  - `tmp/core-e2e-r29-round3.json`
+  - all rounds: `crawler=20`, `embed=12`, `with_authority=20`, `with_issuer=20`, `pdf=200`
