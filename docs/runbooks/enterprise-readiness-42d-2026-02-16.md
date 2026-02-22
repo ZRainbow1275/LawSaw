@@ -947,6 +947,8 @@ Fixes
 Validation
 - Rust backend compile gate:
   - `cargo check -p law-eye-worker -p law-eye-api -p law-eye-core -p law-eye-crawler` passed
+- API regression tests:
+  - `cargo test -p law-eye-api -- --nocapture` passed (`41 passed; 0 failed`)
 - Worker regression tests:
   - `cargo test -p law-eye-worker derive_issuer_ -- --nocapture` passed
 - Core real-path E2E:
