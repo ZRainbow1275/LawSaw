@@ -954,3 +954,27 @@ Validation
 - Core real-path E2E:
   - `tmp/core-e2e-r30.json`
   - key metrics: `crawler=20`, `embed=12`, `with_authority=20`, `with_issuer=20`, `pdf=200`
+
+## 2026-02-22 Round 31: startup AI readiness gate hardening
+
+Failure points
+- R31-AI-001: backend startup allowed silent AI degradation; embedding-dependent verification could continue with hidden risk.
+- R31-AI-002: initial AI health parser implementation used an invalid stdin pattern and produced false `unknown` states.
+
+Fixes
+- `scripts/no-dockerhub/start-stack.sh`
+  - Added API AI readiness check after API `/health` is ready and before worker startup.
+  - Added configurable gate switch:
+    - `LAW_EYE_REQUIRE_AI=1`: fail fast when AI remains unavailable.
+    - default: warn and continue (for degraded local debugging).
+  - Added warmup retry window:
+    - `LAW_EYE_AI_READY_WAIT_SECONDS` (default `120` seconds) to reduce transient startup false negatives.
+  - Fixed AI health parser input path (pass JSON payload via argv instead of conflicting stdin pipeline/heredoc pattern).
+
+Validation
+- `bash -n scripts/no-dockerhub/start-stack.sh` passed.
+- startup with strict AI gate passed:
+  - `LAW_EYE_REQUIRE_AI=1 ... bash scripts/no-dockerhub/start-stack.sh --name law-eye-local-codex --fresh`
+- core real-path E2E passed after gate hardening:
+  - `tmp/core-e2e-r31.json`
+  - key metrics: `crawler=20`, `embed=12`, `with_authority=20`, `with_issuer=20`, `pdf=200`
