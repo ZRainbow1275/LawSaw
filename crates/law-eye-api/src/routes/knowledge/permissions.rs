@@ -18,3 +18,21 @@ pub(super) async fn require_articles_read(
     }
     Ok(())
 }
+
+pub(super) async fn require_knowledge_manage(
+    state: &AppState,
+    tenant_id: Uuid,
+    user_id: Uuid,
+) -> ApiResult<()> {
+    let can_manage = state
+        .user_service
+        .has_permission(tenant_id, user_id, "knowledge:manage")
+        .await
+        .map_err(AppError::from)?;
+    if !can_manage {
+        return Err(AppError::forbidden(
+            "Permission denied: knowledge:manage required",
+        ));
+    }
+    Ok(())
+}

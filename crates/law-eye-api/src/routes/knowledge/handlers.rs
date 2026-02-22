@@ -2,6 +2,8 @@ use axum::{
     extract::{Path, State},
     Json,
 };
+use std::time::Duration;
+use tokio::sync::Semaphore;
 use uuid::Uuid;
 
 use super::dto::{
@@ -9,16 +11,78 @@ use super::dto::{
     KnowledgeEntityResponse, RelatedEntitiesQuery, RelatedEntityResponse, RelationDirection,
     SearchEntitiesQuery, TopEntitiesQuery,
 };
-use super::permissions::require_articles_read;
+use super::permissions::{require_articles_read, require_knowledge_manage};
 use super::queries::{clamp_limit, fetch_entity_articles, fetch_related_entities, run_backfill};
 use crate::auth::AuthSession;
 use crate::state::AppState;
 use crate::{ApiJson, ApiQuery, ApiResult, AppError};
 
 const QUEUE_AI: &str = "queue:ai";
+const BACKFILL_LLM_EMBEDDING_TIMEOUT_SECS: u64 = 120;
+static BACKFILL_LLM_EMBEDDING_SEMAPHORE: Semaphore = Semaphore::const_new(1);
 
 fn ai_extract_entities_dedupe_key(article_id: Uuid) -> String {
     format!("ai:{article_id}:extract_entities")
+}
+
+fn spawn_entity_embedding_backfill_task(
+    state: AppState,
+    tenant_id: Uuid,
+    limit: i64,
+    enqueued: i64,
+    total_candidates: usize,
+) {
+    tokio::spawn(async move {
+        let _permit = match BACKFILL_LLM_EMBEDDING_SEMAPHORE.try_acquire() {
+            Ok(permit) => permit,
+            Err(_) => {
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    enqueued = enqueued,
+                    total_candidates = total_candidates,
+                    "LLM backfill: skipped async entity embedding backfill because another run is still in progress"
+                );
+                return;
+            }
+        };
+
+        match tokio::time::timeout(
+            Duration::from_secs(BACKFILL_LLM_EMBEDDING_TIMEOUT_SECS),
+            state
+                .knowledge_service
+                .backfill_missing_entity_embeddings(tenant_id, limit),
+        )
+        .await
+        {
+            Ok(Ok(entities_embedded)) => {
+                tracing::info!(
+                    tenant_id = %tenant_id,
+                    enqueued = enqueued,
+                    entities_embedded = entities_embedded,
+                    total_candidates = total_candidates,
+                    "LLM backfill: async entity embedding backfill completed"
+                );
+            }
+            Ok(Err(error)) => {
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    enqueued = enqueued,
+                    total_candidates = total_candidates,
+                    error = ?error,
+                    "LLM backfill: async entity embedding backfill failed"
+                );
+            }
+            Err(_) => {
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    enqueued = enqueued,
+                    total_candidates = total_candidates,
+                    timeout_seconds = BACKFILL_LLM_EMBEDDING_TIMEOUT_SECS,
+                    "LLM backfill: async entity embedding backfill timed out"
+                );
+            }
+        }
+    });
 }
 
 async fn enqueue_extract_entities_outbox_tasks(
@@ -215,7 +279,7 @@ pub(crate) async fn backfill(
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    require_articles_read(&state, user.tenant_id, user.id).await?;
+    require_knowledge_manage(&state, user.tenant_id, user.id).await?;
 
     let limit = clamp_limit(req.limit, 500, 5_000);
     let stats = run_backfill(&state.pool, user.tenant_id, limit).await?;
@@ -234,7 +298,7 @@ pub(crate) async fn backfill_llm(
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    require_articles_read(&state, user.tenant_id, user.id).await?;
+    require_knowledge_manage(&state, user.tenant_id, user.id).await?;
 
     let limit = clamp_limit(req.limit, 100, 1_000);
     let tenant_id = user.tenant_id;
@@ -283,18 +347,19 @@ pub(crate) async fn backfill_llm(
         .await
         .map_err(AppError::from)?;
 
-    let entities_embedded = state
-        .knowledge_service
-        .backfill_missing_entity_embeddings(tenant_id, limit)
-        .await
-        .map_err(AppError::from)?;
+    spawn_entity_embedding_backfill_task(
+        state.clone(),
+        tenant_id,
+        limit,
+        enqueued,
+        article_ids.len(),
+    );
 
     tracing::info!(
         enqueued = enqueued,
-        entities_embedded = entities_embedded,
         total_candidates = article_ids.len(),
         deduped_existing = article_ids.len() as i64 - enqueued,
-        "LLM backfill: enqueued deduped article tasks and backfilled missing entity embeddings"
+        "LLM backfill: enqueued deduped article tasks and scheduled async entity embedding backfill"
     );
 
     Ok(Json(super::dto::LlmBackfillResponse {
@@ -441,7 +506,7 @@ pub(crate) async fn merge_entities(
         .user
         .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
 
-    require_articles_read(&state, user.tenant_id, user.id).await?;
+    require_knowledge_manage(&state, user.tenant_id, user.id).await?;
 
     if req.target_id == req.source_id {
         return Err(AppError::validation("target_id and source_id must differ"));

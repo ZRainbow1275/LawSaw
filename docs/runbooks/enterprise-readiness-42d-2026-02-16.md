@@ -796,3 +796,32 @@ Round 3 增量修复验证：
 验证证据：
 - `node -e "JSON.parse(fs.readFileSync('n8n/workflows/rss-crawler.json','utf8'))"` ✅（JSON 结构合法）
 - 与当前后端路由定义一致：`crates/law-eye-api/src/routes/sources.rs` 中 `GET /api/v1/sources` 与 `POST /api/v1/sources/{id}/fetch`。
+
+## 2026-02-22 Round 26: knowledge write permission hardening and non-blocking backfill-llm
+
+Failure points
+- R26-KG-001: `POST /api/v1/knowledge/backfill`, `POST /api/v1/knowledge/backfill-llm`, and `POST /api/v1/knowledge/entities/merge` were only guarded by `articles:read`; write actions require `knowledge:manage`.
+- R26-KG-002: `backfill-llm` executed `backfill_missing_entity_embeddings` synchronously, causing avoidable long request blocking.
+
+Fixes
+- `crates/law-eye-api/src/routes/knowledge/permissions.rs`
+  - Added `require_knowledge_manage(...)` permission guard.
+- `crates/law-eye-api/src/routes/knowledge/handlers.rs`
+  - Switched write endpoints (`backfill`, `backfill_llm`, `merge_entities`) to `require_knowledge_manage`.
+  - Converted entity embedding backfill in `backfill_llm` to async background task via `tokio::spawn`.
+  - Added single-concurrency gate (`Semaphore::const_new(1)`) and timeout guard (`120s`).
+- `crates/law-eye-api/src/routes/auth.rs`
+  - Added `knowledge:manage` to new tenant seeded `editor` role.
+- `crates/law-eye-db/migrations/049_add_knowledge_manage_permission.sql`
+  - Added migration to grant `knowledge:manage` to existing privileged roles, compatible with both `roles.permissions` JSONB and legacy `role_permissions` table.
+
+Validation
+- `cargo check -p law-eye-ai -p law-eye-core -p law-eye-api -p law-eye-worker -p law-eye-crawler` passed.
+- `cargo test -p law-eye-api -- --nocapture` passed (41 tests).
+- Core E2E real-path validation passed:
+  - `node tmp/core-e2e-local.mjs --base-url http://127.0.0.1:13000 --origin http://localhost:8849 --assert-knowledge-embedding 1 > tmp/core-e2e-r26.json`
+  - `crawler.total_articles_fetched=20`
+  - `knowledge.llm_backfill.articles_enqueued=20`
+  - `knowledge.stats.entities_with_embedding=12`
+  - `statistics coverage_rate(regional/industry/importance)=1`
+  - `report download status=200`, `content_type=application/pdf`

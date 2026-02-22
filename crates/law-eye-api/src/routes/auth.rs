@@ -49,7 +49,7 @@ async fn ensure_tenant_roles_seeded(
                         gen_random_uuid(),
                         $1,
                         'editor',
-                        '["articles:read","articles:write","articles:publish","sources:read","categories:read","feedbacks:write","feedbacks:read","users:read","objects:read","apikeys:manage"]'::jsonb,
+                        '["articles:read","articles:write","articles:publish","knowledge:manage","sources:read","categories:read","feedbacks:write","feedbacks:read","users:read","objects:read","apikeys:manage"]'::jsonb,
                         '编辑，可以管理文章',
                         NOW()
                     ),
