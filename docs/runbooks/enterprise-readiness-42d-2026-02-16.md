@@ -747,3 +747,37 @@ Round 3 增量修复验证：
 - 语义检索专项实测（新租户+真实抓取+backfill 后调用）✅
   - `GET /api/v1/knowledge/entities/semantic-search?q=industry&limit=5` → 200
   - `GET /api/v1/knowledge/entities/hybrid-search?q=industry&limit=5` → 200
+
+
+## 本轮验证记录（2026-02-22，Round 24：手动抓取队列饥饿修复）
+
+失败点与根因：
+- 风险（R24-CG-001）：四链路第 2 轮实测出现 `poll timeout: source_fetch`，新建源在 5 分钟窗口内 `health_status=unknown`、`total_articles_fetched=0`，链路中断。
+- 根因：手动 `POST /api/v1/sources/{id}/fetch` 与调度抓取复用 `queue:ingest`；当默认源大量失败任务持续重试/回放时，手动任务会被队列噪声饿死，导致本机演示不稳定。
+
+修复：
+- 文件：`crates/law-eye-api/src/routes/sources.rs`
+  - 新增 `QUEUE_INGEST_PRIORITY = "queue:ingest:priority"`。
+  - 手动抓取入队从 `queue:ingest` 改为 `queue:ingest:priority`。
+  - 审计日志 `new_value.queue` 同步改为 `queue:ingest:priority`。
+- 文件：`crates/law-eye-worker/src/main.rs`
+  - worker 轮询新增 `queue:ingest:priority` 抢占消费（优先于普通 `queue:ingest`）。
+  - 队列维护（delayed/requeue_stuck）纳入 `queue:ingest:priority`。
+  - DLQ 回放纳入 `queue:ingest:priority`。
+
+验证证据（无 mock，本机真实链路）：
+- 修复前失败证据：第 2 轮返回 `poll timeout: source_fetch`，`source_id=d514e150-5812-4514-842c-fb50a761f9f0`，`total_articles_fetched=0`。
+- 修复后 DB 审计证据（最新两次）：
+  - `2026-02-22 18:13:09+00 | queue:ingest:priority`
+  - `2026-02-22 18:14:45+00 | queue:ingest:priority`
+- 三轮回归结果：
+  - Round 1：`crawler_total=20`，`kg_embed=12`，`pdf_status=200`
+  - Round 2（修复后重跑）：`crawler_total=20`，`kg_embed=12`，`pdf_status=200`
+  - Round 3：`crawler_total=20`，`kg_embed=12`，`pdf_status=200`
+- 质量门槛：
+  - `cargo check -p law-eye-ai -p law-eye-core -p law-eye-api -p law-eye-worker -p law-eye-crawler` ✅
+  - `cargo test -p law-eye-api -- --nocapture` ✅（41 passed）
+  - `cargo test -p law-eye-worker parse_env_bool -- --nocapture` ✅
+  - `pnpm -C apps/web typecheck` ✅
+  - `pnpm -C apps/web lint` ✅
+  - `pnpm -C apps/web test:unit` ✅（10 passed）

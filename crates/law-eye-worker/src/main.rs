@@ -47,6 +47,7 @@ use tracing::{debug, error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 const QUEUE_INGEST: &str = "queue:ingest";
+const QUEUE_INGEST_PRIORITY: &str = "queue:ingest:priority";
 const QUEUE_AI: &str = "queue:ai";
 const QUEUE_PUSH: &str = "queue:push";
 const QUEUE_REPORT_EXPORT: &str = "queue:report-export";
@@ -992,7 +993,16 @@ impl Worker {
             }
 
             // Reserve from all queues in parallel so no single queue starves others.
-            let (res_ingest, res_ai, res_push, res_report_export, res_report_generate) = tokio::join!(
+            let (
+                res_ingest_priority,
+                res_ingest,
+                res_ai,
+                res_push,
+                res_report_export,
+                res_report_generate,
+            ) = tokio::join!(
+                self.task_queue
+                    .reserve_retryable::<IngestTask>(QUEUE_INGEST_PRIORITY, 1),
                 self.task_queue
                     .reserve_retryable::<IngestTask>(QUEUE_INGEST, 5),
                 self.task_queue.reserve_retryable::<AiTask>(QUEUE_AI, 1),
@@ -1005,6 +1015,18 @@ impl Worker {
 
             let mut had_task = false;
             let mut had_error = false;
+
+            match res_ingest_priority {
+                Ok(Some(reserved)) => {
+                    self.handle_ingest_reserved(reserved).await;
+                    had_task = true;
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    error!("Failed to reserve from {}: {}", QUEUE_INGEST_PRIORITY, e);
+                    had_error = true;
+                }
+            }
 
             match res_ingest {
                 Ok(Some(reserved)) => {
@@ -1084,6 +1106,7 @@ impl Worker {
 
     async fn run_queue_maintenance(&self) -> anyhow::Result<()> {
         let queues = [
+            (QUEUE_INGEST_PRIORITY, VISIBILITY_TIMEOUT_INGEST_MS),
             (QUEUE_INGEST, VISIBILITY_TIMEOUT_INGEST_MS),
             (QUEUE_AI, VISIBILITY_TIMEOUT_AI_MS),
             (QUEUE_PUSH, VISIBILITY_TIMEOUT_PUSH_MS),
@@ -1119,6 +1142,16 @@ impl Worker {
         }
 
         if self.dlq_replay_enabled {
+            if let Err(e) = self
+                .task_queue
+                .replay_dead_letter_tasks::<IngestTask>(QUEUE_INGEST_PRIORITY, DLQ_REPLAY_MAX_BATCH)
+                .await
+            {
+                error!(
+                    "Failed to replay DLQ tasks for {}: {}",
+                    QUEUE_INGEST_PRIORITY, e
+                );
+            }
             if let Err(e) = self
                 .task_queue
                 .replay_dead_letter_tasks::<IngestTask>(QUEUE_INGEST, DLQ_REPLAY_MAX_BATCH)
@@ -2518,6 +2551,13 @@ impl Worker {
             }
             Ok(Err(e)) => {
                 let error_msg = sanitize_error_message(e.to_string());
+                error!(
+                    task_id = %task_id,
+                    article_id = %task.payload.article_id,
+                    task_type = ?task.payload.task_type,
+                    error = %error_msg,
+                    "AI task failed; scheduling retry or DLQ"
+                );
                 match self
                     .task_queue
                     .retry_or_dead_letter(queue, task, error_msg)
@@ -2555,6 +2595,13 @@ impl Worker {
             }
             Err(_) => {
                 let error_msg = format!("TASK_TIMEOUT after {}s", TASK_TIMEOUT_AI_SECS);
+                error!(
+                    task_id = %task_id,
+                    article_id = %task.payload.article_id,
+                    task_type = ?task.payload.task_type,
+                    error = %error_msg,
+                    "AI task timed out; scheduling retry or DLQ"
+                );
                 match self
                     .task_queue
                     .retry_or_dead_letter(queue, task, error_msg)
@@ -3714,31 +3761,25 @@ impl Worker {
             }
         }
 
-        const INSERT_BATCH_SIZE: usize = 200;
-        for (batch_idx, batch) in chunks.chunks(INSERT_BATCH_SIZE).enumerate() {
-            let base_idx = batch_idx * INSERT_BATCH_SIZE;
-
-            let mut builder = sqlx::QueryBuilder::new(
-                "INSERT INTO article_chunks (article_id, chunk_index, content, embedding, token_count) ",
-            );
-
-            builder.push_values(
-                batch.iter().enumerate(),
-                |mut row, (offset, (content, embedding))| {
-                    row.push_bind(article_id);
-                    row.push_bind((base_idx + offset) as i32);
-                    row.push_bind(content);
-                    row.push_bind(&embedding.vector);
-                    row.push("::vector");
-                    row.push_bind(embedding.token_count as i32);
-                },
-            );
-
-            builder.push(
-                " ON CONFLICT (tenant_id, article_id, chunk_index) DO UPDATE SET content = EXCLUDED.content, embedding = EXCLUDED.embedding, token_count = EXCLUDED.token_count, deleted_at = NULL",
-            );
-
-            builder.build().execute(&mut *tx).await?;
+        for (idx, (content, embedding)) in chunks.iter().enumerate() {
+            sqlx::query(
+                r#"
+                INSERT INTO article_chunks (article_id, chunk_index, content, embedding, token_count)
+                VALUES ($1, $2, $3, $4::vector, $5)
+                ON CONFLICT (tenant_id, article_id, chunk_index) DO UPDATE SET
+                    content = EXCLUDED.content,
+                    embedding = EXCLUDED.embedding,
+                    token_count = EXCLUDED.token_count,
+                    deleted_at = NULL
+                "#,
+            )
+            .bind(article_id)
+            .bind(idx as i32)
+            .bind(content)
+            .bind(&embedding.vector)
+            .bind(embedding.token_count as i32)
+            .execute(&mut *tx)
+            .await?;
         }
 
         tx.commit().await?;
@@ -3900,7 +3941,10 @@ impl Worker {
                     "Dropping stale ordered report export task"
                 );
                 if let Err(e) = self.task_queue.mark_done(queue, task_id).await {
-                    error!("Failed to mark stale report export task {} done: {}", task_id, e);
+                    error!(
+                        "Failed to mark stale report export task {} done: {}",
+                        task_id, e
+                    );
                 }
                 if let Err(e) = self
                     .task_queue
@@ -4374,14 +4418,20 @@ impl Worker {
                     "Dropping stale ordered report generate task"
                 );
                 if let Err(e) = self.task_queue.mark_done(queue, task_id).await {
-                    error!("Failed to mark stale report generate task {} done: {}", task_id, e);
+                    error!(
+                        "Failed to mark stale report generate task {} done: {}",
+                        task_id, e
+                    );
                 }
                 if let Err(e) = self
                     .task_queue
                     .ack_reserved(queue, &reserved.raw_payload)
                     .await
                 {
-                    error!("Failed to ack stale report generate task {}: {}", task_id, e);
+                    error!(
+                        "Failed to ack stale report generate task {}: {}",
+                        task_id, e
+                    );
                 }
                 if let Err(e) = self
                     .task_queue
@@ -5007,10 +5057,11 @@ async fn main() -> anyhow::Result<()> {
 
     let ai_service = if !config.ai.api_key.is_empty() {
         info!("AI service enabled");
-        Some(AiService::new(
+        Some(AiService::new_with_embedding_model(
             &config.ai.api_key,
             config.ai.base_url.as_deref(),
             Some(&config.ai.model),
+            Some(&config.ai.embedding_model),
         ))
     } else {
         if is_production {

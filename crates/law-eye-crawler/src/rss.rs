@@ -110,7 +110,8 @@ impl RssFetcher {
                 Ok(response) => {
                     let status = response.status();
                     if status.is_success() {
-                        return read_rss_body_with_limit(response, url, MAX_RSS_RESPONSE_BYTES).await;
+                        return read_rss_body_with_limit(response, url, MAX_RSS_RESPONSE_BYTES)
+                            .await;
                     }
 
                     let can_retry = status == reqwest::StatusCode::TOO_MANY_REQUESTS
@@ -277,6 +278,10 @@ mod tests {
         assert!(!is_chunk_append_over_limit(1024, 2048, 4096));
         assert!(!is_chunk_append_over_limit(2048, 2048, 4096));
         assert!(is_chunk_append_over_limit(2048, 2049, 4096));
-        assert!(is_chunk_append_over_limit(usize::MAX, 1, MAX_RSS_RESPONSE_BYTES));
+        assert!(is_chunk_append_over_limit(
+            usize::MAX,
+            1,
+            MAX_RSS_RESPONSE_BYTES
+        ));
     }
 }

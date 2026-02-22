@@ -631,9 +631,7 @@ impl ReportService {
 
         let expected_content_type = format.content_type();
         let content_type_matches = if matches!(format, ExportFormat::Html) {
-            content_type
-                .to_ascii_lowercase()
-                .starts_with("text/html")
+            content_type.to_ascii_lowercase().starts_with("text/html")
         } else {
             content_type.eq_ignore_ascii_case(expected_content_type)
         };
@@ -1154,8 +1152,12 @@ mod tests {
             tenant_id, report_id
         );
 
-        let result =
-            ReportService::validate_export_object_key_scope(tenant_id, report_id, ExportFormat::Pdf, &key);
+        let result = ReportService::validate_export_object_key_scope(
+            tenant_id,
+            report_id,
+            ExportFormat::Pdf,
+            &key,
+        );
         assert!(result.is_ok());
     }
 

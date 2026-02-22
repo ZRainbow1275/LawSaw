@@ -288,12 +288,7 @@ pub(crate) async fn generate_report(
 
     if let Err(e) = state
         .task_queue
-        .enqueue_retryable_with_ordering(
-            "queue:report",
-            task,
-            Some(format!("report:{id}")),
-            None,
-        )
+        .enqueue_retryable_with_ordering("queue:report", task, Some(format!("report:{id}")), None)
         .await
     {
         // Compensation: avoid leaving report stuck in `generating` when enqueue fails.
@@ -537,7 +532,8 @@ mod tests {
             tenant_id, report_id
         );
 
-        let result = validate_report_export_key_scope(&key, tenant_id, report_id, ExportFormat::Pdf);
+        let result =
+            validate_report_export_key_scope(&key, tenant_id, report_id, ExportFormat::Pdf);
         assert!(result.is_ok());
     }
 
@@ -551,7 +547,8 @@ mod tests {
             wrong_tenant, report_id
         );
 
-        let result = validate_report_export_key_scope(&key, tenant_id, report_id, ExportFormat::Pdf);
+        let result =
+            validate_report_export_key_scope(&key, tenant_id, report_id, ExportFormat::Pdf);
         assert!(result.is_err());
     }
 
@@ -564,7 +561,8 @@ mod tests {
             tenant_id, report_id
         );
 
-        let result = validate_report_export_key_scope(&key, tenant_id, report_id, ExportFormat::Pdf);
+        let result =
+            validate_report_export_key_scope(&key, tenant_id, report_id, ExportFormat::Pdf);
         assert!(result.is_err());
     }
 }

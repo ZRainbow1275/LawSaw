@@ -410,12 +410,14 @@ async fn main() -> anyhow::Result<()> {
             &config.ai.api_key,
             config.ai.base_url.as_deref(),
             Some(&config.ai.model),
-        );
+        )
+        .with_embedding_model(&config.ai.embedding_model);
         (
-            Some(AiService::new(
+            Some(AiService::new_with_embedding_model(
                 &config.ai.api_key,
                 config.ai.base_url.as_deref(),
                 Some(&config.ai.model),
+                Some(&config.ai.embedding_model),
             )),
             Some(gateway),
         )

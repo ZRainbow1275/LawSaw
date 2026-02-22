@@ -97,6 +97,83 @@ impl KnowledgeService {
         Ok(entity_ids)
     }
 
+    /// Backfill embeddings for existing entities that are still missing vectors.
+    /// This is useful after deterministic graph backfill has created entities
+    /// without running LLM extraction on each source article.
+    pub async fn backfill_missing_entity_embeddings(
+        &self,
+        tenant_id: Uuid,
+        limit: i64,
+    ) -> Result<i64> {
+        let limit = limit.clamp(1, 1_000);
+        let candidates: Vec<(Uuid, String)> = with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let rows = sqlx::query_as::<_, (Uuid, String)>(
+                    r#"
+                    SELECT id, name
+                    FROM entities
+                    WHERE embedding IS NULL
+                      AND deleted_at IS NULL
+                    ORDER BY mention_count DESC, last_seen DESC
+                    LIMIT $1
+                    "#,
+                )
+                .bind(limit)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
+                Ok(rows)
+            })
+        })
+        .await?;
+
+        if candidates.is_empty() {
+            return Ok(0);
+        }
+
+        let mut updated = 0_i64;
+        for (entity_id, name) in candidates {
+            let embedding = match self.embedder.embed(&name).await {
+                Ok(result) => result.vector,
+                Err(err) => {
+                    warn!(
+                        %tenant_id,
+                        %entity_id,
+                        entity_name = %name,
+                        error = %err,
+                        "Failed to generate entity embedding during backfill"
+                    );
+                    continue;
+                }
+            };
+
+            let affected = with_tenant_tx(&self.pool, tenant_id, |tx| {
+                Box::pin(async move {
+                    let res = sqlx::query(
+                        r#"
+                        UPDATE entities
+                        SET embedding = $2::vector,
+                            updated_at = NOW()
+                        WHERE id = $1
+                          AND embedding IS NULL
+                        "#,
+                    )
+                    .bind(entity_id)
+                    .bind(&embedding)
+                    .execute(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?;
+                    Ok(res.rows_affected() as i64)
+                })
+            })
+            .await?;
+
+            updated += affected;
+        }
+
+        Ok(updated)
+    }
+
     async fn upsert_entity(
         &self,
         tenant_id: Uuid,
@@ -114,6 +191,9 @@ impl KnowledgeService {
                         WHEN entities.aliases @> $3 THEN entities.aliases
                         ELSE entities.aliases || $3
                     END,
+                    -- Backfill embedding for existing rows created by rule-based backfill.
+                    -- Keep existing vector when already present to avoid unnecessary churn.
+                    embedding = COALESCE(entities.embedding, $4::vector),
                     last_seen = NOW(),
                     updated_at = NOW()
                 RETURNING *
@@ -289,7 +369,10 @@ impl KnowledgeService {
                     "Semantic embedding unavailable, falling back to lexical knowledge search"
                 );
                 let fallback = self.search_entities(tenant_id, query, limit).await?;
-                return Ok(fallback.into_iter().map(|entity| (entity, 0.0_f64)).collect());
+                return Ok(fallback
+                    .into_iter()
+                    .map(|entity| (entity, 0.0_f64))
+                    .collect());
             }
         };
 

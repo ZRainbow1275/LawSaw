@@ -150,7 +150,19 @@ pub struct AiService {
 
 impl AiService {
     pub fn new(api_key: &str, base_url: Option<&str>, model: Option<&str>) -> Self {
-        let gateway = LlmGateway::new(api_key, base_url, model);
+        Self::new_with_embedding_model(api_key, base_url, model, None)
+    }
+
+    pub fn new_with_embedding_model(
+        api_key: &str,
+        base_url: Option<&str>,
+        model: Option<&str>,
+        embedding_model: Option<&str>,
+    ) -> Self {
+        let mut gateway = LlmGateway::new(api_key, base_url, model);
+        if let Some(embedding_model) = embedding_model.map(str::trim).filter(|v| !v.is_empty()) {
+            gateway = gateway.with_embedding_model(embedding_model);
+        }
         let gateway_arc = Arc::new(gateway.clone());
         let cache_ttl = ai_result_cache_ttl();
         let cache_max_entries = ai_result_cache_max_entries();

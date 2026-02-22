@@ -239,7 +239,9 @@ pub(crate) async fn backfill_llm(
     let limit = clamp_limit(req.limit, 100, 1_000);
     let tenant_id = user.tenant_id;
 
-    // Find articles that have content but no article_entities link
+    // Find articles that have content and need LLM extraction:
+    // 1) no article_entities link yet, or
+    // 2) linked entities exist but embeddings are still NULL.
     // Must use with_tenant_tx to ensure RLS sees the correct tenant context
     let article_ids: Vec<uuid::Uuid> = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
         Box::pin(async move {
@@ -247,10 +249,22 @@ pub(crate) async fn backfill_llm(
                 r#"
                     SELECT a.id
                     FROM articles a
-                    LEFT JOIN article_entities ae ON ae.article_id = a.id
                     WHERE a.content IS NOT NULL
                         AND LENGTH(TRIM(COALESCE(a.content, ''))) > 0
-                        AND ae.id IS NULL
+                        AND (
+                            NOT EXISTS (
+                                SELECT 1
+                                FROM article_entities ae
+                                WHERE ae.article_id = a.id
+                            )
+                            OR EXISTS (
+                                SELECT 1
+                                FROM article_entities ae
+                                JOIN entities e ON e.id = ae.entity_id
+                                WHERE ae.article_id = a.id
+                                  AND e.embedding IS NULL
+                            )
+                        )
                     ORDER BY a.published_at DESC NULLS LAST
                     LIMIT $1
                     "#,
@@ -269,11 +283,18 @@ pub(crate) async fn backfill_llm(
         .await
         .map_err(AppError::from)?;
 
+    let entities_embedded = state
+        .knowledge_service
+        .backfill_missing_entity_embeddings(tenant_id, limit)
+        .await
+        .map_err(AppError::from)?;
+
     tracing::info!(
         enqueued = enqueued,
+        entities_embedded = entities_embedded,
         total_candidates = article_ids.len(),
         deduped_existing = article_ids.len() as i64 - enqueued,
-        "LLM backfill: enqueued deduped article tasks for entity extraction"
+        "LLM backfill: enqueued deduped article tasks and backfilled missing entity embeddings"
     );
 
     Ok(Json(super::dto::LlmBackfillResponse {

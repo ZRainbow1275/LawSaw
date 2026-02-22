@@ -29,6 +29,7 @@ const SOURCE_PRIORITY_MIN: i32 = 0;
 const SOURCE_PRIORITY_MAX: i32 = 100;
 const SOURCE_LIST_DEFAULT_LIMIT: i64 = 100;
 const SOURCE_LIST_MAX_LIMIT: i64 = 1000;
+const QUEUE_INGEST_PRIORITY: &str = "queue:ingest:priority";
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -792,7 +793,7 @@ pub(crate) async fn trigger_fetch(
 
     state
         .task_queue
-        .enqueue_retryable("queue:ingest", task)
+        .enqueue_retryable(QUEUE_INGEST_PRIORITY, task)
         .await
         .map_err(AppError::from)?;
 
@@ -808,7 +809,7 @@ pub(crate) async fn trigger_fetch(
                 resource_id: Some(source.id),
                 old_value: None,
                 new_value: Some(serde_json::json!({
-                    "queue": "queue:ingest",
+                    "queue": QUEUE_INGEST_PRIORITY,
                 })),
                 ip_address,
                 user_agent,

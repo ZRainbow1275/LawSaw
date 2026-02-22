@@ -43,7 +43,7 @@ impl Embedder {
 
         Ok(EmbeddingResult {
             vector,
-            model: "text-embedding-3-small".to_string(),
+            model: self.gateway.embedding_model().to_string(),
             token_count,
         })
     }

@@ -13,7 +13,7 @@ use law_eye_common::{CircuitBreaker, CircuitBreakerConfig, Error, Result};
 use serde::de::DeserializeOwned;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::Semaphore;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// LLM Gateway - 统一的 LLM 调用接口
 #[derive(Clone)]
@@ -21,9 +21,33 @@ pub struct LlmGateway {
     client: Client<OpenAIConfig>,
     model: String,
     embedding_model: String,
+    embedding_vector_dim: usize,
+    embedding_dimension_strategy: EmbeddingDimensionStrategy,
     provider: LlmProvider,
     request_semaphore: Arc<Semaphore>,
     circuit_breaker: CircuitBreaker,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EmbeddingDimensionStrategy {
+    Strict,
+    PadOrTruncate,
+}
+
+impl EmbeddingDimensionStrategy {
+    fn from_env() -> Self {
+        match std::env::var("LAW_EYE__AI__EMBEDDING_DIMENSION_STRATEGY")
+            .ok()
+            .as_deref()
+            .unwrap_or("strict")
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "pad_or_truncate" | "pad-or-truncate" | "pad" | "truncate" => Self::PadOrTruncate,
+            _ => Self::Strict,
+        }
+    }
 }
 
 impl LlmGateway {
@@ -46,11 +70,17 @@ impl LlmGateway {
         let open_seconds = env_u64("LAW_EYE__AI__CIRCUIT_OPEN_SECONDS")
             .unwrap_or(30)
             .clamp(1, 600);
+        let embedding_vector_dim = env_u32("LAW_EYE__AI__EMBEDDING_VECTOR_DIM")
+            .unwrap_or(1536)
+            .clamp(1, 8192) as usize;
+        let embedding_dimension_strategy = EmbeddingDimensionStrategy::from_env();
 
         Self {
             client,
             model: model.unwrap_or("gpt-4o-mini").to_string(),
             embedding_model: "text-embedding-3-small".to_string(),
+            embedding_vector_dim,
+            embedding_dimension_strategy,
             provider: LlmProvider::OpenAI,
             request_semaphore: Arc::new(Semaphore::new(max_concurrency)),
             circuit_breaker: CircuitBreaker::new(CircuitBreakerConfig {
@@ -68,6 +98,42 @@ impl LlmGateway {
     pub fn with_embedding_model(mut self, model: &str) -> Self {
         self.embedding_model = model.to_string();
         self
+    }
+
+    pub fn embedding_model(&self) -> &str {
+        &self.embedding_model
+    }
+
+    fn normalize_embedding_dimensions(&self, vector: Vec<f32>) -> Result<Vec<f32>> {
+        let actual = vector.len();
+        if actual == self.embedding_vector_dim {
+            return Ok(vector);
+        }
+
+        match self.embedding_dimension_strategy {
+            EmbeddingDimensionStrategy::Strict => Err(Error::Config(format!(
+                "embedding dimension mismatch: got {}, expected {} (model={}, strategy=strict). \
+set LAW_EYE__AI__EMBEDDING_VECTOR_DIM to match provider output or set \
+LAW_EYE__AI__EMBEDDING_DIMENSION_STRATEGY=pad_or_truncate for local compatibility",
+                actual, self.embedding_vector_dim, self.embedding_model
+            ))),
+            EmbeddingDimensionStrategy::PadOrTruncate => {
+                warn!(
+                    model = %self.embedding_model,
+                    actual_dim = actual,
+                    expected_dim = self.embedding_vector_dim,
+                    "embedding dimension mismatch detected; applying pad_or_truncate normalization"
+                );
+
+                let mut adjusted = vector;
+                if adjusted.len() > self.embedding_vector_dim {
+                    adjusted.truncate(self.embedding_vector_dim);
+                } else {
+                    adjusted.resize(self.embedding_vector_dim, 0.0);
+                }
+                Ok(adjusted)
+            }
+        }
     }
 
     /// 发送聊天请求并解析 JSON 响应
@@ -196,8 +262,16 @@ impl LlmGateway {
             .map(|e| e.embedding.clone())
             .ok_or_else(|| Error::Internal("Empty embedding response".to_string()))?;
 
-        info!("Embedding generated, dimensions: {}", embedding.len());
-        Ok(embedding)
+        let provider_dim = embedding.len();
+        let normalized = self.normalize_embedding_dimensions(embedding)?;
+
+        info!(
+            provider_dim,
+            normalized_dim = normalized.len(),
+            model = %self.embedding_model,
+            "Embedding generated"
+        );
+        Ok(normalized)
     }
 
     /// 计算 token 数量
@@ -369,5 +443,36 @@ mod tests {
     fn test_extract_json_plain() {
         let input = r#"{"category": "test"}"#;
         assert_eq!(extract_json(input), r#"{"category": "test"}"#);
+    }
+
+    #[test]
+    fn normalize_embedding_dimensions_strict_rejects_mismatch() {
+        let gateway = LlmGateway::new("test", None, None);
+        let result = gateway.normalize_embedding_dimensions(vec![0.1, 0.2, 0.3]);
+        assert!(matches!(result, Err(Error::Config(_))));
+    }
+
+    #[test]
+    fn normalize_embedding_dimensions_pad_or_truncate_pads_short_vector() {
+        let mut gateway = LlmGateway::new("test", None, None);
+        gateway.embedding_vector_dim = 5;
+        gateway.embedding_dimension_strategy = EmbeddingDimensionStrategy::PadOrTruncate;
+
+        let normalized = gateway
+            .normalize_embedding_dimensions(vec![0.1, 0.2, 0.3])
+            .expect("pad_or_truncate should normalize short vector");
+        assert_eq!(normalized, vec![0.1, 0.2, 0.3, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn normalize_embedding_dimensions_pad_or_truncate_truncates_long_vector() {
+        let mut gateway = LlmGateway::new("test", None, None);
+        gateway.embedding_vector_dim = 2;
+        gateway.embedding_dimension_strategy = EmbeddingDimensionStrategy::PadOrTruncate;
+
+        let normalized = gateway
+            .normalize_embedding_dimensions(vec![0.1, 0.2, 0.3])
+            .expect("pad_or_truncate should normalize long vector");
+        assert_eq!(normalized, vec![0.1, 0.2]);
     }
 }
