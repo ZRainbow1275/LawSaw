@@ -534,3 +534,30 @@ Round 3 增量修复验证：
 验证证据（无 mock，本机真实链路）：
 - `cargo check -p law-eye-core -p law-eye-api -p law-eye-worker -p law-eye-crawler -p law-eye-queue` ✅
 - `node tmp/core-e2e-local.mjs` ✅（注册/登录、爬虫、知识图谱、统计、日报全链路通过）
+
+## 本轮验证记录（2026-02-22，Round 12：报表序号租户隔离 + RSS 响应体限流）
+
+失败点与根因：
+- 风险 1（R12-RP-001）：`ReportService::next_report_number` 仅按 `date_part` 进行 advisory lock 和序号查询，存在跨租户共享锁与共享序号窗口，可能导致高并发下不同租户间排队和编号混杂。
+- 风险 2（R12-CG-001）：`RssFetcher::fetch_with_retry` 在成功响应分支直接 `response.bytes()` 全量读入，缺少体积上限，可能被超大响应拖垮 worker 内存。
+
+修复：
+- 文件：`crates/law-eye-core/src/report/service.rs`
+  - `next_report_number` 签名增加 `tenant_id`，锁键从 `date_part` 升级为 `tenant_id + date_part`。
+  - `MAX` 序号查询增加 `tenant_id = $2` 过滤，确保“同租户同日期”独立序列。
+  - `create_report` 调用点传入 `tenant_id`。
+- 文件：`crates/law-eye-crawler/src/rss.rs`
+  - 新增 `MAX_RSS_RESPONSE_BYTES=10MB`。
+  - 成功响应先检查 `content_length`，超限立即失败。
+  - 读取方式改为 `bytes_stream()` 分块累加，超限即时中断，避免无上限内存增长。
+  - 增加边界单测：`content_length_limit_check_works`、`chunk_append_limit_check_works`。
+
+验证证据（无 mock，本机真实链路）：
+- `cargo test -p law-eye-core --lib -- --nocapture` ✅（24 passed）
+- `cargo test -p law-eye-crawler -- --nocapture` ✅（163+14+14+6 passed，1 ignored）
+- `cargo check -p law-eye-api -p law-eye-worker -p law-eye-core -p law-eye-crawler -p law-eye-queue` ✅
+- `node tmp/core-e2e-local.mjs` ✅（`ok: true`）
+  - 爬虫：`total_articles_fetched=20`
+  - 知识图谱：`article_entities_inserted=20`
+  - 统计：`regional/industry/importance/overview` 全部成功
+  - 日报：`generate -> export(pdf) -> download(pdf)` 全链路成功，`status=200`

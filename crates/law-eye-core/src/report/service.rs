@@ -35,14 +35,16 @@ impl ReportService {
 
     async fn next_report_number(
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        tenant_id: Uuid,
         date_part: &str,
     ) -> Result<String> {
         let pattern = format!("RPT-{}-", date_part);
+        let lock_key = format!("{}:{}", tenant_id, pattern);
 
         // 获取事务级 advisory lock，防止并发创建时 COUNT/MAX 竞态
         // 使用 date_part 作为 lock key，同一天内的序号生成互斥
         sqlx::query("SELECT pg_advisory_xact_lock(hashtext($1))")
-            .bind(&pattern)
+            .bind(&lock_key)
             .execute(tx.as_mut())
             .await
             .map_err(|e| Error::Database(e.to_string()))?;
@@ -58,9 +60,11 @@ impl ReportService {
             )
             FROM reports
             WHERE report_number LIKE $1 || '%'
+              AND tenant_id = $2
             "#,
         )
         .bind(&pattern)
+        .bind(tenant_id)
         .fetch_one(tx.as_mut())
         .await
         .map_err(|e| Error::Database(e.to_string()))?;
@@ -180,7 +184,7 @@ impl ReportService {
                 Self::ensure_author_exists_in_tenant(tx, tenant_id, author_id).await?;
                 Self::ensure_template_is_active_in_tenant(tx, tenant_id, template_id).await?;
 
-                let report_number = Self::next_report_number(tx, &date_part).await?;
+                let report_number = Self::next_report_number(tx, tenant_id, &date_part).await?;
 
                 let report = sqlx::query_as::<_, Report>(
                     r#"
