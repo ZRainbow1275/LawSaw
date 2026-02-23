@@ -716,10 +716,6 @@ async function gotoWithAuth(
 
 		test("移动端抽屉导航：打开/关闭/跳转/锁滚动", async ({ browser }, testInfo) => {
 			if (!auth) throw new Error("E2E 登录态初始化失败（auth state missing）。");
-			test.skip(
-				true,
-				"当前环境移动端抽屉用例存在非业务关键竞态，先跳过以保障核心链路验证。",
-			);
 			const baseURL = testInfo.project.use.baseURL as string | undefined;
 			if (!baseURL) throw new Error("Playwright baseURL 未配置，无法运行移动端用例。");
 
@@ -778,7 +774,9 @@ async function gotoWithAuth(
 			);
 		}
 
-		const drawer = page.locator('aside[aria-label="主导航"]:visible');
+		const drawer = page.getByRole("dialog", {
+			name: /^(主导航|Primary navigation)$/,
+		});
 		await expect(drawer).toHaveCount(0);
 
 		const initialOverflow = await page.evaluate(() => document.body.style.overflow);

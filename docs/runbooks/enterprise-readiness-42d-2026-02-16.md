@@ -1007,3 +1007,26 @@ Validation
 
 Residual risks
 - 移动端抽屉 E2E 仍为显式 skip（非主链路阻断项），需在独立移动端环境补稳定性专项。
+
+## 2026-02-23 Round 35: 移动端抽屉 E2E 去跳过并实测通过
+
+Failure points
+- R35-WEB-001: 移动端抽屉测试历史上被 `skip`，缺少真实回归覆盖。
+- R35-WEB-002: 抽屉组件已切换为 `dialog`，测试仍定位 `aside`，导致真实 DOM 下误失败。
+
+Fixes
+- `apps/web/e2e/lawsaw.e2e.spec.ts`
+  - 取消 `移动端抽屉导航` 用例 `skip`，改为真实执行。
+  - 抽屉定位器从 `aside[aria-label="主导航"]` 更新为 `getByRole("dialog", { name: /主导航|Primary navigation/ })`。
+
+Validation
+- `pnpm -C apps/web exec playwright test --project=chromium --grep '移动端抽屉导航：打开/关闭/跳转/锁滚动'` ✅
+- `pnpm -C apps/web e2e` ✅（`6 passed`）
+- `pnpm -C apps/web test` ✅（typecheck/lint/unit 全通过）
+- `node tmp/core-e2e-local.mjs --base-url http://172.19.107.21:13001 --origin http://172.19.96.1:8850` ✅（`ok: true`，爬虫/知识图谱/统计/日报全链路真实通过）
+
+Evidence (real data path)
+- crawler fetched: `20`
+- knowledge backfill: `entities_upserted=12`, `article_entities_inserted=40`, `relations_upserted=1`
+- statistics coverage: regional/industry/importance `=1`
+- report pdf download: `status=200`, `content_type=application/pdf`
