@@ -978,3 +978,32 @@ Validation
 - core real-path E2E passed after gate hardening:
   - `tmp/core-e2e-r31.json`
   - key metrics: `crawler=20`, `embed=12`, `with_authority=20`, `with_issuer=20`, `pdf=200`
+
+## 2026-02-23 Round 34: Web E2E 稳定性收敛 + 四链路复核
+
+Failure points
+- R34-WEB-001: `会话失效（401）` 用例依赖页面按钮文案触发鉴权，文案/布局变化会导致超时。
+- R34-WEB-002: `403/5xx` 用例仅拦截 `**/api/v1/sources`，未覆盖 query 形态，出现“拦截未命中导致假通过/假失败”。
+- R34-WEB-003: `5xx` 用例恢复断言依赖固定 source name，串行全量执行时存在跨轮数据扰动。
+- R34-WEB-004: 登录提交流程第一策略（按钮点击）失败会直接中断，未降级到 `Enter/requestSubmit`。
+
+Fixes
+- `apps/web/e2e/lawsaw.e2e.spec.ts`
+  - 401 场景改为 `clearCookies` 后重新访问受保护路由（`page.goto("/sources")`）触发跳转与 `returnTo` 校验。
+  - 403/5xx 路由拦截改为 `**/api/v1/sources**`，并按 `pathname === "/api/v1/sources"` 精确过滤。
+  - 403 场景断言改为 ErrorState（`加载失败|Load failed`）+ 单次命中（不重试）验证。
+  - 5xx 场景改为“重试驱动 + 恢复轮询”模型，支持“列表恢复”与“空状态恢复”两种真实分支。
+  - 登录提交策略增加异常降级，某一策略失败不再中断后续策略。
+  - `expect.poll` 选项修正为 `intervals`，消除 typecheck 错误。
+
+Validation
+- `pnpm -C apps/web test` ✅
+- `pnpm -C apps/web e2e` ✅（`5 passed, 1 skipped`）
+- `node tmp/core-e2e-local.mjs --base-url http://172.19.107.21:13001 --origin http://172.19.96.1:8850` ✅（`ok: true`）
+  - crawler fetched: 20
+  - knowledge relation/entity backfill: passed
+  - statistics coverage: regional/industry/importance = 1
+  - report export/download pdf: 200
+
+Residual risks
+- 移动端抽屉 E2E 仍为显式 skip（非主链路阻断项），需在独立移动端环境补稳定性专项。

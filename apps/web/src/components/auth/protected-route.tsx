@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuth } from "@/hooks/use-auth";
 import { withLocalePath } from "@/lib/i18n";
 import { useLocale } from "@/lib/i18n-client";
 import { useAuthStore } from "@/stores/auth-store";
@@ -14,10 +15,22 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
 	const router = useRouter();
 	const locale = useLocale();
+	const { refreshSession } = useAuth();
 	const { isAuthenticated, isLoading } = useAuthStore();
 
 	useEffect(() => {
-		if (!isLoading && !isAuthenticated) {
+		if (isLoading || isAuthenticated) return;
+
+		let cancelled = false;
+		void (async () => {
+			// Recover from in-memory auth store resets on hard reload/navigation:
+			// re-validate cookie session before redirecting to login.
+			await refreshSession();
+			if (cancelled) return;
+
+			const current = useAuthStore.getState();
+			if (current.isAuthenticated) return;
+
 			const pathname = window.location.pathname || "/";
 			const search = window.location.search || "";
 			const returnTo = `${pathname}${search}`;
@@ -27,8 +40,12 @@ export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
 					`/login?returnTo=${encodeURIComponent(returnTo)}`,
 				),
 			);
-		}
-	}, [isLoading, isAuthenticated, locale, router]);
+		})();
+
+		return () => {
+			cancelled = true;
+		};
+	}, [isLoading, isAuthenticated, locale, router, refreshSession]);
 
 	if (isLoading) {
 		return (

@@ -22,10 +22,12 @@ function normalizeLoopbackBaseUrl(baseUrl: string): string {
 	const cleaned = stripTrailingSlash(baseUrl);
 	if (typeof window === "undefined") return cleaned;
 	const currentHost = window.location.hostname;
-	if (!LOOPBACK_HOSTS.has(currentHost)) return cleaned;
 
 	try {
 		const parsed = new URL(cleaned);
+		// In local/WSL/Windows hybrid dev, app may be visited via LAN/bridge IP
+		// while env still points to localhost. Force API host to current page host
+		// to keep cookie scope/session origin consistent.
 		if (!LOOPBACK_HOSTS.has(parsed.hostname)) return cleaned;
 		parsed.hostname = currentHost;
 		return stripTrailingSlash(parsed.toString());
@@ -62,6 +64,8 @@ export type ApiRetryOptions = {
 export type ApiRequestInit = Omit<RequestInit, "headers"> & {
 	headers?: HeadersInit;
 	retry?: ApiRetryOptions | false;
+	// Skip global error hook for request-scoped flows (e.g. bootstrap auth probe).
+	skipGlobalErrorHandler?: boolean;
 	// Only applies to retryable methods (GET/HEAD/OPTIONS).
 	// Defaults to true unless a custom signal is provided.
 	dedupe?: boolean;
@@ -463,7 +467,12 @@ export class ApiClient {
 		options: ApiRequestInit = {},
 		validate?: ResponseValidator<T>,
 	): Promise<T> {
-		const { retry, dedupe: _dedupe, ...fetchOptions } = options;
+		const {
+			retry,
+			dedupe: _dedupe,
+			skipGlobalErrorHandler = false,
+			...fetchOptions
+		} = options;
 		const method = (fetchOptions.method ?? "GET").toUpperCase();
 		const resolvedRetry = isRetryableMethod(method)
 			? resolvedRetryOptions(retry)
@@ -493,12 +502,16 @@ export class ApiClient {
 					}
 
 					if (!resolvedRetry || attempt >= resolvedRetry.retries) {
-						this.emitError(cause);
+						if (!skipGlobalErrorHandler) {
+							this.emitError(cause);
+						}
 						throw cause;
 					}
 
 					if (!isRetryableError(cause)) {
-						this.emitError(cause);
+						if (!skipGlobalErrorHandler) {
+							this.emitError(cause);
+						}
 						throw cause;
 					}
 

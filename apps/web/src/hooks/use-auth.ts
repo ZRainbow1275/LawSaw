@@ -76,6 +76,12 @@ export function useAuth() {
 		if (!(error instanceof ApiClientError)) return true;
 		return error.status === 0 || error.status >= 500;
 	}, []);
+	const isAuthFailure = useCallback(
+		(error: unknown): error is ApiClientError =>
+			error instanceof ApiClientError &&
+			(error.status === 401 || error.status === 403),
+		[],
+	);
 
 	const refreshAuthz = useCallback(
 		async (nextUser: User | null) => {
@@ -104,22 +110,71 @@ export function useAuth() {
 	);
 
 	const refreshSession = useCallback(async () => {
+		const startedUnauthenticated = !useAuthStore.getState().isAuthenticated;
+		const loadSession = () =>
+			apiClient.get("/api/v1/auth/me", assertAuthResponse, {
+				dedupe: false,
+				skipGlobalErrorHandler: true,
+			});
 		setLoading(true);
 		try {
-			const response = await apiClient.get(
-				"/api/v1/auth/me",
-				assertAuthResponse,
-			);
+			const response = await loadSession();
 			setUser(response.user);
 			await refreshAuthz(response.user);
 		} catch (err) {
 			if (shouldReportError(err)) {
 				reportClientError(err, { source: "auth.refreshSession" });
 			}
+			const currentAuthState = useAuthStore.getState();
+			// Ignore stale bootstrap auth failures that arrive after a successful interactive login.
+			if (startedUnauthenticated && currentAuthState.isAuthenticated) {
+				setLoading(false);
+				return;
+			}
+
+			// Preserve the current session for transient failures (timeout/network/5xx/aborted).
+			// Only explicit auth failures should clear local auth state.
+			if (!isAuthFailure(err)) {
+				setLoading(false);
+				return;
+			}
+
+			// In hybrid Windows/WSL runtime, auth cookie propagation can lag a few hundred ms.
+			// Retry short-lived 401/403 spikes before deciding the session is truly invalid.
+			if (startedUnauthenticated) {
+				for (const delayMs of [150, 350, 700]) {
+					await new Promise((resolve) => setTimeout(resolve, delayMs));
+					try {
+						const retried = await loadSession();
+						setUser(retried.user);
+						await refreshAuthz(retried.user);
+						return;
+					} catch (retryErr) {
+						if (shouldReportError(retryErr)) {
+							reportClientError(retryErr, {
+								source: "auth.refreshSession.retry",
+								extra: { delayMs },
+							});
+						}
+						if (!isAuthFailure(retryErr)) {
+							setLoading(false);
+							return;
+						}
+					}
+				}
+			}
+
 			setUser(null);
 			setAuthz(null);
 		}
-	}, [setUser, setAuthz, setLoading, refreshAuthz, shouldReportError]);
+	}, [
+		setUser,
+		setAuthz,
+		setLoading,
+		refreshAuthz,
+		shouldReportError,
+		isAuthFailure,
+	]);
 
 	const login = useCallback(
 		async (credentials: LoginCredentials) => {

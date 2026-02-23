@@ -8,11 +8,12 @@ import {
 	t,
 	withLocalePath,
 } from "@/lib/i18n";
+import { assertAuthResponse } from "@/lib/api/types";
 import { reportClientError } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 import { useToastStore } from "@/stores/toast-store";
 import { useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
 	type ReactNode,
 	useCallback,
@@ -40,12 +41,14 @@ type ConflictInfo = {
 export function AuthProvider({ children }: AuthProviderProps) {
 	const { refreshSession } = useAuth();
 	const router = useRouter();
+	const pathname = usePathname();
 	const queryClient = useQueryClient();
 	const [conflictInfo, setConflictInfo] = useState<ConflictInfo | null>(null);
 	const lastUnauthorizedAt = useRef(0);
 	const lastForbiddenAt = useRef(0);
 	const lastConflictAt = useRef(0);
 	const lastNetworkErrorAt = useRef(0);
+	const unauthorizedRecheckInFlight = useRef(false);
 
 	const closeConflictModal = useCallback(() => {
 		setConflictInfo(null);
@@ -143,9 +146,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
 				if (now - lastUnauthorizedAt.current < COOLDOWN_MS) return;
 				lastUnauthorizedAt.current = now;
 
-				// 401 = session expired / unauthenticated: clear local state to avoid a stale UI.
-				useAuthStore.getState().logout();
-
 				// Avoid loops/toast noise for login/register routes (401 can be expected there).
 				if (
 					normalizedPathname === "/login" ||
@@ -153,18 +153,44 @@ export function AuthProvider({ children }: AuthProviderProps) {
 				)
 					return;
 
-				useToastStore.getState().addToast({
-					type: "warning",
-					title: t(locale, "Session expired"),
-					description: t(locale, "Please sign in again to continue."),
-				});
+				if (unauthorizedRecheckInFlight.current) return;
+				unauthorizedRecheckInFlight.current = true;
+				void (async () => {
+					try {
+						try {
+							// Re-check session once before forcing logout to avoid false 401
+							// during navigation/bootstrap races.
+							await apiClient.get("/api/v1/auth/me", assertAuthResponse, {
+								dedupe: false,
+								skipGlobalErrorHandler: true,
+							});
+							return;
+						} catch (recheckError) {
+							const recheckLooksUnauthenticated =
+								recheckError instanceof ApiClientError &&
+								(recheckError.status === 401 || recheckError.status === 403);
+							if (!recheckLooksUnauthenticated) {
+								return;
+							}
+						}
 
-				router.replace(
-					withLocalePath(
-						locale,
-						`/login?returnTo=${encodeURIComponent(returnTo)}`,
-					),
-				);
+						useAuthStore.getState().logout();
+						useToastStore.getState().addToast({
+							type: "warning",
+							title: t(locale, "Session expired"),
+							description: t(locale, "Please sign in again to continue."),
+						});
+
+						router.replace(
+							withLocalePath(
+								locale,
+								`/login?returnTo=${encodeURIComponent(returnTo)}`,
+							),
+						);
+					} finally {
+						unauthorizedRecheckInFlight.current = false;
+					}
+				})();
 				return;
 			}
 
@@ -278,16 +304,49 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			});
 		}
 
-		refreshSession();
 		return () => {
 			window.removeEventListener("error", onError);
 			window.removeEventListener("unhandledrejection", onUnhandledRejection);
 			apiClient.setErrorHandler(null);
 		};
-	}, [refreshSession, router]);
+	}, [router]);
 
-	const pathname =
-		typeof window !== "undefined" ? window.location.pathname : "/";
+	useEffect(() => {
+		const normalizedPathname = stripLocalePrefix(pathname || "/");
+		const isAuthPage =
+			normalizedPathname === "/login" || normalizedPathname === "/register";
+
+		if (isAuthPage && !useAuthStore.getState().isAuthenticated) {
+			// Login/register pages must avoid racing unauthenticated /auth/me probes
+			// with interactive sign-in.
+			useAuthStore.getState().setLoading(false);
+			return;
+		}
+
+		void refreshSession();
+	}, [pathname, refreshSession]);
+
+	useEffect(() => {
+		if (process.env.NODE_ENV === "production") return;
+		const debugWindow = window as unknown as {
+			__LAW_EYE_AUTH_STORE__?: { isLoading: boolean; isAuthenticated: boolean };
+		};
+		const snapshot = useAuthStore.getState();
+		debugWindow.__LAW_EYE_AUTH_STORE__ = {
+			isLoading: snapshot.isLoading,
+			isAuthenticated: snapshot.isAuthenticated,
+		};
+		const unsubscribe = useAuthStore.subscribe((state) => {
+			debugWindow.__LAW_EYE_AUTH_STORE__ = {
+				isLoading: state.isLoading,
+				isAuthenticated: state.isAuthenticated,
+			};
+		});
+		return () => {
+			unsubscribe();
+		};
+	}, []);
+
 	const locale = localeFromPathname(pathname);
 
 	return (

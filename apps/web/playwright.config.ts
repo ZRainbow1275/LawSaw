@@ -22,10 +22,31 @@ function loadBaseUrlFromRuntimeFile(): string | null {
 	return null;
 }
 
+function resolveSystemChromiumExecutable(): string | null {
+	const candidates = [
+		"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+		"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+		"C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+		"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+	];
+	for (const candidate of candidates) {
+		try {
+			if (fs.existsSync(candidate)) {
+				return candidate;
+			}
+		} catch {
+			// ignore filesystem errors and continue probing
+		}
+	}
+	return null;
+}
+
 const baseURL =
 	process.env.E2E_BASE_URL?.trim() ||
 	loadBaseUrlFromRuntimeFile() ||
 	"http://127.0.0.1:8849";
+
+const systemChromiumExecutable = resolveSystemChromiumExecutable();
 
 export default defineConfig({
 	testDir: "./e2e",
@@ -43,13 +64,22 @@ export default defineConfig({
 		locale: "zh-CN",
 		trace: "on-first-retry",
 		screenshot: "only-on-failure",
-		video: "retain-on-failure",
+		video: process.env.PLAYWRIGHT_VIDEO === "1" ? "retain-on-failure" : "off",
 	},
 	outputDir: "test-results",
 	projects: [
 		{
 			name: "chromium",
-			use: { ...devices["Desktop Chrome"] },
+			use: {
+				...devices["Desktop Chrome"],
+				...(systemChromiumExecutable
+					? {
+							launchOptions: {
+								executablePath: systemChromiumExecutable,
+							},
+						}
+					: {}),
+			},
 		},
 	],
 });

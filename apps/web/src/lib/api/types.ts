@@ -114,7 +114,7 @@ export interface User {
 	version?: number;
 	// Returned by some endpoints (e.g. `/api/v1/users/*`). `/api/v1/auth/*` may omit it.
 	last_login?: string | null;
-	created_at?: string;
+	created_at?: string | null;
 }
 
 export interface AuthResponse {
@@ -647,7 +647,9 @@ export function assertUser(
 	);
 
 	const createdAt = getOptional(value, "created_at");
-	assertOptional(createdAt, `${path}.created_at`, assertString);
+	assertOptional(createdAt, `${path}.created_at`, (v, p) =>
+		assertNullable(v, p, assertString),
+	);
 }
 
 export function assertUsersListResponse(

@@ -29,17 +29,64 @@ function stripTrailingSlash(value) {
   return value.endsWith("/") ? value.slice(0, -1) : value;
 }
 
+function normalizeHost(value) {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  if (!trimmed) return "";
+  const normalized = stripTrailingSlash(trimmed);
+
+  // Accept both host strings and full URL env values.
+  const parseCandidate =
+    normalized.startsWith("http://") || normalized.startsWith("https://")
+      ? normalized
+      : `http://${normalized}`;
+  try {
+    const parsed = new URL(parseCandidate);
+    return parsed.host;
+  } catch {
+    return normalized;
+  }
+}
+
 const apiProxyTargetRaw = process.env.LAW_EYE_API_PROXY_TARGET;
 const apiProxyTarget =
   apiProxyTargetRaw && apiProxyTargetRaw.trim().length > 0
     ? stripTrailingSlash(apiProxyTargetRaw.trim())
     : null;
+const devPortRaw = process.env.WEB_PORT ?? process.env.PORT ?? "";
+const devPort = /^\d+$/.test(devPortRaw) ? devPortRaw : "";
+const devHosts = [
+  "127.0.0.1",
+  "localhost",
+  process.env.LAW_EYE_WINDOWS_HOST_IP,
+  process.env.WINDOWS_HOST_IP,
+  process.env.LAW_EYE_WSL_HOST_IP,
+]
+  .map((value) => (typeof value === "string" ? value.trim() : ""))
+  .filter((value) => value.length > 0);
+const allowedDevOrigins = Array.from(
+  new Set(
+    devHosts
+      .flatMap((hostValue) => {
+        const host = normalizeHost(hostValue);
+        if (!host) return [];
+
+        const [hostname, maybePort] = host.split(":");
+        const withHostOnly = hostname || host;
+        const withConfiguredPort =
+          devPort && withHostOnly ? `${withHostOnly}:${devPort}` : "";
+        const withOriginalPort = maybePort ? `${withHostOnly}:${maybePort}` : "";
+        return [withHostOnly, withOriginalPort, withConfiguredPort].filter(
+          (origin) => origin.length > 0,
+        );
+      }),
+  ),
+);
 
 const nextConfig = {
   reactStrictMode: true,
   // Next dev: allow accessing the dev server via 127.0.0.1 without cross-origin warnings.
   // https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
-  allowedDevOrigins: ["127.0.0.1", "localhost"],
+  allowedDevOrigins,
   experimental: {
     isolatedDevBuild: false,
   },

@@ -507,8 +507,8 @@ if [[ -n "${API_PORT:-}" ]] && ! port_free_wsl "${API_PORT}"; then
   unset API_PORT
 fi
 if [[ -n "${WEB_PORT:-}" ]]; then
-  if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]] && ! port_free_windows "${WEB_PORT}"; then
-    echo "WARN: WEB_PORT=${WEB_PORT} is not available on Windows; auto-selecting a free port." >&2
+  if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]] && ! port_free "${WEB_PORT}"; then
+    echo "WARN: WEB_PORT=${WEB_PORT} is not available on Windows/WSL; auto-selecting a free port." >&2
     unset WEB_PORT
   elif [[ "$WEB_RUNS_ON_WINDOWS" -eq 0 ]] && ! port_free_wsl "${WEB_PORT}"; then
     echo "WARN: WEB_PORT=${WEB_PORT} is not available in WSL; auto-selecting a free port." >&2
@@ -537,9 +537,9 @@ REDIS_PORT="${REDIS_PORT:-$(choose_port_range_wsl redis 16380 16450 2>/dev/null 
 API_PORT="${API_PORT:-$(choose_port_range_wsl api 13000 13150 2>/dev/null || choose_port_wsl api 3001 3003 3005)}"
 WEB_PORT="${WEB_PORT:-$(
   if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
-    choose_port_range_windows web 18849 18950 2>/dev/null || choose_port_windows web 8849 8850 8851
+    choose_port_range web 8849 8899 2>/dev/null || choose_port_range web 18849 18950 2>/dev/null || choose_port web 8849 8850 8851
   else
-    choose_port_range_wsl web 18849 18950 2>/dev/null || choose_port_wsl web 8849 8850 8851
+    choose_port_range_wsl web 8849 8899 2>/dev/null || choose_port_range_wsl web 18849 18950 2>/dev/null || choose_port_wsl web 8849 8850 8851
   fi
 )}"
 MINIO_API_PORT="${MINIO_API_PORT:-$(choose_port_range_wsl minio-api 19000 19100 2>/dev/null || choose_port_wsl minio-api 9000)}"
@@ -559,8 +559,8 @@ if ! port_free_wsl "$API_PORT"; then
   echo "ERROR: API_PORT=$API_PORT is not available" >&2
   exit 1
 fi
-if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]] && ! port_free_windows "$WEB_PORT"; then
-  echo "ERROR: WEB_PORT=$WEB_PORT is not available on Windows" >&2
+if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]] && ! port_free "$WEB_PORT"; then
+  echo "ERROR: WEB_PORT=$WEB_PORT is not available on Windows/WSL" >&2
   exit 1
 fi
 if [[ "$WEB_RUNS_ON_WINDOWS" -eq 0 ]] && ! port_free_wsl "$WEB_PORT"; then
@@ -958,6 +958,9 @@ NEXT_PUBLIC_API_URL="http://localhost:${WEB_PORT}"
 if [[ -z "$WINDOWS_HOST_IP" ]]; then
   WINDOWS_HOST_IP="$(get_windows_host_ip)"
 fi
+if [[ -n "$WINDOWS_HOST_IP" ]]; then
+  export LAW_EYE_WINDOWS_HOST_IP="$WINDOWS_HOST_IP"
+fi
 
 export LAW_EYE__DATABASE__URL="$DB_URL"
 export LAW_EYE__REDIS__URL="$REDIS_URL"
@@ -1011,7 +1014,9 @@ fi
 # Keep limits configurable, but use generous defaults in this local stack runner.
 export LAW_EYE__RATE_LIMIT__LOGIN_MAX_REQUESTS="${LAW_EYE__RATE_LIMIT__LOGIN_MAX_REQUESTS:-200}"
 export LAW_EYE__RATE_LIMIT__LOGIN_WINDOW_SECONDS="${LAW_EYE__RATE_LIMIT__LOGIN_WINDOW_SECONDS:-60}"
-export LAW_EYE__RATE_LIMIT__REGISTER_MAX_REQUESTS="${LAW_EYE__RATE_LIMIT__REGISTER_MAX_REQUESTS:-50}"
+# Local E2E can create many short-lived tenants/users across retries; keep
+# register limit high to avoid false negatives caused by rate-limit backoff.
+export LAW_EYE__RATE_LIMIT__REGISTER_MAX_REQUESTS="${LAW_EYE__RATE_LIMIT__REGISTER_MAX_REQUESTS:-500}"
 export LAW_EYE__RATE_LIMIT__REGISTER_WINDOW_SECONDS="${LAW_EYE__RATE_LIMIT__REGISTER_WINDOW_SECONDS:-3600}"
 export LAW_EYE__SECURITY__ALLOW_INTERNAL_SOURCE_URLS="${LAW_EYE__SECURITY__ALLOW_INTERNAL_SOURCE_URLS:-true}"
 # Keep local verification deterministic: disable periodic scheduler by default.
@@ -1099,6 +1104,14 @@ windows_listen_pid() {
   powershell.exe -NoProfile -Command "Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess" 2>/dev/null | tr -d '\r' | tr -d '\n' || true
 }
 
+windows_pid_cmdline() {
+  local pid="$1"
+  if [[ -z "$pid" ]] || ! command -v powershell.exe >/dev/null 2>&1; then
+    return 1
+  fi
+  powershell.exe -NoProfile -Command "(Get-CimInstance Win32_Process -Filter \"ProcessId=$pid\" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty CommandLine)" 2>/dev/null | tr -d '\r' | tr -d '\n' || true
+}
+
 start_web_windows() {
   local name="web"
   local pid_file="$PID_DIR/$name.pid"
@@ -1128,6 +1141,31 @@ start_web_windows() {
 
   local web_workdir_win
   web_workdir_win="$(to_windows_path "$ROOT/apps/web")"
+  local listening_pid
+  listening_pid="$(windows_listen_pid "$WEB_PORT")"
+  if [[ -n "$listening_pid" ]]; then
+    local listening_cmdline
+    listening_cmdline="$(windows_pid_cmdline "$listening_pid")"
+    local listening_cmdline_lc="${listening_cmdline,,}"
+    local web_workdir_win_lc="${web_workdir_win,,}"
+
+    if [[ -n "$listening_cmdline_lc" ]] && [[ "$listening_cmdline_lc" == *"$web_workdir_win_lc"* ]]; then
+      echo "WARN: reclaiming web port ${WEB_PORT} from stale process pid=${listening_pid}" >&2
+      cmd.exe /c "taskkill /PID ${listening_pid} /T /F >nul 2>&1" >/dev/null 2>&1 || true
+      for _ in $(seq 1 30); do
+        local current_owner
+        current_owner="$(windows_listen_pid "$WEB_PORT")"
+        if [[ -z "$current_owner" || "$current_owner" != "$listening_pid" ]]; then
+          break
+        fi
+        sleep 0.2
+      done
+    else
+      echo "ERROR: WEB_PORT=${WEB_PORT} is already used by pid=${listening_pid}, cmd='${listening_cmdline:-<unknown>}'" >&2
+      return 1
+    fi
+  fi
+
   local log_file_win
   log_file_win="$(to_windows_path "$log_file")"
   local err_file_win
@@ -1137,11 +1175,22 @@ start_web_windows() {
   local cmd_file_win
   cmd_file_win="$(to_windows_path "$cmd_file")"
 
-  python3 - "$cmd_file" "$web_workdir_win" "$WEB_PORT" "$NEXT_PUBLIC_API_URL" "$LAW_EYE_API_PROXY_TARGET" "$log_file_win" "$err_file_win" "$WEB_MODE" <<'PY'
+  python3 - "$cmd_file" "$web_workdir_win" "$WEB_PORT" "$NEXT_PUBLIC_API_URL" "$LAW_EYE_API_PROXY_TARGET" "$log_file_win" "$err_file_win" "$WEB_MODE" "${WINDOWS_HOST_IP:-}" "${WSL_HOST_IP:-}" <<'PY'
 import pathlib
 import sys
 
-path, workdir, web_port, web_origin, proxy_target, out_log, err_log, web_mode = sys.argv[1:]
+(
+    path,
+    workdir,
+    web_port,
+    web_origin,
+    proxy_target,
+    out_log,
+    err_log,
+    web_mode,
+    windows_host_ip,
+    wsl_host_ip,
+) = sys.argv[1:]
 
 web_cmd = "pnpm dev"
 extra_lines = []
@@ -1161,6 +1210,9 @@ set WEB_PORT={web_port}
 set PORT={web_port}
 set NEXT_PUBLIC_API_URL={web_origin}
 set LAW_EYE_API_PROXY_TARGET={proxy_target}
+set LAW_EYE_WINDOWS_HOST_IP={windows_host_ip}
+set WINDOWS_HOST_IP={windows_host_ip}
+set LAW_EYE_WSL_HOST_IP={wsl_host_ip}
 set NEXT_TELEMETRY_DISABLED=1
 {extra_block}
 call {web_cmd} 1>> "{out_log}" 2>> "{err_log}"
@@ -1417,17 +1469,22 @@ if ! wait_for_worker_health 90; then
   exit 1
 fi
 
-if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]] && [[ "${LAW_EYE_ALLOW_WSL_IP_PROXY:-0}" == "1" ]]; then
+ALLOW_WSL_IP_PROXY="${LAW_EYE_ALLOW_WSL_IP_PROXY:-1}"
+if [[ "$WEB_RUNS_ON_WINDOWS" -eq 1 ]]; then
   if ! powershell.exe -NoProfile -Command "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:${API_PORT}/health).StatusCode } catch { exit 1 }" >/dev/null 2>&1; then
-    if [[ -z "$WSL_HOST_IP" ]]; then
-      WSL_HOST_IP="$(get_primary_ipv4)"
+    if [[ "$ALLOW_WSL_IP_PROXY" != "1" ]]; then
+      echo "WARN: Windows cannot reach API via localhost and LAW_EYE_ALLOW_WSL_IP_PROXY=$ALLOW_WSL_IP_PROXY; keeping LAW_EYE_API_PROXY_TARGET=$LAW_EYE_API_PROXY_TARGET (web API routes may fail)." >&2
+    else
+      if [[ -z "$WSL_HOST_IP" ]]; then
+        WSL_HOST_IP="$(get_primary_ipv4)"
+      fi
+      if [[ -z "$WSL_HOST_IP" ]]; then
+        echo "ERROR: Windows cannot reach API via localhost and failed to detect WSL IPv4. Set LAW_EYE_WSL_HOST_IP manually." >&2
+        exit 1
+      fi
+      LAW_EYE_API_PROXY_TARGET="http://${WSL_HOST_IP}:${API_PORT}"
+      echo "INFO: Windows cannot reach API via localhost. Using LAW_EYE_API_PROXY_TARGET=$LAW_EYE_API_PROXY_TARGET for Next rewrites." >&2
     fi
-    if [[ -z "$WSL_HOST_IP" ]]; then
-      echo "ERROR: Windows cannot reach API via localhost and failed to detect WSL IPv4. Set LAW_EYE_WSL_HOST_IP manually." >&2
-      exit 1
-    fi
-    LAW_EYE_API_PROXY_TARGET="http://${WSL_HOST_IP}:${API_PORT}"
-    echo "INFO: Windows cannot reach API via localhost. Using LAW_EYE_API_PROXY_TARGET=$LAW_EYE_API_PROXY_TARGET for Next rewrites." >&2
   fi
 fi
 
@@ -1443,7 +1500,10 @@ if [[ "$WEB_ENABLED" -eq 1 ]]; then
       (cd "$ROOT/apps/web" && env NODE_ENV=production pnpm build >"$LOG_DIR/web.build.log" 2>&1)
       start_bg web "$ROOT/apps/web" env NODE_ENV=production node ./node_modules/next/dist/bin/next start -p "$WEB_PORT" -H 0.0.0.0
     else
-      start_bg web "$ROOT/apps/web" env WEB_PORT="$WEB_PORT" PORT="$WEB_PORT" pnpm dev
+      rm -f "$ROOT/apps/web/.next/lock"
+      # Use direct node entrypoint to avoid pnpm argument forwarding edge-cases
+      # under Windows-bridged runtimes.
+      start_bg web "$ROOT/apps/web" node ./scripts/next-dev.mjs -p "$WEB_PORT" -H 0.0.0.0
     fi
   fi
 
