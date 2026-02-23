@@ -59,6 +59,33 @@ if [ -n "${LAW_EYE__DATABASE__URL:-}" ]; then
       exit 1
     fi
     echo "[verify] ok: feedback encryption posture"
+
+    if [ -x scripts/enterprise/audit-report.sh ]; then
+      audit_tmp_dir="${LAW_EYE_AUDIT_REPORT_DIR:-/tmp/law-eye-post-deploy-audit}"
+      mkdir -p "${audit_tmp_dir}"
+      echo "[verify] generating audit report sample"
+      LAW_EYE_AUDIT_REPORT_DIR="${audit_tmp_dir}" \
+      LAW_EYE_AUDIT_LOG_RETENTION_DAYS="${LAW_EYE_AUDIT_LOG_RETENTION_DAYS:-999999}" \
+      LAW_EYE__DATABASE__URL="${LAW_EYE__DATABASE__URL}" \
+      sh scripts/enterprise/audit-report.sh >/dev/null
+
+      latest_audit_report="$(ls -1t "${audit_tmp_dir}"/audit-report-*.json 2>/dev/null | head -n 1 || true)"
+      if [ -z "${latest_audit_report}" ] || [ ! -s "${latest_audit_report}" ]; then
+        echo "[verify] failed: audit report file missing or empty" >&2
+        exit 1
+      fi
+      if ! grep -F "\"permission_changes\"" "${latest_audit_report}" >/dev/null 2>&1; then
+        echo "[verify] failed: audit report missing permission_changes section" >&2
+        exit 1
+      fi
+      if ! grep -F "\"top_actors\"" "${latest_audit_report}" >/dev/null 2>&1; then
+        echo "[verify] failed: audit report missing permission_changes.top_actors" >&2
+        exit 1
+      fi
+      echo "[verify] ok: audit report schema (permission changes) -> ${latest_audit_report}"
+    else
+      echo "[verify] skip: scripts/enterprise/audit-report.sh is not executable"
+    fi
   else
     echo "[verify] skip: psql not found, database regression checks were not executed"
   fi

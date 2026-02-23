@@ -1159,3 +1159,24 @@ Validation (real DB)
 - `LAW_EYE__DATABASE__URL=postgres://... sh scripts/enterprise/audit-report.sh` ✅
   - 产出文件：`/tmp/law-eye-audit-test/audit-report-20260223T143616Z.json`
   - 关键字段：`permission_changes.summary/top_actors/recent` 均存在 ✅
+
+## 2026-02-23 Round 41: post-deploy 门禁增强（审计周报 schema 校验）
+
+Failure points
+- R41-OPS-001: `scripts/enterprise/post-deploy-verify.sh` 仅校验健康、FK、租户配置版本、feedback 加密姿态，未覆盖审计周报链路可用性，导致“权限变更审计”能力可能在部署后静默退化。
+
+Fixes
+- `scripts/enterprise/post-deploy-verify.sh`
+  - 在 DB 校验路径中新增审计周报门禁：
+    - 执行 `scripts/enterprise/audit-report.sh` 生成样本报告（默认将 `LAW_EYE_AUDIT_LOG_RETENTION_DAYS` 提升为 `999999`，避免校验过程误触发历史数据清理）。
+    - 校验最新报告文件存在且非空。
+    - 校验 JSON 必含 `permission_changes` 与 `permission_changes.top_actors` 字段。
+
+Validation (real deployment-like local stack)
+- `sh -n scripts/enterprise/post-deploy-verify.sh` ✅
+- `LAW_EYE_BASE_URL=http://172.19.107.21:13003 LAW_EYE__DATABASE__URL=postgres://... sh scripts/enterprise/post-deploy-verify.sh` ✅
+  - 输出包含：
+    - `ok: reports tenant FK regression`
+    - `ok: tenant_configs versioning schema`
+    - `ok: feedback encryption posture`
+    - `ok: audit report schema (permission changes)`
