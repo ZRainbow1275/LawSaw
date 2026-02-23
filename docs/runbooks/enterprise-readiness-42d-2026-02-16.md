@@ -1197,3 +1197,18 @@ Validation
 - `sh -n scripts/enterprise/audit-report.sh` ✅
 - `sh -n scripts/enterprise/post-deploy-verify.sh` ✅
 - `LAW_EYE_BASE_URL=http://172.19.107.21:13003 LAW_EYE__DATABASE__URL=postgres://... sh scripts/enterprise/post-deploy-verify.sh` ✅
+
+## 2026-02-23 Round 43: post-deploy 增补 Worker 健康门禁
+
+Failure points
+- R43-OPS-001: 发布后验收脚本仅覆盖 API 健康，未覆盖 Worker 健康链路，导致队列消费侧故障可能在验收阶段漏检。
+
+Fixes
+- `scripts/enterprise/post-deploy-verify.sh`
+  - 新增可选 Worker 健康校验：
+    - 当设置 `LAW_EYE_WORKER_HEALTH_URL` 时，强制检查 `${LAW_EYE_WORKER_HEALTH_URL}/health`。
+    - 当额外设置 `LAW_EYE_WORKER_METRICS_TOKEN` 时，校验 `${LAW_EYE_WORKER_HEALTH_URL}/metrics` 带 token 可访问。
+
+Validation
+- `sh -n scripts/enterprise/post-deploy-verify.sh` ✅
+- `LAW_EYE_BASE_URL=http://172.19.107.21:13003 LAW_EYE_WORKER_HEALTH_URL=http://172.19.107.21:3002 LAW_EYE__DATABASE__URL=postgres://... sh scripts/enterprise/post-deploy-verify.sh` ✅

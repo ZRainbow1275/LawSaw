@@ -17,6 +17,21 @@ request_ok "${LAW_EYE_BASE_URL}/health"
 request_ok "${LAW_EYE_BASE_URL}/health/live"
 request_ok "${LAW_EYE_BASE_URL}/health/ready"
 
+if [ -n "${LAW_EYE_WORKER_HEALTH_URL:-}" ]; then
+  worker_base="${LAW_EYE_WORKER_HEALTH_URL%/}"
+  request_ok "${worker_base}/health"
+  if [ -n "${LAW_EYE_WORKER_METRICS_TOKEN:-}" ]; then
+    if curl -fsS --max-time 10 \
+      -H "Authorization: Bearer ${LAW_EYE_WORKER_METRICS_TOKEN}" \
+      "${worker_base}/metrics" >/dev/null; then
+      echo "[verify] ok: worker metrics endpoint authorized"
+    else
+      echo "[verify] failed: worker metrics endpoint with token" >&2
+      exit 1
+    fi
+  fi
+fi
+
 if [ -n "${LAW_EYE_METRICS_TOKEN:-}" ]; then
   if curl -fsS --max-time 10 \
     -H "Authorization: Bearer ${LAW_EYE_METRICS_TOKEN}" \
