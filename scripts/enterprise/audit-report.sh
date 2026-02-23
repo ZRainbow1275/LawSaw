@@ -6,6 +6,7 @@ set -eu
 OUT_DIR="${LAW_EYE_AUDIT_REPORT_DIR:-/var/reports/law-eye}"
 RETENTION_DAYS="${LAW_EYE_AUDIT_REPORT_RETENTION_DAYS:-90}"
 AUDIT_LOG_RETENTION_DAYS="${LAW_EYE_AUDIT_LOG_RETENTION_DAYS:-365}"
+SKIP_RETENTION_PURGE="${LAW_EYE_AUDIT_REPORT_SKIP_RETENTION_PURGE:-0}"
 TIMESTAMP="$(date -u +'%Y%m%dT%H%M%SZ')"
 OUT_FILE="${OUT_DIR}/audit-report-${TIMESTAMP}.json"
 
@@ -131,12 +132,20 @@ esac
 case "$AUDIT_LOG_RETENTION_DAYS" in
   ''|*[!0-9]*) AUDIT_LOG_RETENTION_DAYS=365 ;;
 esac
+case "$SKIP_RETENTION_PURGE" in
+  1|true|TRUE|yes|YES) SKIP_RETENTION_PURGE=1 ;;
+  *) SKIP_RETENTION_PURGE=0 ;;
+esac
 
-find "$OUT_DIR" -type f -name 'audit-report-*.json' -mtime +"$RETENTION_DAYS" -print -delete || true
+if [ "$SKIP_RETENTION_PURGE" = "1" ]; then
+  echo "[audit-report] skip retention purge (LAW_EYE_AUDIT_REPORT_SKIP_RETENTION_PURGE=1)"
+else
+  find "$OUT_DIR" -type f -name 'audit-report-*.json' -mtime +"$RETENTION_DAYS" -print -delete || true
 
-psql "$LAW_EYE__DATABASE__URL" -v ON_ERROR_STOP=1 -c "
+  psql "$LAW_EYE__DATABASE__URL" -v ON_ERROR_STOP=1 -c "
 DELETE FROM audit_logs
 WHERE created_at < NOW() - (${AUDIT_LOG_RETENTION_DAYS} || ' days')::interval;
 " >/dev/null
+fi
 
 echo "[audit-report] done"

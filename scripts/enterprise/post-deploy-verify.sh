@@ -66,6 +66,7 @@ if [ -n "${LAW_EYE__DATABASE__URL:-}" ]; then
       echo "[verify] generating audit report sample"
       LAW_EYE_AUDIT_REPORT_DIR="${audit_tmp_dir}" \
       LAW_EYE_AUDIT_LOG_RETENTION_DAYS="${LAW_EYE_AUDIT_LOG_RETENTION_DAYS:-999999}" \
+      LAW_EYE_AUDIT_REPORT_SKIP_RETENTION_PURGE=1 \
       LAW_EYE__DATABASE__URL="${LAW_EYE__DATABASE__URL}" \
       sh scripts/enterprise/audit-report.sh >/dev/null
 

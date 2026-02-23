@@ -1180,3 +1180,20 @@ Validation (real deployment-like local stack)
     - `ok: tenant_configs versioning schema`
     - `ok: feedback encryption posture`
     - `ok: audit report schema (permission changes)`
+
+## 2026-02-23 Round 42: 审计报告脚本副作用收敛（支持仅生成不清理）
+
+Failure points
+- R42-AUDIT-001: `scripts/enterprise/audit-report.sh` 在所有场景下都执行 retention 清理（历史报告文件 + `audit_logs` 删除），不适合用于发布后“只读校验”或诊断场景。
+
+Fixes
+- `scripts/enterprise/audit-report.sh`
+  - 新增开关 `LAW_EYE_AUDIT_REPORT_SKIP_RETENTION_PURGE`（支持 `1/true/yes`）。
+  - 开关开启时仅生成报告，不执行任何清理动作。
+- `scripts/enterprise/post-deploy-verify.sh`
+  - 触发审计报告样本生成时默认设置 `LAW_EYE_AUDIT_REPORT_SKIP_RETENTION_PURGE=1`，确保发布后验收无副作用。
+
+Validation
+- `sh -n scripts/enterprise/audit-report.sh` ✅
+- `sh -n scripts/enterprise/post-deploy-verify.sh` ✅
+- `LAW_EYE_BASE_URL=http://172.19.107.21:13003 LAW_EYE__DATABASE__URL=postgres://... sh scripts/enterprise/post-deploy-verify.sh` ✅
