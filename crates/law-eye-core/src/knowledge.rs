@@ -1,6 +1,6 @@
 use crate::tenant::with_tenant_tx;
 use law_eye_ai::{Embedder, EntityExtractor, ExtractedEntity, LlmGateway};
-use law_eye_common::{Error, Result};
+use law_eye_common::{normalize_vector_for_storage, Error, Result};
 use law_eye_db::Entity;
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -52,8 +52,22 @@ impl KnowledgeService {
             std::collections::HashMap::new();
 
         // Process entities with pre-computed embeddings
-        for (extracted, embedding) in extraction.entities.iter().zip(embeddings.iter()) {
-            let entity_id = self.upsert_entity(tenant_id, extracted, embedding).await?;
+        for (extracted, embedding) in extraction.entities.iter().zip(embeddings.into_iter()) {
+            let (normalized_embedding, normalization) = normalize_vector_for_storage(embedding);
+            if normalization.changed() {
+                warn!(
+                    %tenant_id,
+                    article_id = %article_id,
+                    entity_name = %extracted.name,
+                    source_dim = normalization.source_dim,
+                    target_dim = normalization.target_dim,
+                    "Entity embedding dimension mismatch detected; auto-normalized vector for storage"
+                );
+            }
+
+            let entity_id = self
+                .upsert_entity(tenant_id, extracted, &normalized_embedding)
+                .await?;
             self.link_article_entity(tenant_id, article_id, entity_id, extracted)
                 .await?;
 
@@ -146,8 +160,20 @@ impl KnowledgeService {
                     continue;
                 }
             };
+            let (normalized_embedding, normalization) = normalize_vector_for_storage(embedding);
+            if normalization.changed() {
+                warn!(
+                    %tenant_id,
+                    %entity_id,
+                    entity_name = %name,
+                    source_dim = normalization.source_dim,
+                    target_dim = normalization.target_dim,
+                    "Backfill entity embedding dimension mismatch detected; auto-normalized vector for storage"
+                );
+            }
 
             let affected = with_tenant_tx(&self.pool, tenant_id, |tx| {
+                let normalized_embedding = normalized_embedding.clone();
                 Box::pin(async move {
                     let res = sqlx::query(
                         r#"
@@ -159,7 +185,7 @@ impl KnowledgeService {
                         "#,
                     )
                     .bind(entity_id)
-                    .bind(&embedding)
+                    .bind(&normalized_embedding)
                     .execute(tx.as_mut())
                     .await
                     .map_err(|e| Error::Database(e.to_string()))?;
@@ -375,9 +401,19 @@ impl KnowledgeService {
                     .collect());
             }
         };
+        let (vector, normalization) = normalize_vector_for_storage(query_embedding.vector);
+        if normalization.changed() {
+            warn!(
+                %tenant_id,
+                query = query,
+                source_dim = normalization.source_dim,
+                target_dim = normalization.target_dim,
+                "Knowledge semantic search query embedding dimension mismatch; auto-normalized query vector"
+            );
+        }
 
         with_tenant_tx(&self.pool, tenant_id, |tx| {
-            let vector = query_embedding.vector.clone();
+            let vector = vector.clone();
             Box::pin(async move {
                 // Use pgvector cosine distance operator (<=>)
                 // Lower distance = more similar; convert to similarity score

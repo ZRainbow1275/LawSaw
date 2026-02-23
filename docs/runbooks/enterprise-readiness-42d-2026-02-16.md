@@ -1030,3 +1030,40 @@ Evidence (real data path)
 - knowledge backfill: `entities_upserted=12`, `article_entities_inserted=40`, `relations_upserted=1`
 - statistics coverage: regional/industry/importance `=1`
 - report pdf download: `status=200`, `content_type=application/pdf`
+
+## 2026-02-23 Round 36: 向量维度兼容修复 + AI 队列隔离（真实链路）
+
+Failure points
+- R36-AI-001: 使用 `BAAI/bge-m3`（1024 维）时，数据库 `vector(1536)` 列触发维度不一致，`Embed` 任务重复失败并重试，拖慢队列。
+  - 证据：worker 日志出现 `Embedding dimension mismatch ... expected 1536, got 1024`。
+- R36-KG-001: 知识图谱实体 embedding 回填链路在维度不一致时无法落库，`entities_with_embedding` 长时间为 0，`--assert-knowledge-embedding 1` 失败。
+- R36-QUEUE-001: Worker 主循环内串行处理 AI 队列，慢 AI 任务会阻塞 ingest/source_fetch，出现 `poll timeout: source_fetch`。
+
+Fixes
+- `crates/law-eye-common/src/embedding.rs`（新增）
+  - 新增向量存储归一化能力：`normalize_vector_for_storage(...)`，按 `LAW_EYE__AI__STORAGE_VECTOR_DIM`（默认 `1536`）自动补齐/截断。
+  - 新增 `VectorNormalization` 元信息，便于日志定位维度漂移。
+- `crates/law-eye-common/src/lib.rs`
+  - 导出存储维度归一化工具供 core/worker 复用。
+- `crates/law-eye-worker/src/main.rs`
+  - `replace_article_chunks(...)` 改为写库前自动归一化向量，不再因 1024/1536 差异直接报错退出。
+  - Worker 运行模型改进：AI 任务改为“受信号量控制的后台执行”，避免 AI 任务阻塞 ingest/report 主链路。
+  - 新增 `LAW_EYE_WORKER_AI_TASK_CONCURRENCY`（默认 `2`）以实现受控并发。
+- `crates/law-eye-core/src/knowledge.rs`
+  - 实体提取写库、实体 embedding 回填、语义检索查询向量统一接入归一化。
+- `crates/law-eye-core/src/rag.rs`
+  - RAG `search/hybrid/search_with_entities` 查询向量统一接入归一化，避免向量检索阶段维度报错。
+
+Validation (real data, no mock)
+- 编译检查
+  - `cargo check -p law-eye-common -p law-eye-core -p law-eye-worker` ✅
+- 四项核心真实链路（含 embedding 强断言）
+  - `node tmp/core-e2e-local.mjs --base-url http://172.19.107.21:13002 --origin http://172.19.96.1:8850 --assert-knowledge-embedding 1` ✅
+  - 关键结果：
+    - crawler fetched: `20`
+    - knowledge stats: `entities_with_embedding=12`
+    - statistics coverage: regional/industry/importance = `1`
+    - report pdf download: `status=200`, `content_type=application/pdf`
+- 前端回归（真实后端联动）
+  - `pnpm -C apps/web test` ✅
+  - `pnpm -C apps/web e2e` ✅（`6 passed`，完整关键用户流）

@@ -1,6 +1,6 @@
 use crate::tenant::with_tenant_tx;
 use law_eye_ai::{Embedder, LlmGateway};
-use law_eye_common::{Error, Result};
+use law_eye_common::{normalize_vector_for_storage, Error, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -54,7 +54,15 @@ impl RagService {
     ) -> Result<Vec<RagSearchResult>> {
         // Generate query embedding
         let embedding_result = self.embedder.embed(query).await?;
-        let query_vector = embedding_result.vector;
+        let (query_vector, normalization) = normalize_vector_for_storage(embedding_result.vector);
+        if normalization.changed() {
+            tracing::warn!(
+                %tenant_id,
+                source_dim = normalization.source_dim,
+                target_dim = normalization.target_dim,
+                "RAG query embedding dimension mismatch; auto-normalized query vector"
+            );
+        }
 
         // Search for similar chunks using pgvector
         let results = with_tenant_tx(&self.pool, tenant_id, |tx| {
@@ -196,7 +204,15 @@ impl RagService {
         limit: i64,
     ) -> Result<Vec<RagSearchResult>> {
         let embedding_result = self.embedder.embed(query).await?;
-        let query_vector = embedding_result.vector;
+        let (query_vector, normalization) = normalize_vector_for_storage(embedding_result.vector);
+        if normalization.changed() {
+            tracing::warn!(
+                %tenant_id,
+                source_dim = normalization.source_dim,
+                target_dim = normalization.target_dim,
+                "RAG hybrid search query embedding dimension mismatch; auto-normalized query vector"
+            );
+        }
 
         // Combine vector similarity with full-text search
         let results = with_tenant_tx(&self.pool, tenant_id, |tx| Box::pin(async move {
@@ -257,7 +273,15 @@ impl RagService {
         }
 
         let embedding_result = self.embedder.embed(query).await?;
-        let query_vector = embedding_result.vector;
+        let (query_vector, normalization) = normalize_vector_for_storage(embedding_result.vector);
+        if normalization.changed() {
+            tracing::warn!(
+                %tenant_id,
+                source_dim = normalization.source_dim,
+                target_dim = normalization.target_dim,
+                "RAG entity search query embedding dimension mismatch; auto-normalized query vector"
+            );
+        }
 
         // Boost results from articles that contain specified entities
         let results = with_tenant_tx(&self.pool, tenant_id, |tx| {

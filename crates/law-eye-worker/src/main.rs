@@ -14,7 +14,7 @@ use law_eye_ai::{
     SummaryResult, TagsResult,
 };
 use law_eye_common::egress::{validate_outbound_url, OutboundUrlPolicy};
-use law_eye_common::AppConfig;
+use law_eye_common::{normalize_vector_for_storage, AppConfig};
 use law_eye_core::{
     source::CrawlFetchStats, ArticleService, CrawlLogService, DomainEventInput, DomainEventService,
     KnowledgeService, ObjectService, ReportService, ReportTemplateService, SourceService,
@@ -42,6 +42,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::net::TcpListener;
 use tokio::signal;
+use tokio::sync::Semaphore;
 use tokio::time::{timeout, Duration, Instant};
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -779,6 +780,7 @@ struct Worker {
     allow_internal_webhook_urls: bool,
     scheduler_enabled: bool,
     dlq_replay_enabled: bool,
+    ai_task_semaphore: Arc<Semaphore>,
     worker_id: uuid::Uuid,
     shutdown: Arc<AtomicBool>,
     object_purge: Option<ObjectPurgeConfig>,
@@ -945,10 +947,13 @@ impl Worker {
         );
         let scheduler_enabled = env_bool_with_default("LAW_EYE_WORKER_SCHEDULER_ENABLED", true);
         let dlq_replay_enabled = env_bool_with_default("LAW_EYE_WORKER_DLQ_REPLAY_ENABLED", true);
+        let ai_task_concurrency =
+            env_i64_with_bounds("LAW_EYE_WORKER_AI_TASK_CONCURRENCY", 2, 1, 16) as usize;
         info!(
             scheduler_enabled,
             dlq_replay_enabled,
             incremental_seed_limit,
+            ai_task_concurrency,
             "worker source scheduler configuration loaded"
         );
 
@@ -969,13 +974,14 @@ impl Worker {
             allow_internal_webhook_urls: init.allow_internal_webhook_urls,
             scheduler_enabled,
             dlq_replay_enabled,
+            ai_task_semaphore: Arc::new(Semaphore::new(ai_task_concurrency)),
             worker_id: uuid::Uuid::new_v4(),
             shutdown: init.shutdown,
             object_purge: init.object_purge,
         })
     }
 
-    async fn run(&self) -> anyhow::Result<()> {
+    async fn run(self: Arc<Self>) -> anyhow::Result<()> {
         info!("Worker started, waiting for tasks...");
 
         let maintenance_interval = Duration::from_secs(MAINTENANCE_INTERVAL_SECS);
@@ -1065,8 +1071,29 @@ impl Worker {
 
             match res_ai {
                 Ok(Some(reserved)) => {
-                    self.handle_ai_reserved(reserved).await;
-                    had_task = true;
+                    match self.ai_task_semaphore.clone().try_acquire_owned() {
+                        Ok(permit) => {
+                            let worker = Arc::clone(&self);
+                            tokio::spawn(async move {
+                                let _permit = permit;
+                                worker.handle_ai_reserved(reserved).await;
+                            });
+                            had_task = true;
+                        }
+                        Err(_) => {
+                            // Backpressure: do not block ingest/report queues while AI is saturated.
+                            if let Err(e) = self
+                                .task_queue
+                                .release_reserved_back_to_queue(QUEUE_AI, &reserved.raw_payload)
+                                .await
+                            {
+                                error!("Failed to release AI task back to queue: {}", e);
+                                had_error = true;
+                            } else {
+                                had_task = true;
+                            }
+                        }
+                    }
                 }
                 Ok(None) => {}
                 Err(e) => {
@@ -3764,8 +3791,6 @@ impl Worker {
         article_id: uuid::Uuid,
         chunks: Vec<(String, law_eye_ai::EmbeddingResult)>,
     ) -> anyhow::Result<()> {
-        const EXPECTED_VECTOR_DIM: usize = 1536;
-
         let mut tx = self.begin_tenant_tx(tenant_id).await?;
 
         sqlx::query("UPDATE article_chunks SET deleted_at = NOW() WHERE article_id = $1 AND deleted_at IS NULL")
@@ -3773,19 +3798,17 @@ impl Worker {
             .execute(&mut *tx)
             .await?;
 
-        for (idx, (_, embedding)) in chunks.iter().enumerate() {
-            if embedding.vector.len() != EXPECTED_VECTOR_DIM {
-                return Err(anyhow::anyhow!(
-                    "Embedding dimension mismatch for article {} chunk {}: expected {}, got {}",
-                    article_id,
-                    idx,
-                    EXPECTED_VECTOR_DIM,
-                    embedding.vector.len()
-                ));
+        for (idx, (content, embedding)) in chunks.into_iter().enumerate() {
+            let (vector, normalization) = normalize_vector_for_storage(embedding.vector);
+            if normalization.changed() {
+                warn!(
+                    article_id = %article_id,
+                    chunk_index = idx,
+                    source_dim = normalization.source_dim,
+                    target_dim = normalization.target_dim,
+                    "Embedding dimension mismatch detected; auto-normalized vector for storage"
+                );
             }
-        }
-
-        for (idx, (content, embedding)) in chunks.iter().enumerate() {
             sqlx::query(
                 r#"
                 INSERT INTO article_chunks (article_id, chunk_index, content, embedding, token_count)
@@ -3799,8 +3822,8 @@ impl Worker {
             )
             .bind(article_id)
             .bind(idx as i32)
-            .bind(content)
-            .bind(&embedding.vector)
+            .bind(&content)
+            .bind(&vector)
             .bind(embedding.token_count as i32)
             .execute(&mut *tx)
             .await?;
@@ -5178,7 +5201,7 @@ async fn main() -> anyhow::Result<()> {
         .as_ref()
         .map(|ai| KnowledgeService::new(pool.clone(), ai.gateway()));
 
-    let worker = Worker::new(WorkerInit {
+    let worker = Arc::new(Worker::new(WorkerInit {
         pool,
         task_queue,
         ai_service,
@@ -5189,7 +5212,7 @@ async fn main() -> anyhow::Result<()> {
         allow_internal_webhook_urls: config.security.allow_internal_webhook_urls,
         push_http_client,
         object_purge,
-    })?;
+    })?);
     worker.run().await
 }
 
