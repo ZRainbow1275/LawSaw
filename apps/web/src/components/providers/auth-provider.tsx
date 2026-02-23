@@ -9,7 +9,7 @@ import {
 	withLocalePath,
 } from "@/lib/i18n";
 import { assertAuthResponse } from "@/lib/api/types";
-import { reportClientError } from "@/lib/utils";
+import { isIgnoredClientNoise, reportClientError } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 import { useToastStore } from "@/stores/toast-store";
 import { useQueryClient } from "@tanstack/react-query";
@@ -37,6 +37,38 @@ type ConflictInfo = {
 	details: unknown | null;
 	occurredAt: number;
 };
+
+function extractUnhandledRejectionSignal(reason: unknown): {
+	message?: unknown;
+	filename?: unknown;
+	stack?: unknown;
+} {
+	if (reason instanceof Error) {
+		return {
+			message: reason.message,
+			stack: reason.stack,
+		};
+	}
+
+	if (
+		typeof reason === "string" ||
+		typeof reason === "number" ||
+		typeof reason === "boolean"
+	) {
+		return { message: reason };
+	}
+
+	if (reason && typeof reason === "object") {
+		const payload = reason as Record<string, unknown>;
+		return {
+			message: payload.message,
+			filename: payload.filename,
+			stack: payload.stack,
+		};
+	}
+
+	return {};
+}
 
 export function AuthProvider({ children }: AuthProviderProps) {
 	const { refreshSession } = useAuth();
@@ -103,6 +135,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
 		const COOLDOWN_MS = 3000;
 
 		const onError = (event: ErrorEvent) => {
+			if (
+				isIgnoredClientNoise({
+					message:
+						event.message ??
+						(event.error instanceof Error ? event.error.message : event.error),
+					filename: event.filename,
+					stack: event.error instanceof Error ? event.error.stack : undefined,
+				})
+			) {
+				event.preventDefault();
+				return;
+			}
+
 			reportClientError(event.error ?? event.message, {
 				source: "window.error",
 				extra: {
@@ -114,6 +159,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 		};
 
 		const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+			const signal = extractUnhandledRejectionSignal(event.reason);
+			if (isIgnoredClientNoise(signal)) {
+				event.preventDefault();
+				return;
+			}
+
 			reportClientError(event.reason, { source: "window.unhandledrejection" });
 		};
 

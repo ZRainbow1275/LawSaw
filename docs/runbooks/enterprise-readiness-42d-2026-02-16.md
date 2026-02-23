@@ -1067,3 +1067,36 @@ Validation (real data, no mock)
 - 前端回归（真实后端联动）
   - `pnpm -C apps/web test` ✅
   - `pnpm -C apps/web e2e` ✅（`6 passed`，完整关键用户流）
+
+## 2026-02-23 Round 37: MetaMask 噪声抑制 + 四链路三轮实测（硅基流动）
+
+Failure points
+- R37-WEB-001: 打开 Web 端时，浏览器扩展注入脚本触发 `Failed to connect to MetaMask`，被应用全局错误监听捕获，造成运行时噪声/误报。
+- R37-OPS-001: 仓库存在异常未跟踪文件（文件名为私有区字符），需判定并清理。
+
+Fixes
+- `apps/web/src/lib/utils.ts`
+  - 新增 `isIgnoredClientNoise(...)`，识别扩展协议来源（`chrome-extension://` 等）与 MetaMask 典型错误文本。
+  - `reportClientError(...)` 对扩展噪声执行短路，避免误上报。
+- `apps/web/src/components/providers/auth-provider.tsx`
+  - `window.error` / `window.unhandledrejection` 接入噪声过滤。
+  - 命中扩展噪声时执行 `event.preventDefault()`，避免干扰前端运行时体验。
+- 清理异常文件：删除未跟踪私有区字符文件（`\\uf022\\uf022`），确认非业务资产。
+
+Validation
+- 前端质量门槛：
+  - `pnpm -C apps/web typecheck` ✅
+  - `pnpm -C apps/web lint` ✅
+  - `pnpm -C apps/web test:unit` ✅
+- API 健康（真实 AI）：
+  - `GET /health` 返回 `ai.available=true` ✅
+- 四链路三轮实测（真实数据、无 mock、embedding 强断言）：
+  - `node tmp/core-e2e-local.mjs --base-url http://172.19.107.21:13003 --origin http://localhost:8850 --assert-knowledge-embedding 1` ✅
+  - `node tmp/core-e2e-local.mjs --base-url http://172.19.107.21:13003 --origin http://localhost:8850 --assert-knowledge-embedding 1 > tmp/core-e2e-r37-round2.json` ✅
+  - `node tmp/core-e2e-local.mjs --base-url http://172.19.107.21:13003 --origin http://localhost:8850 --assert-knowledge-embedding 1 > tmp/core-e2e-r37-round3.json` ✅
+
+Evidence (all 3 rounds)
+- crawler fetched: `20`
+- knowledge embeddings: `entities_with_embedding=12`
+- statistics coverage: `regional=1`, `industry=1`, `importance=1`
+- report export/download: `pdf status=200`

@@ -19,6 +19,25 @@ export type ClientErrorContext = {
 	extra?: Record<string, unknown>;
 };
 
+type ClientNoiseSignal = {
+	message?: unknown;
+	filename?: unknown;
+	stack?: unknown;
+};
+
+const BROWSER_EXTENSION_SCHEMES = [
+	"chrome-extension://",
+	"moz-extension://",
+	"safari-extension://",
+	"safari-web-extension://",
+] as const;
+
+const BROWSER_EXTENSION_NOISE_MESSAGES = [
+	"failed to connect to metamask",
+	"extension context invalidated",
+	"could not establish connection. receiving end does not exist",
+] as const;
+
 type NormalizedError = {
 	name: string;
 	message: string;
@@ -48,6 +67,42 @@ function normalizeUnknownError(error: unknown): NormalizedError {
 function truncate(value: string, maxLength: number): string {
 	if (value.length <= maxLength) return value;
 	return `${value.slice(0, maxLength)}…`;
+}
+
+function normalizeNoiseToken(value: unknown): string {
+	if (typeof value === "string") return value.toLowerCase();
+	if (typeof value === "number" || typeof value === "boolean") {
+		return String(value).toLowerCase();
+	}
+	if (value instanceof Error) {
+		return `${value.name} ${value.message} ${value.stack ?? ""}`.toLowerCase();
+	}
+	return "";
+}
+
+export function isIgnoredClientNoise(signal: ClientNoiseSignal): boolean {
+	const message = normalizeNoiseToken(signal.message);
+	const filename = normalizeNoiseToken(signal.filename);
+	const stack = normalizeNoiseToken(signal.stack);
+	const source = `${filename}\n${stack}`;
+
+	if (BROWSER_EXTENSION_SCHEMES.some((scheme) => source.includes(scheme))) {
+		return true;
+	}
+
+	if (
+		BROWSER_EXTENSION_NOISE_MESSAGES.some((snippet) =>
+			message.includes(snippet),
+		)
+	) {
+		return true;
+	}
+
+	if (message.includes("metamask") && source.includes("inpage.js")) {
+		return true;
+	}
+
+	return false;
 }
 
 function sanitizeExtra(
@@ -97,6 +152,16 @@ export function reportClientError(
 	context: ClientErrorContext,
 ): void {
 	const normalized = normalizeUnknownError(error);
+	if (
+		isIgnoredClientNoise({
+			message: normalized.message,
+			filename: context.extra?.filename,
+			stack: normalized.stack,
+		})
+	) {
+		return;
+	}
+
 	const pathname =
 		typeof window !== "undefined" ? window.location.pathname : undefined;
 
