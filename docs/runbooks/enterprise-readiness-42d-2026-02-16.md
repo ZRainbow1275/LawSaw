@@ -1119,3 +1119,24 @@ Fixes
 Validation
 - `bash -n scripts/no-dockerhub/e2e.sh` ✅
 - 与现有 no-dockerhub 栈命名规则对齐复核：`<stack>-postgres`（示例：`law-eye-local-codex-postgres`）✅
+
+## 2026-02-23 Round 39: start-stack Python 解释器兼容增强（Windows/WSL）
+
+Failure points
+- R39-OPS-001: `scripts/no-dockerhub/start-stack.sh` 多处硬编码 `python3`，在仅提供 `python` 的环境中会阻断启动流程（密钥生成、端口探测、URL 编码、Windows Web 启动脚本生成、AI 健康解析）。
+
+Fixes
+- `scripts/no-dockerhub/start-stack.sh`
+  - 新增 `choose_python_cmd()`，统一选择解释器：优先 `python`，回退 `python3`。
+  - 将以下调用统一切换为 `"$PYTHON_CMD"`：
+    - 自动生成 secrets env
+    - `REDIS_PASSWORD` / `MINIO_ROOT_PASSWORD` 随机生成
+    - `port_free_wsl` 端口占用探测
+    - `urlencode` URL 编码
+    - Windows `web-*.cmd` 生成器
+    - `check_api_ai_health` JSON 解析器
+  - 启动前增加显式错误提示：若 `python/python3` 均缺失则 fail-fast。
+
+Validation
+- `bash -n scripts/no-dockerhub/start-stack.sh` ✅
+- `bash scripts/no-dockerhub/start-stack.sh --help` ✅

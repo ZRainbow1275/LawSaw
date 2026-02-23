@@ -15,6 +15,25 @@ EOF
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+choose_python_cmd() {
+  if command -v python >/dev/null 2>&1; then
+    echo "python"
+    return 0
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    echo "python3"
+    return 0
+  fi
+  return 1
+}
+
+PYTHON_CMD="$(choose_python_cmd || true)"
+if [[ -z "${PYTHON_CMD}" ]]; then
+  echo "ERROR: missing required command: python/python3" >&2
+  echo "Hint: Install Python (used for local dev secrets, port probing, and helper scripts)." >&2
+  exit 1
+fi
+
 STACK_NAME="${LAW_EYE_STACK_NAME:-law-eye-local}"
 ENV_FILE=""
 ENV_FILE_EXPLICIT=0
@@ -121,12 +140,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
   fi
 
   echo "INFO: secrets env file not found; generating: $ENV_FILE" >&2
-  if ! command -v python3 >/dev/null 2>&1; then
-    echo "ERROR: missing required command: python3" >&2
-    echo "Hint: Install Python 3 (used to generate local dev secrets)." >&2
-    exit 1
-  fi
-  python3 - "$ENV_FILE" <<'PY'
+  "$PYTHON_CMD" - "$ENV_FILE" <<'PY'
 import os
 import secrets
 import sys
@@ -181,7 +195,7 @@ if [[ -n "${REDIS_PASSWORD:-}" ]]; then
 fi
 
 if [[ -z "${REDIS_PASSWORD:-}" ]]; then
-  REDIS_PASSWORD="$(python3 - <<'PY'
+  REDIS_PASSWORD="$("$PYTHON_CMD" - <<'PY'
 import secrets
 print(secrets.token_urlsafe(24))
 PY
@@ -205,7 +219,7 @@ if [[ -n "${MINIO_ROOT_PASSWORD:-}" ]]; then
 fi
 
 if [[ -z "${MINIO_ROOT_PASSWORD:-}" ]]; then
-  MINIO_ROOT_PASSWORD="$(python3 - <<'PY'
+  MINIO_ROOT_PASSWORD="$("$PYTHON_CMD" - <<'PY'
 import secrets
 print(secrets.token_urlsafe(24))
 PY
@@ -224,7 +238,6 @@ ensure_cmd() {
 }
 
 ensure_cmd docker "Install Docker and ensure the daemon is running."
-ensure_cmd python3 "Install Python 3 (used for port probing)."
 ensure_cmd curl "Install curl (used for readiness checks)."
 ensure_cmd pnpm "Install pnpm (used to start apps/web)."
 
@@ -319,7 +332,7 @@ to_windows_path() {
 
 port_free_wsl() {
   local port="$1"
-  python3 - "$port" <<'PY'
+  "$PYTHON_CMD" - "$port" <<'PY'
 import socket, sys
 port = int(sys.argv[1])
 s = socket.socket()
@@ -936,7 +949,7 @@ if ! curl -fsS "http://localhost:${MINIO_API_PORT}/minio/health/ready" >/dev/nul
 fi
 
 urlencode() {
-  python3 - "$1" <<'PY'
+  "$PYTHON_CMD" - "$1" <<'PY'
 import sys
 import urllib.parse
 print(urllib.parse.quote(sys.argv[1], safe=""))
@@ -1175,7 +1188,7 @@ start_web_windows() {
   local cmd_file_win
   cmd_file_win="$(to_windows_path "$cmd_file")"
 
-  python3 - "$cmd_file" "$web_workdir_win" "$WEB_PORT" "$NEXT_PUBLIC_API_URL" "$LAW_EYE_API_PROXY_TARGET" "$log_file_win" "$err_file_win" "$WEB_MODE" "${WINDOWS_HOST_IP:-}" "${WSL_HOST_IP:-}" <<'PY'
+  "$PYTHON_CMD" - "$cmd_file" "$web_workdir_win" "$WEB_PORT" "$NEXT_PUBLIC_API_URL" "$LAW_EYE_API_PROXY_TARGET" "$log_file_win" "$err_file_win" "$WEB_MODE" "${WINDOWS_HOST_IP:-}" "${WSL_HOST_IP:-}" <<'PY'
 import pathlib
 import sys
 
@@ -1398,7 +1411,7 @@ check_api_ai_health() {
     fi
 
     parsed="$(
-      python3 - "$payload" <<'PY'
+      "$PYTHON_CMD" - "$payload" <<'PY'
 import json
 import sys
 
