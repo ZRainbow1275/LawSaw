@@ -323,6 +323,11 @@ if [[ "${WEB_RUNS_ON_WINDOWS:-0}" == "1" ]] \
 else
   export E2E_BASE_URL="$E2E_BASE_URL_CANDIDATE"
 fi
+if [[ -n "${LAW_EYE_API_PROXY_TARGET:-}" ]]; then
+  export E2E_API_BASE_URL="$LAW_EYE_API_PROXY_TARGET"
+else
+  export E2E_API_BASE_URL="http://127.0.0.1:${API_PORT}"
+fi
 # RSS is fetched by API/worker inside WSL; default to a WSL-local address.
 E2E_RSS_HOST="${LAW_EYE_E2E_RSS_HOST:-127.0.0.1}"
 export E2E_RSS_URL="http://${E2E_RSS_HOST}:${RSS_PORT}/rss.xml"
@@ -340,13 +345,14 @@ data = {
   "stack_name": os.environ.get("STACK_NAME"),
   "web_port": int(os.environ["WEB_PORT"]),
   "base_url": os.environ["E2E_BASE_URL"],
+  "api_base_url": os.environ.get("E2E_API_BASE_URL"),
   "rss_url": os.environ["E2E_RSS_URL"],
   "api_proxy_target": os.environ.get("LAW_EYE_API_PROXY_TARGET"),
 }
 path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 PY
 
-echo "E2E config: runner=${PNPM_RUNNER} base_url=${E2E_BASE_URL} web_runs_on_windows=${WEB_RUNS_ON_WINDOWS:-0}"
+echo "E2E config: runner=${PNPM_RUNNER} base_url=${E2E_BASE_URL} api_base_url=${E2E_API_BASE_URL} web_runs_on_windows=${WEB_RUNS_ON_WINDOWS:-0}"
 echo "Running Playwright E2E..."
 if [[ "$PNPM_RUNNER" == "win" ]]; then
   ensure_cmd cmd.exe "WSL must have Windows interop enabled (cmd.exe available)."

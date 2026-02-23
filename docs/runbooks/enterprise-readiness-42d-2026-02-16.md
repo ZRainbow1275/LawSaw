@@ -1327,3 +1327,34 @@ Validation
 - Extra stability loops (same real stack, no mock):
   - `tmp/core-e2e-r46-round2.json` (`ok: true`)
   - `tmp/core-e2e-r46-round3.json` (`ok: true`)
+
+## 2026-02-23 Round 47: RC2 收口标准落地 + 统一门禁全量通过
+
+Failure points
+- R47-MGMT-001: 改进目标缺少“停止条件”，容易陷入无限优化而缺乏发布判定。
+- R47-GATE-001: 运行态、代码门禁、核心四链路回归、发布后验收分散执行，缺少统一入口和统一报告。
+
+Fixes
+- 新增标准文档：`prompts/RC2_ENTERPRISE_IMPROVEMENT_STANDARD.md`
+  - 定义 RC2 一票否决项、量化门禁、停止条件、非阻断项处理规则。
+- 新增统一门禁脚本：`scripts/enterprise/rc2-gate.sh`
+  - 串联执行：运行态健康检查 -> `cargo check` -> `pnpm -C apps/web test` -> `pnpm -C apps/web e2e` -> 核心四链路 `tmp/core-e2e-local.mjs` 多轮回归 -> `scripts/enterprise/post-deploy-verify.sh`（含 query-plan gate）。
+- 更新 `scripts/no-dockerhub/e2e.sh`
+  - 新增并透传 `E2E_API_BASE_URL`，写入 `tmp/e2e-env.json.api_base_url`，提升前后端分离部署下 E2E 稳定性。
+- 更新 `prompts/NEXT_ROUND_LOCAL_RUNBOOK.md`
+  - 增补 RC2 标准引用与“一键门禁”执行入口。
+
+Validation (real stack, no mock)
+- RC2 gate:
+  - `LAW_EYE_BASE_URL=http://172.19.107.21:13003 LAW_EYE_WEB_URL=http://172.19.96.1:8850 LAW_EYE_ORIGIN=http://172.19.96.1:8850 LAW_EYE_WORKER_HEALTH_URL=http://172.19.107.21:3002 LAW_EYE__DATABASE__URL=postgres://law_eye:***@localhost:15436/law_eye bash scripts/enterprise/rc2-gate.sh` ✅
+  - summary: `tmp/rc2-gate-20260223T185053Z/summary.txt`
+- Gate breakdown:
+  - `cargo check -p law-eye-api -p law-eye-worker` ✅
+  - `pnpm -C apps/web test` ✅
+  - `pnpm -C apps/web e2e` ✅ (`6 passed`)
+  - `core_e2e_round_1..3` ✅ (`ok: true`)
+  - `scripts/enterprise/post-deploy-verify.sh` ✅
+- Query-plan baseline (threshold `800ms`):
+  - `articles_latest=0.073ms`
+  - `statistics_importance=0.131ms`
+  - `permission_audit_latest=0.041ms`

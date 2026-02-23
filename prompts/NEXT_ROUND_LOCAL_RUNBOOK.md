@@ -3,6 +3,9 @@
 更新时间：2026-02-23  
 目标：在本机完整启动并验证“爬虫 / 知识图谱 / 统计 / 日报”真实链路（无 mock），可直接迁移到云端部署。
 
+配套标准文档：`prompts/RC2_ENTERPRISE_IMPROVEMENT_STANDARD.md`  
+统一门禁入口：`scripts/enterprise/rc2-gate.sh`
+
 ---
 
 ## 1. 固定运行参数（本轮已验证）
@@ -220,3 +223,24 @@ set -a; source /mnt/d/Desktop/LawSaw/tmp/runtime-law-eye-worker-13003.env; set +
 
 如第 6.1 失败，先执行第 5 节再重试。
 
+---
+
+## 11. 一键执行 RC2 门禁（推荐）
+
+在 WSL / Git Bash 执行：
+
+```bash
+cd /mnt/d/Desktop/LawSaw
+
+API_PID=$(ss -ltnp | awk '/:13003/ && /law-eye-api/ {match($0,/pid=([0-9]+)/,a); print a[1]; exit}')
+DB_URL=$(tr '\0' '\n' </proc/$API_PID/environ | sed -n 's/^LAW_EYE__DATABASE__URL=//p' | head -n 1)
+
+LAW_EYE_BASE_URL=http://172.19.107.21:13003 \
+LAW_EYE_WEB_URL=http://172.19.96.1:8850 \
+LAW_EYE_ORIGIN=http://172.19.96.1:8850 \
+LAW_EYE_WORKER_HEALTH_URL=http://172.19.107.21:3002 \
+LAW_EYE__DATABASE__URL="$DB_URL" \
+bash scripts/enterprise/rc2-gate.sh
+```
+
+通过后会在 `tmp/rc2-gate-<timestamp>/` 生成报告和每轮核心链路输出。
