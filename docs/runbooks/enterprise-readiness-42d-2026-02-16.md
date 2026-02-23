@@ -1280,3 +1280,7 @@ Validation (real stack, no mock)
   - entities_with_embedding: `12`
   - statistics coverage: `regional/industry/importance = 1`
   - report pdf download: `status=200`
+
+### 2026-02-23 Round 45b (test uplift)
+- 在 `users.rs` 新增 2 个时间窗口校验单元测试后，`cargo test -p law-eye-api -- --nocapture` 更新为 `43 passed`。
+- 复测核心四链路真实路径仍为 `ok=true`（crawler=20 / entities_with_embedding=12 / statistics coverage=1 / pdf=200）。

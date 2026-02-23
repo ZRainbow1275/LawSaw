@@ -259,6 +259,20 @@ fn json_object_array_field_to_strings(
         .map(|map| json_array_to_strings(map.get(field)))
         .unwrap_or_default()
 }
+
+fn validate_permission_audit_window(
+    changed_after: Option<DateTime<Utc>>,
+    changed_before: Option<DateTime<Utc>>,
+) -> Result<(), AppError> {
+    if let (Some(changed_after), Some(changed_before)) = (changed_after, changed_before) {
+        if changed_after > changed_before {
+            return Err(AppError::validation(
+                "changed_after must be <= changed_before",
+            ));
+        }
+    }
+    Ok(())
+}
 /// 检查用户是否有管理员权限
 async fn check_admin_permission(
     state: &AppState,
@@ -551,6 +565,31 @@ pub(crate) async fn update_user(
     Ok(response)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::validate_permission_audit_window;
+    use chrono::{DateTime, Utc};
+
+    fn parse_utc(value: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(value)
+            .expect("valid RFC3339 timestamp")
+            .with_timezone(&Utc)
+    }
+
+    #[test]
+    fn permission_audit_window_accepts_equal_bounds() {
+        let bound = parse_utc("2026-02-23T16:00:00Z");
+        assert!(validate_permission_audit_window(Some(bound), Some(bound)).is_ok());
+    }
+
+    #[test]
+    fn permission_audit_window_rejects_inverted_bounds() {
+        let after = parse_utc("2026-02-23T16:00:01Z");
+        let before = parse_utc("2026-02-23T16:00:00Z");
+        assert!(validate_permission_audit_window(Some(after), Some(before)).is_err());
+    }
+}
+
 /// 上传用户头像（对象存储：S3/MinIO）
 #[utoipa::path(
     post,
@@ -719,14 +758,7 @@ pub(crate) async fn list_permission_audits(
     if query.offset < 0 {
         return Err(AppError::validation("offset must be >= 0"));
     }
-    if let (Some(changed_after), Some(changed_before)) = (query.changed_after, query.changed_before)
-    {
-        if changed_after > changed_before {
-            return Err(AppError::validation(
-                "changed_after must be <= changed_before",
-            ));
-        }
-    }
+    validate_permission_audit_window(query.changed_after, query.changed_before)?;
     let limit = query.limit.clamp(1, 100);
 
     let filters = AuditFilters {
