@@ -8,19 +8,52 @@ import {
 	type Page,
 } from "@playwright/test";
 
-function loadRuntimeE2EEnv(): { rssUrl: string } | null {
+interface RuntimeE2EEnv {
+	rssUrl: string | null;
+	apiBaseUrl: string | null;
+}
+
+function parseNonEmptyString(value: unknown): string | null {
+	if (typeof value !== "string") return null;
+	const trimmed = value.trim();
+	return trimmed.length > 0 ? trimmed : null;
+}
+
+function stripTrailingSlash(value: string): string {
+	return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+function loadRuntimeE2EEnv(): RuntimeE2EEnv | null {
 	const candidate = path.resolve(process.cwd(), "..", "..", "tmp", "e2e-env.json");
 	try {
 		const raw = fs.readFileSync(candidate, "utf-8");
 		const parsed: unknown = JSON.parse(raw);
 		if (!parsed || typeof parsed !== "object") return null;
-		const rssUrl = (parsed as { rss_url?: unknown }).rss_url;
-		if (typeof rssUrl !== "string") return null;
-		const trimmed = rssUrl.trim();
-		return trimmed.length > 0 ? { rssUrl: trimmed } : null;
+		const payload = parsed as {
+			rss_url?: unknown;
+			api_base_url?: unknown;
+			api_proxy_target?: unknown;
+		};
+		const rssUrl = parseNonEmptyString(payload.rss_url);
+		const apiBaseUrlRaw =
+			parseNonEmptyString(payload.api_base_url) ??
+			parseNonEmptyString(payload.api_proxy_target);
+		const apiBaseUrl = apiBaseUrlRaw ? stripTrailingSlash(apiBaseUrlRaw) : null;
+		if (!rssUrl && !apiBaseUrl) return null;
+		return { rssUrl, apiBaseUrl };
 	} catch {
 		return null;
 	}
+}
+
+function resolveE2EApiBaseUrl(baseURL: string): string {
+	const envValue = parseNonEmptyString(process.env.E2E_API_BASE_URL);
+	if (envValue) return stripTrailingSlash(envValue);
+
+	const runtimeValue = loadRuntimeE2EEnv()?.apiBaseUrl;
+	if (runtimeValue) return stripTrailingSlash(runtimeValue);
+
+	return stripTrailingSlash(baseURL);
 }
 
 function buildTenantSlug(seed: string): string {
@@ -67,6 +100,7 @@ const CONSOLE_ERROR_ALLOWLIST: RegExp[] = [
 	/^Failed to load resource: the server responded with a status of 403 \(Forbidden\)$/,
 	/^Failed to load resource: the server responded with a status of 404 \(Not Found\)$/,
 	/^Failed to load resource: the server responded with a status of 400 \(Bad Request\)$/,
+	/^WebSocket connection to 'ws:\/\/.*\/_next\/webpack-hmr.*' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE$/,
 ];
 
 function createPageErrorGate() {
@@ -110,16 +144,56 @@ function createPageErrorGate() {
 	return { attach, assertNoErrors };
 }
 
-async function waitForStackReady(context: BrowserContext, baseURL: string) {
+function parseHealthOk(text: string): boolean {
+	try {
+		const parsed: unknown = JSON.parse(text);
+		if (!parsed || typeof parsed !== "object") return false;
+		return (
+			"status" in parsed && (parsed as { status?: unknown }).status === "ok"
+		);
+	} catch {
+		return false;
+	}
+}
+
+async function waitForStackReady(
+	context: BrowserContext,
+	baseURL: string,
+	apiBaseURL: string,
+) {
+	const webLoginUrl = new URL("/login", baseURL).toString();
 	const webHealthUrl = new URL("/health", baseURL).toString();
-	const authMeUrl = new URL("/api/v1/auth/me", baseURL).toString();
+	const webAuthMeUrl = new URL("/api/v1/auth/me", baseURL).toString();
+	const apiHealthUrl = new URL("/health", apiBaseURL).toString();
+	const apiAuthMeUrl = new URL("/api/v1/auth/me", apiBaseURL).toString();
 	const requestTimeoutMs = 10_000;
 	const deadline = Date.now() + 90_000;
 	let lastDetail = "";
+	let hint = "";
 
 	while (Date.now() < deadline) {
+		let webLoginDetail = "not checked";
 		let healthDetail = "not checked";
-		let authMeDetail = "not checked";
+		let webAuthMeDetail = "not checked";
+		let apiHealthDetail = "not checked";
+		let apiAuthMeDetail = "not checked";
+		let webLoginReady = false;
+		let webAuthReady = false;
+		let apiHealthReady = false;
+		let apiAuthReady = false;
+
+		try {
+			const resp = await context.request.get(webLoginUrl, {
+				timeout: requestTimeoutMs,
+			});
+			const text = (await resp.text()).trim();
+			webLoginDetail = `${resp.status()} ${text.slice(0, 200)}`;
+			if (resp.status() >= 200 && resp.status() < 400) {
+				webLoginReady = true;
+			}
+		} catch (err) {
+			webLoginDetail = err instanceof Error ? err.message : String(err);
+		}
 
 		try {
 			const resp = await context.request.get(webHealthUrl, {
@@ -127,52 +201,71 @@ async function waitForStackReady(context: BrowserContext, baseURL: string) {
 			});
 			const text = (await resp.text()).trim();
 			healthDetail = `${resp.status()} ${text.slice(0, 200)}`;
-			if (resp.ok()) {
-				try {
-					const parsed: unknown = JSON.parse(text);
-					if (
-						parsed &&
-						typeof parsed === "object" &&
-						"status" in parsed &&
-						(parsed as { status?: unknown }).status === "ok"
-					) {
-						return;
-					}
-				} catch {
-					// ignore json parse error
-				}
+			if (resp.ok() && parseHealthOk(text)) {
+				// Same-origin health exists in proxy mode; keep detail for diagnostics.
 			}
 		} catch (err) {
 			healthDetail = err instanceof Error ? err.message : String(err);
 		}
 
 		try {
-			const resp = await context.request.get(authMeUrl, {
+			const resp = await context.request.get(webAuthMeUrl, {
 				timeout: requestTimeoutMs,
 			});
 			const text = (await resp.text()).trim();
-			authMeDetail = `${resp.status()} ${text.slice(0, 200)}`;
-			try {
-				const parsed: unknown = JSON.parse(text);
-				if (resp.status() === 200 && parsed && typeof parsed === "object") {
-					return;
-				}
-			} catch {
-				// ignore json parse error
-			}
-
-			if (resp.status() === 401) {
-				return;
+			webAuthMeDetail = `${resp.status()} ${text.slice(0, 200)}`;
+			if (resp.status() === 200 || resp.status() === 401) {
+				webAuthReady = true;
 			}
 		} catch (err) {
-			authMeDetail = err instanceof Error ? err.message : String(err);
+			webAuthMeDetail = err instanceof Error ? err.message : String(err);
 		}
 
-		lastDetail = `health=${healthDetail}; auth_me=${authMeDetail}`;
+		try {
+			const resp = await context.request.get(apiHealthUrl, {
+				timeout: requestTimeoutMs,
+			});
+			const text = (await resp.text()).trim();
+			apiHealthDetail = `${resp.status()} ${text.slice(0, 200)}`;
+			if (resp.ok() && parseHealthOk(text)) {
+				apiHealthReady = true;
+			}
+		} catch (err) {
+			apiHealthDetail = err instanceof Error ? err.message : String(err);
+		}
+
+		try {
+			const resp = await context.request.get(apiAuthMeUrl, {
+				timeout: requestTimeoutMs,
+			});
+			const text = (await resp.text()).trim();
+			apiAuthMeDetail = `${resp.status()} ${text.slice(0, 200)}`;
+			if (resp.status() === 200 || resp.status() === 401) {
+				apiAuthReady = true;
+			}
+		} catch (err) {
+			apiAuthMeDetail = err instanceof Error ? err.message : String(err);
+		}
+
+		if (webLoginReady && webAuthReady) return;
+
+		if (
+			webLoginReady &&
+			apiHealthReady &&
+			apiAuthReady &&
+			apiBaseURL !== stripTrailingSlash(baseURL) &&
+			webAuthMeDetail.startsWith("500")
+		) {
+			hint =
+				"同源 /api/v1/auth/me 返回 500，但 API 直连已就绪；请检查 Web 的 LAW_EYE_API_PROXY_TARGET 与 API 可达性。";
+		}
+
+		lastDetail = `login=${webLoginDetail}; health=${healthDetail}; web_auth_me=${webAuthMeDetail}; api_health=${apiHealthDetail}; api_auth_me=${apiAuthMeDetail}`;
 		await new Promise((resolve) => setTimeout(resolve, 1000));
 	}
 
-	throw new Error(`Stack not ready: health/auth probes failed. Last: ${lastDetail}`);
+	const suffix = hint ? ` Hint: ${hint}` : "";
+	throw new Error(`Stack not ready: readiness probes failed. Last: ${lastDetail}${suffix}`);
 }
 
 async function registerAndLogin(
@@ -680,7 +773,11 @@ async function gotoWithAuth(
 
 			const credentials = createE2ECredentials();
 				const context = await browser.newContext({ baseURL });
-				await waitForStackReady(context, baseURL);
+				await waitForStackReady(
+					context,
+					baseURL,
+					resolveE2EApiBaseUrl(baseURL),
+				);
 				await registerAndLogin(context, baseURL, credentials);
 				await context.close();
 
@@ -720,7 +817,11 @@ async function gotoWithAuth(
 			if (!baseURL) throw new Error("Playwright baseURL 未配置，无法运行移动端用例。");
 
 		const context = await browser.newContext({ baseURL });
-		await waitForStackReady(context, baseURL);
+		await waitForStackReady(
+			context,
+			baseURL,
+			resolveE2EApiBaseUrl(baseURL),
+		);
 		const page = await context.newPage();
 		const gate = createPageErrorGate();
 		gate.attach(page);
@@ -845,7 +946,11 @@ async function gotoWithAuth(
 		}
 
 				const context = await browser.newContext({ baseURL });
-				await waitForStackReady(context, baseURL);
+				await waitForStackReady(
+					context,
+					baseURL,
+					resolveE2EApiBaseUrl(baseURL),
+				);
 				const page = await context.newPage();
 				const gate = createPageErrorGate();
 				gate.attach(page);
@@ -1423,7 +1528,11 @@ async function gotoWithAuth(
 				test.setTimeout(180_000);
 
 				const context = await browser.newContext({ baseURL });
-				await waitForStackReady(context, baseURL);
+				await waitForStackReady(
+					context,
+					baseURL,
+					resolveE2EApiBaseUrl(baseURL),
+				);
 				const page = await context.newPage();
 				const gate = createPageErrorGate();
 				gate.attach(page);
@@ -1463,7 +1572,11 @@ async function gotoWithAuth(
 				test.setTimeout(180_000);
 
 				const context = await browser.newContext({ baseURL });
-				await waitForStackReady(context, baseURL);
+				await waitForStackReady(
+					context,
+					baseURL,
+					resolveE2EApiBaseUrl(baseURL),
+				);
 				const page = await context.newPage();
 				const gate = createPageErrorGate();
 				gate.attach(page);
@@ -1508,7 +1621,11 @@ async function gotoWithAuth(
 				test.setTimeout(180_000);
 
 				const context = await browser.newContext({ baseURL });
-				await waitForStackReady(context, baseURL);
+				await waitForStackReady(
+					context,
+					baseURL,
+					resolveE2EApiBaseUrl(baseURL),
+				);
 				const page = await context.newPage();
 				await ensureLoggedInByUi(page, auth);
 

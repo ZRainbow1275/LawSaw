@@ -1284,3 +1284,43 @@ Validation (real stack, no mock)
 ### 2026-02-23 Round 45b (test uplift)
 - 在 `users.rs` 新增 2 个时间窗口校验单元测试后，`cargo test -p law-eye-api -- --nocapture` 更新为 `43 passed`。
 - 复测核心四链路真实路径仍为 `ok=true`（crawler=20 / entities_with_embedding=12 / statistics coverage=1 / pdf=200）。
+
+## 2026-02-23 Round 46: Web E2E readiness hardening + local stack recovery (worker alignment)
+
+Failure points
+- R46-WEB-001: `apps/web/e2e/lawsaw.e2e.spec.ts` 的 `waitForStackReady` 强依赖 `baseURL/health`，在国际化重定向（`/health -> /zh/health`）和分离部署场景下容易误判。
+- R46-WEB-002: 本机 Web 进程在代理配置不一致时同源 `/api/v1/*` 返回 `500`，旧错误信息不够可操作。
+- R46-WEB-003: Dev 模式 HMR WebSocket 报错会被 E2E 全局 error gate 计为失败噪音。
+- R46-OPS-001: 当前 `13003` API 栈存在“API 在跑但 worker 未对齐启动”的漂移，导致抓取后 `last_fetch` 长时间不更新。
+
+Fixes
+- `apps/web/e2e/lawsaw.e2e.spec.ts`
+  - 扩展 `loadRuntimeE2EEnv()`：支持读取 `api_base_url` / `api_proxy_target`（兼容 `tmp/e2e-env.json`）。
+  - 新增 `resolveE2EApiBaseUrl()`：优先 `E2E_API_BASE_URL`，其次 runtime 文件，最后回退 `baseURL`。
+  - 重写 `waitForStackReady(...)`：
+    - Web 可用性以 `/login` 为主探针（200/3xx 视为可用）；
+    - 保留 `/health` 诊断信息但不作为唯一判据；
+    - 新增 API 健康与认证探针（`/health` + `/api/v1/auth/me`）；
+    - 当同源 `/api` 持续 500 时输出可操作 hint（检查 `LAW_EYE_API_PROXY_TARGET`）。
+  - 为 `waitForStackReady` 的全部调用点注入 `resolveE2EApiBaseUrl(baseURL)`。
+  - 控制台噪音白名单新增 Next dev HMR WebSocket 握手报错模式，避免误报阻断用例。
+
+Operational recovery (real local stack, no mock)
+- 仅重启本项目 Web 进程（端口 `8850`），显式注入：
+  - `NEXT_PUBLIC_API_URL=http://172.19.96.1:8850`
+  - `LAW_EYE_API_PROXY_TARGET=http://172.19.107.21:13003`
+- 从 `13003` API 实例环境导出 worker 所需变量并启动同栈 worker，恢复 `source fetch -> worker ingest -> source.last_fetch` 链路。
+
+Validation
+- Frontend gate:
+  - `pnpm -C apps/web test` ✅（typecheck + lint + unit）
+  - `pnpm -C apps/web e2e` ✅（`6 passed`）
+- Core real-path E2E:
+  - `node tmp/core-e2e-local.mjs --base-url http://172.19.107.21:13003 --origin http://172.19.96.1:8850 --assert-knowledge-embedding 1` ✅
+  - key metrics:
+    - crawler fetched: `20`
+    - knowledge `entities_with_embedding`: `11`
+    - statistics coverage: regional/industry/importance = `1`
+    - report pdf download: `status=200`, `bytes=25731`
+- Backend compile gate:
+  - `cargo check -p law-eye-api -p law-eye-worker` ✅
