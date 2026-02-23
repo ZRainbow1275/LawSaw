@@ -1140,3 +1140,22 @@ Fixes
 Validation
 - `bash -n scripts/no-dockerhub/start-stack.sh` ✅
 - `bash scripts/no-dockerhub/start-stack.sh --help` ✅
+
+## 2026-02-23 Round 40: 审计周报增强（权限变更摘要可追溯）
+
+Failure points
+- R40-AUDIT-001: `scripts/enterprise/audit-report.sh` 仅输出总体事件与 top actions，缺少“谁给谁改了权限、改了哪些角色”的聚合视图，无法满足企业权限变更审计可视化要求。
+
+Fixes
+- `scripts/enterprise/audit-report.sh`
+  - 在 7 天窗口内新增 `users.roles.update` 专项聚合：
+    - `permission_changes.summary`：总变更次数、受影响目标用户数、操作者数
+    - `permission_changes.top_actors`：按操作者聚合的变更次数 Top 列表
+    - `permission_changes.recent`：最近 50 条变更（含 actor/target/requested_add_roles/requested_remove_roles/after_roles/ip/created_at）
+  - 保持原有 `summary` 与 `top_actions` 输出不变，兼容现有消费方。
+
+Validation (real DB)
+- `sh -n scripts/enterprise/audit-report.sh` ✅
+- `LAW_EYE__DATABASE__URL=postgres://... sh scripts/enterprise/audit-report.sh` ✅
+  - 产出文件：`/tmp/law-eye-audit-test/audit-report-20260223T143616Z.json`
+  - 关键字段：`permission_changes.summary/top_actors/recent` 均存在 ✅
