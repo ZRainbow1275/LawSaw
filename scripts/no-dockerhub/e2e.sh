@@ -121,8 +121,26 @@ ensure_cmd() {
   fi
 }
 
-ensure_cmd python3 "Install Python 3 (used for the RSS fixture server)."
 ensure_cmd docker "Install Docker and ensure the daemon is running."
+
+choose_python_cmd() {
+  if command -v python >/dev/null 2>&1; then
+    echo "python"
+    return 0
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    echo "python3"
+    return 0
+  fi
+  return 1
+}
+
+PYTHON_CMD="$(choose_python_cmd || true)"
+if [[ -z "${PYTHON_CMD}" ]]; then
+  echo "ERROR: missing required command: python/python3" >&2
+  echo "Hint: Install Python (used for RSS fixture server and monkey tests)." >&2
+  exit 1
+fi
 
 pnpm_usable_wsl() {
   pnpm -v >/dev/null 2>&1
@@ -143,7 +161,7 @@ else
   exit 1
 fi
 
-RSS_PORT="$(python3 - <<'PY'
+RSS_PORT="$("$PYTHON_CMD" - <<'PY'
 import socket
 s = socket.socket()
 s.bind(("127.0.0.1", 0))
@@ -159,7 +177,7 @@ start_rss_server() {
   echo "Starting RSS fixture server on localhost:${RSS_PORT}..."
   (
     cd "$ROOT"
-    nohup python3 -m http.server "$RSS_PORT" --bind 127.0.0.1 --directory "$RSS_DIR" >"$log_file" 2>&1 &
+    nohup "$PYTHON_CMD" -m http.server "$RSS_PORT" --bind 127.0.0.1 --directory "$RSS_DIR" >"$log_file" 2>&1 &
     echo "wsl:$!" >"$pid_file"
   )
 }
@@ -221,6 +239,31 @@ bash "$ROOT/scripts/no-dockerhub/start-stack.sh" "${START_ARGS[@]}"
 # shellcheck disable=SC1090
 source "$STATE_DIR/stack.env"
 
+resolve_postgres_container() {
+  # no-dockerhub stack names containers explicitly as: <stack>-postgres
+  local container_name="${STACK_NAME}-postgres"
+  local container_id
+  container_id="$(docker ps -q --filter "name=^/${container_name}$" | tr -d '\r' | tr -d '\n')"
+  if [[ -n "$container_id" ]]; then
+    echo "$container_id"
+    return 0
+  fi
+
+  # fallback: compose-based stacks
+  container_id="$(
+    docker compose \
+      --project-name "$STACK_NAME" \
+      -f "$ROOT/docker-compose.yml" \
+      ps -q postgres 2>/dev/null | tr -d '\r' | tr -d '\n'
+  )"
+  if [[ -n "$container_id" ]]; then
+    echo "$container_id"
+    return 0
+  fi
+
+  return 1
+}
+
 run_reports_fk_check() {
   local secrets_env_file="$STATE_DIR/secrets.env"
   if [[ -f "$secrets_env_file" ]]; then
@@ -236,12 +279,7 @@ run_reports_fk_check() {
   fi
 
   local postgres_container=""
-  postgres_container="$(
-    docker compose \
-      --project-name "$STACK_NAME" \
-      -f "$ROOT/docker-compose.yml" \
-      ps -q postgres 2>/dev/null | tr -d '\r' | tr -d '\n'
-  )"
+  postgres_container="$(resolve_postgres_container || true)"
 
   if [[ -z "$postgres_container" ]]; then
     echo "ERROR: failed to locate postgres container for stack $STACK_NAME" >&2
@@ -290,7 +328,7 @@ E2E_RSS_HOST="${LAW_EYE_E2E_RSS_HOST:-127.0.0.1}"
 export E2E_RSS_URL="http://${E2E_RSS_HOST}:${RSS_PORT}/rss.xml"
 
 E2E_ENV_FILE="$RUNTIME_E2E_ENV_FILE"
-python3 - "$E2E_ENV_FILE" <<'PY'
+"$PYTHON_CMD" - "$E2E_ENV_FILE" <<'PY'
 import json
 import os
 import sys
@@ -337,7 +375,7 @@ if [[ "$RUN_MONKEY" -eq 1 ]]; then
   WEB_REPORT="$LOG_DIR/monkey_web_report.json"
 
   echo "Running Monkey (API)..."
-  python3 "$ROOT/scripts/monkey/api_monkey.py" \
+  "$PYTHON_CMD" "$ROOT/scripts/monkey/api_monkey.py" \
     --base-url "$API_BASE_URL" \
     --requests 300 \
     --concurrency 24 \
@@ -368,7 +406,7 @@ if [[ "$RUN_MONKEY" -eq 1 ]]; then
       --report-json "$WEB_REPORT_WIN" \
       | tee "$LOG_DIR/monkey_web.log" "$ROOT/prompts/logs/monkey_web.log"
   else
-    python3 "$ROOT/scripts/monkey/web_monkey.py" \
+    "$PYTHON_CMD" "$ROOT/scripts/monkey/web_monkey.py" \
       --base-url "$WEB_BASE_URL" \
       --requests 200 \
       --concurrency 16 \

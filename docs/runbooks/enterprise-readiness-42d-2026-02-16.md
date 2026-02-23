@@ -1100,3 +1100,22 @@ Evidence (all 3 rounds)
 - knowledge embeddings: `entities_with_embedding=12`
 - statistics coverage: `regional=1`, `industry=1`, `importance=1`
 - report export/download: `pdf status=200`
+
+## 2026-02-23 Round 38: no-dockerhub e2e 脚本稳定性修复（容器定位 + Python 解释器兼容）
+
+Failure points
+- R38-E2E-001: `scripts/no-dockerhub/e2e.sh` 在 no-dockerhub 栈下用 `docker compose ... ps -q postgres` 定位容器，实际返回空，导致 reports FK 回归 SQL 无法执行。
+- R38-E2E-002: 脚本硬编码 `python3`，在仅提供 `python` 的环境中会直接失败（影响跨平台执行一致性）。
+
+Fixes
+- `scripts/no-dockerhub/e2e.sh`
+  - 新增 `resolve_postgres_container()`：
+    - 优先按 no-dockerhub 命名约定直接匹配 `"<stack>-postgres"` 容器。
+    - 若未命中，再回退到 compose 项目查询，兼容旧路径。
+  - 新增 `choose_python_cmd()`：
+    - 优先 `python`，回退 `python3`。
+    - RSS fixture、E2E 运行时 env 文件生成、Monkey API/Web 压测脚本统一使用选中的解释器。
+
+Validation
+- `bash -n scripts/no-dockerhub/e2e.sh` ✅
+- 与现有 no-dockerhub 栈命名规则对齐复核：`<stack>-postgres`（示例：`law-eye-local-codex-postgres`）✅
