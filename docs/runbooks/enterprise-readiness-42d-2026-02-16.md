@@ -1359,3 +1359,36 @@ Validation (real stack, no mock)
   - `articles_latest=0.073ms`
   - `statistics_importance=0.131ms`
   - `permission_audit_latest=0.041ms`
+
+## 2026-02-23 Round 48: 最后一轮加严实测（RC2 x5）与收口判定
+
+Failure points
+- 本轮未复现新的功能性失败点；核心链路在更高回归轮次下保持稳定。
+
+Actions
+- 执行“加严版 RC2”：
+  - `LAW_EYE_CORE_E2E_ROUNDS=5`（由 3 轮提升到 5 轮）
+  - 其他门禁保持不变：运行态健康、`cargo check`、`pnpm -C apps/web test`、`pnpm -C apps/web e2e`、`post-deploy-verify`（含 query-plan gate）。
+
+Validation (real stack, no mock)
+- RC2 gate:
+  - `LAW_EYE_BASE_URL=http://172.19.107.21:13003 LAW_EYE_WEB_URL=http://172.19.96.1:8850 LAW_EYE_ORIGIN=http://172.19.96.1:8850 LAW_EYE_WORKER_HEALTH_URL=http://172.19.107.21:3002 LAW_EYE_CORE_E2E_ROUNDS=5 LAW_EYE__DATABASE__URL=postgres://law_eye:***@localhost:15436/law_eye bash scripts/enterprise/rc2-gate.sh` ✅
+  - summary: `tmp/rc2-gate-20260223T192115Z/summary.txt`
+- Gate breakdown:
+  - `cargo check -p law-eye-api -p law-eye-worker` ✅
+  - `pnpm -C apps/web test` ✅
+  - `pnpm -C apps/web e2e` ✅（`6 passed`）
+  - `core_e2e_round_1..5` ✅（全部 `ok: true`）
+  - `scripts/enterprise/post-deploy-verify.sh` ✅
+- Query-plan baseline (threshold `800ms`):
+  - `articles_latest=0.082ms`
+  - `statistics_importance=0.131ms`
+  - `permission_audit_latest=0.062ms`
+- 核心链路（Round 5 样本，`tmp/rc2-gate-20260223T192115Z/core-e2e-round5.json`）：
+  - 爬虫：`total_articles_fetched=20`
+  - 知识图谱：`entities_upserted=12`，`entities_with_embedding=12`
+  - 统计：`regional/industry/importance coverage_rate=1`
+  - 日报：`download status=200`，`content_type=application/pdf`
+
+Release decision
+- 依据 `prompts/RC2_ENTERPRISE_IMPROVEMENT_STANDARD.md` 的停止条件，本轮判定 `PASS`：进入发布/部署阶段，不再继续无限扩展式改进。
