@@ -1350,6 +1350,7 @@ Validation (real stack, no mock)
   - summary: `tmp/rc2-gate-20260223T185053Z/summary.txt`
 - Gate breakdown:
   - `cargo check -p law-eye-api -p law-eye-worker` ✅
+  - `cargo test -p law-eye-api -- --nocapture` ✅ (`43 passed`)
   - `pnpm -C apps/web test` ✅
   - `pnpm -C apps/web e2e` ✅ (`6 passed`)
   - `core_e2e_round_1..3` ✅ (`ok: true`)
