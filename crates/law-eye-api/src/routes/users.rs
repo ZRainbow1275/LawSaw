@@ -162,6 +162,12 @@ pub struct PermissionAuditQuery {
     pub limit: i64,
     #[serde(default)]
     pub offset: i64,
+    /// Filter by actor user id.
+    pub actor_user_id: Option<Uuid>,
+    /// Inclusive lower bound for audit event time (UTC).
+    pub changed_after: Option<DateTime<Utc>>,
+    /// Inclusive upper bound for audit event time (UTC).
+    pub changed_before: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -669,7 +675,10 @@ pub(crate) async fn upload_user_avatar(
     params(
         ("id" = Uuid, Path, description = "User ID"),
         ("limit" = Option<i64>, Query, description = "Limit (1-100)"),
-        ("offset" = Option<i64>, Query, description = "Offset")
+        ("offset" = Option<i64>, Query, description = "Offset"),
+        ("actor_user_id" = Option<Uuid>, Query, description = "Filter by actor user id"),
+        ("changed_after" = Option<String>, Query, description = "Inclusive lower bound (RFC3339 UTC)"),
+        ("changed_before" = Option<String>, Query, description = "Inclusive upper bound (RFC3339 UTC)")
     ),
     security(
         ("session" = [])
@@ -710,13 +719,23 @@ pub(crate) async fn list_permission_audits(
     if query.offset < 0 {
         return Err(AppError::validation("offset must be >= 0"));
     }
+    if let (Some(changed_after), Some(changed_before)) = (query.changed_after, query.changed_before)
+    {
+        if changed_after > changed_before {
+            return Err(AppError::validation(
+                "changed_after must be <= changed_before",
+            ));
+        }
+    }
     let limit = query.limit.clamp(1, 100);
 
     let filters = AuditFilters {
-        user_id: None,
+        user_id: query.actor_user_id,
         resource: Some("users".to_string()),
         resource_id: Some(id),
         action: Some("users.roles.update".to_string()),
+        created_after: query.changed_after,
+        created_before: query.changed_before,
         limit,
         offset: query.offset,
     };
@@ -868,6 +887,8 @@ pub(crate) async fn login_activity(
         resource: Some("auth".to_string()),
         action: None,
         resource_id: None,
+        created_after: None,
+        created_before: None,
         limit,
         offset,
     };

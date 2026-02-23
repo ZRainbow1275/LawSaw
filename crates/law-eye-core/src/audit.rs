@@ -1,4 +1,5 @@
 use crate::tenant::with_tenant_tx;
+use chrono::{DateTime, Utc};
 use law_eye_common::{Error, Result};
 use law_eye_db::{AuditLog, CreateAuditLog};
 use sqlx::{Executor, PgPool, Postgres, Transaction};
@@ -55,6 +56,8 @@ pub struct AuditFilters {
     pub resource: Option<String>,
     pub resource_id: Option<Uuid>,
     pub action: Option<String>,
+    pub created_after: Option<DateTime<Utc>>,
+    pub created_before: Option<DateTime<Utc>>,
     pub limit: i64,
     pub offset: i64,
 }
@@ -112,14 +115,18 @@ impl AuditService {
                       AND ($2::text IS NULL OR resource = $2)
                       AND ($3::uuid IS NULL OR resource_id = $3)
                       AND ($4::text IS NULL OR action = $4)
+                      AND ($5::timestamptz IS NULL OR created_at >= $5)
+                      AND ($6::timestamptz IS NULL OR created_at <= $6)
                     ORDER BY seq DESC
-                    LIMIT $5 OFFSET $6
+                    LIMIT $7 OFFSET $8
                     "#,
                 )
                 .bind(filters.user_id)
                 .bind(filters.resource.as_deref())
                 .bind(filters.resource_id)
                 .bind(filters.action.as_deref())
+                .bind(filters.created_after)
+                .bind(filters.created_before)
                 .bind(filters.limit)
                 .bind(filters.offset)
                 .fetch_all(tx.as_mut())
@@ -159,12 +166,16 @@ impl AuditService {
                       AND ($2::text IS NULL OR resource = $2)
                       AND ($3::uuid IS NULL OR resource_id = $3)
                       AND ($4::text IS NULL OR action = $4)
+                      AND ($5::timestamptz IS NULL OR created_at >= $5)
+                      AND ($6::timestamptz IS NULL OR created_at <= $6)
                     "#,
                 )
                 .bind(filters.user_id)
                 .bind(filters.resource.as_deref())
                 .bind(filters.resource_id)
                 .bind(filters.action.as_deref())
+                .bind(filters.created_after)
+                .bind(filters.created_before)
                 .fetch_one(tx.as_mut())
                 .await
                 .map_err(|e| Error::Database(e.to_string()))?;

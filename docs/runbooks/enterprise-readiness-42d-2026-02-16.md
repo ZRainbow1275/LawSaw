@@ -1248,3 +1248,35 @@ Validation (real stack, no mock)
 - Query-plan summary sample:
   - `/tmp/law-eye-post-deploy-query-plan/summary.csv`
   - `articles_latest=0.142ms`, `statistics_importance=0.152ms`, `permission_audit_latest=0.032ms`
+
+## 2026-02-23 Round 45: permission-audit API consumability hardening (actor + time-window filters)
+
+Failure points
+- R45-AUDIT-API-001: `GET /api/v1/users/{id}/permissions/audit` 仅支持 `limit/offset`，缺少按操作者与时间窗口检索能力，不利于大型企业审计取证与快速排障。
+- R45-AUDIT-CORE-001: 审计服务层过滤条件仅支持 `user/resource/action`，无法复用时间范围过滤逻辑。
+
+Fixes
+- `crates/law-eye-core/src/audit.rs`
+  - `AuditFilters` 新增 `created_after` / `created_before`。
+  - `list`/`count` SQL 新增 `created_at` 范围过滤条件（可选）。
+- `crates/law-eye-api/src/routes/users.rs`
+  - `PermissionAuditQuery` 新增：
+    - `actor_user_id`
+    - `changed_after`
+    - `changed_before`
+  - 新增参数校验：`changed_after <= changed_before`，非法范围返回 `400`。
+  - 审计接口将上述筛选条件透传到 `AuditFilters`。
+
+API contract (admin only)
+- `GET /api/v1/users/{id}/permissions/audit?limit=50&offset=0&actor_user_id=<uuid>&changed_after=<RFC3339>&changed_before=<RFC3339>`
+- 响应结构保持兼容：`items/total/limit/offset`。
+
+Validation (real stack, no mock)
+- `cargo fmt --all` ✅
+- `cargo check -p law-eye-core -p law-eye-api` ✅
+- `cargo test -p law-eye-api -- --nocapture` ✅ (`41 passed`)
+- `node tmp/core-e2e-local.mjs --base-url http://172.19.107.21:13003 --origin http://172.19.96.1:8850 --assert-knowledge-embedding 1` ✅
+  - crawler: `20`
+  - entities_with_embedding: `12`
+  - statistics coverage: `regional/industry/importance = 1`
+  - report pdf download: `status=200`
