@@ -1212,3 +1212,39 @@ Fixes
 Validation
 - `sh -n scripts/enterprise/post-deploy-verify.sh` ✅
 - `LAW_EYE_BASE_URL=http://172.19.107.21:13003 LAW_EYE_WORKER_HEALTH_URL=http://172.19.107.21:3002 LAW_EYE__DATABASE__URL=postgres://... sh scripts/enterprise/post-deploy-verify.sh` ✅
+
+## 2026-02-23 Round 44: post-deploy DB query-plan baseline gate + permission audit consumption
+
+Failure points
+- R44-DB-001: 发布后验收缺少数据库查询计划与延迟基线门禁，无法在上线前阻断慢查询回归。
+- R44-AUDIT-001: 权限变更审计已有数据输出，但缺少“可消费用法”收口说明（API/查询样例/门禁关系）。
+
+Fixes
+- `scripts/enterprise/post-deploy-verify.sh`
+  - 新增可开关 DB 查询计划门禁：`LAW_EYE_VERIFY_DB_QUERY_PLAN=1` 时执行。
+  - 使用 `EXPLAIN (ANALYZE, BUFFERS)` 对 3 条关键查询建立基线并阈值校验：
+    - `articles_latest`
+    - `statistics_importance`
+    - `permission_audit_latest`
+  - 输出计划文件与汇总到 `LAW_EYE_DB_QUERY_PLAN_REPORT_DIR`（默认 `/tmp/law-eye-post-deploy-query-plan`）。
+  - 增加阈值与策略变量：
+    - `LAW_EYE_DB_QUERY_PLAN_THRESHOLD_MS`（默认 `250`）
+    - `LAW_EYE_DB_QUERY_PLAN_DISALLOW_SEQ_SCAN`（默认 `0`，开启后出现 `Seq Scan` 即失败）
+
+Permission audit consumption (enterprise operators)
+- API (admin only):
+  - `GET /api/v1/users/{id}/permissions/audit?limit=50&offset=0`
+  - 返回字段包含 `actor_user_id/target_user_id/requested_add_roles/requested_remove_roles/after_roles/ip_address/created_at`
+- Weekly report JSON:
+  - `scripts/enterprise/audit-report.sh` 产物中读取 `permission_changes.summary/top_actors/recent`
+- Post-deploy gate:
+  - `scripts/enterprise/post-deploy-verify.sh` 已强制校验上述 `permission_changes` 字段存在性
+  - 本轮新增 `permission_audit_latest` 查询计划门禁，确保权限审计查询路径性能可回归
+
+Validation (real stack, no mock)
+- `sh -n scripts/enterprise/post-deploy-verify.sh` ✅
+- `sh -n scripts/enterprise/audit-report.sh` ✅
+- `LAW_EYE_BASE_URL=http://172.19.107.21:13003 LAW_EYE_WORKER_HEALTH_URL=http://172.19.107.21:3002 LAW_EYE__DATABASE__URL=postgres://... LAW_EYE_VERIFY_DB_QUERY_PLAN=1 LAW_EYE_DB_QUERY_PLAN_THRESHOLD_MS=800 sh scripts/enterprise/post-deploy-verify.sh` ✅
+- Query-plan summary sample:
+  - `/tmp/law-eye-post-deploy-query-plan/summary.csv`
+  - `articles_latest=0.142ms`, `statistics_importance=0.152ms`, `permission_audit_latest=0.032ms`
