@@ -1324,3 +1324,6 @@ Validation
     - report pdf download: `status=200`, `bytes=25731`
 - Backend compile gate:
   - `cargo check -p law-eye-api -p law-eye-worker` ✅
+- Extra stability loops (same real stack, no mock):
+  - `tmp/core-e2e-r46-round2.json` (`ok: true`)
+  - `tmp/core-e2e-r46-round3.json` (`ok: true`)
