@@ -3,4 +3,7 @@
 - 本轮及后续新增的 `spec` 文档仅允许放在 `prompts/0225/`。
 - 其他目录（如 `docs/`、`.trellis/spec/`）不再新增本轮 `spec` 正文。
 - 运行手册可引用本目录的 spec，但不重复维护 spec 正文。
-
+- 下轮执行入口：
+  - 主 spec：`REBAC_AI_GOVERNANCE_SPEC_2026-02-25.md`
+  - 实操 runbook：`NEXT_ROUND_LOCAL_RUNBOOK.md`
+  - 企业审查 runbook（历史与门禁证据）：`ENTERPRISE_READINESS_42D_RUNBOOK_2026-02-16.md`
