@@ -46,6 +46,9 @@ const SW_SOURCE = `
 const CACHE_VERSION = ${JSON.stringify(CACHE_VERSION)};
 const STATIC_CACHE = ${JSON.stringify(STATIC_CACHE)};
 const RUNTIME_CACHE = ${JSON.stringify(RUNTIME_CACHE)};
+const DISABLE_CACHE_ON_LOOPBACK = ["localhost", "127.0.0.1", "::1", "0.0.0.0"].includes(
+  (self.location && self.location.hostname ? self.location.hostname.toLowerCase() : "")
+);
 
 const OFFLINE_HTML_ZH = ${JSON.stringify(offlineHtmlZh)};
 const OFFLINE_HTML_EN = ${JSON.stringify(offlineHtmlEn)};
@@ -352,6 +355,10 @@ self.addEventListener("sync", (event) => {
 
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
+    if (DISABLE_CACHE_ON_LOOPBACK) {
+      self.skipWaiting();
+      return;
+    }
     const cache = await caches.open(STATIC_CACHE);
     await cache.addAll(["/icon.svg"]);
     self.skipWaiting();
@@ -360,6 +367,30 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
+    if (DISABLE_CACHE_ON_LOOPBACK) {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((k) => k.startsWith("law-eye-pwa-")).map((k) => caches.delete(k)));
+      try {
+        await self.registration.unregister();
+      } catch (err) {
+        console.warn("[sw] unregister failed", err);
+      }
+      const clients = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      for (const client of clients) {
+        if ("navigate" in client) {
+          try {
+            await client.navigate(client.url);
+          } catch {
+            // ignore
+          }
+        }
+      }
+      return;
+    }
+
     const keys = await caches.keys();
     await Promise.all(keys.filter((k) => !k.startsWith(CACHE_VERSION)).map((k) => caches.delete(k)));
     if (self.registration.navigationPreload) {
@@ -373,6 +404,8 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  if (DISABLE_CACHE_ON_LOOPBACK) return;
+
   const request = event.request;
   if (request.method !== "GET") return;
 

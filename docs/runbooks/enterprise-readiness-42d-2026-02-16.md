@@ -1488,6 +1488,7 @@ Fixes
   - `CACHE_VERSION` 升级为 `law-eye-pwa-v2`，触发旧缓存淘汰。
   - 禁止缓存带 `_rsc` 查询参数的请求。
   - 删除“同源非 API 全量 stale-while-revalidate”兜底分支，仅保留显式静态资源缓存。
+  - 新增 loopback 自保护：当 hostname 为 `localhost/127.0.0.1/::1/0.0.0.0` 时，SW 在激活阶段主动反注册并清理 `law-eye-pwa-*` 缓存，不再拦截请求。
 - `apps/web/src/components/providers/auth-provider.tsx`
   - 新增 `shouldDisableServiceWorkerForHost()`。
   - 在 `localhost/127.0.0.1/::1/0.0.0.0` 上不再注册 SW。
