@@ -5,7 +5,7 @@ import { withLocalePath } from "@/lib/i18n";
 import { useLocale } from "@/lib/i18n-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface ProtectedRouteProps {
 	children: React.ReactNode;
@@ -18,6 +18,22 @@ export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
 	const { refreshSession } = useAuth();
 	const { isAuthenticated, isLoading } = useAuthStore();
 	const requestedSessionCheckRef = useRef(false);
+	const [bootstrapTimedOut, setBootstrapTimedOut] = useState(false);
+
+	useEffect(() => {
+		if (isAuthenticated || !isLoading) {
+			setBootstrapTimedOut(false);
+			return;
+		}
+
+		const timer = window.setTimeout(() => {
+			setBootstrapTimedOut(true);
+		}, 12_000);
+
+		return () => {
+			window.clearTimeout(timer);
+		};
+	}, [isAuthenticated, isLoading]);
 
 	useEffect(() => {
 		if (isAuthenticated) {
@@ -25,7 +41,7 @@ export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
 			return;
 		}
 
-		if (isLoading) return;
+		if (isLoading && !bootstrapTimedOut) return;
 
 		// Step 1: for unauthenticated users, probe session once to recover from
 		// in-memory auth resets on reload/navigation.
@@ -35,16 +51,23 @@ export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
 			return;
 		}
 
-		// Step 2: probe completed and still unauthenticated -> redirect.
+		// Step 2: probe completed (or bootstrap timed out) and still unauthenticated -> redirect.
 		const pathname = window.location.pathname || "/";
 		const search = window.location.search || "";
 		const returnTo = `${pathname}${search}`;
 		router.replace(
 			withLocalePath(locale, `/login?returnTo=${encodeURIComponent(returnTo)}`),
 		);
-	}, [isLoading, isAuthenticated, locale, router, refreshSession]);
+	}, [
+		isLoading,
+		isAuthenticated,
+		bootstrapTimedOut,
+		locale,
+		router,
+		refreshSession,
+	]);
 
-	if (isLoading) {
+	if (isLoading && !bootstrapTimedOut) {
 		return (
 			fallback ?? (
 				<div className="flex min-h-screen items-center justify-center">

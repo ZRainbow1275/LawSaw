@@ -1411,6 +1411,7 @@ Fixes
     - 第一次未登录且非 loading：仅触发 `refreshSession()`。
     - 探测结束后仍未登录：直接 `router.replace('/login?returnTo=...')`。
   - 移除会被 `isLoading` 切换反复取消的 `await + cancelled` 模式。
+  - 增加 bootstrap 超时兜底（12s）：会话探测异常卡住时强制走登录重定向，避免无限 spinner。
 - `apps/web/src/components/auth/login-form.tsx`
   - 登录/MFA 成功后先执行一次 `refreshSession()` 再跳转，并追加 `router.refresh()`，降低首跳会话竞态。
 - `apps/web/src/hooks/use-articles.ts`
