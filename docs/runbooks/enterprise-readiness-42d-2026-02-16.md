@@ -1504,3 +1504,26 @@ Validation
 
 Operational note
 - 本地演示环境建议默认关闭 SW（已自动处理）；云端正式部署可保留 SW，但缓存策略必须保持“仅静态资源可缓存”。
+
+## 2026-02-24 Round 52: 导航白屏兜底自恢复（route transition watchdog）
+
+Failure points
+- R52-WEB-001: 用户反馈在分类页点击“全部资讯”等导航后偶发整页白屏，刷新后恢复。
+
+Investigation
+- Playwright 复现链路（登录 -> `/zh/category/regulation` -> 点击“全部资讯”）在无扩展新上下文下可通过，但用户侧存在偶发卡死现象。
+- 网络与控制台证据显示未出现业务 5xx/JS 未捕获异常；主要为预取中止与个别 404 噪音，无法稳定复现同态错误。
+- 判定为“前端路由转场在少数客户端环境卡住”的体验性故障，需要前端自恢复机制。
+
+Fixes
+- `apps/web/src/components/providers/route-transition-provider.tsx`
+  - 新增 route-level watchdog：路由切换 12s 后若检测到空白 DOM（无主内容子节点、无可见文本、无加载指示），自动对当前 URL 执行一次 `window.location.replace`。
+  - 使用 `sessionStorage` 以 `pathname` 为键做“一次性恢复”限制，避免刷新循环。
+
+Validation
+- `pnpm -C apps/web test` ✅
+- Playwright 导航回归（真实登录，点击导航）✅
+  - 结果：`url=/zh/articles`, `hasArticles=true`, `hasMain=1`, `hasText=true`
+
+Operational note
+- 该兜底不会影响正常路由；仅在“长时间空白且无加载迹象”时触发一次恢复。
