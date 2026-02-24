@@ -5,7 +5,7 @@ import { withLocalePath } from "@/lib/i18n";
 import { useLocale } from "@/lib/i18n-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 interface ProtectedRouteProps {
 	children: React.ReactNode;
@@ -17,34 +17,31 @@ export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
 	const locale = useLocale();
 	const { refreshSession } = useAuth();
 	const { isAuthenticated, isLoading } = useAuthStore();
+	const requestedSessionCheckRef = useRef(false);
 
 	useEffect(() => {
-		if (isLoading || isAuthenticated) return;
+		if (isAuthenticated) {
+			requestedSessionCheckRef.current = false;
+			return;
+		}
 
-		let cancelled = false;
-		void (async () => {
-			// Recover from in-memory auth store resets on hard reload/navigation:
-			// re-validate cookie session before redirecting to login.
-			await refreshSession();
-			if (cancelled) return;
+		if (isLoading) return;
 
-			const current = useAuthStore.getState();
-			if (current.isAuthenticated) return;
+		// Step 1: for unauthenticated users, probe session once to recover from
+		// in-memory auth resets on reload/navigation.
+		if (!requestedSessionCheckRef.current) {
+			requestedSessionCheckRef.current = true;
+			void refreshSession();
+			return;
+		}
 
-			const pathname = window.location.pathname || "/";
-			const search = window.location.search || "";
-			const returnTo = `${pathname}${search}`;
-			router.replace(
-				withLocalePath(
-					locale,
-					`/login?returnTo=${encodeURIComponent(returnTo)}`,
-				),
-			);
-		})();
-
-		return () => {
-			cancelled = true;
-		};
+		// Step 2: probe completed and still unauthenticated -> redirect.
+		const pathname = window.location.pathname || "/";
+		const search = window.location.search || "";
+		const returnTo = `${pathname}${search}`;
+		router.replace(
+			withLocalePath(locale, `/login?returnTo=${encodeURIComponent(returnTo)}`),
+		);
 	}, [isLoading, isAuthenticated, locale, router, refreshSession]);
 
 	if (isLoading) {

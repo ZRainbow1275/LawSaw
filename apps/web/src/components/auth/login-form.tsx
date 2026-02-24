@@ -35,7 +35,7 @@ export function LoginForm() {
 	const router = useRouter();
 	const locale = useLocale();
 	const t = useT();
-	const { login, verifyMfa } = useAuth();
+	const { login, verifyMfa, refreshSession } = useAuth();
 	const [returnTo, setReturnTo] = useState<string | null>(null);
 	const [error, setError] = useState("");
 	const [email, setEmail] = useState("");
@@ -59,17 +59,20 @@ export function LoginForm() {
 		}
 	}, [mfaState]);
 
-	const navigateAfterLogin = useCallback(() => {
+	const navigateAfterLogin = useCallback(async () => {
 		const nextReturnTo =
 			returnTo ||
 			safeReturnTo(new URLSearchParams(window.location.search).get("returnTo"));
+		// Force one session recheck before navigation to reduce first-page bootstrap races.
+		await refreshSession();
 		useToastStore.getState().addToast({
 			type: "success",
 			title: t("Signed in"),
 			description: t("Welcome back"),
 		});
 		router.replace(withLocalePath(locale, nextReturnTo || "/"));
-	}, [returnTo, t, router, locale]);
+		router.refresh();
+	}, [returnTo, t, router, locale, refreshSession]);
 
 	const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
 		e.preventDefault();
@@ -89,7 +92,7 @@ export function LoginForm() {
 		try {
 			const result = await login({ email: email.trim(), password });
 			if (result.success) {
-				navigateAfterLogin();
+				await navigateAfterLogin();
 			} else if ("mfaRequired" in result && result.mfaRequired) {
 				setMfaState({
 					email: result.email,
@@ -125,7 +128,7 @@ export function LoginForm() {
 				code: trimmedCode,
 			});
 			if (result.success) {
-				navigateAfterLogin();
+				await navigateAfterLogin();
 			} else {
 				setError(result.error || "MFA verification failed.");
 			}

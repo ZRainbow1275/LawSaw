@@ -1392,3 +1392,36 @@ Validation (real stack, no mock)
 
 Release decision
 - 依据 `prompts/RC2_ENTERPRISE_IMPROVEMENT_STANDARD.md` 的停止条件，本轮判定 `PASS`：进入发布/部署阶段，不再继续无限扩展式改进。
+
+## 2026-02-24 Round 49: 登录后首跳 `/articles` 白屏（无限 loading）修复
+
+Failure points
+- R49-WEB-001: 登录进入或直接访问 `/zh/articles` 偶发停留在白屏 loading（橙色 spinner），手工刷新后恢复。
+- R49-WEB-002: `ProtectedRoute` 在未登录态存在会话探测循环，导致重定向登录回调被反复取消，页面长时间不离开 loading 状态。
+
+Root cause
+- `apps/web/src/components/auth/protected-route.tsx` 原逻辑为：
+  - 当 `isLoading=false && isAuthenticated=false` 时 `await refreshSession()` 后再 `router.replace('/login')`。
+  - 但 `refreshSession()` 内会先 `setLoading(true)`，触发 effect cleanup，将当前异步分支标记 `cancelled=true`。
+  - 回到 `isLoading=false` 后 effect 再次触发并重复同样流程，形成“探测 -> 取消 -> 再探测”的循环，导致白屏 spinner。
+
+Fixes
+- `apps/web/src/components/auth/protected-route.tsx`
+  - 改为“只探测一次”状态机：
+    - 第一次未登录且非 loading：仅触发 `refreshSession()`。
+    - 探测结束后仍未登录：直接 `router.replace('/login?returnTo=...')`。
+  - 移除会被 `isLoading` 切换反复取消的 `await + cancelled` 模式。
+- `apps/web/src/components/auth/login-form.tsx`
+  - 登录/MFA 成功后先执行一次 `refreshSession()` 再跳转，并追加 `router.refresh()`，降低首跳会话竞态。
+- `apps/web/src/hooks/use-articles.ts`
+  - 新增 `enabled` 参数，`/articles` 首屏可在认证未就绪时禁止请求，避免无效 401 噪音。
+- `apps/web/src/hooks/use-categories.ts`
+  - 新增 `enabled` 参数，与文章列表查询保持一致。
+- `apps/web/src/app/articles/page.tsx`
+  - 按认证状态控制 `useArticles/useCategories` 的 `enabled`。
+  - 增加显式加载失败 UI + 重试按钮，避免“空白无反馈”体验。
+
+Validation
+- `pnpm -C apps/web test` ✅（typecheck + lint + unit）
+- `pnpm -C apps/web e2e` ✅（`6 passed`）
+  - 关键回归点：`未登录访问受保护页面应重定向到登录页` 已恢复通过（此前会卡在 `/zh/articles` loading）。

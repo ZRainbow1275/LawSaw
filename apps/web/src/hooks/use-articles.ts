@@ -17,10 +17,12 @@ interface ArticleFilters {
 	offset?: number;
 	category_id?: string;
 	status?: string;
+	enabled?: boolean;
 }
 
 export function useArticles(filters: ArticleFilters = {}) {
-	const { limit = 20, offset = 0, category_id, status } = filters;
+	const { limit = 20, offset = 0, category_id, status, enabled = true } =
+		filters;
 
 	const queryParams = new URLSearchParams();
 	queryParams.set("limit", limit.toString());
@@ -29,12 +31,21 @@ export function useArticles(filters: ArticleFilters = {}) {
 	if (status) queryParams.set("status", status);
 
 	return useQuery({
-		queryKey: ["articles", filters],
+		queryKey: [
+			"articles",
+			{
+				limit,
+				offset,
+				category_id: category_id ?? null,
+				status: status ?? null,
+			},
+		],
 		queryFn: () =>
 			apiClient.get(
 				`/api/v1/articles?${queryParams.toString()}`,
 				assertArticleListResponse,
 			),
+		enabled,
 	});
 }
 

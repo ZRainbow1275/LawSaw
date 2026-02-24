@@ -24,10 +24,12 @@ import { useCategories } from "@/hooks/use-categories";
 import { useT } from "@/lib/i18n-client";
 import { fadeVariants, staggerContainerVariants } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/stores/auth-store";
 import { useReadingStore } from "@/stores/reading-store";
 import { useToast } from "@/stores/toast-store";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+	AlertTriangle,
 	BarChart3,
 	Briefcase,
 	Building2,
@@ -92,6 +94,8 @@ type ViewMode = "list" | "grid";
 
 export default function ArticlesPage() {
 	const t = useT();
+	const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+	const authLoading = useAuthStore((s) => s.isLoading);
 	const [page, setPage] = useState(0);
 	const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 	const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -99,22 +103,40 @@ export default function ArticlesPage() {
 	const [filtersOpen, setFiltersOpen] = useState(false);
 	const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
+	const canLoadContent = isAuthenticated && !authLoading;
+
 	const { success: showSuccess } = useToast();
 	const bookmarks = useReadingStore((s) => s.bookmarks);
 	const toggleBookmark = useReadingStore((s) => s.toggleBookmark);
 
-	const { data: articlesData, isLoading: articlesLoading } = useArticles({
+	const {
+		data: articlesData,
+		isLoading: articlesLoading,
+		isError: articlesIsError,
+		error: articlesError,
+		refetch: refetchArticles,
+	} = useArticles({
 		limit: PAGE_SIZE,
 		offset: page * PAGE_SIZE,
 		category_id: selectedCategory ?? undefined,
 		status: statusFilter === "all" ? undefined : statusFilter,
+		enabled: canLoadContent,
 	});
 
-	const { data: categories } = useCategories();
+	const {
+		data: categories,
+		isError: categoriesIsError,
+		error: categoriesError,
+		refetch: refetchCategories,
+	} = useCategories({ enabled: canLoadContent });
 
 	const articles = articlesData?.data ?? [];
 	const total = articlesData?.total ?? 0;
 	const totalPages = Math.ceil(total / PAGE_SIZE);
+	const showArticlesLoading = authLoading || (canLoadContent && articlesLoading);
+	const listLoadError =
+		(articlesError instanceof Error ? articlesError.message : null) ??
+		(categoriesError instanceof Error ? categoriesError.message : null);
 	const activeStatusKey =
 		statusOptions.find((option) => option.value === statusFilter)?.labelKey ??
 		"All statuses";
@@ -394,7 +416,7 @@ export default function ArticlesPage() {
 								</CardTitle>
 							</CardHeader>
 							<CardContent>
-								{articlesLoading ? (
+								{showArticlesLoading ? (
 									// Loading skeleton
 									<div
 										className={cn(
@@ -412,6 +434,30 @@ export default function ArticlesPage() {
 												variant={viewMode === "grid" ? "compact" : "default"}
 											/>
 										))}
+									</div>
+								) : articlesIsError || categoriesIsError ? (
+									<div className="rounded-xl border border-error/20 bg-error-light/30 p-8 text-center">
+										<AlertTriangle className="mx-auto mb-3 h-8 w-8 text-error" />
+										<p className="font-medium text-neutral-900">
+											{t("Failed to load articles. Please retry.")}
+										</p>
+										{process.env.NODE_ENV !== "production" && listLoadError ? (
+											<p className="mt-2 break-words text-xs text-neutral-500">
+												{listLoadError}
+											</p>
+										) : null}
+										<div className="mt-4">
+											<Button
+												variant="outline"
+												size="sm"
+												onClick={() => {
+													void refetchCategories();
+													void refetchArticles();
+												}}
+											>
+												{t("Retry")}
+											</Button>
+										</div>
 									</div>
 								) : articles.length === 0 ? (
 									// Empty state
