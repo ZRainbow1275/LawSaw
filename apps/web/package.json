@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node ./scripts/next-dev.mjs",
-    "build": "node ./node_modules/next/dist/bin/next build",
+    "build": "node ./node_modules/next/dist/bin/next build --webpack",
     "start": "node ./node_modules/next/dist/bin/next start",
     "lint": "node ./node_modules/@biomejs/biome/bin/biome lint src",
     "format": "node ./node_modules/@biomejs/biome/bin/biome format --write src",

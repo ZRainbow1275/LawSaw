@@ -19,7 +19,7 @@ import {
 	Loader2,
 	type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -49,6 +49,7 @@ export function ReportExportDialog({
 }: ReportExportDialogProps) {
 	const t = useT();
 	const exportReport = useExportReport();
+	const wasOpenRef = useRef(isOpen);
 	const [selectedFormat, setSelectedFormat] =
 		useState<ReportExportFormat>("pdf");
 	const [queuedFormat, setQueuedFormat] = useState<ReportExportFormat | null>(
@@ -95,12 +96,15 @@ export function ReportExportDialog({
 	];
 
 	useEffect(() => {
-		if (!isOpen) {
-			setSelectedFormat("pdf");
-			setQueuedFormat(null);
-			setShowSuccess(false);
-			exportReport.reset();
-		}
+		const wasOpen = wasOpenRef.current;
+		wasOpenRef.current = isOpen;
+		if (!wasOpen || isOpen) return;
+
+		// Reset once on close transition to prevent repeated reset() render loops.
+		setSelectedFormat("pdf");
+		setQueuedFormat(null);
+		setShowSuccess(false);
+		exportReport.reset();
 	}, [isOpen, exportReport]);
 
 	const handleExport = () => {

@@ -13,7 +13,7 @@ import type { ReportPeriodType } from "@/lib/api/types";
 import { useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface CreateReportDialogProps {
 	isOpen: boolean;
@@ -35,6 +35,7 @@ export function CreateReportDialog({
 }: CreateReportDialogProps) {
 	const t = useT();
 	const createReport = useCreateReport();
+	const wasOpenRef = useRef(isOpen);
 
 	const [title, setTitle] = useState("");
 	const [periodType, setPeriodType] = useState<ReportPeriodType>("weekly");
@@ -54,10 +55,14 @@ export function CreateReportDialog({
 	}, []);
 
 	useEffect(() => {
-		if (!isOpen) {
-			resetForm();
-			createReport.reset();
-		}
+		const wasOpen = wasOpenRef.current;
+		wasOpenRef.current = isOpen;
+		if (!wasOpen || isOpen) return;
+
+		// Only reset once when dialog transitions from open -> closed.
+		// This avoids repeated mutation.reset() calls in closed state render loops.
+		resetForm();
+		createReport.reset();
 	}, [isOpen, resetForm, createReport]);
 
 	// Reset template selection when period type changes

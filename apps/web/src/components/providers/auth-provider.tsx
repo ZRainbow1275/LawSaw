@@ -273,6 +273,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			if (error.status === 409) {
 				if (now - lastConflictAt.current < COOLDOWN_MS) return;
 				lastConflictAt.current = now;
+				if (
+					normalizedPathname === "/login" ||
+					normalizedPathname === "/register"
+				) {
+					return;
+				}
 
 				const info: ConflictInfo = {
 					status: error.status,
@@ -306,6 +312,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			if (error.status === 428 || error.status === 412) {
 				if (now - lastConflictAt.current < COOLDOWN_MS) return;
 				lastConflictAt.current = now;
+				if (
+					normalizedPathname === "/login" ||
+					normalizedPathname === "/register"
+				) {
+					return;
+				}
 
 				const info: ConflictInfo = {
 					status: error.status,

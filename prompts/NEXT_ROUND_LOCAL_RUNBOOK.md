@@ -1,6 +1,6 @@
 # LawSaw 本机完整启动与下一轮实测检验手册
 
-更新时间：2026-02-23  
+更新时间：2026-02-24  
 目标：在本机完整启动并验证“爬虫 / 知识图谱 / 统计 / 日报”真实链路（无 mock），可直接迁移到云端部署。
 
 配套标准文档：`prompts/RC2_ENTERPRISE_IMPROVEMENT_STANDARD.md`  
@@ -83,6 +83,20 @@ curl -i http://172.19.107.21:3002/health
 
 > 推荐在单独 PowerShell 窗口执行并保持运行。
 
+### 4.1 生产同构启动（推荐，已验证）
+
+```powershell
+cd D:\Desktop\LawSaw\apps\web
+
+# 注意：本文件当前固定为可用代理目标
+# LAW_EYE_API_PROXY_TARGET=http://172.19.107.21:13003
+
+pnpm build   # 等价于 next build --webpack
+pnpm start -p 8850 -H 0.0.0.0
+```
+
+### 4.2 开发模式启动（仅调试）
+
 ```powershell
 $cmd = 'set PORT=8850&&set WEB_PORT=8850&&set WEB_HOST=0.0.0.0&&set NEXT_PUBLIC_API_URL=http://172.19.96.1:8850&&set LAW_EYE_API_PROXY_TARGET=http://172.19.107.21:13003&&set NEXT_TELEMETRY_DISABLED=1&&cd /d D:\Desktop\LawSaw\apps\web&&pnpm dev'
 cmd.exe /c $cmd
@@ -98,6 +112,29 @@ curl.exe -i http://172.19.96.1:8850/api/v1/auth/me
 期望：
 - `/login` 返回 `200` 或 `307`
 - `/api/v1/auth/me` 返回 `401`（未登录），**不是 500**
+
+---
+
+## 4.3 本轮关键修复（2026-02-24）
+
+1. 修复首页“API服务异常”误报  
+   - 根因：`/health` 被 locale middleware 重定向到 `/zh/health`（307->404）  
+   - 修复：`apps/web/src/middleware.ts` 放行 `/health`、`/metrics`、`/api-docs`
+
+2. 修复 reports 页面后侧栏不跳转  
+   - 根因：reports 弹窗关闭态 reset 触发渲染循环（React #185），导致路由交互异常  
+   - 修复文件：  
+     - `apps/web/src/components/reports/create-report-dialog.tsx`  
+     - `apps/web/src/components/reports/report-export-dialog.tsx`  
+   - 处理：仅在弹窗由“打开 -> 关闭”时执行一次 reset
+
+3. 修复登录/注册页被全局并发冲突遮罩拦截  
+   - 修复文件：`apps/web/src/components/providers/auth-provider.tsx`  
+   - 处理：登录/注册页跳过 409/412/428 全局冲突弹窗
+
+4. 生产构建稳定性策略  
+   - 将 `apps/web/package.json` 的 `build` 改为 webpack 构建：`next build --webpack`  
+   - 避免 Next 16 默认 turbopack 生产构建在本项目下触发的路由异常风险
 
 ---
 

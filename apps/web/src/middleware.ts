@@ -21,6 +21,9 @@ export function middleware(request: NextRequest) {
 	if (
 		pathname.startsWith("/_next") ||
 		pathname.startsWith("/api") ||
+		pathname.startsWith("/api-docs") ||
+		pathname === "/health" ||
+		pathname === "/metrics" ||
 		pathname === "/sw" ||
 		pathname === "/favicon.ico" ||
 		pathname === "/robots.txt" ||
