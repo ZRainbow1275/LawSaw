@@ -1562,4 +1562,4 @@ Operational note
    - `pnpm -C apps/web start -p 8850 -H 0.0.0.0`
 
 ### 本轮下一步（与改进项对齐）
-- 进入 ReBAC 与分层身份实现阶段前，先以 `.trellis/spec/enterprise-readiness-42d-critical-review-2026-02-16.md` 的 `2026-02-25` 章节作为执行基准。
+- 进入 ReBAC 与分层身份实现阶段前，先以 `prompts/0225/REBAC_AI_GOVERNANCE_SPEC_2026-02-25.md` 作为唯一执行基准。

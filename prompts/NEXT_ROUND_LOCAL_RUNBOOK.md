@@ -317,7 +317,9 @@ bash scripts/enterprise/rc2-gate.sh
 
 ## 12. 下一轮改进范围（ReBAC / 管理面板 / AI 治理）
 
-以 `.trellis/spec/enterprise-readiness-42d-critical-review-2026-02-16.md` 的 `2026-02-25` 章节为准，最小闭环拆分为三阶段：
+唯一 spec：`prompts/0225/REBAC_AI_GOVERNANCE_SPEC_2026-02-25.md`
+
+最小闭环拆分为三阶段：
 
 1. Phase A（P0）：ReBAC + 分层身份（super_admin / tenant_admin / basic / verified / premium）
 2. Phase B（P1）：管理员面板与用户面板 + Banner/置顶
