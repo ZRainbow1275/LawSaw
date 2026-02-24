@@ -1,6 +1,6 @@
 # LawSaw 本机完整启动与下一轮实测检验手册
 
-更新时间：2026-02-24  
+更新时间：2026-02-25  
 目标：在本机完整启动并验证“爬虫 / 知识图谱 / 统计 / 日报”真实链路（无 mock），可直接迁移到云端部署。
 
 配套标准文档：`prompts/RC2_ENTERPRISE_IMPROVEMENT_STANDARD.md`  
@@ -136,6 +136,24 @@ curl.exe -i http://172.19.96.1:8850/api/v1/auth/me
    - 将 `apps/web/package.json` 的 `build` 改为 webpack 构建：`next build --webpack`  
    - 避免 Next 16 默认 turbopack 生产构建在本项目下触发的路由异常风险
 
+5. 修复“无模板报告导出 PDF 失败”  
+   - 根因：有些报告关联了无效模板，模板渲染失败后直接中断导出  
+   - 修复文件：`crates/law-eye-worker/src/main.rs`  
+   - 处理：`Html/Pdf` 导出都改为“模板渲染失败自动降级到内联 fallback HTML”，保证导出不中断
+
+6. 报告审批与驳回链路可用化  
+   - 修复文件：`apps/web/src/components/reports/report-detail.tsx`  
+   - 处理：  
+     - `generated` 状态支持“快速批准”（自动补齐 `generated -> review -> approved`）  
+     - “驳回”统一走 `target_status=draft`（当前后端状态机无 `rejected` 状态）  
+     - 有导出 key 时即可下载，不再强依赖 `published`
+
+7. 分类图标统一为线性图标（去 emoji）  
+   - 修复文件：  
+     - `apps/web/src/components/layout/sidebar.tsx`  
+     - `apps/web/src/components/dashboard/category-overview.tsx`  
+   - 处理：按 `slug -> lucide icon` 映射，侧栏与概览使用同一图标体系
+
 ---
 
 ## 5. 若抓取后不入库：对齐 worker 到 API 同一栈（WSL / Git Bash）
@@ -194,6 +212,19 @@ node tmp/core-e2e-local.mjs --base-url http://172.19.107.21:13003 --origin http:
 node tmp/core-e2e-local.mjs --base-url http://172.19.107.21:13003 --origin http://172.19.96.1:8850 --assert-knowledge-embedding 1 > tmp/core-e2e-next-round-2.json
 node tmp/core-e2e-local.mjs --base-url http://172.19.107.21:13003 --origin http://172.19.96.1:8850 --assert-knowledge-embedding 1 > tmp/core-e2e-next-round-3.json
 ```
+
+### 6.3 报告审批/导出链路专项回归（本轮新增）
+
+```powershell
+node tmp/report-export-e2e.mjs
+```
+
+期望：
+- 输出 `ok: true`
+- `export_pdf_key: true`
+- `export_docx_key: true`
+- `pdf_download: 200`
+- `docx_download: 200`
 
 ---
 

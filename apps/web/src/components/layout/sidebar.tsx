@@ -7,19 +7,30 @@ import { cn } from "@/lib/utils";
 import { useSidebarStore } from "@/stores/sidebar-store";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
+	BarChart3,
+	Briefcase,
+	Building2,
 	ChevronRight,
 	ClipboardList,
 	Database,
 	Eye,
 	FileText,
+	Flame,
+	Globe2,
+	GraduationCap,
 	LayoutDashboard,
 	MessageSquarePlus,
 	Rss,
+	Scale,
+	ScrollText,
 	Settings,
 	Share2,
+	Shield,
+	ShieldCheck,
 	Sparkles,
 	TrendingUp,
 	X,
+	type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -75,6 +86,19 @@ const navigation = [
 	{ name: "Feedback", href: "/feedback", icon: MessageSquarePlus },
 	{ name: "Settings", href: "/settings", icon: Settings },
 ];
+
+const categoryIconMap: Record<string, LucideIcon> = {
+	legislation: ScrollText,
+	regulation: Building2,
+	enforcement: Scale,
+	industry: Briefcase,
+	compliance: ShieldCheck,
+	data: BarChart3,
+	security: Shield,
+	academic: GraduationCap,
+	events: Flame,
+	international: Globe2,
+};
 
 type CategoriesQuery = ReturnType<typeof useCategories>;
 type CategoryList = NonNullable<CategoriesQuery["data"]>;
@@ -329,6 +353,7 @@ function SidebarPanel({
 								<div className="space-y-0.5">
 									{categories.map((category, index) => {
 										const isActive = pathname === `/category/${category.slug}`;
+										const CategoryIcon = categoryIconMap[category.slug];
 										const iconText =
 											category.icon?.trim() ||
 											category.name.trim().slice(0, 1) ||
@@ -380,7 +405,11 @@ function SidebarPanel({
 														}
 														aria-hidden="true"
 													>
-														{iconText}
+														{CategoryIcon ? (
+															<CategoryIcon className="h-3.5 w-3.5" />
+														) : (
+															iconText
+														)}
 													</motion.div>
 													<span>{category.name}</span>
 												</Link>

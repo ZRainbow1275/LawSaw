@@ -38,6 +38,10 @@ interface FormatOption {
 	description: string;
 }
 
+function reportFormatRequiresTemplate(format: ReportExportFormat) {
+	return format === "pdf" || format === "html";
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -51,7 +55,7 @@ export function ReportExportDialog({
 	const exportReport = useExportReport();
 	const wasOpenRef = useRef(isOpen);
 	const [selectedFormat, setSelectedFormat] =
-		useState<ReportExportFormat>("pdf");
+		useState<ReportExportFormat>("docx");
 	const [queuedFormat, setQueuedFormat] = useState<ReportExportFormat | null>(
 		null,
 	);
@@ -62,6 +66,7 @@ export function ReportExportDialog({
 	});
 
 	const latestReport = pollReport.data ?? report;
+	const lacksTemplate = !latestReport?.template_id;
 	const activeFormat = queuedFormat ?? selectedFormat;
 	const latestExportKey =
 		activeFormat === "pdf"
@@ -95,20 +100,31 @@ export function ReportExportDialog({
 		},
 	];
 
+	const isFormatDisabled = (format: ReportExportFormat) =>
+		lacksTemplate && reportFormatRequiresTemplate(format);
+
 	useEffect(() => {
 		const wasOpen = wasOpenRef.current;
 		wasOpenRef.current = isOpen;
 		if (!wasOpen || isOpen) return;
 
 		// Reset once on close transition to prevent repeated reset() render loops.
-		setSelectedFormat("pdf");
+		setSelectedFormat("docx");
 		setQueuedFormat(null);
 		setShowSuccess(false);
 		exportReport.reset();
 	}, [isOpen, exportReport]);
 
+	useEffect(() => {
+		if (!isOpen) return;
+		if (!lacksTemplate) return;
+		if (!reportFormatRequiresTemplate(selectedFormat)) return;
+		setSelectedFormat("docx");
+	}, [isOpen, lacksTemplate, selectedFormat]);
+
 	const handleExport = () => {
 		if (!report) return;
+		if (isFormatDisabled(selectedFormat)) return;
 		const format = selectedFormat;
 		setQueuedFormat(format);
 		exportReport.mutate(
@@ -171,20 +187,31 @@ export function ReportExportDialog({
 						)}
 					</div>
 				) : (
-					<div className="grid grid-cols-3 gap-4">
+					<div className="space-y-3">
+						{lacksTemplate && (
+							<div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+								{t(
+									"This report has no template. DOCX export is available now; PDF/HTML can be enabled after assigning a template.",
+								)}
+							</div>
+						)}
+						<div className="grid grid-cols-3 gap-4">
 						{formats.map((fmt) => {
 							const Icon = fmt.icon;
 							const isSelected = selectedFormat === fmt.format;
+							const disabled = isFormatDisabled(fmt.format);
 							return (
 								<button
 									key={fmt.format}
 									type="button"
+									disabled={disabled}
 									onClick={() => setSelectedFormat(fmt.format)}
 									className={cn(
 										"flex flex-col items-center gap-2 p-4 rounded-xl border-2 cursor-pointer transition-all",
-										isSelected
+										isSelected && !disabled
 											? "border-primary-500 bg-primary-50 text-primary-700"
 											: "border-neutral-200 bg-white text-neutral-600 hover:border-primary-200 hover:bg-neutral-50",
+										disabled && "cursor-not-allowed opacity-45",
 									)}
 								>
 									<Icon aria-hidden="true" className="h-8 w-8" />
@@ -192,9 +219,15 @@ export function ReportExportDialog({
 									<span className="text-xs text-center opacity-70">
 										{fmt.description}
 									</span>
+									{disabled && (
+										<span className="text-[10px] font-medium text-amber-600">
+											{t("Template required")}
+										</span>
+									)}
 								</button>
 							);
 						})}
+					</div>
 					</div>
 				)}
 
@@ -212,7 +245,10 @@ export function ReportExportDialog({
 					<Button variant="outline" onClick={onClose}>
 						{t("Cancel")}
 					</Button>
-					<Button onClick={handleExport} disabled={exportReport.isPending}>
+					<Button
+						onClick={handleExport}
+						disabled={exportReport.isPending || isFormatDisabled(selectedFormat)}
+					>
 						{exportReport.isPending && (
 							<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
 						)}

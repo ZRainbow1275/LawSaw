@@ -163,6 +163,63 @@ fn build_report_export_object_key(
     )
 }
 
+fn escape_html(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+fn render_fallback_report_html(
+    title: &str,
+    report_number: &str,
+    period_start: &str,
+    period_end: &str,
+) -> String {
+    let title = escape_html(title);
+    let report_number = escape_html(report_number);
+    let period_start = escape_html(period_start);
+    let period_end = escape_html(period_end);
+    let generated_at = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>{title}</title>
+    <style>
+      body {{
+        font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+        color: #1f2937;
+        margin: 28px;
+        line-height: 1.7;
+      }}
+      h1 {{ margin: 0 0 10px; font-size: 28px; }}
+      .meta {{ color: #6b7280; font-size: 13px; margin-bottom: 16px; }}
+      .box {{
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 12px 14px;
+      }}
+    </style>
+  </head>
+  <body>
+    <h1>{title}</h1>
+    <div class="meta">报告编号：{report_number} | 周期：{period_start} ~ {period_end} | 生成时间：{generated_at}</div>
+    <div class="box">
+      <p>本报告由 LegalMind 系统自动生成，可用于企业内部初步汇报与审阅。</p>
+      <p>如需完整业务模板样式，请在系统中绑定自定义模板后重新导出。</p>
+    </div>
+  </body>
+</html>"#,
+    )
+}
+
 fn ai_fallback_classify(title: &str, content: &str) -> ClassifyResult {
     let text = format!("{} {}", title, content).to_lowercase();
 
@@ -4277,42 +4334,115 @@ impl Worker {
         // 4. 根据格式渲染导出
         let (bytes, content_type) = match format {
             ExportFormat::Html => {
-                let template = template
-                    .as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("HTML 导出需要报告模板"))?;
-                let html = HtmlExporter::render(
-                    template,
-                    &report.title,
-                    &report.report_number,
-                    &period_start_str,
-                    &period_end_str,
-                    &aggregated,
-                )
-                .map_err(|e| anyhow::anyhow!("HTML 渲染失败: {}", e))?;
+                let html = if let Some(template) = template.as_ref() {
+                    match HtmlExporter::render(
+                        template,
+                        &report.title,
+                        &report.report_number,
+                        &period_start_str,
+                        &period_end_str,
+                        &aggregated,
+                    ) {
+                        Ok(html) => html,
+                        Err(err) => {
+                            warn!(
+                                %report_id,
+                                %tenant_id,
+                                request_id = %request_id,
+                                error = %err,
+                                "Template render failed; using inline fallback HTML for report export"
+                            );
+                            render_fallback_report_html(
+                                &report.title,
+                                &report.report_number,
+                                &period_start_str,
+                                &period_end_str,
+                            )
+                        }
+                    }
+                } else {
+                    warn!(
+                        %report_id,
+                        %tenant_id,
+                        request_id = %request_id,
+                        "Report has no template_id; using inline fallback HTML for report export"
+                    );
+                    render_fallback_report_html(
+                        &report.title,
+                        &report.report_number,
+                        &period_start_str,
+                        &period_end_str,
+                    )
+                };
                 (html.into_bytes(), "text/html; charset=utf-8")
             }
             ExportFormat::Pdf => {
-                // 先渲染 HTML，再转 PDF
-                let template = template
-                    .as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("PDF 导出需要报告模板"))?;
-                let html = HtmlExporter::render(
-                    template,
-                    &report.title,
-                    &report.report_number,
-                    &period_start_str,
-                    &period_end_str,
-                    &aggregated,
-                )
-                .map_err(|e| anyhow::anyhow!("HTML 渲染失败: {}", e))?;
+                // Render HTML first, then convert to PDF
+                let (html, page_config) = if let Some(template) = template.as_ref() {
+                    match HtmlExporter::render(
+                        template,
+                        &report.title,
+                        &report.report_number,
+                        &period_start_str,
+                        &period_end_str,
+                        &aggregated,
+                    ) {
+                        Ok(html) => (html, template.page_config.clone()),
+                        Err(err) => {
+                            warn!(
+                                %report_id,
+                                %tenant_id,
+                                request_id = %request_id,
+                                error = %err,
+                                "Template render failed; using inline fallback PDF HTML for report export"
+                            );
+                            (
+                                render_fallback_report_html(
+                                    &report.title,
+                                    &report.report_number,
+                                    &period_start_str,
+                                    &period_end_str,
+                                ),
+                                json!({
+                                    "format": "A4",
+                                    "margin_top": "12mm",
+                                    "margin_right": "10mm",
+                                    "margin_bottom": "12mm",
+                                    "margin_left": "10mm"
+                                }),
+                            )
+                        }
+                    }
+                } else {
+                    warn!(
+                        %report_id,
+                        %tenant_id,
+                        request_id = %request_id,
+                        "Report has no template_id; using inline fallback PDF HTML for report export"
+                    );
+                    (
+                        render_fallback_report_html(
+                            &report.title,
+                            &report.report_number,
+                            &period_start_str,
+                            &period_end_str,
+                        ),
+                        json!({
+                            "format": "A4",
+                            "margin_top": "12mm",
+                            "margin_right": "10mm",
+                            "margin_bottom": "12mm",
+                            "margin_left": "10mm"
+                        }),
+                    )
+                };
 
                 let pdf_exporter = PdfExporter::from_env()
-                    .map_err(|e| anyhow::anyhow!("PDF 导出器初始化失败: {}", e))?;
-                let page_config = template.page_config.clone();
+                    .map_err(|e| anyhow::anyhow!("PDF exporter init failed: {}", e))?;
                 let pdf_bytes = pdf_exporter
                     .html_to_pdf(&html, &page_config, request_id)
                     .await
-                    .map_err(|e| anyhow::anyhow!("PDF 生成失败: {}", e))?;
+                    .map_err(|e| anyhow::anyhow!("PDF generation failed: {}", e))?;
                 (pdf_bytes, "application/pdf")
             }
             ExportFormat::Docx => {

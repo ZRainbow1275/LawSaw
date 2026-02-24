@@ -16,8 +16,31 @@ import { useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
 import {
 	BarChart3,
+	Briefcase,
+	Building2,
 	FileText,
+	Flame,
+	Globe2,
+	GraduationCap,
+	Scale,
+	ScrollText,
+	Shield,
+	ShieldCheck,
+	type LucideIcon,
 } from "lucide-react";
+
+const categoryIconMap: Record<string, LucideIcon> = {
+	legislation: ScrollText,
+	regulation: Building2,
+	enforcement: Scale,
+	industry: Briefcase,
+	compliance: ShieldCheck,
+	data: BarChart3,
+	security: Shield,
+	academic: GraduationCap,
+	events: Flame,
+	international: Globe2,
+};
 
 function parseHexColor(
 	input: string,
@@ -200,6 +223,7 @@ export function CategoryOverview() {
 						</div>
 					)}
 					{categories?.map((category) => {
+						const CategoryIcon = categoryIconMap[category.slug];
 						const iconText =
 							category.icon?.trim() ||
 							category.name.trim().slice(0, 1) ||
@@ -221,7 +245,11 @@ export function CategoryOverview() {
 										)}
 										style={badgeStyle}
 									>
-										<span aria-hidden="true">{iconText}</span>
+										{CategoryIcon ? (
+											<CategoryIcon aria-hidden="true" className="h-4 w-4" />
+										) : (
+											<span aria-hidden="true">{iconText}</span>
+										)}
 									</div>
 									<span className="text-sm font-medium text-neutral-700">
 										{category.name}

@@ -353,14 +353,6 @@ pub(crate) async fn export_report(
         ));
     }
 
-    // For HTML and PDF exports, a template is required
-    if matches!(format, ExportFormat::Html | ExportFormat::Pdf) && report.template_id.is_none() {
-        return Err(AppError::validation(format!(
-            "A template is required for {} export. Please set a template_id on the report first.",
-            format.extension()
-        )));
-    }
-
     // Enqueue export task
     let task = ReportExportTask {
         tenant_id: user.tenant_id,

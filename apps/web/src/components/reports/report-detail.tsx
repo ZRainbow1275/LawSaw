@@ -11,6 +11,7 @@ import {
 import type { Report, ReportStatus } from "@/lib/api/types";
 import { useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/stores/toast-store";
 import { motion } from "framer-motion";
 import {
 	Archive,
@@ -79,18 +80,51 @@ export function ReportDetail({
 	onExportClick,
 }: ReportDetailProps) {
 	const t = useT();
+	const { error: toastError } = useToast();
 	const { data: report, isLoading, isError, refetch } = useReport(reportId);
 	const transitionStatus = useTransitionReportStatus();
 	const generateReport = useGenerateReport();
 
 	const isBusy = transitionStatus.isPending || generateReport.isPending;
 
+	const getErrorMessage = (error: unknown) =>
+		error instanceof Error ? error.message : t("Operation failed");
+
 	const handleTransition = (targetStatus: ReportStatus) => {
-		transitionStatus.mutate({ id: reportId, target_status: targetStatus });
+		transitionStatus.mutate(
+			{ id: reportId, target_status: targetStatus },
+			{
+				onError: (error) => {
+					toastError(t("Status update failed"), getErrorMessage(error));
+				},
+			},
+		);
+	};
+
+	const handleFastApprove = async () => {
+		if (!report || isBusy) return;
+		try {
+			if (report.status === "generated") {
+				await transitionStatus.mutateAsync({
+					id: reportId,
+					target_status: "review",
+				});
+			}
+			await transitionStatus.mutateAsync({
+				id: reportId,
+				target_status: "approved",
+			});
+		} catch (error) {
+			toastError(t("Approval failed"), getErrorMessage(error));
+		}
 	};
 
 	const handleGenerate = () => {
-		generateReport.mutate(reportId);
+		generateReport.mutate(reportId, {
+			onError: (error) => {
+				toastError(t("Generation failed"), getErrorMessage(error));
+			},
+		});
 	};
 
 	// Loading
@@ -140,7 +174,7 @@ export function ReportDetail({
 	const hasAnyExportKey = Boolean(
 		report.export_pdf_key || report.export_docx_key || report.export_html_key,
 	);
-	const isDownloadReady = report.status === "published";
+	const isDownloadReady = hasAnyExportKey;
 	const showDownloadPanel =
 		hasAnyExportKey ||
 		report.status === "generated" ||
@@ -197,6 +231,19 @@ export function ReportDetail({
 							>
 								<Send aria-hidden="true" className="h-4 w-4" />
 								{t("Submit for Review")}
+							</Button>
+							<Button size="sm" onClick={handleFastApprove} disabled={isBusy}>
+								<CheckCircle aria-hidden="true" className="h-4 w-4" />
+								{t("Approve")}
+							</Button>
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => handleTransition("draft")}
+								disabled={isBusy}
+							>
+								<XCircle aria-hidden="true" className="h-4 w-4" />
+								{t("Reject")}
 							</Button>
 							<Button
 								variant="outline"
@@ -372,33 +419,17 @@ export function ReportDetail({
 							<Download aria-hidden="true" className="h-4 w-4 text-primary-500" />
 							{t("Available Downloads")}
 						</h3>
-						{!isDownloadReady && (
-							<div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-								{t("Exports are not downloadable until the report is published.")}
-							</div>
-						)}
 						<div className="flex items-center gap-3 flex-wrap">
 							{report.export_pdf_key && (
 								<a
-									href={
-										isDownloadReady
-											? `/api/v1/reports/${report.id}/download/pdf`
-											: undefined
-									}
+									href={`/api/v1/reports/${report.id}/download/pdf`}
 									className={cn(
 										"inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium",
 										"border border-neutral-200 bg-white text-neutral-700",
-										isDownloadReady &&
-											"hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700",
-										!isDownloadReady && "cursor-not-allowed opacity-50",
+										"hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700",
 										"transition-all",
 									)}
 									download={isDownloadReady}
-									aria-disabled={!isDownloadReady}
-									onClick={(event) => {
-										if (isDownloadReady) return;
-										event.preventDefault();
-									}}
 								>
 									<FileText aria-hidden="true" className="h-4 w-4" />
 									{t("Download PDF")}
@@ -406,25 +437,14 @@ export function ReportDetail({
 							)}
 							{report.export_docx_key && (
 								<a
-									href={
-										isDownloadReady
-											? `/api/v1/reports/${report.id}/download/docx`
-											: undefined
-									}
+									href={`/api/v1/reports/${report.id}/download/docx`}
 									className={cn(
 										"inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium",
 										"border border-neutral-200 bg-white text-neutral-700",
-										isDownloadReady &&
-											"hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700",
-										!isDownloadReady && "cursor-not-allowed opacity-50",
+										"hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700",
 										"transition-all",
 									)}
 									download={isDownloadReady}
-									aria-disabled={!isDownloadReady}
-									onClick={(event) => {
-										if (isDownloadReady) return;
-										event.preventDefault();
-									}}
 								>
 									<FileText aria-hidden="true" className="h-4 w-4" />
 									{t("Download DOCX")}
@@ -432,25 +452,14 @@ export function ReportDetail({
 							)}
 							{report.export_html_key && (
 								<a
-									href={
-										isDownloadReady
-											? `/api/v1/reports/${report.id}/download/html`
-											: undefined
-									}
+									href={`/api/v1/reports/${report.id}/download/html`}
 									className={cn(
 										"inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium",
 										"border border-neutral-200 bg-white text-neutral-700",
-										isDownloadReady &&
-											"hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700",
-										!isDownloadReady && "cursor-not-allowed opacity-50",
+										"hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700",
 										"transition-all",
 									)}
 									download={isDownloadReady}
-									aria-disabled={!isDownloadReady}
-									onClick={(event) => {
-										if (isDownloadReady) return;
-										event.preventDefault();
-									}}
 								>
 									<FileText aria-hidden="true" className="h-4 w-4" />
 									{t("Download HTML")}
