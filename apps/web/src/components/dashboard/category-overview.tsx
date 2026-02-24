@@ -16,31 +16,48 @@ import { useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
 import {
 	BarChart3,
-	Briefcase,
-	Building2,
 	FileText,
-	Flame,
-	Globe2,
-	GraduationCap,
-	type LucideIcon,
-	Scale,
-	ScrollText,
-	Shield,
-	ShieldCheck,
 } from "lucide-react";
 
-const categoryIconMap: Record<string, { Icon: LucideIcon; style: string }> = {
-	legislation: { Icon: ScrollText, style: "text-blue-500 bg-blue-50" },
-	regulation: { Icon: Building2, style: "text-purple-500 bg-purple-50" },
-	enforcement: { Icon: Scale, style: "text-rose-500 bg-rose-50" },
-	industry: { Icon: Briefcase, style: "text-amber-500 bg-amber-50" },
-	compliance: { Icon: ShieldCheck, style: "text-emerald-500 bg-emerald-50" },
-	data: { Icon: BarChart3, style: "text-cyan-500 bg-cyan-50" },
-	security: { Icon: Shield, style: "text-red-500 bg-red-50" },
-	academic: { Icon: GraduationCap, style: "text-indigo-500 bg-indigo-50" },
-	events: { Icon: Flame, style: "text-orange-500 bg-orange-50" },
-	international: { Icon: Globe2, style: "text-teal-500 bg-teal-50" },
-};
+function parseHexColor(
+	input: string,
+): { r: number; g: number; b: number } | null {
+	const hex = input.trim();
+	if (!hex.startsWith("#")) return null;
+	const value = hex.slice(1);
+	if (!/^[0-9a-fA-F]{3}$/.test(value) && !/^[0-9a-fA-F]{6}$/.test(value))
+		return null;
+
+	const expanded =
+		value.length === 3
+			? value
+					.split("")
+					.map((char) => `${char}${char}`)
+					.join("")
+			: value;
+
+	const r = Number.parseInt(expanded.slice(0, 2), 16);
+	const g = Number.parseInt(expanded.slice(2, 4), 16);
+	const b = Number.parseInt(expanded.slice(4, 6), 16);
+	if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) {
+		return null;
+	}
+
+	return { r, g, b };
+}
+
+function getCategoryBadgeStyle(
+	color: string | null,
+): React.CSSProperties | undefined {
+	if (!color) return undefined;
+	const parsed = parseHexColor(color);
+	if (!parsed) return undefined;
+
+	return {
+		color: `rgb(${parsed.r} ${parsed.g} ${parsed.b})`,
+		backgroundColor: `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, 0.12)`,
+	};
+}
 
 export function CategoryOverview() {
 	const t = useT();
@@ -183,11 +200,11 @@ export function CategoryOverview() {
 						</div>
 					)}
 					{categories?.map((category) => {
-						const iconConfig = categoryIconMap[category.slug] ?? {
-							Icon: FileText,
-							style: "text-neutral-500 bg-neutral-50",
-						};
-						const IconComponent = iconConfig.Icon;
+						const iconText =
+							category.icon?.trim() ||
+							category.name.trim().slice(0, 1) ||
+							"#";
+						const badgeStyle = getCategoryBadgeStyle(category.color);
 						const count = countByCategoryId.get(category.id) ?? 0;
 						return (
 							<div
@@ -197,11 +214,14 @@ export function CategoryOverview() {
 								<div className="flex items-center gap-3">
 									<div
 										className={cn(
-											"flex h-8 w-8 items-center justify-center rounded-lg",
-											iconConfig.style,
+											"flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold",
+											badgeStyle
+												? ""
+												: "text-neutral-500 bg-neutral-50",
 										)}
+										style={badgeStyle}
 									>
-										<IconComponent aria-hidden="true" className="h-4 w-4" />
+										<span aria-hidden="true">{iconText}</span>
 									</div>
 									<span className="text-sm font-medium text-neutral-700">
 										{category.name}
