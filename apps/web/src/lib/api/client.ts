@@ -13,6 +13,42 @@ const DEFAULT_API_RETRY_BASE_DELAY_MS = 500;
 const DEFAULT_API_RETRY_MAX_DELAY_MS = 8000;
 const DEFAULT_API_RETRY_JITTER_MS = 200;
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1"]);
+const PRIVATE_NETWORK_172_SEGMENT_MIN = 16;
+const PRIVATE_NETWORK_172_SEGMENT_MAX = 31;
+
+function defaultPortFromProtocol(protocol: string): string {
+	return protocol === "https:" ? "443" : "80";
+}
+
+function normalizedPort(url: URL): string {
+	return url.port || defaultPortFromProtocol(url.protocol);
+}
+
+function isPrivateHostname(hostname: string): boolean {
+	if (LOOPBACK_HOSTS.has(hostname)) return true;
+	if (hostname === "0.0.0.0") return true;
+
+	const ipv4Match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+	if (!ipv4Match) return false;
+
+	const octets = ipv4Match.slice(1).map((value) => Number.parseInt(value, 10));
+	if (octets.some((value) => !Number.isFinite(value) || value < 0 || value > 255)) {
+		return false;
+	}
+
+	const [first, second] = octets;
+	if (first === 10) return true;
+	if (
+		first === 172 &&
+		second >= PRIVATE_NETWORK_172_SEGMENT_MIN &&
+		second <= PRIVATE_NETWORK_172_SEGMENT_MAX
+	) {
+		return true;
+	}
+	if (first === 192 && second === 168) return true;
+	if (first === 169 && second === 254) return true;
+	return false;
+}
 
 function stripTrailingSlash(value: string): string {
 	return value.endsWith("/") ? value.slice(0, -1) : value;
@@ -21,15 +57,30 @@ function stripTrailingSlash(value: string): string {
 function normalizeLoopbackBaseUrl(baseUrl: string): string {
 	const cleaned = stripTrailingSlash(baseUrl);
 	if (typeof window === "undefined") return cleaned;
-	const currentHost = window.location.hostname;
+	const currentLocation = window.location;
 
 	try {
 		const parsed = new URL(cleaned);
-		// In local/WSL/Windows hybrid dev, app may be visited via LAN/bridge IP
-		// while env still points to localhost. Force API host to current page host
-		// to keep cookie scope/session origin consistent.
-		if (!LOOPBACK_HOSTS.has(parsed.hostname)) return cleaned;
+		if (parsed.origin === currentLocation.origin) return cleaned;
+
+		const currentHost = currentLocation.hostname;
+		const currentPort =
+			currentLocation.port || defaultPortFromProtocol(currentLocation.protocol);
+		const sameProtocol = parsed.protocol === currentLocation.protocol;
+		const samePort = normalizedPort(parsed) === currentPort;
+
+		// In local/WSL/Windows hybrid dev, app may be visited via one private host/IP
+		// while env points to another private host/IP. Keep API calls same-origin to
+		// preserve cookie/session behavior and avoid CSP cross-origin blocks.
+		const shouldPinToCurrentOrigin =
+			sameProtocol &&
+			samePort &&
+			(LOOPBACK_HOSTS.has(parsed.hostname) ||
+				(isPrivateHostname(parsed.hostname) && isPrivateHostname(currentHost)));
+
+		if (!shouldPinToCurrentOrigin) return cleaned;
 		parsed.hostname = currentHost;
+		parsed.port = currentLocation.port;
 		return stripTrailingSlash(parsed.toString());
 	} catch {
 		return cleaned;

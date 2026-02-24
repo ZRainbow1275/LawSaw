@@ -1426,3 +1426,48 @@ Validation
 - `pnpm -C apps/web test` ✅（typecheck + lint + unit）
 - `pnpm -C apps/web e2e` ✅（`6 passed`）
   - 关键回归点：`未登录访问受保护页面应重定向到登录页` 已恢复通过（此前会卡在 `/zh/articles` loading）。
+
+## 2026-02-24 Round 50: 首次登录进入 `/zh/articles` 白屏复测（Playwright 截图证据）
+
+Failure points
+- R50-WEB-001: 用户在无痕窗口、无扩展场景下首次登录后进入 `/zh/articles` 仍出现白屏（loading 持续）。
+
+Evidence (Playwright, real browser, no mock)
+- 复现脚本执行后报告（修复前）显示：
+  - `loginStatus: null`
+  - `finalUrl: /zh/login?returnTo=%2Fzh%2Farticles`
+  - 控制台错误：`Refused to connect ... violates Content Security Policy`（目标为 `http://172.19.96.1:8850/api/v1/auth/login`）
+- 结论：前端 API 基地址与页面来源主机不一致（127/localhost/172 混用），触发 CSP 拦截并导致认证链路未建立。
+
+Root cause
+- `apps/web/src/lib/api/client.ts` 仅在 `NEXT_PUBLIC_API_URL` 为 loopback（`localhost/127.0.0.1`）时才归一主机。
+- 当 `NEXT_PUBLIC_API_URL` 为内网私有 IP（例如 `172.19.x.x`）且页面从 `localhost` 或 `127.0.0.1` 打开时：
+  - 请求走跨源主机；
+  - CSP `connect-src 'self'` 拦截；
+  - 会话请求失败，受保护页面进入白屏/重定向循环体验。
+
+Fixes
+- `apps/web/src/lib/api/client.ts`
+  - 扩展 API 基地址归一策略：
+    - 识别私有网段主机（`10/172.16-31/192.168/169.254`）与 loopback；
+    - 当页面主机和 API 主机都属于本机/内网开发场景，且协议/端口一致时，自动将 API 主机钉到当前页面 origin；
+    - 避免跨源 cookie 与 CSP 冲突，确保认证请求同源。
+- `apps/web/src/lib/api/client.test.ts`
+  - 新增回归测试：`normalizes private-network API host to current origin host in browser runtime`。
+
+Validation
+- 质量门禁：
+  - `pnpm -C apps/web test src/lib/api/client.test.ts` ✅
+- E2E 回归：
+  - `set E2E_BASE_URL=http://127.0.0.1:8850 && pnpm -C apps/web exec playwright test e2e/lawsaw.e2e.spec.ts -g "未登录访问受保护页面应重定向到登录页" --reporter=list` ✅
+- Playwright 实测（真实登录，不使用 mock）:
+  - 基于 `http://127.0.0.1:8850`：`state=loaded`, `loginStatus=200`, `/api/v1/auth/me=200`, `/api/v1/articles=200` ✅
+  - 基于 `http://localhost:8850`：`state=loaded`, `loginStatus=200`, `/api/v1/auth/me=200`, `/api/v1/articles=200` ✅
+- 证据文件：
+  - `tmp/repro-white-screen/report.json`
+  - `tmp/repro-white-screen/01-after-login-click.png`
+  - `tmp/repro-white-screen/02-articles-immediate.png`
+  - `tmp/repro-white-screen/03-articles-after-wait.png`
+
+Operational note
+- 本轮另发现：Web rewrite 代理目标受构建时环境影响；若后端地址变化，需按新目标重建并启动 Web，避免代理仍指向旧地址。

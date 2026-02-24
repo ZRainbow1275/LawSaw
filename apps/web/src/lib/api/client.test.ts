@@ -29,6 +29,7 @@ const originalFetch = globalThis.fetch;
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	vi.unstubAllGlobals();
 	if (originalFetch) {
 		globalThis.fetch = originalFetch;
 	} else {
@@ -90,5 +91,27 @@ describe("ApiClient request dedupe", () => {
 		]);
 
 		expect(fetchMock).toHaveBeenCalledTimes(2);
+	});
+
+	it("normalizes private-network API host to current origin host in browser runtime", async () => {
+		vi.stubGlobal("window", {
+			location: {
+				hostname: "127.0.0.1",
+				origin: "http://127.0.0.1:8850",
+				protocol: "http:",
+				port: "8850",
+			},
+		});
+
+		const fetchMock: typeof fetch = vi.fn(async () => jsonResponse({ ok: true }));
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+		const client = new ApiClient("http://172.19.96.1:8850", null);
+		await client.get<{ ok: boolean }>("/api/v1/auth/me");
+
+		const viMock = vi.mocked(fetchMock);
+		expect(viMock).toHaveBeenCalledTimes(1);
+		const firstCall = viMock.mock.calls[0];
+		expect(firstCall?.[0]).toBe("http://127.0.0.1:8850/api/v1/auth/me");
 	});
 });
