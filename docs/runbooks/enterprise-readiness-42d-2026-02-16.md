@@ -1527,3 +1527,8 @@ Validation
 
 Operational note
 - 该兜底不会影响正常路由；仅在“长时间空白且无加载迹象”时触发一次恢复。
+
+### 2026-02-24 Round 52b: 路由转场动画去风险化（彻底规避偶发空白）
+- 追加修复：`RouteTransitionProvider` 移除 `AnimatePresence + motion` 路由级容器动画，保留静态 `#main-content` 包裹。
+- 原因：在少量浏览器环境中，动画转场与并发导航存在偶发渲染空窗；对企业可用性而言，稳定性优先于页面转场动效。
+- 验证：登录 -> 分类页 -> 点击“全部资讯”后页面正常渲染（`hasArticles=true`, `hasMain=1`）。
