@@ -1471,3 +1471,35 @@ Validation
 
 Operational note
 - 本轮另发现：Web rewrite 代理目标受构建时环境影响；若后端地址变化，需按新目标重建并启动 Web，避免代理仍指向旧地址。
+
+## 2026-02-24 Round 51: `/zh/category/regulation` 白屏防复发（SW 缓存策略修正）
+
+Failure points
+- R51-WEB-001: 用户在 `localhost:8850/zh/category/regulation` 仍可见整页白屏（本地浏览器可复现，Playwright 新上下文不稳定复现）。
+
+Root-cause analysis
+- `apps/web/src/app/sw/route.ts` 中 Service Worker 对“同源非 API 请求”使用了宽泛的 `staleWhileRevalidate`：
+  - 会缓存动态路由请求与 RSC 相关请求；
+  - 在频繁 build/restart 后，浏览器可能命中旧缓存，出现局部路由白屏（尤其是分类页等动态列表路由）。
+- `apps/web/src/components/providers/auth-provider.tsx` 在 production 模式会自动注册 SW；本机 `next start` 也属 production，导致本地验证会持续被旧 SW 影响。
+
+Fixes
+- `apps/web/src/app/sw/route.ts`
+  - `CACHE_VERSION` 升级为 `law-eye-pwa-v2`，触发旧缓存淘汰。
+  - 禁止缓存带 `_rsc` 查询参数的请求。
+  - 删除“同源非 API 全量 stale-while-revalidate”兜底分支，仅保留显式静态资源缓存。
+- `apps/web/src/components/providers/auth-provider.tsx`
+  - 新增 `shouldDisableServiceWorkerForHost()`。
+  - 在 `localhost/127.0.0.1/::1/0.0.0.0` 上不再注册 SW。
+  - 本机场景主动执行 SW 反注册 + `law-eye-pwa-*` 缓存清理，避免旧缓存导致白屏。
+
+Validation
+- `pnpm -C apps/web test` ✅
+- `pnpm -C apps/web e2e` ✅（6 passed）
+- Playwright 真实登录直达分类页（无 mock）✅
+  - `http://localhost:8850/zh/category/regulation`
+  - `state=loaded`, `loginStatus=200`, `/api/v1/auth/me=200`, `/api/v1/categories=200`
+  - 证据目录：`tmp/repro-category-white-screen/`
+
+Operational note
+- 本地演示环境建议默认关闭 SW（已自动处理）；云端正式部署可保留 SW，但缓存策略必须保持“仅静态资源可缓存”。

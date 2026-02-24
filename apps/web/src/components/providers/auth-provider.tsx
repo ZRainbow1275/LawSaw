@@ -70,6 +70,16 @@ function extractUnhandledRejectionSignal(reason: unknown): {
 	return {};
 }
 
+function shouldDisableServiceWorkerForHost(hostname: string): boolean {
+	const normalized = hostname.trim().toLowerCase();
+	return (
+		normalized === "localhost" ||
+		normalized === "127.0.0.1" ||
+		normalized === "::1" ||
+		normalized === "0.0.0.0"
+	);
+}
+
 export function AuthProvider({ children }: AuthProviderProps) {
 	const { refreshSession } = useAuth();
 	const router = useRouter();
@@ -348,11 +358,39 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			reportClientError(err, { source: "authProvider.localStorageCleanup" });
 		}
 
-		// PWA: register Service Worker (production-only to avoid dev cache interference).
+		// PWA: register Service Worker in production.
+		// On localhost/loopback, proactively disable SW to avoid stale-cache white screens
+		// during frequent rebuild/restart loops in local verification.
 		if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
-			navigator.serviceWorker.register("/sw", { scope: "/" }).catch((err) => {
-				reportClientError(err, { source: "pwa.serviceWorkerRegister" });
-			});
+			const host = window.location.hostname || "";
+			if (shouldDisableServiceWorkerForHost(host)) {
+				void (async () => {
+					try {
+						const registrations =
+							await navigator.serviceWorker.getRegistrations();
+						await Promise.all(
+							registrations.map((registration) => registration.unregister()),
+						);
+					} catch (err) {
+						reportClientError(err, { source: "pwa.serviceWorkerUnregister" });
+					}
+
+					try {
+						const keys = await caches.keys();
+						await Promise.all(
+							keys
+								.filter((key) => key.startsWith("law-eye-pwa-"))
+								.map((key) => caches.delete(key)),
+						);
+					} catch (err) {
+						reportClientError(err, { source: "pwa.serviceWorkerCacheCleanup" });
+					}
+				})();
+			} else {
+				navigator.serviceWorker.register("/sw", { scope: "/" }).catch((err) => {
+					reportClientError(err, { source: "pwa.serviceWorkerRegister" });
+				});
+			}
 		}
 
 		return () => {

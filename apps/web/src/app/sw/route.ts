@@ -2,7 +2,7 @@ import { t } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
-const CACHE_VERSION = "law-eye-pwa-v1";
+const CACHE_VERSION = "law-eye-pwa-v2";
 const STATIC_CACHE = `${CACHE_VERSION}:static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}:runtime`;
 
@@ -64,6 +64,7 @@ function isCacheableAsset(request) {
   if (url.origin !== self.location.origin) return false;
   if (request.method !== "GET") return false;
   if (url.pathname.startsWith("/api/")) return false;
+  if (url.searchParams.has("_rsc")) return false;
   if (url.pathname.startsWith("/api-docs/")) return true;
 
   const dest = request.destination;
@@ -80,22 +81,6 @@ async function cacheFirst(request) {
   const resp = await fetch(request);
   if (resp.ok) cache.put(request, resp.clone());
   return resp;
-}
-
-async function staleWhileRevalidate(request) {
-  const cache = await caches.open(RUNTIME_CACHE);
-  const cached = await cache.match(request);
-  const fetchPromise = fetch(request)
-    .then((resp) => {
-      if (resp.ok) cache.put(request, resp.clone());
-      return resp;
-    })
-    .catch((err) => {
-      console.warn("[sw] runtime fetch failed", err);
-      return undefined;
-    });
-
-  return cached || (await fetchPromise) || new Response("", { status: 504 });
 }
 
 const OUTBOX_DB_NAME = "law-eye-outbox";
@@ -413,11 +398,6 @@ self.addEventListener("fetch", (event) => {
   if (isCacheableAsset(request)) {
     event.respondWith(cacheFirst(request));
     return;
-  }
-
-  const url = new URL(request.url);
-  if (url.origin === self.location.origin && !url.pathname.startsWith("/api/")) {
-    event.respondWith(staleWhileRevalidate(request));
   }
 });
 
