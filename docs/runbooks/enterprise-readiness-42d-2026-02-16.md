@@ -1532,3 +1532,34 @@ Operational note
 - 追加修复：`RouteTransitionProvider` 移除 `AnimatePresence + motion` 路由级容器动画，保留静态 `#main-content` 包裹。
 - 原因：在少量浏览器环境中，动画转场与并发导航存在偶发渲染空窗；对企业可用性而言，稳定性优先于页面转场动效。
 - 验证：登录 -> 分类页 -> 点击“全部资讯”后页面正常渲染（`hasArticles=true`, `hasMain=1`）。
+
+## 2026-02-25 运行约束补充（C 盘空间治理，禁止自动关闭 WSL）
+
+### 强约束
+- 自动化任务中禁止执行 `wsl --shutdown`。
+- 若需要执行 `wsl --shutdown` 或 WSL VHD 压缩，必须由人工手动操作。
+- 禁止删除与本轮改动无关的容器、卷、文件；禁止卸载 Ubuntu WSL2。
+
+### 已执行的“安全清理”（仅项目相关）
+- 清理本项目 Rust 编译缓存（`~/.cache/lawsaw-cargo-target/debug/deps|incremental|build`），保留可执行文件。
+- 清理本项目历史遗留测试卷（`debug*`、`law-eye-*` 旧卷中未被当前栈使用部分）。
+- 保持当前演示栈 `law-eye-local-codex` 在线（api/worker/web）。
+
+### 说明：为什么 C 盘数字可能变化不大
+- WSL2 的 ext4 虚拟磁盘（`ext4.vhdx`）在删除文件后不会立即把空间返还给 Windows 文件系统。
+- 要让 Windows 看到可用空间回升，通常需要“停 WSL + 压缩 VHD”。
+- 按当前约束，此步骤不自动执行，仅提供人工 SOP。
+
+### 人工 SOP（由你执行）
+1. 先停本项目栈（可选）：
+   - `bash scripts/no-dockerhub/stop-stack.sh --name law-eye-local-codex`
+2. 手动关闭 WSL：
+   - `wsl --shutdown`
+3. 在管理员 PowerShell 压缩 Ubuntu VHD（示例）：
+   - `Optimize-VHD -Path "<你的 ext4.vhdx 完整路径>" -Mode Full`
+4. 启动项目栈：
+   - `bash scripts/no-dockerhub/start-stack.sh --name law-eye-local-codex`
+   - `pnpm -C apps/web start -p 8850 -H 0.0.0.0`
+
+### 本轮下一步（与改进项对齐）
+- 进入 ReBAC 与分层身份实现阶段前，先以 `.trellis/spec/enterprise-readiness-42d-critical-review-2026-02-16.md` 的 `2026-02-25` 章节作为执行基准。

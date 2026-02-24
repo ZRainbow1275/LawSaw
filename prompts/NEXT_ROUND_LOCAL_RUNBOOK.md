@@ -312,3 +312,27 @@ bash scripts/enterprise/rc2-gate.sh
 ```
 
 通过后会在 `tmp/rc2-gate-<timestamp>/` 生成报告和每轮核心链路输出。
+
+---
+
+## 12. 下一轮改进范围（ReBAC / 管理面板 / AI 治理）
+
+以 `.trellis/spec/enterprise-readiness-42d-critical-review-2026-02-16.md` 的 `2026-02-25` 章节为准，最小闭环拆分为三阶段：
+
+1. Phase A（P0）：ReBAC + 分层身份（super_admin / tenant_admin / basic / verified / premium）
+2. Phase B（P1）：管理员面板与用户面板 + Banner/置顶
+3. Phase C（P1）：真实 AI 总结/情感/风险标签 + AI 集中管理台
+
+阶段门禁（每阶段必须通过）：
+- `cargo check -p law-eye-api -p law-eye-core -p law-eye-worker`
+- `pnpm -C apps/web test`
+- `pnpm -C apps/web e2e`
+- `node tmp/core-e2e-local.mjs --base-url http://172.19.107.21:13003 --origin http://localhost:8850 --assert-knowledge-embedding 1`
+
+---
+
+## 13. WSL 与 C 盘空间治理约束（本轮强制）
+
+- 不自动执行 `wsl --shutdown`。
+- 如需关闭 WSL 或压缩 `ext4.vhdx`，必须由人工手动执行。
+- 自动清理仅允许项目相关缓存与历史测试卷，禁止清理无关容器/文件。
