@@ -1,5 +1,6 @@
 # Rust
 /target/
+**/target/
 
 # Environment
 .env
@@ -42,10 +43,30 @@ tmpclaude-*
 .trellis/
 
 # Agent / Tooling (do not commit)
+.opencode/
 .claude/
+.codex/
+.serena/
+.gitnexus/
 .playwright-mcp/
 playwright-report/
 test-results/
+
+# Ephemeral runtime / session artifacts
+active/
+archived/
+expired/
+tmpclaude-*/
+list_sessions.js
+**/tmp/
+
+# Prototype media snapshots (large, not tracked)
+prototype-*.png
+prototype-*.jpeg
+prototype-*.jpg
+
+# OS-level shared configs (user-scoped, not project)
+/CLAUDE.md.user
 
 # Build artifacts
 *.tsbuildinfo
@@ -56,3 +77,7 @@ coverage/
 
 # Backups
 *.bak
+
+# Python
+**/__pycache__/
+.gitnexus
