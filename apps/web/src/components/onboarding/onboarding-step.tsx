@@ -53,8 +53,8 @@ export function OnboardingStepCard({
 		rawDescription === step.descriptionKey ? fallback.description : rawDescription;
 
 	return (
-		<div
-			role="dialog"
+		<dialog
+			open
 			aria-modal="true"
 			aria-labelledby={`onboarding-step-${step.id}-title`}
 			className={cn(
@@ -123,6 +123,6 @@ export function OnboardingStepCard({
 					</button>
 				) : null}
 			</div>
-		</div>
+		</dialog>
 	);
 }

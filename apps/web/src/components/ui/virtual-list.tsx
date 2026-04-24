@@ -70,7 +70,7 @@ export function VirtualList<TItem>({
 	getKey,
 	height = 560,
 }: VirtualListProps<TItem>) {
-	const containerRef = useRef<HTMLDivElement | null>(null);
+	const containerRef = useRef<HTMLUListElement | null>(null);
 	const [viewportHeight, setViewportHeight] = useState(0);
 	const [scrollTop, setScrollTop] = useState(0);
 	const [dynamicSizes, setDynamicSizes] = useState<Map<number, number>>(
@@ -141,7 +141,7 @@ export function VirtualList<TItem>({
 		};
 	}, [items.length, offsets, overscan, scrollTop, viewportHeight]);
 
-	const handleScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+	const handleScroll = useCallback((event: React.UIEvent<HTMLUListElement>) => {
 		setScrollTop(event.currentTarget.scrollTop);
 	}, []);
 
@@ -195,17 +195,16 @@ export function VirtualList<TItem>({
 	]);
 
 	return (
-		<div
+		<ul
 			ref={containerRef}
-			className={cn("relative overflow-auto", className)}
+			className={cn("relative overflow-auto m-0 p-0 list-none", className)}
 			style={{ height, ...style }}
 			onScroll={handleScroll}
-			role="list"
 		>
 			<div style={{ height: totalSize, position: "relative" }} role="presentation">
 				{visibleRows}
 			</div>
-		</div>
+		</ul>
 	);
 }
 
@@ -217,7 +216,7 @@ interface VirtualRowProps {
 }
 
 function VirtualRow({ index, dynamic, onMeasure, children }: VirtualRowProps) {
-	const rowRef = useRef<HTMLDivElement | null>(null);
+	const rowRef = useRef<HTMLLIElement | null>(null);
 
 	useEffect(() => {
 		if (!dynamic) return;
@@ -240,8 +239,8 @@ function VirtualRow({ index, dynamic, onMeasure, children }: VirtualRowProps) {
 	}, [dynamic, index, onMeasure]);
 
 	return (
-		<div ref={rowRef} role="listitem">
+		<li ref={rowRef} className="list-none">
 			{children}
-		</div>
+		</li>
 	);
 }

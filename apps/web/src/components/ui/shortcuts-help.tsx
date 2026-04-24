@@ -123,7 +123,8 @@ export function ShortcutsHelp({ isOpen, onClose }: ShortcutsHelpProps) {
 					onClick={onClose}
 					role="presentation"
 				>
-					<motion.div
+					<motion.dialog
+						open
 						className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border shadow-2xl"
 						style={surfaceStyle}
 						variants={scaleVariants}
@@ -131,7 +132,6 @@ export function ShortcutsHelp({ isOpen, onClose }: ShortcutsHelpProps) {
 						animate="visible"
 						exit="hidden"
 						onClick={(event) => event.stopPropagation()}
-						role="dialog"
 						aria-modal="true"
 						aria-labelledby="shortcuts-help-title"
 					>
@@ -220,7 +220,7 @@ export function ShortcutsHelp({ isOpen, onClose }: ShortcutsHelpProps) {
 								"Tip: press Ctrl+Shift+P to open the command palette for commands beyond shortcuts.",
 							)}
 						</div>
-					</motion.div>
+					</motion.dialog>
 				</motion.div>
 			) : null}
 		</AnimatePresence>

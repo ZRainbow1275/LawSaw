@@ -283,7 +283,8 @@ export function CommandPalette({
 					onClick={onClose}
 					role="presentation"
 				>
-					<motion.div
+					<motion.dialog
+						open
 						className="flex w-full max-w-[640px] flex-col overflow-hidden rounded-2xl border shadow-2xl"
 						style={surfaceStyle}
 						variants={scaleVariants}
@@ -291,7 +292,6 @@ export function CommandPalette({
 						animate="visible"
 						exit="hidden"
 						onClick={(event) => event.stopPropagation()}
-						role="dialog"
 						aria-modal="true"
 						aria-labelledby="command-palette-label"
 					>
@@ -469,7 +469,7 @@ export function CommandPalette({
 								{t("Press Ctrl+/ to view all shortcuts")}
 							</span>
 						</div>
-					</motion.div>
+					</motion.dialog>
 				</motion.div>
 			) : null}
 		</AnimatePresence>
