@@ -64,26 +64,14 @@ describe("VirtualList sizing math", () => {
 
 	it("computes visible range with overscan at the top of the list", () => {
 		const offsets = buildOffsets(50, () => 40);
-		const { startIndex, endIndex } = visibleRange(
-			offsets,
-			0,
-			320,
-			50,
-			4,
-		);
+		const { startIndex, endIndex } = visibleRange(offsets, 0, 320, 50, 4);
 		expect(startIndex).toBe(0);
 		expect(endIndex).toBe(Math.min(50, 8 + 4));
 	});
 
 	it("computes visible range with overscan in the middle of the list", () => {
 		const offsets = buildOffsets(1000, () => 60);
-		const { startIndex, endIndex } = visibleRange(
-			offsets,
-			6000,
-			480,
-			1000,
-			4,
-		);
+		const { startIndex, endIndex } = visibleRange(offsets, 6000, 480, 1000, 4);
 		expect(startIndex).toBe(Math.max(0, 100 - 4));
 		expect(endIndex).toBe(Math.min(1000, 108 + 4));
 	});
@@ -97,14 +85,43 @@ describe("VirtualList sizing math", () => {
 
 	it("clamps end index to item count when scrolled past the last row", () => {
 		const offsets = buildOffsets(20, () => 50);
-		const { startIndex, endIndex } = visibleRange(
-			offsets,
-			99999,
-			400,
-			20,
-			4,
-		);
+		const { startIndex, endIndex } = visibleRange(offsets, 99999, 400, 20, 4);
 		expect(endIndex).toBe(20);
 		expect(startIndex).toBeLessThanOrEqual(20);
+	});
+
+	it("audit admin page: virtualizes 300 fixed-height rows without scanning all items", () => {
+		// Mirrors the contract used by /settings/admin/audit (ROW_HEIGHT=44,
+		// overscan=6, viewport 528). The fixture is fabricated in-test ONLY
+		// and is not shipped to production — the live page pulls real events
+		// from `/api/v1/admin/audit`.
+		const ROW_HEIGHT = 44;
+		const OVERSCAN = 6;
+		const VIEWPORT = 528;
+		const TOTAL = 300;
+
+		const offsets = buildOffsets(TOTAL, () => ROW_HEIGHT);
+
+		// Initial viewport: rows [0, ceil(528/44)=12) with overscan below.
+		const top = visibleRange(offsets, 0, VIEWPORT, TOTAL, OVERSCAN);
+		expect(top.startIndex).toBe(0);
+		expect(top.endIndex).toBe(Math.min(TOTAL, 12 + OVERSCAN));
+
+		// Scroll to middle: row index ~150, viewport covers 12 rows again.
+		const middleScrollTop = 150 * ROW_HEIGHT;
+		const middle = visibleRange(
+			offsets,
+			middleScrollTop,
+			VIEWPORT,
+			TOTAL,
+			OVERSCAN,
+		);
+		expect(middle.startIndex).toBe(Math.max(0, 150 - OVERSCAN));
+		expect(middle.endIndex).toBe(Math.min(TOTAL, 150 + 12 + OVERSCAN));
+
+		// The visible window is bounded regardless of total rows.
+		const renderedRowCount = middle.endIndex - middle.startIndex;
+		expect(renderedRowCount).toBeLessThanOrEqual(12 + 2 * OVERSCAN);
+		expect(renderedRowCount).toBeLessThan(TOTAL);
 	});
 });
