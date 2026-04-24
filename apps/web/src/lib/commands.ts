@@ -3,6 +3,7 @@ import type {
 	AppearancePreferences,
 	AppearanceTheme,
 } from "@/stores/appearance-store";
+import { useOnboardingStore } from "@/stores/onboarding-store";
 import {
 	BarChart3,
 	BookOpen,
@@ -23,6 +24,7 @@ import {
 	Settings,
 	Shield,
 	SlidersHorizontal,
+	Sparkles,
 	Sun,
 	TableProperties,
 	type LucideIcon,
@@ -330,6 +332,21 @@ export function builtinCommands(): Command[] {
 		run: (ctx) => {
 			ctx.closePalette();
 			ctx.openShortcutsHelp();
+		},
+	});
+
+	commands.push({
+		id: "action.onboarding.rerun",
+		title: "重新查看新手引导",
+		titleEn: "Re-run onboarding tour",
+		category: "help",
+		keywords: ["onboarding", "tour", "guide", "tutorial", "intro", "引导", "教程", "新手"],
+		icon: Sparkles,
+		run: (ctx) => {
+			const store = useOnboardingStore.getState();
+			store.reset();
+			store.open();
+			ctx.closePalette();
 		},
 	});
 
