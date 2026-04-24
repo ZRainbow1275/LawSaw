@@ -232,6 +232,10 @@ function ShareMenu({ onCopyLink, copied, onClose }: ShareMenuProps) {
 
 interface MobileArticleActionsProps {
 	articleId: string;
+	/** Article title — used by the default share handler when `onShare` is absent. */
+	articleTitle: string;
+	/** Article URL — falls back to `window.location.href` for sharing. */
+	articleUrl?: string;
 	onOpenToc?: () => void;
 	onOpenSettings?: () => void;
 	onShare?: () => void;
@@ -240,6 +244,8 @@ interface MobileArticleActionsProps {
 
 export function MobileArticleActions({
 	articleId,
+	articleTitle,
+	articleUrl,
 	onOpenToc,
 	onOpenSettings,
 	onShare,
@@ -252,6 +258,32 @@ export function MobileArticleActions({
 	const handleBookmark = () => {
 		const newState = toggleBookmark();
 		success(newState ? t("Added to bookmarks") : t("Removed from bookmarks"));
+	};
+
+	const handleShare = async () => {
+		if (onShare) {
+			onShare();
+			return;
+		}
+		const shareUrl =
+			articleUrl ?? (typeof window !== "undefined" ? window.location.href : "");
+		if (!shareUrl) return;
+		if (typeof navigator !== "undefined" && "share" in navigator) {
+			try {
+				await navigator.share({ title: articleTitle, url: shareUrl });
+				return;
+			} catch {
+				// user cancel or unsupported — fall through to clipboard
+			}
+		}
+		if (typeof navigator !== "undefined" && navigator.clipboard) {
+			try {
+				await navigator.clipboard.writeText(shareUrl);
+				success(t("Link copied"));
+			} catch {
+				// ignore — nothing to report
+			}
+		}
 	};
 
 	return (
@@ -300,7 +332,7 @@ export function MobileArticleActions({
 				<MobileActionButton
 					icon={<Share2 aria-hidden="true" className="h-5 w-5" />}
 					label={t("Share")}
-					onClick={onShare}
+					onClick={handleShare}
 				/>
 			</div>
 		</div>

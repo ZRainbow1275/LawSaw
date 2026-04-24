@@ -263,6 +263,7 @@ interface UpdateTemplateInput {
 	id: string;
 	name?: string;
 	description?: string;
+	period_type?: string;
 	template_body?: string;
 	css_styles?: string;
 	page_config?: Record<string, unknown>;

@@ -1,5 +1,23 @@
 // Base types matching Rust backend models
 
+export interface ArticleSourceViewPolicy {
+	role_tier: string;
+	matched_relation?: string | null;
+	matched_subject?: string | null;
+}
+
+export interface ArticleSourceView {
+	source_id: string;
+	source_name?: string | null;
+	source_ref?: string | null;
+	source_type?: string | null;
+	original_url?: string | null;
+	visibility: "hidden" | "summary" | "full";
+	health_status?: string | null;
+	schedule?: string | null;
+	policy?: ArticleSourceViewPolicy | null;
+}
+
 export interface Article {
 	id: string;
 	source_id: string;
@@ -27,6 +45,13 @@ export interface Article {
 	content_hash: string | null;
 	summary_struct: Record<string, unknown> | null;
 	source_ref: string | null;
+	/**
+	 * Policy-gated source metadata view. Populated by the API when the caller
+	 * has at least summary-level visibility to the underlying source. Null or
+	 * undefined means the reader must fall back to `article.link` for source
+	 * context and must not inspect operational metadata.
+	 */
+	source_view?: ArticleSourceView | null;
 	status: "pending" | "processing" | "published" | "archived" | "rejected";
 	version: number;
 	created_at: string;

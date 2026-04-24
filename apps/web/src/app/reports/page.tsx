@@ -9,7 +9,9 @@ import { ReportDetail } from "@/components/reports/report-detail";
 import { ReportExportDialog } from "@/components/reports/report-export-dialog";
 import { ReportList } from "@/components/reports/report-list";
 import type { Report } from "@/lib/api/types";
+import { hasPermission } from "@/lib/authz";
 import { useT } from "@/lib/i18n-client";
+import { useAuthStore } from "@/stores/auth-store";
 import { AnimatePresence, motion } from "framer-motion";
 import { ClipboardList } from "lucide-react";
 import { useCallback, useState } from "react";
@@ -18,6 +20,9 @@ type ViewMode = "list" | "detail";
 
 export default function ReportsPage() {
 	const t = useT();
+	const permissions = useAuthStore((state) => state.permissions);
+	const canManageReports = hasPermission(permissions, "reports:write");
+	const canExportReports = hasPermission(permissions, "reports:export");
 	const [viewMode, setViewMode] = useState<ViewMode>("list");
 	const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
 	const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -85,6 +90,8 @@ export default function ReportsPage() {
 									transition={{ duration: 0.2 }}
 								>
 									<ReportList
+										canManageReports={canManageReports}
+										canExportReports={canExportReports}
 										onCreateClick={() => setCreateDialogOpen(true)}
 										onReportClick={handleReportClick}
 										onExportClick={handleExportClick}

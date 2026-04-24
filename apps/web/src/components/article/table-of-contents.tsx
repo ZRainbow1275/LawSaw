@@ -23,6 +23,13 @@ export interface TOCItem {
 	text: string;
 	/** Heading level (1-3) */
 	level: 1 | 2 | 3;
+	/**
+	 * Whether the IntersectionObserver should track this item to update the
+	 * active heading. Defaults to true — set to false for static sections
+	 * (e.g. the raw body container) whose id is always visible while reading
+	 * so they don't clobber nested active headings.
+	 */
+	observe?: boolean;
 }
 
 interface TableOfContentsProps {
@@ -237,38 +244,79 @@ export function TOCTrigger({ onClick, itemCount, className }: TOCTriggerProps) {
 // Hook: extract TOC from HTML
 // ============================================
 
-export function useTableOfContents(
-	contentRef: React.RefObject<HTMLElement | null>,
-) {
-	const [items, setItems] = React.useState<TOCItem[]>([]);
-	const [activeId, setActiveId] = React.useState<string>();
+type HeadingLike = Pick<Element, "tagName" | "textContent"> & {
+	id: string;
+};
 
-	// Extract headings.
-	React.useEffect(() => {
-		const container = contentRef.current;
-		if (!container) return;
+/**
+ * Pure helper that merges a base list of static TOC sections with headings
+ * discovered inside `container`. Exported for unit tests so the id-merging
+ * rules do not drift between the live hook and the fixtures.
+ *
+ * Rules:
+ *   1. Static items are always emitted in their original order first.
+ *   2. Headings whose id already appears in the static list are skipped.
+ *   3. Headings without an id receive a stable `heading-{index}` id.
+ */
+export function extractTableOfContentsItems(
+	container: ParentNode,
+	staticItems: TOCItem[] = [],
+): TOCItem[] {
+	const headings = Array.from(
+		container.querySelectorAll("h1, h2, h3"),
+	) as HeadingLike[];
+	const staticIds = new Set(staticItems.map((item) => item.id));
+	const bodyItems: TOCItem[] = [];
 
-		const headings = container.querySelectorAll("h1, h2, h3");
-		const tocItems: TOCItem[] = [];
+	for (const [index, heading] of headings.entries()) {
+		const level = Number.parseInt(heading.tagName[1], 10) as 1 | 2 | 3;
+		const rawId = heading.id;
+		const id = rawId && rawId.length > 0 ? rawId : `heading-${index}`;
 
-		for (const [index, heading] of Array.from(headings).entries()) {
-			const level = Number.parseInt(heading.tagName[1]) as 1 | 2 | 3;
-			const id = heading.id || `heading-${index}`;
+		if (staticIds.has(id)) continue;
 
-			// Ensure a stable id.
-			if (!heading.id) {
+		if (!rawId && "id" in heading) {
+			// Only mutate real DOM nodes in the browser; in tests the fixture
+			// may be a plain object where assignment is harmless.
+			try {
 				heading.id = id;
+			} catch {
+				// ignore — read-only fixtures are OK
 			}
-
-			tocItems.push({
-				id,
-				text: heading.textContent || "",
-				level,
-			});
 		}
 
-		setItems(tocItems);
-	}, [contentRef]);
+		bodyItems.push({
+			id,
+			text: heading.textContent || "",
+			level,
+		});
+	}
+
+	return [...staticItems, ...bodyItems];
+}
+
+export function useTableOfContents(
+	contentRef: React.RefObject<HTMLElement | null>,
+	staticItems: TOCItem[] = [],
+	contentKey: string | null = null,
+) {
+	const [items, setItems] = React.useState<TOCItem[]>(() => staticItems);
+	const [activeId, setActiveId] = React.useState<string>();
+
+	// Extract headings whenever the content key (typically rendered article
+	// HTML) or the static section list changes. Using the serialized content
+	// as a dependency lets callers signal "rerun extraction now" without
+	// forcing the caller to memoize a ref.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: contentKey is intentional — it's the "rerun extraction" signal, not a value read inside the effect.
+	React.useEffect(() => {
+		const container = contentRef.current;
+		if (!container) {
+			setItems(staticItems);
+			return;
+		}
+
+		setItems(extractTableOfContentsItems(container, staticItems));
+	}, [contentRef, staticItems, contentKey]);
 
 	// Observe scroll to update active heading.
 	React.useEffect(() => {
@@ -289,6 +337,7 @@ export function useTableOfContents(
 		);
 
 		for (const item of items) {
+			if (item.observe === false) continue;
 			const element = document.getElementById(item.id);
 			if (element) {
 				observer.observe(element);

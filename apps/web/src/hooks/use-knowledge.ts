@@ -153,7 +153,11 @@ export function useKnowledgeEntitiesByType(
 	});
 }
 
-export function useKnowledgeDuplicateCandidates(threshold = 0.85, limit = 20) {
+export function useKnowledgeDuplicateCandidates(
+	threshold = 0.85,
+	limit = 20,
+	enabled = true,
+) {
 	return useQuery({
 		queryKey: ["knowledge", "entities", "duplicates", threshold, limit],
 		queryFn: () =>
@@ -161,6 +165,7 @@ export function useKnowledgeDuplicateCandidates(threshold = 0.85, limit = 20) {
 				`/api/v1/knowledge/entities/duplicates?similarity_threshold=${threshold}&limit=${limit}`,
 				assertKnowledgeDuplicateCandidateList,
 			),
+		enabled,
 	});
 }
 
@@ -180,7 +185,7 @@ export function useKnowledgeMergeEntities() {
 	});
 }
 
-export function useKnowledgeDegreeCentrality(limit = 50) {
+export function useKnowledgeDegreeCentrality(limit = 50, enabled = true) {
 	return useQuery({
 		queryKey: ["knowledge", "analytics", "centrality", limit],
 		queryFn: () =>
@@ -188,12 +193,14 @@ export function useKnowledgeDegreeCentrality(limit = 50) {
 				`/api/v1/knowledge/analytics/centrality?limit=${limit}`,
 				assertKnowledgeDegreeCentralityList,
 			),
+		enabled,
 	});
 }
 
 export function useKnowledgeCooccurrenceNetwork(
 	minCooccurrence = 2,
 	limit = 50,
+	enabled = true,
 ) {
 	return useQuery({
 		queryKey: [
@@ -208,13 +215,15 @@ export function useKnowledgeCooccurrenceNetwork(
 				`/api/v1/knowledge/analytics/cooccurrence?min_cooccurrence=${minCooccurrence}&limit=${limit}`,
 				assertKnowledgeCooccurrenceEdgeList,
 			),
+		enabled,
 	});
 }
 
-export function useKnowledgeGraphStats() {
+export function useKnowledgeGraphStats(enabled = true) {
 	return useQuery({
 		queryKey: ["knowledge", "stats"],
 		queryFn: () =>
 			apiClient.get("/api/v1/knowledge/stats", assertKnowledgeGraphStats),
+		enabled,
 	});
 }

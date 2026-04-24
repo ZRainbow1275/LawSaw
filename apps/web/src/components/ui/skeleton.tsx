@@ -160,6 +160,58 @@ export function SidebarSkeleton() {
 	);
 }
 
+interface ChartPanelSkeletonProps {
+	/** Height of the chart plotting area in pixels. Defaults to 224. */
+	height?: number;
+}
+
+/** Chart panel skeleton. */
+export function ChartPanelSkeleton({ height = 224 }: ChartPanelSkeletonProps = {}) {
+	return (
+		<div className="rounded-xl border border-neutral-100 bg-white p-4 space-y-4">
+			{/* Toolbar */}
+			<div className="flex items-center justify-between">
+				<div className="flex gap-2">
+					<Skeleton variant="rectangular" width={96} height={28} />
+					<Skeleton variant="rectangular" width={72} height={28} />
+				</div>
+				<Skeleton variant="rectangular" width={120} height={28} />
+			</div>
+			{/* Chart grid */}
+			<div className="relative" style={{ height }}>
+				<div className="absolute inset-0 grid grid-rows-4">
+					{createStableKeys(4, "chart-panel-grid-row").map((key) => (
+						<div
+							key={key}
+							className="border-b border-dashed border-neutral-100"
+						/>
+					))}
+				</div>
+				<div className="absolute inset-0 flex items-end gap-3 px-3 pb-2">
+					{createStableKeys(8, "chart-panel-bar").map((key, idx) => (
+						<Skeleton
+							key={key}
+							variant="rectangular"
+							width="100%"
+							height={`${30 + (idx * 11) % 60}%`}
+							className="flex-1"
+						/>
+					))}
+				</div>
+			</div>
+			{/* Legend */}
+			<div className="flex flex-wrap gap-3 pt-2">
+				{createStableKeys(4, "chart-panel-legend").map((key) => (
+					<div key={key} className="flex items-center gap-2">
+						<Skeleton variant="circular" width={12} height={12} />
+						<Skeleton variant="text" width={72} height={14} />
+					</div>
+				))}
+			</div>
+		</div>
+	);
+}
+
 /** List skeleton. */
 export function ListSkeleton({ count = 5 }: { count?: number }) {
 	return (

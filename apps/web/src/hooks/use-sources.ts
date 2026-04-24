@@ -22,7 +22,8 @@ interface ListSourcesParams {
 	offset?: number;
 }
 
-export function useSourceStats() {
+export function useSourceStats(options: { enabled?: boolean } = {}) {
+	const { enabled = true } = options;
 	return useQuery({
 		queryKey: ["sourceStats"],
 		queryFn: () =>
@@ -30,6 +31,7 @@ export function useSourceStats() {
 		// In real-world runs, source state may be updated asynchronously by the worker
 		// (e.g. last_fetch/last_error). Light polling keeps the UI closer to real-time.
 		refetchInterval: 30_000,
+		enabled,
 	});
 }
 
