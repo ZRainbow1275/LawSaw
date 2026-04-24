@@ -1,4 +1,7 @@
+import { OnboardingTour } from "@/components/onboarding";
 import { AuthProvider } from "@/components/providers/auth-provider";
+import { AppearanceProvider } from "@/components/providers/appearance-provider";
+import { AppShortcutsProvider } from "@/components/providers/app-shortcuts-provider";
 import { KeyboardViewportAdapter } from "@/components/providers/keyboard-viewport-adapter";
 import { NetworkStatusIndicator } from "@/components/providers/network-status-indicator";
 import { QueryProvider } from "@/components/providers/query-provider";
@@ -65,11 +68,16 @@ export default async function RootLayout({
 				</a>
 				<QueryProvider>
 					<AuthProvider>
-						<ToastProvider>
-							<KeyboardViewportAdapter />
-							<NetworkStatusIndicator />
-							<RouteTransitionProvider>{children}</RouteTransitionProvider>
-						</ToastProvider>
+						<AppearanceProvider>
+							<ToastProvider>
+								<AppShortcutsProvider>
+									<KeyboardViewportAdapter />
+									<NetworkStatusIndicator />
+									<RouteTransitionProvider>{children}</RouteTransitionProvider>
+									<OnboardingTour />
+								</AppShortcutsProvider>
+							</ToastProvider>
+						</AppearanceProvider>
 					</AuthProvider>
 				</QueryProvider>
 			</body>

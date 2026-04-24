@@ -11,6 +11,7 @@ import {
 import { CrossPanel } from "@/components/statistics/cross/cross-panel";
 import { ImportancePanel } from "@/components/statistics/importance/importance-panel";
 import { IndustryPanel } from "@/components/statistics/industry/industry-panel";
+import { CategoryStatsGrid } from "@/components/statistics/overview/category-stats-grid";
 import { RiskDistributionChart } from "@/components/statistics/overview/risk-distribution-chart";
 import { SentimentChart } from "@/components/statistics/overview/sentiment-chart";
 import { TrendChart } from "@/components/statistics/overview/trend-chart";
@@ -19,6 +20,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import {
+	ChartPanelSkeleton,
+	Skeleton,
+	StatCardSkeleton,
+} from "@/components/ui/skeleton";
 import {
 	useArticleAnalyticsSummary,
 	useArticleCategoryCounts,
@@ -32,36 +38,232 @@ import {
 	AlertTriangle,
 	BarChart3,
 	Briefcase,
-	Building2,
 	CheckCircle,
 	FileText,
-	Flame,
 	Globe2,
-	GraduationCap,
 	type LucideIcon,
 	PieChart,
 	Rss,
-	Scale,
-	ScrollText,
-	Shield,
 	ShieldCheck,
 	TrendingUp,
 } from "lucide-react";
 import { useState } from "react";
 
-// Category icon mapping (replaces emoji)
-const categoryIconMap: Record<string, { Icon: LucideIcon; color: string }> = {
-	legislation: { Icon: ScrollText, color: "text-blue-500" },
-	regulation: { Icon: Building2, color: "text-purple-500" },
-	enforcement: { Icon: Scale, color: "text-rose-500" },
-	industry: { Icon: Briefcase, color: "text-amber-500" },
-	compliance: { Icon: ShieldCheck, color: "text-emerald-500" },
-	data: { Icon: BarChart3, color: "text-cyan-500" },
-	security: { Icon: Shield, color: "text-red-500" },
-	academic: { Icon: GraduationCap, color: "text-indigo-500" },
-	events: { Icon: Flame, color: "text-orange-500" },
-	international: { Icon: Globe2, color: "text-teal-500" },
+// Category icon mapping is encapsulated inside CategoryStatsGrid
+
+type AnalyticsTabIntroConfig = {
+	Icon: LucideIcon;
+	titleKey: string;
+	descriptionKey: string;
+	chipKeys: [string, string, string];
+	containerClassName: string;
+	iconColor: string;
 };
+
+const ANALYTICS_TAB_INTROS: Record<AnalyticsTab, AnalyticsTabIntroConfig> = {
+	overview: {
+		Icon: Activity,
+		titleKey: "Overview",
+		descriptionKey:
+			"Review article volume, source health, risk posture, workflow status, and category density from the latest synced dataset.",
+		chipKeys: ["Total articles", "Active sources", "Risk distribution"],
+		containerClassName: "",
+		iconColor: "var(--surface-accent-strong)",
+	},
+	regional: {
+		Icon: Globe2,
+		titleKey: "Regional Analysis",
+		descriptionKey:
+			"Compare policy activity by province, validate coverage with the heatmap, and inspect the most active regions before drilling into ranking details.",
+		chipKeys: ["Regional Heatmap", "Region coverage", "Top Regions"],
+		containerClassName: "",
+		iconColor: "#0f766e",
+	},
+	industry: {
+		Icon: Briefcase,
+		titleKey: "Industry Analysis",
+		descriptionKey:
+			"Review domain distribution, compare category balance, and drill into sub-domains to see where regulatory attention is clustering.",
+		chipKeys: [
+			"Domain Distribution",
+			"Domain Comparison",
+			"Sub-domain Details",
+		],
+		containerClassName: "",
+		iconColor: "#b45309",
+	},
+	importance: {
+		Icon: ShieldCheck,
+		titleKey: "Importance & Authority",
+		descriptionKey:
+			"Prioritize downstream review by combining importance scores, authority levels, and issuer concentration in one operational view.",
+		chipKeys: [
+			"Importance Distribution",
+			"Authority Level Distribution",
+			"Top Issuers",
+		],
+		containerClassName: "",
+		iconColor: "#6d28d9",
+	},
+	cross: {
+		Icon: TrendingUp,
+		titleKey: "Cross Analysis",
+		descriptionKey:
+			"Correlate domain, region, importance, and authority signals to uncover compound compliance patterns and timeline shifts.",
+		chipKeys: [
+			"Cross-Dimensional Analysis",
+			"Timeline by Dimension",
+			"Dimension",
+		],
+		containerClassName: "",
+		iconColor: "#047857",
+	},
+};
+
+const analyticsHeadingTextStyle = {
+	color: "var(--field-foreground)",
+} as const;
+
+const analyticsMutedTextStyle = {
+	color: "var(--surface-muted-text)",
+} as const;
+
+const analyticsPrimaryAccentStyle = {
+	color: "var(--surface-accent-strong)",
+} as const;
+
+const analyticsCardBorderStyle = {
+	borderColor: "var(--surface-muted-border)",
+} as const;
+
+const analyticsErrorSurfaceStyle = {
+	backgroundColor:
+		"color-mix(in srgb, var(--color-error-light) 84%, transparent)",
+	borderColor: "color-mix(in srgb, var(--color-error) 22%, transparent)",
+} as const;
+
+const analyticsErrorTextStyle = {
+	color:
+		"color-mix(in srgb, var(--color-error) 78%, var(--field-foreground) 22%)",
+} as const;
+
+const analyticsWarningSurfaceStyle = {
+	backgroundColor:
+		"color-mix(in srgb, var(--color-warning-light) 84%, transparent)",
+	borderColor: "color-mix(in srgb, var(--color-warning) 22%, transparent)",
+} as const;
+
+const analyticsWarningTextStyle = {
+	color:
+		"color-mix(in srgb, var(--color-warning) 76%, var(--field-foreground) 24%)",
+} as const;
+
+function AnalyticsTabIntro({ activeTab }: { activeTab: AnalyticsTab }) {
+	const t = useT();
+	const intro = ANALYTICS_TAB_INTROS[activeTab];
+	const heroGradient =
+		activeTab === "regional"
+			? "var(--surface-hero-cyan-gradient)"
+			: activeTab === "industry"
+				? "var(--surface-hero-amber-gradient)"
+				: activeTab === "importance"
+					? "var(--surface-hero-violet-gradient)"
+					: activeTab === "cross"
+						? "var(--surface-hero-emerald-gradient)"
+						: "var(--surface-hero-primary-gradient)";
+
+	return (
+		<Card
+			className={`mb-6 overflow-hidden border shadow-sm ${intro.containerClassName}`}
+			data-testid={`analytics-intro-${activeTab}`}
+			style={{
+				backgroundImage: heroGradient,
+				borderColor: "var(--surface-accent-border)",
+			}}
+		>
+			<CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-start lg:justify-between">
+				<div className="flex items-start gap-4">
+					<div
+						className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+						style={{
+							backgroundColor: "var(--surface-accent-icon-bg)",
+							color: intro.iconColor,
+						}}
+					>
+						<intro.Icon aria-hidden="true" className="h-5 w-5" />
+					</div>
+					<div className="space-y-2">
+						<div className="flex flex-wrap items-center gap-2">
+							<Badge
+								variant="outline"
+								className=""
+								style={{
+									backgroundColor: "var(--surface-muted-bg)",
+									borderColor: "var(--surface-muted-border)",
+									color: "var(--surface-accent-strong)",
+								}}
+							>
+								{t("Analytics")}
+							</Badge>
+							<h2
+								className="text-lg font-semibold"
+								style={analyticsHeadingTextStyle}
+							>
+								{t(intro.titleKey)}
+							</h2>
+						</div>
+						<p
+							className="max-w-3xl text-sm leading-6"
+							style={analyticsMutedTextStyle}
+						>
+							{t(intro.descriptionKey)}
+						</p>
+					</div>
+				</div>
+				<div className="flex flex-wrap gap-2 lg:max-w-sm lg:justify-end">
+					{intro.chipKeys.map((chipKey) => (
+						<Badge
+							key={chipKey}
+							variant="secondary"
+							className=""
+							style={{
+								backgroundColor: "var(--surface-muted-bg)",
+								color: "var(--surface-muted-text)",
+							}}
+						>
+							{t(chipKey)}
+						</Badge>
+					))}
+				</div>
+			</CardContent>
+		</Card>
+	);
+}
+
+function OverviewStatusSkeleton() {
+	return (
+		<div className="grid grid-cols-2 gap-4">
+			{Array.from(
+				{ length: 6 },
+				(_, index) => `overview-status-skeleton-${index}`,
+			).map((key) => (
+				<div
+					key={key}
+					className="rounded-lg border p-3"
+					style={{
+						backgroundColor: "var(--control-hover-bg)",
+						borderColor: "var(--surface-muted-border)",
+					}}
+				>
+					<div className="flex items-center justify-between gap-3">
+						<Skeleton variant="rectangular" width={92} height={24} />
+						<Skeleton variant="text" width={36} height={28} />
+					</div>
+				</div>
+			))}
+		</div>
+	);
+}
 
 export default function AnalyticsPage() {
 	const t = useT();
@@ -69,7 +271,10 @@ export default function AnalyticsPage() {
 
 	return (
 		<ProtectedRoute>
-			<div className="flex min-h-screen bg-neutral-50">
+			<div
+				className="flex min-h-screen"
+				style={{ backgroundColor: "var(--color-background)" }}
+			>
 				<Sidebar />
 
 				<MainContent>
@@ -78,16 +283,22 @@ export default function AnalyticsPage() {
 					<div className="p-6">
 						{/* Page Title */}
 						<div className="mb-6">
-							<h1 className="text-2xl font-bold text-neutral-900">
+							<h1
+								className="text-2xl font-bold"
+								style={analyticsHeadingTextStyle}
+							>
 								{t("Analytics")}
 							</h1>
-							<p className="text-sm text-neutral-500">
+							<p className="text-sm" style={analyticsMutedTextStyle}>
 								{t("Data statistics and trend analysis")}
 							</p>
 						</div>
 
 						{/* Tab Navigation */}
 						<AnalyticsTabs activeTab={activeTab} onTabChange={setActiveTab} />
+
+						{/* Active tab semantic intro */}
+						<AnalyticsTabIntro activeTab={activeTab} />
 
 						{/* Tab Content */}
 						{activeTab === "overview" && <OverviewTab />}
@@ -157,16 +368,6 @@ function OverviewTab() {
 		? (analyticsSummary?.total ?? null)
 		: null;
 
-	const categoryCountsById = new Map<string, number>();
-	let uncategorizedCount = 0;
-	for (const row of categoryCountRows ?? []) {
-		if (!row.category_id) {
-			uncategorizedCount = row.count;
-			continue;
-		}
-		categoryCountsById.set(row.category_id, row.count);
-	}
-
 	const activeSources =
 		sourceStats && !sourceStatsLoading && !sourceStatsError
 			? sourceStats.active_count
@@ -175,6 +376,8 @@ function OverviewTab() {
 		sourceStats && !sourceStatsLoading && !sourceStatsError
 			? sourceStats.error_count
 			: null;
+	const overviewSummaryLoading =
+		analyticsSummaryLoading || categoriesLoading || sourceStatsLoading;
 
 	const statusRows = [
 		{
@@ -208,81 +411,117 @@ function OverviewTab() {
 		<>
 			{/* Overview Stats */}
 			<div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-				<Card>
-					<CardContent className="p-4">
-						<div className="flex items-center gap-3">
-							<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-100">
-								<FileText
-									aria-hidden="true"
-									className="h-5 w-5 text-primary-600"
-								/>
-							</div>
-							<div>
-								<p className="text-2xl font-bold">
-									{totalArticles ?? "\u2014"}
-								</p>
-								<p className="text-sm text-neutral-500">
-									{t("Total articles")}
-								</p>
-							</div>
-						</div>
-					</CardContent>
-				</Card>
-				<Card>
-					<CardContent className="p-4">
-						<div className="flex items-center gap-3">
-							<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success-light">
-								<Rss aria-hidden="true" className="h-5 w-5 text-success" />
-							</div>
-							<div>
-								<p className="text-2xl font-bold">
-									{activeSources ?? "\u2014"}
-								</p>
-								<p className="text-sm text-neutral-500">
-									{t("Active sources")}
-								</p>
-							</div>
-						</div>
-					</CardContent>
-				</Card>
-				<Card>
-					<CardContent className="p-4">
-						<div className="flex items-center gap-3">
-							<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
-								<Activity aria-hidden="true" className="h-5 w-5 text-warning" />
-							</div>
-							<div>
-								<p className="text-2xl font-bold">
-									{categoriesCount ?? "\u2014"}
-								</p>
-								<p className="text-sm text-neutral-500">{t("Categories")}</p>
-							</div>
-						</div>
-					</CardContent>
-				</Card>
-				<Card>
-					<CardContent className="p-4">
-						<div className="flex items-center gap-3">
-							<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
-								<AlertTriangle
-									aria-hidden="true"
-									className="h-5 w-5 text-destructive"
-								/>
-							</div>
-							<div>
-								<p className="text-2xl font-bold">{errorSources ?? "\u2014"}</p>
-								<p className="text-sm text-neutral-500">
-									{t("Sources with errors")}
-								</p>
-							</div>
-						</div>
-					</CardContent>
-				</Card>
+				{overviewSummaryLoading ? (
+					<>
+						<StatCardSkeleton />
+						<StatCardSkeleton />
+						<StatCardSkeleton />
+						<StatCardSkeleton />
+					</>
+				) : (
+					<>
+						<Card>
+							<CardContent className="p-4">
+								<div className="flex items-center gap-3">
+									<div
+										className="flex h-10 w-10 items-center justify-center rounded-lg"
+										style={{ backgroundColor: "var(--surface-accent-icon-bg)" }}
+									>
+										<FileText
+											aria-hidden="true"
+											className="h-5 w-5"
+											style={analyticsPrimaryAccentStyle}
+										/>
+									</div>
+									<div>
+										<p className="text-2xl font-bold">
+											{totalArticles ?? "\u2014"}
+										</p>
+										<p className="text-sm" style={analyticsMutedTextStyle}>
+											{t("Total articles")}
+										</p>
+									</div>
+								</div>
+							</CardContent>
+						</Card>
+						<Card>
+							<CardContent className="p-4">
+								<div className="flex items-center gap-3">
+									<div
+										className="flex h-10 w-10 items-center justify-center rounded-lg bg-success-light"
+										style={{ backgroundColor: "var(--surface-accent-icon-bg)" }}
+									>
+										<Rss aria-hidden="true" className="h-5 w-5 text-success" />
+									</div>
+									<div>
+										<p className="text-2xl font-bold">
+											{activeSources ?? "\u2014"}
+										</p>
+										<p className="text-sm" style={analyticsMutedTextStyle}>
+											{t("Active sources")}
+										</p>
+									</div>
+								</div>
+							</CardContent>
+						</Card>
+						<Card>
+							<CardContent className="p-4">
+								<div className="flex items-center gap-3">
+									<div
+										className="flex h-10 w-10 items-center justify-center rounded-lg"
+										style={{ backgroundColor: "var(--surface-accent-icon-bg)" }}
+									>
+										<Activity
+											aria-hidden="true"
+											className="h-5 w-5"
+											style={analyticsWarningTextStyle}
+										/>
+									</div>
+									<div>
+										<p className="text-2xl font-bold">
+											{categoriesCount ?? "\u2014"}
+										</p>
+										<p className="text-sm" style={analyticsMutedTextStyle}>
+											{t("Categories")}
+										</p>
+									</div>
+								</div>
+							</CardContent>
+						</Card>
+						<Card>
+							<CardContent className="p-4">
+								<div className="flex items-center gap-3">
+									<div
+										className="flex h-10 w-10 items-center justify-center rounded-lg"
+										style={{ backgroundColor: "var(--surface-accent-icon-bg)" }}
+									>
+										<AlertTriangle
+											aria-hidden="true"
+											className="h-5 w-5"
+											style={analyticsErrorTextStyle}
+										/>
+									</div>
+									<div>
+										<p className="text-2xl font-bold">
+											{errorSources ?? "\u2014"}
+										</p>
+										<p className="text-sm" style={analyticsMutedTextStyle}>
+											{t("Sources with errors")}
+										</p>
+									</div>
+								</div>
+							</CardContent>
+						</Card>
+					</>
+				)}
 			</div>
 
 			{hasInfraError ? (
-				<div className="mb-6 flex items-center justify-between rounded-lg border border-red-100 bg-red-50 px-3 py-2">
-					<p className="text-xs text-red-700">
+				<div
+					className="mb-6 flex items-center justify-between rounded-lg border px-3 py-2"
+					style={analyticsErrorSurfaceStyle}
+				>
+					<p className="text-xs" style={analyticsErrorTextStyle}>
 						{t("Failed to load base data: {items}", {
 							items: infraErrors.map((key) => t(key)).join(" / "),
 						})}{" "}
@@ -308,16 +547,15 @@ function OverviewTab() {
 						<CardTitle className="flex items-center gap-2">
 							<PieChart
 								aria-hidden="true"
-								className="h-5 w-5 text-primary-500"
+								className="h-5 w-5"
+								style={analyticsPrimaryAccentStyle}
 							/>
 							{t("Risk distribution")}
 						</CardTitle>
 					</CardHeader>
 					<CardContent>
 						{analyticsSummaryLoading ? (
-							<div className="flex h-[260px] items-center justify-center">
-								<div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
-							</div>
+							<ChartPanelSkeleton height={260} />
 						) : analyticsReady && analyticsSummary?.risk ? (
 							<RiskDistributionChart data={analyticsSummary.risk} />
 						) : (
@@ -332,16 +570,15 @@ function OverviewTab() {
 						<CardTitle className="flex items-center gap-2">
 							<BarChart3
 								aria-hidden="true"
-								className="h-5 w-5 text-primary-500"
+								className="h-5 w-5"
+								style={analyticsPrimaryAccentStyle}
 							/>
 							{t("Sentiment analysis")}
 						</CardTitle>
 					</CardHeader>
 					<CardContent>
 						{analyticsSummaryLoading ? (
-							<div className="flex h-[260px] items-center justify-center">
-								<div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
-							</div>
+							<ChartPanelSkeleton height={260} />
 						) : analyticsReady && analyticsSummary?.sentiment ? (
 							<SentimentChart data={analyticsSummary.sentiment} />
 						) : (
@@ -356,27 +593,33 @@ function OverviewTab() {
 						<CardTitle className="flex items-center gap-2">
 							<CheckCircle
 								aria-hidden="true"
-								className="h-5 w-5 text-primary-500"
+								className="h-5 w-5"
+								style={analyticsPrimaryAccentStyle}
 							/>
 							{t("Article status")}
 						</CardTitle>
 					</CardHeader>
 					<CardContent>
-						<div className="grid grid-cols-2 gap-4">
-							{statusRows.map(({ key, labelKey, variant }) => (
-								<div
-									key={key}
-									className="flex items-center justify-between rounded-lg border border-neutral-100 p-3"
-								>
-									<Badge variant={variant}>{t(labelKey)}</Badge>
-									<span className="text-lg font-semibold">
-										{analyticsReady
-											? (analyticsSummary?.status?.[key] ?? 0)
-											: "\u2014"}
-									</span>
-								</div>
-							))}
-						</div>
+						{analyticsSummaryLoading ? (
+							<OverviewStatusSkeleton />
+						) : (
+							<div className="grid grid-cols-2 gap-4">
+								{statusRows.map(({ key, labelKey, variant }) => (
+									<div
+										key={key}
+										className="flex items-center justify-between rounded-lg border p-3"
+										style={analyticsCardBorderStyle}
+									>
+										<Badge variant={variant}>{t(labelKey)}</Badge>
+										<span className="text-lg font-semibold">
+											{analyticsReady
+												? (analyticsSummary?.status?.[key] ?? 0)
+												: "\u2014"}
+										</span>
+									</div>
+								))}
+							</div>
+						)}
 					</CardContent>
 				</Card>
 
@@ -386,16 +629,15 @@ function OverviewTab() {
 						<CardTitle className="flex items-center gap-2">
 							<TrendingUp
 								aria-hidden="true"
-								className="h-5 w-5 text-primary-500"
+								className="h-5 w-5"
+								style={analyticsPrimaryAccentStyle}
 							/>
 							{t("Last 7 days trend")}
 						</CardTitle>
 					</CardHeader>
 					<CardContent>
 						{trendsLoading ? (
-							<div className="flex h-[260px] items-center justify-center">
-								<div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
-							</div>
+							<ChartPanelSkeleton height={260} />
 						) : trendsError ? (
 							<EmptyState
 								variant="error"
@@ -424,108 +666,35 @@ function OverviewTab() {
 				</Card>
 			</div>
 
-			{/* Category statistics — keep as icon grid */}
+			{/* Category statistics — extracted CategoryStatsGrid */}
 			<Card className="mt-6">
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
 						<BarChart3
 							aria-hidden="true"
-							className="h-5 w-5 text-primary-500"
+							className="h-5 w-5"
+							style={analyticsPrimaryAccentStyle}
 						/>
 						{t("Category statistics")}
 					</CardTitle>
 				</CardHeader>
 				<CardContent>
-					{categoriesError ? (
-						<EmptyState
-							variant="error"
-							title={t("Failed to load category data")}
-							description={
-								categoriesErrorDetail instanceof Error
-									? categoriesErrorDetail.message
-									: t("Unknown error")
-							}
-							action={{
-								label: t("Retry"),
-								onClick: () => {
-									refetchCategories();
-									refetchCategoryCounts();
-								},
-							}}
-							className="py-10"
-						/>
-					) : categoryCountsLoading || categoriesLoading ? (
-						<div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-							{Array.from(
-								{ length: Math.min(10, categories?.length ?? 10) },
-								(_, idx) => `cat-stats-skel-${idx}`,
-							).map((key) => (
-								<div
-									key={key}
-									className="h-[124px] rounded-lg border border-neutral-100 bg-neutral-50 animate-pulse"
-								/>
-							))}
-						</div>
-					) : (
-						<div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-							{categoryCountsError ? (
-								<div className="col-span-2 flex items-center justify-between rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 sm:col-span-3 lg:col-span-5">
-									<p className="text-xs text-amber-800">
-										{t(
-											"Failed to load category stats (unreliable values are hidden.)",
-										)}
-									</p>
-									<Button
-										variant="outline"
-										size="sm"
-										onClick={() => refetchCategoryCounts()}
-									>
-										{t("Retry")}
-									</Button>
-								</div>
-							) : null}
-							{uncategorizedCount > 0 && (
-								<div className="flex flex-col items-center rounded-lg border border-neutral-100 p-4 text-center">
-									<FileText
-										aria-hidden="true"
-										className="h-6 w-6 text-neutral-500"
-									/>
-									<span className="mt-2 text-sm font-medium">
-										{t("Uncategorized")}
-									</span>
-									<span className="mt-1 text-2xl font-bold text-primary-600">
-										{categoryCountsError ? "\u2014" : uncategorizedCount}
-									</span>
-								</div>
-							)}
-							{categories?.map((category) => {
-								const iconInfo = categoryIconMap[category.slug];
-								const IconComponent = iconInfo?.Icon;
-								const count = categoryCountsById.get(category.id) ?? 0;
-								return (
-									<div
-										key={category.id}
-										className="flex flex-col items-center rounded-lg border border-neutral-100 p-4 text-center"
-									>
-										{IconComponent ? (
-											<IconComponent className={`h-6 w-6 ${iconInfo.color}`} />
-										) : (
-											<BarChart3
-												aria-hidden="true"
-												className="h-6 w-6 text-neutral-400"
-											/>
-										)}
-										<span className="mt-2 text-sm font-medium">
-											{category.name}
-										</span>
-										<span className="mt-1 text-2xl font-bold text-primary-600">
-											{categoryCountsError ? "\u2014" : count}
-										</span>
-									</div>
-								);
-							})}
-						</div>
-					)}
+					<CategoryStatsGrid
+						categories={categories}
+						categoryCounts={categoryCountRows}
+						isLoading={categoryCountsLoading || categoriesLoading}
+						isError={categoriesError}
+						hasCountsError={categoryCountsError}
+						errorMessage={
+							categoriesErrorDetail instanceof Error
+								? categoriesErrorDetail.message
+								: undefined
+						}
+						onRetry={() => {
+							refetchCategories();
+							refetchCategoryCounts();
+						}}
+					/>
 				</CardContent>
 			</Card>
 		</>
