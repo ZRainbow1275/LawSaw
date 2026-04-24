@@ -125,6 +125,300 @@ export interface AuthResponse {
 	mfa_challenge?: string;
 }
 
+export type RoleTier =
+	| "basic_user"
+	| "verified_user"
+	| "premium_user"
+	| "tenant_admin"
+	| "super_admin";
+
+export interface AuthzCheckResponse {
+	allow: boolean;
+	decision_path: string[];
+	matched_relation?: string | null;
+	role_tier: RoleTier;
+}
+
+export interface AuthRelation {
+	id: string;
+	resource_type: string;
+	resource_id: string;
+	relation: string;
+	subject_type: string;
+	subject_id: string;
+	created_by: string;
+	created_at: string;
+	expires_at: string | null;
+}
+
+export interface AuthRelationListResponse {
+	data: AuthRelation[];
+	total: number;
+	limit: number;
+	offset: number;
+}
+
+export interface BannerTarget {
+	id: string;
+	target_type: "global" | "channel" | "role_tier";
+	channel_id: string | null;
+	min_role: RoleTier | null;
+	created_at: string;
+}
+
+export interface Banner {
+	id: string;
+	title: string;
+	body: string | null;
+	image_url: string | null;
+	cta_label: string | null;
+	cta_url: string | null;
+	priority: number;
+	status: "draft" | "scheduled" | "active" | "expired" | "archived";
+	starts_at: string | null;
+	ends_at: string | null;
+	created_by: string | null;
+	updated_by: string | null;
+	created_at: string;
+	updated_at: string;
+	targets: BannerTarget[];
+}
+
+export interface BannerListResponse {
+	data: Banner[];
+	total: number;
+	limit: number;
+	offset: number;
+}
+
+export interface FeedResponse {
+	role_tier: RoleTier;
+	total: number;
+	limit: number;
+	offset: number;
+	articles: Article[];
+	banners: Banner[];
+	experiments: FeedExperiment[];
+}
+
+export interface NotificationEntry {
+	id: string;
+	seq: number;
+	action: string;
+	resource: string;
+	resource_id: string | null;
+	user_id: string | null;
+	created_at: string;
+	summary: string;
+}
+
+export interface NotificationsResponse {
+	items: NotificationEntry[];
+	last_seen_seq: number;
+	total: number;
+	limit: number;
+	offset: number;
+}
+
+export interface MarkNotificationsSeenRequest {
+	last_seen_seq: number;
+}
+
+export interface MarkSeenResponse {
+	success: boolean;
+}
+
+export interface FeedExperiment {
+	experiment_key: string;
+	variant: string;
+	is_enabled: boolean;
+	is_in_rollout: boolean;
+	rollout_percent: number;
+	rollback_variant: string;
+}
+
+export interface ArticlePin {
+	id: string;
+	article_id: string;
+	scope_type: "global" | "channel";
+	channel_id: string | null;
+	priority: number;
+	starts_at: string;
+	ends_at: string | null;
+	created_by: string | null;
+	updated_by: string | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface ArticlePinListResponse {
+	data: ArticlePin[];
+}
+
+export interface UnpinResponse {
+	success: boolean;
+	pin: ArticlePin;
+}
+
+export interface AiPromptVersion {
+	id: string;
+	version: number;
+	prompt_template: string;
+	prompt_checksum: string;
+	variables: Record<string, unknown>;
+	change_note: string | null;
+	created_by: string | null;
+	created_at: string;
+}
+
+export interface AiGovernancePolicy {
+	id: string;
+	policy_kind: string;
+	display_name: string;
+	model: string;
+	embedding_model: string | null;
+	reranker_model: string | null;
+	config: Record<string, unknown>;
+	budget_daily_tokens: number;
+	budget_monthly_tokens: number;
+	is_enabled: boolean;
+	active_prompt_version: number | null;
+	created_by: string | null;
+	updated_by: string | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface AiPolicySnapshotResponse {
+	policy: AiGovernancePolicy;
+	active_prompt: AiPromptVersion | null;
+}
+
+export interface AiPromptVersionListResponse {
+	data: AiPromptVersion[];
+	limit: number;
+	offset: number;
+}
+
+export interface AiContentFlag {
+	id: string;
+	article_id: string;
+	policy_kind: string;
+	model_version: string;
+	prompt_version: number | null;
+	sentiment: string | null;
+	risk_level: string | null;
+	risk_score: number | null;
+	importance: number | null;
+	industry: string | null;
+	region_code: string | null;
+	tags: string[];
+	keywords: string[];
+	output_hash: string;
+	metadata: Record<string, unknown>;
+	updated_by_task: string;
+	processed_at: string;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface AiContentFlagListResponse {
+	data: AiContentFlag[];
+	total: number;
+	limit: number;
+	offset: number;
+}
+
+export interface AiMetricBucket {
+	key: string;
+	count: number;
+}
+
+export interface AiMetricsResponse {
+	total: number;
+	processed_24h: number;
+	risk_breakdown: AiMetricBucket[];
+	sentiment_breakdown: AiMetricBucket[];
+	model_breakdown: AiMetricBucket[];
+}
+
+export interface AiTokenUsage {
+	id: string;
+	policy_kind: string;
+	model_version: string;
+	operation: string;
+	actor_user_id: string | null;
+	article_id: string | null;
+	request_id: string | null;
+	input_tokens: number;
+	output_tokens: number;
+	total_tokens: number;
+	latency_ms: number | null;
+	status: "success" | "failed" | "degraded";
+	metadata: Record<string, unknown>;
+	recorded_at: string;
+	created_at: string;
+}
+
+export interface AiTokenUsageAggregate {
+	input_tokens: number;
+	output_tokens: number;
+	total_tokens: number;
+}
+
+export interface AiTokenUsageListResponse {
+	data: AiTokenUsage[];
+	total: number;
+	limit: number;
+	offset: number;
+	aggregate: AiTokenUsageAggregate;
+}
+
+export interface AiBudgetAlert {
+	id: string;
+	policy_kind: string;
+	alert_window: "daily" | "monthly";
+	threshold_percent: number;
+	budget_tokens: number;
+	used_tokens: number;
+	status: "triggered" | "resolved" | "suppressed";
+	note: string | null;
+	metadata: Record<string, unknown>;
+	triggered_at: string;
+	resolved_at: string | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface AiBudgetAlertListResponse {
+	data: AiBudgetAlert[];
+	total: number;
+	limit: number;
+	offset: number;
+}
+
+export interface RecomputeAiBudgetAlertsResponse {
+	active_alerts: number;
+}
+
+export interface FeedExperimentConfig {
+	id: string;
+	experiment_key: "feed_ranking" | "banner_delivery";
+	is_enabled: boolean;
+	rollout_percent: number;
+	variants: Record<string, unknown>;
+	rollback_variant: string;
+	config: Record<string, unknown>;
+	created_by: string | null;
+	updated_by: string | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface FeedExperimentConfigListResponse {
+	data: FeedExperimentConfig[];
+}
+
 export interface DeleteResponse {
 	success: boolean;
 	message: string;
@@ -394,6 +688,127 @@ export interface AiAvailabilityResponse {
 	available: boolean;
 	degraded: boolean;
 	degraded_reason?: string | null;
+}
+
+type ArticleWithAiMetadata = Pick<
+	Article,
+	"ai_metadata" | "risk_score" | "tags" | "keywords"
+> & { summary?: string | null };
+
+function readString(record: Record<string, unknown>, key: string): string {
+	const raw = record[key];
+	return typeof raw === "string" ? raw : "";
+}
+
+function readStringArray(
+	record: Record<string, unknown>,
+	key: string,
+): string[] {
+	const raw = record[key];
+	if (!Array.isArray(raw)) return [];
+	return raw.filter((value): value is string => typeof value === "string");
+}
+
+function readEntities(record: Record<string, unknown>): AiEntity[] {
+	const raw = record.entities;
+	if (!Array.isArray(raw)) return [];
+	return raw
+		.filter((entry): entry is Record<string, unknown> => {
+			return typeof entry === "object" && entry !== null;
+		})
+		.map((entry) => ({
+			name: typeof entry.name === "string" ? entry.name : "",
+			entity_type:
+				typeof entry.entity_type === "string"
+					? (entry.entity_type as AiEntity["entity_type"])
+					: "organization",
+			context:
+				typeof entry.context === "string" ? entry.context : undefined,
+		}))
+		.filter((entity) => entity.name.length > 0);
+}
+
+function readRiskDimensions(
+	record: Record<string, unknown>,
+): RiskDimension[] {
+	const raw = record.risk_dimensions;
+	if (!Array.isArray(raw)) return [];
+	return raw
+		.filter((entry): entry is Record<string, unknown> => {
+			return typeof entry === "object" && entry !== null;
+		})
+		.map((entry) => ({
+			name: typeof entry.name === "string" ? entry.name : "",
+			score: typeof entry.score === "number" ? entry.score : 0,
+			description:
+				typeof entry.description === "string" ? entry.description : "",
+		}))
+		.filter((dim) => dim.name.length > 0);
+}
+
+function scoreToRiskLevel(
+	score: number | null | undefined,
+): ArticleAiInsights["risk_level"] {
+	if (score == null) return "low";
+	if (score >= 76) return "critical";
+	if (score >= 51) return "high";
+	if (score >= 26) return "medium";
+	return "low";
+}
+
+export function normalizeArticleAiInsights(
+	article: ArticleWithAiMetadata,
+): ArticleAiInsights | null {
+	const metadata = article.ai_metadata;
+	if (!metadata || typeof metadata !== "object") return null;
+
+	const record = metadata as Record<string, unknown>;
+	const summary = readString(record, "summary") || (article.summary ?? "");
+	const abstractText = readString(record, "abstract_text") || summary;
+	const keyPoints = readStringArray(record, "key_points");
+	const entities = readEntities(record);
+	const recommendations = readStringArray(record, "recommendations");
+	const metadataTags = readStringArray(record, "tags");
+	const metadataKeywords = readStringArray(record, "keywords");
+	const riskDimensions = readRiskDimensions(record);
+	const riskScoreRaw = record.risk_score;
+	const riskScore =
+		typeof riskScoreRaw === "number"
+			? riskScoreRaw
+			: (article.risk_score ?? 0);
+	const riskLevelRaw = record.risk_level;
+	const riskLevel: ArticleAiInsights["risk_level"] =
+		riskLevelRaw === "critical" ||
+		riskLevelRaw === "high" ||
+		riskLevelRaw === "medium" ||
+		riskLevelRaw === "low"
+			? riskLevelRaw
+			: scoreToRiskLevel(article.risk_score);
+
+	const hasAnyContent =
+		summary.length > 0 ||
+		abstractText.length > 0 ||
+		keyPoints.length > 0 ||
+		entities.length > 0 ||
+		recommendations.length > 0 ||
+		metadataTags.length > 0 ||
+		metadataKeywords.length > 0;
+
+	if (!hasAnyContent) return null;
+
+	return {
+		summary,
+		abstract_text: abstractText,
+		key_points: keyPoints,
+		entities,
+		risk_score: riskScore,
+		risk_level: riskLevel,
+		risk_dimensions: riskDimensions,
+		recommendations,
+		tags: metadataTags.length > 0 ? metadataTags : article.tags,
+		keywords:
+			metadataKeywords.length > 0 ? metadataKeywords : article.keywords,
+	};
 }
 
 // Knowledge Graph types
@@ -797,6 +1212,500 @@ export function assertAuthResponse(
 	assertOptional(mfaChallenge, `${path}.mfa_challenge`, assertString);
 }
 
+const ROLE_TIERS = [
+	"basic_user",
+	"verified_user",
+	"premium_user",
+	"tenant_admin",
+	"super_admin",
+] as const;
+
+const BANNER_STATUSES = [
+	"draft",
+	"scheduled",
+	"active",
+	"expired",
+	"archived",
+] as const;
+
+const BANNER_TARGET_TYPES = ["global", "channel", "role_tier"] as const;
+
+const ARTICLE_PIN_SCOPE_TYPES = ["global", "channel"] as const;
+
+const CONTENT_FLAG_RISK_LEVELS = [
+	"unknown",
+	"low",
+	"medium",
+	"high",
+	"critical",
+] as const;
+
+const TOKEN_USAGE_STATUSES = ["success", "failed", "degraded"] as const;
+
+const BUDGET_ALERT_WINDOWS = ["daily", "monthly"] as const;
+
+const BUDGET_ALERT_STATUSES = ["triggered", "resolved", "suppressed"] as const;
+
+const FEED_EXPERIMENT_KEYS = ["feed_ranking", "banner_delivery"] as const;
+
+export function assertAuthzCheckResponse(
+	value: unknown,
+	path = "authzCheckResponse",
+): asserts value is AuthzCheckResponse {
+	assertRecord(value, path);
+
+	assertBoolean(getRequired(value, "allow", path), `${path}.allow`);
+	const decisionPath = getRequired(value, "decision_path", path);
+	assertArray(decisionPath, `${path}.decision_path`, assertString);
+
+	const matchedRelation = getOptional(value, "matched_relation");
+	assertOptional(matchedRelation, `${path}.matched_relation`, (v, p) =>
+		assertNullable(v, p, assertString),
+	);
+
+	const roleTier = getRequired(value, "role_tier", path);
+	assertOneOf(roleTier, `${path}.role_tier`, ROLE_TIERS);
+}
+
+function assertAuthRelation(
+	value: unknown,
+	path = "authRelation",
+): asserts value is AuthRelation {
+	assertRecord(value, path);
+	assertString(getRequired(value, "id", path), `${path}.id`);
+	assertString(
+		getRequired(value, "resource_type", path),
+		`${path}.resource_type`,
+	);
+	assertString(getRequired(value, "resource_id", path), `${path}.resource_id`);
+	assertString(getRequired(value, "relation", path), `${path}.relation`);
+	assertString(
+		getRequired(value, "subject_type", path),
+		`${path}.subject_type`,
+	);
+	assertString(getRequired(value, "subject_id", path), `${path}.subject_id`);
+	assertString(getRequired(value, "created_by", path), `${path}.created_by`);
+	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
+	assertNullable(
+		getRequired(value, "expires_at", path),
+		`${path}.expires_at`,
+		assertString,
+	);
+}
+
+export function assertAuthRelationResponse(
+	value: unknown,
+	path = "authRelationResponse",
+): asserts value is AuthRelation {
+	assertAuthRelation(value, path);
+}
+
+export function assertAuthRelationListResponse(
+	value: unknown,
+	path = "authRelationListResponse",
+): asserts value is AuthRelationListResponse {
+	assertRecord(value, path);
+	const data = getRequired(value, "data", path);
+	assertArray(data, `${path}.data`, assertAuthRelation);
+	assertNumber(getRequired(value, "total", path), `${path}.total`);
+	assertNumber(getRequired(value, "limit", path), `${path}.limit`);
+	assertNumber(getRequired(value, "offset", path), `${path}.offset`);
+}
+
+function assertBannerTarget(
+	value: unknown,
+	path = "bannerTarget",
+): asserts value is BannerTarget {
+	assertRecord(value, path);
+	assertString(getRequired(value, "id", path), `${path}.id`);
+	assertOneOf(
+		getRequired(value, "target_type", path),
+		`${path}.target_type`,
+		BANNER_TARGET_TYPES,
+	);
+	assertNullable(
+		getRequired(value, "channel_id", path),
+		`${path}.channel_id`,
+		assertString,
+	);
+	const minRole = getRequired(value, "min_role", path);
+	assertNullable(minRole, `${path}.min_role`, (v, p) =>
+		assertOneOf(v, p, ROLE_TIERS),
+	);
+	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
+}
+
+function assertBanner(
+	value: unknown,
+	path = "banner",
+): asserts value is Banner {
+	assertRecord(value, path);
+	assertString(getRequired(value, "id", path), `${path}.id`);
+	assertString(getRequired(value, "title", path), `${path}.title`);
+	assertNullable(
+		getRequired(value, "body", path),
+		`${path}.body`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "image_url", path),
+		`${path}.image_url`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "cta_label", path),
+		`${path}.cta_label`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "cta_url", path),
+		`${path}.cta_url`,
+		assertString,
+	);
+	assertNumber(getRequired(value, "priority", path), `${path}.priority`);
+	assertOneOf(
+		getRequired(value, "status", path),
+		`${path}.status`,
+		BANNER_STATUSES,
+	);
+	assertNullable(
+		getRequired(value, "starts_at", path),
+		`${path}.starts_at`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "ends_at", path),
+		`${path}.ends_at`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "created_by", path),
+		`${path}.created_by`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "updated_by", path),
+		`${path}.updated_by`,
+		assertString,
+	);
+	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
+	assertString(getRequired(value, "updated_at", path), `${path}.updated_at`);
+
+	const targets = getRequired(value, "targets", path);
+	assertArray(targets, `${path}.targets`, assertBannerTarget);
+}
+
+export function assertBannerResponse(
+	value: unknown,
+	path = "bannerResponse",
+): asserts value is Banner {
+	assertBanner(value, path);
+}
+
+export function assertBannerListResponse(
+	value: unknown,
+	path = "bannerListResponse",
+): asserts value is BannerListResponse {
+	assertRecord(value, path);
+	const data = getRequired(value, "data", path);
+	assertArray(data, `${path}.data`, assertBanner);
+	assertNumber(getRequired(value, "total", path), `${path}.total`);
+	assertNumber(getRequired(value, "limit", path), `${path}.limit`);
+	assertNumber(getRequired(value, "offset", path), `${path}.offset`);
+}
+
+function assertArticlePin(
+	value: unknown,
+	path = "articlePin",
+): asserts value is ArticlePin {
+	assertRecord(value, path);
+	assertString(getRequired(value, "id", path), `${path}.id`);
+	assertString(getRequired(value, "article_id", path), `${path}.article_id`);
+	assertOneOf(
+		getRequired(value, "scope_type", path),
+		`${path}.scope_type`,
+		ARTICLE_PIN_SCOPE_TYPES,
+	);
+	assertNullable(
+		getRequired(value, "channel_id", path),
+		`${path}.channel_id`,
+		assertString,
+	);
+	assertNumber(getRequired(value, "priority", path), `${path}.priority`);
+	assertString(getRequired(value, "starts_at", path), `${path}.starts_at`);
+	assertNullable(
+		getRequired(value, "ends_at", path),
+		`${path}.ends_at`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "created_by", path),
+		`${path}.created_by`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "updated_by", path),
+		`${path}.updated_by`,
+		assertString,
+	);
+	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
+	assertString(getRequired(value, "updated_at", path), `${path}.updated_at`);
+}
+
+export function assertArticlePinResponse(
+	value: unknown,
+	path = "articlePinResponse",
+): asserts value is ArticlePin {
+	assertArticlePin(value, path);
+}
+
+export function assertArticlePinListResponse(
+	value: unknown,
+	path = "articlePinListResponse",
+): asserts value is ArticlePinListResponse {
+	assertRecord(value, path);
+	const data = getRequired(value, "data", path);
+	assertArray(data, `${path}.data`, assertArticlePin);
+}
+
+export function assertUnpinResponse(
+	value: unknown,
+	path = "unpinResponse",
+): asserts value is UnpinResponse {
+	assertRecord(value, path);
+	assertBoolean(getRequired(value, "success", path), `${path}.success`);
+	const pin = getRequired(value, "pin", path);
+	assertArticlePin(pin, `${path}.pin`);
+}
+
+function assertAiPromptVersion(
+	value: unknown,
+	path = "aiPromptVersion",
+): asserts value is AiPromptVersion {
+	assertRecord(value, path);
+	assertString(getRequired(value, "id", path), `${path}.id`);
+	assertNumber(getRequired(value, "version", path), `${path}.version`);
+	assertString(
+		getRequired(value, "prompt_template", path),
+		`${path}.prompt_template`,
+	);
+	assertString(
+		getRequired(value, "prompt_checksum", path),
+		`${path}.prompt_checksum`,
+	);
+	assertRecord(getRequired(value, "variables", path), `${path}.variables`);
+	assertNullable(
+		getRequired(value, "change_note", path),
+		`${path}.change_note`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "created_by", path),
+		`${path}.created_by`,
+		assertString,
+	);
+	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
+}
+
+function assertAiGovernancePolicy(
+	value: unknown,
+	path = "aiGovernancePolicy",
+): asserts value is AiGovernancePolicy {
+	assertRecord(value, path);
+	assertString(getRequired(value, "id", path), `${path}.id`);
+	assertString(getRequired(value, "policy_kind", path), `${path}.policy_kind`);
+	assertString(
+		getRequired(value, "display_name", path),
+		`${path}.display_name`,
+	);
+	assertString(getRequired(value, "model", path), `${path}.model`);
+	assertNullable(
+		getRequired(value, "embedding_model", path),
+		`${path}.embedding_model`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "reranker_model", path),
+		`${path}.reranker_model`,
+		assertString,
+	);
+	assertRecord(getRequired(value, "config", path), `${path}.config`);
+	assertNumber(
+		getRequired(value, "budget_daily_tokens", path),
+		`${path}.budget_daily_tokens`,
+	);
+	assertNumber(
+		getRequired(value, "budget_monthly_tokens", path),
+		`${path}.budget_monthly_tokens`,
+	);
+	assertBoolean(getRequired(value, "is_enabled", path), `${path}.is_enabled`);
+	assertNullable(
+		getRequired(value, "active_prompt_version", path),
+		`${path}.active_prompt_version`,
+		assertNumber,
+	);
+	assertNullable(
+		getRequired(value, "created_by", path),
+		`${path}.created_by`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "updated_by", path),
+		`${path}.updated_by`,
+		assertString,
+	);
+	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
+	assertString(getRequired(value, "updated_at", path), `${path}.updated_at`);
+}
+
+export function assertAiPolicySnapshotResponse(
+	value: unknown,
+	path = "aiPolicySnapshotResponse",
+): asserts value is AiPolicySnapshotResponse {
+	assertRecord(value, path);
+	assertAiGovernancePolicy(
+		getRequired(value, "policy", path),
+		`${path}.policy`,
+	);
+	assertNullable(
+		getRequired(value, "active_prompt", path),
+		`${path}.active_prompt`,
+		assertAiPromptVersion,
+	);
+}
+
+export function assertAiPromptVersionListResponse(
+	value: unknown,
+	path = "aiPromptVersionListResponse",
+): asserts value is AiPromptVersionListResponse {
+	assertRecord(value, path);
+	assertArray(
+		getRequired(value, "data", path),
+		`${path}.data`,
+		assertAiPromptVersion,
+	);
+	assertNumber(getRequired(value, "limit", path), `${path}.limit`);
+	assertNumber(getRequired(value, "offset", path), `${path}.offset`);
+}
+
+function assertAiContentFlag(
+	value: unknown,
+	path = "aiContentFlag",
+): asserts value is AiContentFlag {
+	assertRecord(value, path);
+	assertString(getRequired(value, "id", path), `${path}.id`);
+	assertString(getRequired(value, "article_id", path), `${path}.article_id`);
+	assertString(getRequired(value, "policy_kind", path), `${path}.policy_kind`);
+	assertString(
+		getRequired(value, "model_version", path),
+		`${path}.model_version`,
+	);
+	assertNullable(
+		getRequired(value, "prompt_version", path),
+		`${path}.prompt_version`,
+		assertNumber,
+	);
+	assertNullable(
+		getRequired(value, "sentiment", path),
+		`${path}.sentiment`,
+		(v, p) => assertOneOf(v, p, SENTIMENTS),
+	);
+	assertNullable(
+		getRequired(value, "risk_level", path),
+		`${path}.risk_level`,
+		(v, p) => assertOneOf(v, p, CONTENT_FLAG_RISK_LEVELS),
+	);
+	assertNullable(
+		getRequired(value, "risk_score", path),
+		`${path}.risk_score`,
+		assertNumber,
+	);
+	assertNullable(
+		getRequired(value, "importance", path),
+		`${path}.importance`,
+		assertNumber,
+	);
+	assertNullable(
+		getRequired(value, "industry", path),
+		`${path}.industry`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "region_code", path),
+		`${path}.region_code`,
+		assertString,
+	);
+	assertArray(getRequired(value, "tags", path), `${path}.tags`, assertString);
+	assertArray(
+		getRequired(value, "keywords", path),
+		`${path}.keywords`,
+		assertString,
+	);
+	assertString(getRequired(value, "output_hash", path), `${path}.output_hash`);
+	assertRecord(getRequired(value, "metadata", path), `${path}.metadata`);
+	assertString(
+		getRequired(value, "updated_by_task", path),
+		`${path}.updated_by_task`,
+	);
+	assertString(
+		getRequired(value, "processed_at", path),
+		`${path}.processed_at`,
+	);
+	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
+	assertString(getRequired(value, "updated_at", path), `${path}.updated_at`);
+}
+
+export function assertAiContentFlagListResponse(
+	value: unknown,
+	path = "aiContentFlagListResponse",
+): asserts value is AiContentFlagListResponse {
+	assertRecord(value, path);
+	assertArray(
+		getRequired(value, "data", path),
+		`${path}.data`,
+		assertAiContentFlag,
+	);
+	assertNumber(getRequired(value, "total", path), `${path}.total`);
+	assertNumber(getRequired(value, "limit", path), `${path}.limit`);
+	assertNumber(getRequired(value, "offset", path), `${path}.offset`);
+}
+
+function assertAiMetricBucket(
+	value: unknown,
+	path = "aiMetricBucket",
+): asserts value is AiMetricBucket {
+	assertRecord(value, path);
+	assertString(getRequired(value, "key", path), `${path}.key`);
+	assertNumber(getRequired(value, "count", path), `${path}.count`);
+}
+
+export function assertAiMetricsResponse(
+	value: unknown,
+	path = "aiMetricsResponse",
+): asserts value is AiMetricsResponse {
+	assertRecord(value, path);
+	assertNumber(getRequired(value, "total", path), `${path}.total`);
+	assertNumber(
+		getRequired(value, "processed_24h", path),
+		`${path}.processed_24h`,
+	);
+	assertArray(
+		getRequired(value, "risk_breakdown", path),
+		`${path}.risk_breakdown`,
+		assertAiMetricBucket,
+	);
+	assertArray(
+		getRequired(value, "sentiment_breakdown", path),
+		`${path}.sentiment_breakdown`,
+		assertAiMetricBucket,
+	);
+	assertArray(
+		getRequired(value, "model_breakdown", path),
+		`${path}.model_breakdown`,
+		assertAiMetricBucket,
+	);
+}
+
 export function assertArticle(
 	value: unknown,
 	path = "article",
@@ -935,6 +1844,319 @@ export function assertArticleListResponse(
 	assertOptional(nextCursor, `${path}.next_cursor`, (v, p) =>
 		assertNullable(v, p, assertString),
 	);
+}
+
+export function assertFeedResponse(
+	value: unknown,
+	path = "feedResponse",
+): asserts value is FeedResponse {
+	assertRecord(value, path);
+	assertOneOf(
+		getRequired(value, "role_tier", path),
+		`${path}.role_tier`,
+		ROLE_TIERS,
+	);
+	assertNumber(getRequired(value, "total", path), `${path}.total`);
+	assertNumber(getRequired(value, "limit", path), `${path}.limit`);
+	assertNumber(getRequired(value, "offset", path), `${path}.offset`);
+	assertArray(
+		getRequired(value, "articles", path),
+		`${path}.articles`,
+		assertArticle,
+	);
+	assertArray(
+		getRequired(value, "banners", path),
+		`${path}.banners`,
+		assertBanner,
+	);
+	assertArray(
+		getRequired(value, "experiments", path),
+		`${path}.experiments`,
+		(item, itemPath) => {
+			assertRecord(item, itemPath);
+			assertOneOf(
+				getRequired(item, "experiment_key", itemPath),
+				`${itemPath}.experiment_key`,
+				FEED_EXPERIMENT_KEYS,
+			);
+			assertString(
+				getRequired(item, "variant", itemPath),
+				`${itemPath}.variant`,
+			);
+			assertBoolean(
+				getRequired(item, "is_enabled", itemPath),
+				`${itemPath}.is_enabled`,
+			);
+			assertBoolean(
+				getRequired(item, "is_in_rollout", itemPath),
+				`${itemPath}.is_in_rollout`,
+			);
+			assertNumber(
+				getRequired(item, "rollout_percent", itemPath),
+				`${itemPath}.rollout_percent`,
+			);
+			assertString(
+				getRequired(item, "rollback_variant", itemPath),
+				`${itemPath}.rollback_variant`,
+			);
+		},
+	);
+}
+
+function assertNotificationEntry(
+	value: unknown,
+	path: string,
+): asserts value is NotificationEntry {
+	assertRecord(value, path);
+	assertString(getRequired(value, "id", path), `${path}.id`);
+	assertNumber(getRequired(value, "seq", path), `${path}.seq`);
+	assertString(getRequired(value, "action", path), `${path}.action`);
+	assertString(getRequired(value, "resource", path), `${path}.resource`);
+	assertNullable(
+		getRequired(value, "resource_id", path),
+		`${path}.resource_id`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "user_id", path),
+		`${path}.user_id`,
+		assertString,
+	);
+	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
+	assertString(getRequired(value, "summary", path), `${path}.summary`);
+}
+
+export function assertNotificationsResponse(
+	value: unknown,
+	path = "notificationsResponse",
+): asserts value is NotificationsResponse {
+	assertRecord(value, path);
+	assertArray(
+		getRequired(value, "items", path),
+		`${path}.items`,
+		assertNotificationEntry,
+	);
+	assertNumber(getRequired(value, "last_seen_seq", path), `${path}.last_seen_seq`);
+	assertNumber(getRequired(value, "total", path), `${path}.total`);
+	assertNumber(getRequired(value, "limit", path), `${path}.limit`);
+	assertNumber(getRequired(value, "offset", path), `${path}.offset`);
+}
+
+export function assertMarkSeenResponse(
+	value: unknown,
+	path = "markSeenResponse",
+): asserts value is MarkSeenResponse {
+	assertRecord(value, path);
+	assertBoolean(getRequired(value, "success", path), `${path}.success`);
+}
+
+function assertAiTokenUsage(
+	value: unknown,
+	path: string,
+): asserts value is AiTokenUsage {
+	assertRecord(value, path);
+	assertString(getRequired(value, "id", path), `${path}.id`);
+	assertString(getRequired(value, "policy_kind", path), `${path}.policy_kind`);
+	assertString(
+		getRequired(value, "model_version", path),
+		`${path}.model_version`,
+	);
+	assertString(getRequired(value, "operation", path), `${path}.operation`);
+	assertNullable(
+		getRequired(value, "actor_user_id", path),
+		`${path}.actor_user_id`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "article_id", path),
+		`${path}.article_id`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "request_id", path),
+		`${path}.request_id`,
+		assertString,
+	);
+	assertNumber(
+		getRequired(value, "input_tokens", path),
+		`${path}.input_tokens`,
+	);
+	assertNumber(
+		getRequired(value, "output_tokens", path),
+		`${path}.output_tokens`,
+	);
+	assertNumber(
+		getRequired(value, "total_tokens", path),
+		`${path}.total_tokens`,
+	);
+	assertNullable(
+		getRequired(value, "latency_ms", path),
+		`${path}.latency_ms`,
+		assertNumber,
+	);
+	assertOneOf(
+		getRequired(value, "status", path),
+		`${path}.status`,
+		TOKEN_USAGE_STATUSES,
+	);
+	assertRecord(getRequired(value, "metadata", path), `${path}.metadata`);
+	assertString(getRequired(value, "recorded_at", path), `${path}.recorded_at`);
+	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
+}
+
+function assertAiBudgetAlert(
+	value: unknown,
+	path: string,
+): asserts value is AiBudgetAlert {
+	assertRecord(value, path);
+	assertString(getRequired(value, "id", path), `${path}.id`);
+	assertString(getRequired(value, "policy_kind", path), `${path}.policy_kind`);
+	assertOneOf(
+		getRequired(value, "alert_window", path),
+		`${path}.alert_window`,
+		BUDGET_ALERT_WINDOWS,
+	);
+	assertNumber(
+		getRequired(value, "threshold_percent", path),
+		`${path}.threshold_percent`,
+	);
+	assertNumber(
+		getRequired(value, "budget_tokens", path),
+		`${path}.budget_tokens`,
+	);
+	assertNumber(getRequired(value, "used_tokens", path), `${path}.used_tokens`);
+	assertOneOf(
+		getRequired(value, "status", path),
+		`${path}.status`,
+		BUDGET_ALERT_STATUSES,
+	);
+	assertNullable(
+		getRequired(value, "note", path),
+		`${path}.note`,
+		assertString,
+	);
+	assertRecord(getRequired(value, "metadata", path), `${path}.metadata`);
+	assertString(
+		getRequired(value, "triggered_at", path),
+		`${path}.triggered_at`,
+	);
+	assertNullable(
+		getRequired(value, "resolved_at", path),
+		`${path}.resolved_at`,
+		assertString,
+	);
+	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
+	assertString(getRequired(value, "updated_at", path), `${path}.updated_at`);
+}
+
+function assertFeedExperimentConfig(
+	value: unknown,
+	path: string,
+): asserts value is FeedExperimentConfig {
+	assertRecord(value, path);
+	assertString(getRequired(value, "id", path), `${path}.id`);
+	assertOneOf(
+		getRequired(value, "experiment_key", path),
+		`${path}.experiment_key`,
+		FEED_EXPERIMENT_KEYS,
+	);
+	assertBoolean(getRequired(value, "is_enabled", path), `${path}.is_enabled`);
+	assertNumber(
+		getRequired(value, "rollout_percent", path),
+		`${path}.rollout_percent`,
+	);
+	assertRecord(getRequired(value, "variants", path), `${path}.variants`);
+	assertString(
+		getRequired(value, "rollback_variant", path),
+		`${path}.rollback_variant`,
+	);
+	assertRecord(getRequired(value, "config", path), `${path}.config`);
+	assertNullable(
+		getRequired(value, "created_by", path),
+		`${path}.created_by`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "updated_by", path),
+		`${path}.updated_by`,
+		assertString,
+	);
+	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
+	assertString(getRequired(value, "updated_at", path), `${path}.updated_at`);
+}
+
+export function assertAiTokenUsageListResponse(
+	value: unknown,
+	path = "aiTokenUsageListResponse",
+): asserts value is AiTokenUsageListResponse {
+	assertRecord(value, path);
+	assertArray(
+		getRequired(value, "data", path),
+		`${path}.data`,
+		assertAiTokenUsage,
+	);
+	assertNumber(getRequired(value, "total", path), `${path}.total`);
+	assertNumber(getRequired(value, "limit", path), `${path}.limit`);
+	assertNumber(getRequired(value, "offset", path), `${path}.offset`);
+	const aggregate = getRequired(value, "aggregate", path);
+	assertRecord(aggregate, `${path}.aggregate`);
+	assertNumber(
+		getRequired(aggregate, "input_tokens", `${path}.aggregate`),
+		`${path}.aggregate.input_tokens`,
+	);
+	assertNumber(
+		getRequired(aggregate, "output_tokens", `${path}.aggregate`),
+		`${path}.aggregate.output_tokens`,
+	);
+	assertNumber(
+		getRequired(aggregate, "total_tokens", `${path}.aggregate`),
+		`${path}.aggregate.total_tokens`,
+	);
+}
+
+export function assertAiBudgetAlertListResponse(
+	value: unknown,
+	path = "aiBudgetAlertListResponse",
+): asserts value is AiBudgetAlertListResponse {
+	assertRecord(value, path);
+	assertArray(
+		getRequired(value, "data", path),
+		`${path}.data`,
+		assertAiBudgetAlert,
+	);
+	assertNumber(getRequired(value, "total", path), `${path}.total`);
+	assertNumber(getRequired(value, "limit", path), `${path}.limit`);
+	assertNumber(getRequired(value, "offset", path), `${path}.offset`);
+}
+
+export function assertRecomputeAiBudgetAlertsResponse(
+	value: unknown,
+	path = "recomputeAiBudgetAlertsResponse",
+): asserts value is RecomputeAiBudgetAlertsResponse {
+	assertRecord(value, path);
+	assertNumber(
+		getRequired(value, "active_alerts", path),
+		`${path}.active_alerts`,
+	);
+}
+
+export function assertFeedExperimentConfigListResponse(
+	value: unknown,
+	path = "feedExperimentConfigListResponse",
+): asserts value is FeedExperimentConfigListResponse {
+	assertRecord(value, path);
+	assertArray(
+		getRequired(value, "data", path),
+		`${path}.data`,
+		assertFeedExperimentConfig,
+	);
+}
+
+export function assertFeedExperimentConfigResponse(
+	value: unknown,
+	path = "feedExperimentConfigResponse",
+): asserts value is FeedExperimentConfig {
+	assertFeedExperimentConfig(value, path);
 }
 
 export function assertArticleStats(
@@ -1616,6 +2838,20 @@ export interface ReportTaskEnqueuedResponse {
 	report_id: string;
 }
 
+export interface ReportStatusBucket {
+	status: string;
+	count: number;
+}
+
+export interface ReportGovernanceMetricsResponse {
+	total_reports: number;
+	by_status: ReportStatusBucket[];
+	generating_stuck_count: number;
+	approved_unpublished_count: number;
+	export_ready_count: number;
+	error_24h_count: number;
+}
+
 // ── Tenants ─────────────────────────────────────────────────────────
 
 export interface Tenant {
@@ -1802,6 +3038,39 @@ export function assertReportTaskEnqueuedResponse(
 	assertRecord(value, path);
 	assertString(getRequired(value, "message", path), `${path}.message`);
 	assertString(getRequired(value, "report_id", path), `${path}.report_id`);
+}
+
+export function assertReportGovernanceMetricsResponse(
+	value: unknown,
+	path = "reportGovernanceMetrics",
+): asserts value is ReportGovernanceMetricsResponse {
+	assertRecord(value, path);
+	assertNumber(
+		getRequired(value, "total_reports", path),
+		`${path}.total_reports`,
+	);
+	const buckets = getRequired(value, "by_status", path);
+	assertArray(buckets, `${path}.by_status`, (item, itemPath) => {
+		assertRecord(item, itemPath);
+		assertString(getRequired(item, "status", itemPath), `${itemPath}.status`);
+		assertNumber(getRequired(item, "count", itemPath), `${itemPath}.count`);
+	});
+	assertNumber(
+		getRequired(value, "generating_stuck_count", path),
+		`${path}.generating_stuck_count`,
+	);
+	assertNumber(
+		getRequired(value, "approved_unpublished_count", path),
+		`${path}.approved_unpublished_count`,
+	);
+	assertNumber(
+		getRequired(value, "export_ready_count", path),
+		`${path}.export_ready_count`,
+	);
+	assertNumber(
+		getRequired(value, "error_24h_count", path),
+		`${path}.error_24h_count`,
+	);
 }
 
 // ── Statistics Overview ─────────────────────────────────────────────
@@ -2249,14 +3518,38 @@ export function assertWebhookEndpoint(
 	assertString(getRequired(value, "name", path), `${path}.name`);
 	assertString(getRequired(value, "url", path), `${path}.url`);
 	assertBoolean(getRequired(value, "enabled", path), `${path}.enabled`);
-	assertArray(getRequired(value, "events", path), `${path}.events`, assertString);
+	assertArray(
+		getRequired(value, "events", path),
+		`${path}.events`,
+		assertString,
+	);
 	assertNumber(getRequired(value, "timeout_ms", path), `${path}.timeout_ms`);
 	assertNumber(getRequired(value, "max_retries", path), `${path}.max_retries`);
-	assertNullable(getRequired(value, "created_by", path), `${path}.created_by`, assertString);
-	assertNullable(getRequired(value, "last_success_at", path), `${path}.last_success_at`, assertString);
-	assertNullable(getRequired(value, "last_failure_at", path), `${path}.last_failure_at`, assertString);
-	assertNullable(getRequired(value, "last_status_code", path), `${path}.last_status_code`, assertNumber);
-	assertNullable(getRequired(value, "last_error", path), `${path}.last_error`, assertString);
+	assertNullable(
+		getRequired(value, "created_by", path),
+		`${path}.created_by`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "last_success_at", path),
+		`${path}.last_success_at`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "last_failure_at", path),
+		`${path}.last_failure_at`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "last_status_code", path),
+		`${path}.last_status_code`,
+		assertNumber,
+	);
+	assertNullable(
+		getRequired(value, "last_error", path),
+		`${path}.last_error`,
+		assertString,
+	);
 	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
 	assertString(getRequired(value, "updated_at", path), `${path}.updated_at`);
 }
@@ -2266,7 +3559,11 @@ export function assertWebhookListResponse(
 	path = "webhookList",
 ): asserts value is WebhookListResponse {
 	assertRecord(value, path);
-	assertArray(getRequired(value, "items", path), `${path}.items`, assertWebhookEndpoint);
+	assertArray(
+		getRequired(value, "items", path),
+		`${path}.items`,
+		assertWebhookEndpoint,
+	);
 	assertNumber(getRequired(value, "total", path), `${path}.total`);
 	assertNumber(getRequired(value, "limit", path), `${path}.limit`);
 	assertNumber(getRequired(value, "offset", path), `${path}.offset`);
@@ -2303,16 +3600,45 @@ export function assertTenantConfig(
 	assertString(getRequired(value, "tenant_id", path), `${path}.tenant_id`);
 	assertNumber(getRequired(value, "version", path), `${path}.version`);
 	assertNumber(getRequired(value, "max_users", path), `${path}.max_users`);
-	assertNumber(getRequired(value, "max_articles", path), `${path}.max_articles`);
+	assertNumber(
+		getRequired(value, "max_articles", path),
+		`${path}.max_articles`,
+	);
 	assertNumber(getRequired(value, "max_sources", path), `${path}.max_sources`);
-	assertNumber(getRequired(value, "max_storage_mb", path), `${path}.max_storage_mb`);
-	assertNumber(getRequired(value, "max_reports_per_month", path), `${path}.max_reports_per_month`);
-	assertBoolean(getRequired(value, "feature_ai_enabled", path), `${path}.feature_ai_enabled`);
-	assertBoolean(getRequired(value, "feature_knowledge_graph", path), `${path}.feature_knowledge_graph`);
-	assertBoolean(getRequired(value, "feature_report_generation", path), `${path}.feature_report_generation`);
-	assertBoolean(getRequired(value, "feature_webhook", path), `${path}.feature_webhook`);
-	assertNullable(getRequired(value, "logo_url", path), `${path}.logo_url`, assertString);
-	assertNullable(getRequired(value, "primary_color", path), `${path}.primary_color`, assertString);
+	assertNumber(
+		getRequired(value, "max_storage_mb", path),
+		`${path}.max_storage_mb`,
+	);
+	assertNumber(
+		getRequired(value, "max_reports_per_month", path),
+		`${path}.max_reports_per_month`,
+	);
+	assertBoolean(
+		getRequired(value, "feature_ai_enabled", path),
+		`${path}.feature_ai_enabled`,
+	);
+	assertBoolean(
+		getRequired(value, "feature_knowledge_graph", path),
+		`${path}.feature_knowledge_graph`,
+	);
+	assertBoolean(
+		getRequired(value, "feature_report_generation", path),
+		`${path}.feature_report_generation`,
+	);
+	assertBoolean(
+		getRequired(value, "feature_webhook", path),
+		`${path}.feature_webhook`,
+	);
+	assertNullable(
+		getRequired(value, "logo_url", path),
+		`${path}.logo_url`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "primary_color", path),
+		`${path}.primary_color`,
+		assertString,
+	);
 	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
 	assertString(getRequired(value, "updated_at", path), `${path}.updated_at`);
 }
@@ -2323,12 +3649,30 @@ export function assertTenantUsage(
 ): asserts value is TenantUsage {
 	assertRecord(value, path);
 	assertString(getRequired(value, "tenant_id", path), `${path}.tenant_id`);
-	assertNumber(getRequired(value, "current_users", path), `${path}.current_users`);
-	assertNumber(getRequired(value, "current_articles", path), `${path}.current_articles`);
-	assertNumber(getRequired(value, "current_sources", path), `${path}.current_sources`);
-	assertNumber(getRequired(value, "current_storage_mb", path), `${path}.current_storage_mb`);
-	assertNumber(getRequired(value, "current_reports_this_month", path), `${path}.current_reports_this_month`);
-	assertString(getRequired(value, "last_refreshed_at", path), `${path}.last_refreshed_at`);
+	assertNumber(
+		getRequired(value, "current_users", path),
+		`${path}.current_users`,
+	);
+	assertNumber(
+		getRequired(value, "current_articles", path),
+		`${path}.current_articles`,
+	);
+	assertNumber(
+		getRequired(value, "current_sources", path),
+		`${path}.current_sources`,
+	);
+	assertNumber(
+		getRequired(value, "current_storage_mb", path),
+		`${path}.current_storage_mb`,
+	);
+	assertNumber(
+		getRequired(value, "current_reports_this_month", path),
+		`${path}.current_reports_this_month`,
+	);
+	assertString(
+		getRequired(value, "last_refreshed_at", path),
+		`${path}.last_refreshed_at`,
+	);
 }
 
 export function assertTenantDetail(
@@ -2378,14 +3722,46 @@ export function assertPermissionAuditEntry(
 	assertString(getRequired(value, "id", path), `${path}.id`);
 	assertNumber(getRequired(value, "seq", path), `${path}.seq`);
 	assertString(getRequired(value, "action", path), `${path}.action`);
-	assertNullable(getRequired(value, "actor_user_id", path), `${path}.actor_user_id`, assertString);
-	assertNullable(getRequired(value, "target_user_id", path), `${path}.target_user_id`, assertString);
-	assertArray(getRequired(value, "before_roles", path), `${path}.before_roles`, assertString);
-	assertArray(getRequired(value, "after_roles", path), `${path}.after_roles`, assertString);
-	assertArray(getRequired(value, "requested_add_roles", path), `${path}.requested_add_roles`, assertString);
-	assertArray(getRequired(value, "requested_remove_roles", path), `${path}.requested_remove_roles`, assertString);
-	assertNullable(getRequired(value, "ip_address", path), `${path}.ip_address`, assertString);
-	assertNullable(getRequired(value, "user_agent", path), `${path}.user_agent`, assertString);
+	assertNullable(
+		getRequired(value, "actor_user_id", path),
+		`${path}.actor_user_id`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "target_user_id", path),
+		`${path}.target_user_id`,
+		assertString,
+	);
+	assertArray(
+		getRequired(value, "before_roles", path),
+		`${path}.before_roles`,
+		assertString,
+	);
+	assertArray(
+		getRequired(value, "after_roles", path),
+		`${path}.after_roles`,
+		assertString,
+	);
+	assertArray(
+		getRequired(value, "requested_add_roles", path),
+		`${path}.requested_add_roles`,
+		assertString,
+	);
+	assertArray(
+		getRequired(value, "requested_remove_roles", path),
+		`${path}.requested_remove_roles`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "ip_address", path),
+		`${path}.ip_address`,
+		assertString,
+	);
+	assertNullable(
+		getRequired(value, "user_agent", path),
+		`${path}.user_agent`,
+		assertString,
+	);
 	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
 }
 
@@ -2394,7 +3770,11 @@ export function assertPermissionAuditListResponse(
 	path = "permissionAuditList",
 ): asserts value is PermissionAuditListResponse {
 	assertRecord(value, path);
-	assertArray(getRequired(value, "items", path), `${path}.items`, assertPermissionAuditEntry);
+	assertArray(
+		getRequired(value, "items", path),
+		`${path}.items`,
+		assertPermissionAuditEntry,
+	);
 	assertNumber(getRequired(value, "total", path), `${path}.total`);
 	assertNumber(getRequired(value, "limit", path), `${path}.limit`);
 	assertNumber(getRequired(value, "offset", path), `${path}.offset`);
