@@ -12,6 +12,7 @@ import { scaleVariants } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+	AlertCircle,
 	AlertTriangle,
 	BookOpen,
 	Building2,
@@ -22,6 +23,8 @@ import {
 	MapPin,
 	Scale,
 	Shield,
+	ShieldAlert,
+	ShieldCheck,
 	Sparkles,
 	User,
 } from "lucide-react";
@@ -45,31 +48,36 @@ interface AiInsightsCardProps {
 
 const riskLevelConfig: Record<
 	ArticleAiInsights["risk_level"],
-	{ labelKey: string; color: string; bgColor: string; icon: string }
+	{
+		labelKey: string;
+		color: string;
+		bgColor: string;
+		icon: React.ComponentType<{ className?: string }>;
+	}
 > = {
 	low: {
 		labelKey: "Low risk",
 		color: "text-success",
 		bgColor: "bg-success/10",
-		icon: "🟢",
+		icon: ShieldCheck,
 	},
 	medium: {
 		labelKey: "Medium risk",
 		color: "text-warning",
 		bgColor: "bg-warning/10",
-		icon: "🟡",
+		icon: AlertCircle,
 	},
 	high: {
 		labelKey: "High risk",
 		color: "text-orange-500",
 		bgColor: "bg-orange-500/10",
-		icon: "🟠",
+		icon: AlertTriangle,
 	},
 	critical: {
 		labelKey: "Critical",
 		color: "text-error",
 		bgColor: "bg-error/10",
-		icon: "🔴",
+		icon: ShieldAlert,
 	},
 };
 
@@ -185,7 +193,7 @@ export function AiInsightsCard({
 							riskConfig.color,
 						)}
 					>
-						<span>{riskConfig.icon}</span>
+						<riskConfig.icon aria-hidden="true" className="h-3.5 w-3.5" />
 						<span>{t(riskConfig.labelKey)}</span>
 					</div>
 					{isExpanded ? (
@@ -408,7 +416,7 @@ export function AiInsightsBrief({
 				)}
 				aria-label={t(riskConfig.labelKey)}
 			>
-				<span>{riskConfig.icon}</span>
+				<riskConfig.icon aria-hidden="true" className="h-3 w-3" />
 				<span>{riskScore}</span>
 			</div>
 		</div>

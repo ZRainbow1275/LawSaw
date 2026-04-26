@@ -59,7 +59,7 @@ export function useUpdateFeedback() {
 
 	return useMutation({
 		mutationFn: ({ id, ...data }: UpdateFeedbackInput) =>
-			apiClient.put(`/api/v1/feedbacks/${id}`, data, assertFeedback),
+			apiClient.patch(`/api/v1/feedbacks/${id}`, data, assertFeedback),
 		onSettled: () => {
 			queryClient.invalidateQueries({ queryKey: ["feedbacks"] });
 			queryClient.invalidateQueries({ queryKey: ["my-feedbacks"] });
