@@ -88,3 +88,70 @@ export function useTriggerFetch() {
 		},
 	});
 }
+
+/**
+ * `DELETE /api/v1/sources/:id` — soft delete (sets `deleted_at`). Used as the
+ * "pause" affordance on the admin sources page since the backend does not yet
+ * expose a dedicated `is_active=false` PATCH route.
+ */
+export function useDeleteSource() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (id: string) => apiClient.delete(`/api/v1/sources/${id}`),
+		onSettled: () => {
+			queryClient.invalidateQueries({ queryKey: ["sources"] });
+			queryClient.invalidateQueries({ queryKey: ["sourceStats"] });
+		},
+	});
+}
+
+/**
+ * `POST /api/v1/sources/:id/restore` — un-delete a soft-deleted source. Used
+ * as the "resume" affordance on the admin sources page.
+ */
+export function useRestoreSource() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (id: string) => apiClient.post(`/api/v1/sources/${id}/restore`),
+		onSettled: () => {
+			queryClient.invalidateQueries({ queryKey: ["sources"] });
+			queryClient.invalidateQueries({ queryKey: ["sourceStats"] });
+		},
+	});
+}
+
+/**
+ * Run-history endpoint — placeholder. Backend does not yet expose a
+ * `/api/v1/sources/:id/runs` route, so the hook is wired with `enabled: false`
+ * and the drawer renders a "not yet implemented" panel.
+ */
+export function useSourceRuns(_id: string | null) {
+	return useQuery({
+		queryKey: ["sourceRuns", _id],
+		queryFn: async () => {
+			throw new Error(
+				"Per-source fetch run history is not implemented on the backend",
+			);
+		},
+		enabled: false,
+		retry: false,
+	});
+}
+
+/**
+ * Articles-by-source endpoint — placeholder. Backend `/api/v1/articles` list
+ * params do not yet accept `source_id`, so the drawer's "Article preview" tab
+ * surfaces a disabled card explaining the gap.
+ */
+export function useSourceArticles(_id: string | null) {
+	return useQuery({
+		queryKey: ["sourceArticles", _id],
+		queryFn: async () => {
+			throw new Error(
+				"Per-source article filter is not implemented on the backend",
+			);
+		},
+		enabled: false,
+		retry: false,
+	});
+}

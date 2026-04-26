@@ -1,6 +1,7 @@
 "use client";
 
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
+import { NotificationBell } from "@/components/layout/notification-bell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
@@ -9,7 +10,7 @@ import { useLocale, useT } from "@/lib/i18n-client";
 import { readIndexedDbJson, writeIndexedDbJson } from "@/lib/indexeddb-kv";
 import { useAuthStore } from "@/stores/auth-store";
 import { useSidebarStore } from "@/stores/sidebar-store";
-import { Bell, Globe, LogOut, Menu, Search, Settings } from "lucide-react";
+import { Globe, LogOut, Menu, Search, Settings } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -189,17 +190,7 @@ export function Header() {
 					</Button>
 
 					{/* Notifications */}
-					<Button
-						variant="ghost"
-						size="icon"
-						className="relative"
-						aria-label={t("Notifications")}
-						onClick={() =>
-							router.push(withLocalePath(locale, "/settings?tab=notifications"))
-						}
-					>
-						<Bell aria-hidden="true" className="h-5 w-5" />
-					</Button>
+					<NotificationBell />
 
 					{/* User Menu */}
 					<div className="relative">

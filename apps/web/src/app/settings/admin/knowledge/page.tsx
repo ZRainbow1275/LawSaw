@@ -1,5 +1,6 @@
 "use client";
 
+import { EntityDetailDrawer } from "@/components/admin/entity-detail-drawer";
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { Header } from "@/components/layout/header";
 import { MainContent } from "@/components/layout/main-content";
@@ -119,6 +120,7 @@ function AdminKnowledgeContent() {
 	const [query, setQuery] = useState("");
 	const [duplicateThresholdInput, setDuplicateThresholdInput] = useState("0.85");
 	const [minCooccurrenceInput, setMinCooccurrenceInput] = useState("2");
+	const [activeEntityId, setActiveEntityId] = useState<string | null>(null);
 
 	const duplicateThreshold = Number.isFinite(Number.parseFloat(duplicateThresholdInput))
 		? Math.min(0.99, Math.max(0.5, Number.parseFloat(duplicateThresholdInput)))
@@ -187,6 +189,7 @@ function AdminKnowledgeContent() {
 	};
 
 	return (
+		<>
 		<div className="min-h-screen" style={{ backgroundColor: "var(--color-background)" }}>
 			<Sidebar />
 			<MainContent>
@@ -293,7 +296,13 @@ function AdminKnowledgeContent() {
 										) : (
 											<div className="space-y-3">
 												{searchResults.map((item) => (
-													<div key={item.id} className="rounded-2xl border px-4 py-4" style={knowledgeAdminPanelStyle}>
+													<button
+														type="button"
+														key={item.id}
+														onClick={() => setActiveEntityId(item.id)}
+														className="block w-full rounded-2xl border px-4 py-4 text-left transition-colors hover:bg-[var(--control-hover-bg)]"
+														style={knowledgeAdminPanelStyle}
+													>
 														<div className="flex flex-wrap items-start justify-between gap-3">
 											<div>
 												<p className="text-base font-semibold" style={knowledgeAdminHeadingTextStyle}>{item.name}</p>
@@ -309,7 +318,7 @@ function AdminKnowledgeContent() {
 																<Badge key={alias} variant="secondary">{alias}</Badge>
 															))}
 														</div>
-													</div>
+													</button>
 												))}
 											</div>
 										)}
@@ -428,7 +437,7 @@ function AdminKnowledgeContent() {
 												<EmptyState title={t("No ranked entities yet")} description={t("Graph analytics will appear after more real relations are ingested.")} className="py-8" />
 											) : (
 												centralityQuery.data?.map((item, index) => (
-													<div key={item.entity.id} className="rounded-2xl border px-4 py-4" style={knowledgeAdminPanelStyle}>
+													<button type="button" key={item.entity.id} onClick={() => setActiveEntityId(item.entity.id)} className="block w-full rounded-2xl border px-4 py-4 text-left transition-colors hover:bg-[var(--control-hover-bg)]" style={knowledgeAdminPanelStyle}>
 														<div className="flex items-start justify-between gap-3">
 											<div>
 												<p className="text-base font-semibold" style={knowledgeAdminHeadingTextStyle}>{index + 1}. {item.entity.name}</p>
@@ -439,7 +448,7 @@ function AdminKnowledgeContent() {
 								<p className="mt-3 text-xs" style={knowledgeAdminMutedTextStyle}>
 									{t("Outgoing degree")}: {item.out_degree} · {t("Incoming degree")}: {item.in_degree}
 								</p>
-													</div>
+													</button>
 												))
 											)}
 										</CardContent>
@@ -494,6 +503,12 @@ function AdminKnowledgeContent() {
 				</div>
 			</MainContent>
 		</div>
+		<EntityDetailDrawer
+			open={activeEntityId !== null}
+			entityId={activeEntityId}
+			onClose={() => setActiveEntityId(null)}
+		/>
+		</>
 	);
 }
 

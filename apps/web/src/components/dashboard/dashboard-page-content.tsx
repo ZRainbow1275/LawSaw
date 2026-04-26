@@ -1,6 +1,7 @@
 "use client";
 
 import { ProtectedRoute } from "@/components/auth/protected-route";
+import { ContinueReadingCard } from "@/components/dashboard/continue-reading-card";
 import { DashboardHero } from "@/components/dashboard/dashboard-hero";
 import { RecentArticles } from "@/components/dashboard/recent-articles";
 import { StatsCards } from "@/components/dashboard/stats-cards";
@@ -343,9 +344,14 @@ export function DashboardPageContent() {
 								style={dashboardPageAccentLineStyle}
 							/>
 							<h1
-								className="text-2xl font-bold"
+								className="flex items-center gap-3 text-2xl font-bold"
 								style={dashboardPageHeadingTextStyle}
 							>
+								<span
+									aria-hidden="true"
+									className="h-2 w-2 animate-pulse-live rounded-full"
+									style={{ backgroundColor: "var(--color-success)" }}
+								/>
 								{t("Dashboard")}
 							</h1>
 							<p className="mt-1 text-sm" style={dashboardPageMutedTextStyle}>
@@ -355,6 +361,10 @@ export function DashboardPageContent() {
 
 						<motion.div variants={itemVariants}>
 							<DashboardHero />
+						</motion.div>
+
+						<motion.div variants={itemVariants}>
+							<ContinueReadingCard />
 						</motion.div>
 
 						<motion.div variants={itemVariants}>

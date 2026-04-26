@@ -1,5 +1,6 @@
 "use client";
 
+import { UpgradeCta } from "@/components/analytics/upgrade-cta";
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { Header } from "@/components/layout/header";
 import { MainContent } from "@/components/layout/main-content";
@@ -32,7 +33,10 @@ import {
 } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
 import { useSourceStats } from "@/hooks/use-sources";
+import { type RoleTier, normalizeRoleTier } from "@/lib/authz";
 import { useT } from "@/lib/i18n-client";
+import { useAuthStore } from "@/stores/auth-store";
+import { AnimatePresence, motion } from "framer-motion";
 import {
 	Activity,
 	AlertTriangle,
@@ -47,7 +51,7 @@ import {
 	ShieldCheck,
 	TrendingUp,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 // Category icon mapping is encapsulated inside CategoryStatsGrid
 
@@ -117,6 +121,67 @@ const ANALYTICS_TAB_INTROS: Record<AnalyticsTab, AnalyticsTabIntroConfig> = {
 		],
 		containerClassName: "",
 		iconColor: "#047857",
+	},
+};
+
+// ---------------------------------------------------------------------------
+// Tier gating + framer-motion variants (D.4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Maps each non-overview tab to the minimum tier required to view it.
+ * Admin tiers (tenant_admin / super_admin) implicitly inherit premium.
+ */
+const TAB_TIER_REQUIREMENT: Record<
+	Exclude<AnalyticsTab, "overview">,
+	"verified_user" | "premium_user"
+> = {
+	regional: "verified_user",
+	industry: "verified_user",
+	importance: "premium_user",
+	cross: "premium_user",
+};
+
+function isTierAtLeast(
+	current: RoleTier,
+	required: "verified_user" | "premium_user",
+): boolean {
+	if (current === "super_admin" || current === "tenant_admin") return true;
+	if (required === "verified_user") {
+		return (
+			current === "verified_user" ||
+			current === "premium_user"
+		);
+	}
+	return current === "premium_user";
+}
+
+function computeLockedTabs(tier: RoleTier): Set<AnalyticsTab> {
+	const locked = new Set<AnalyticsTab>();
+	for (const tab of Object.keys(TAB_TIER_REQUIREMENT) as Array<
+		Exclude<AnalyticsTab, "overview">
+	>) {
+		if (!isTierAtLeast(tier, TAB_TIER_REQUIREMENT[tab])) {
+			locked.add(tab);
+		}
+	}
+	return locked;
+}
+
+const tabContainerVariants = {
+	hidden: { opacity: 0 },
+	visible: {
+		opacity: 1,
+		transition: { staggerChildren: 0.08, delayChildren: 0.04 },
+	},
+};
+
+const tabItemVariants = {
+	hidden: { opacity: 0, y: 16 },
+	visible: {
+		opacity: 1,
+		y: 0,
+		transition: { duration: 0.36, ease: [0.25, 0.8, 0.25, 1] as const },
 	},
 };
 
@@ -268,6 +333,35 @@ function OverviewStatusSkeleton() {
 export default function AnalyticsPage() {
 	const t = useT();
 	const [activeTab, setActiveTab] = useState<AnalyticsTab>("overview");
+	const roleTier = useAuthStore((state) => state.roleTier);
+	const tier = normalizeRoleTier(roleTier);
+
+	const lockedTabs = useMemo(() => computeLockedTabs(tier), [tier]);
+
+	const renderTabBody = () => {
+		if (activeTab !== "overview" && lockedTabs.has(activeTab)) {
+			const required = TAB_TIER_REQUIREMENT[activeTab];
+			return (
+				<UpgradeCta
+					tabKey={activeTab}
+					currentTier={tier}
+					requiredTier={required}
+				/>
+			);
+		}
+		switch (activeTab) {
+			case "overview":
+				return <OverviewTab />;
+			case "regional":
+				return <RegionalPanel />;
+			case "industry":
+				return <IndustryPanel />;
+			case "importance":
+				return <ImportancePanel />;
+			case "cross":
+				return <CrossPanel />;
+		}
+	};
 
 	return (
 		<ProtectedRoute>
@@ -295,17 +389,31 @@ export default function AnalyticsPage() {
 						</div>
 
 						{/* Tab Navigation */}
-						<AnalyticsTabs activeTab={activeTab} onTabChange={setActiveTab} />
+						<AnalyticsTabs
+							activeTab={activeTab}
+							onTabChange={setActiveTab}
+							lockedTabs={lockedTabs}
+						/>
 
 						{/* Active tab semantic intro */}
 						<AnalyticsTabIntro activeTab={activeTab} />
 
-						{/* Tab Content */}
-						{activeTab === "overview" && <OverviewTab />}
-						{activeTab === "regional" && <RegionalPanel />}
-						{activeTab === "industry" && <IndustryPanel />}
-						{activeTab === "importance" && <ImportancePanel />}
-						{activeTab === "cross" && <CrossPanel />}
+						{/* Tab Content with framer-motion staggered transition */}
+						<AnimatePresence mode="wait">
+							<motion.div
+								key={`${activeTab}-${
+									activeTab !== "overview" && lockedTabs.has(activeTab)
+										? "locked"
+										: "open"
+								}`}
+								variants={tabContainerVariants}
+								initial="hidden"
+								animate="visible"
+								exit={{ opacity: 0, y: -8, transition: { duration: 0.18 } }}
+							>
+								{renderTabBody()}
+							</motion.div>
+						</AnimatePresence>
 					</div>
 				</MainContent>
 			</div>
@@ -410,7 +518,10 @@ function OverviewTab() {
 	return (
 		<>
 			{/* Overview Stats */}
-			<div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+			<motion.div
+				variants={tabItemVariants}
+				className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+			>
 				{overviewSummaryLoading ? (
 					<>
 						<StatCardSkeleton />
@@ -514,7 +625,7 @@ function OverviewTab() {
 						</Card>
 					</>
 				)}
-			</div>
+			</motion.div>
 
 			{hasInfraError ? (
 				<div
@@ -540,7 +651,10 @@ function OverviewTab() {
 				</div>
 			) : null}
 
-			<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+			<motion.div
+				variants={tabItemVariants}
+				className="grid grid-cols-1 gap-6 lg:grid-cols-2"
+			>
 				{/* Risk distribution — upgraded to recharts */}
 				<Card>
 					<CardHeader>
@@ -664,9 +778,10 @@ function OverviewTab() {
 						)}
 					</CardContent>
 				</Card>
-			</div>
+			</motion.div>
 
 			{/* Category statistics — extracted CategoryStatsGrid */}
+			<motion.div variants={tabItemVariants}>
 			<Card className="mt-6">
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
@@ -697,6 +812,7 @@ function OverviewTab() {
 					/>
 				</CardContent>
 			</Card>
+			</motion.div>
 		</>
 	);
 }

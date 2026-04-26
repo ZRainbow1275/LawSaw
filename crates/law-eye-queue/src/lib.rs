@@ -952,6 +952,23 @@ pub struct ReportGenerateTask {
     pub requested_at: Option<String>,
 }
 
+/// Phase F.7: super-admin async tenant export.
+/// Worker side (Task #38) advances the matching `tenant_exports` row
+/// through queued → running → completed / failed and uploads the dump.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ExportTenantTask {
+    #[serde(default)]
+    pub tenant_id: uuid::Uuid,
+    /// Primary key of the row in `tenant_exports`; the worker uses this
+    /// to write back status + download_url + size_bytes / error_message.
+    pub export_id: uuid::Uuid,
+    /// Task tracking id. Currently mirrors `export_id` for simpler worker
+    /// lookup; reserved for downstream queue/job correlation.
+    pub job_id: uuid::Uuid,
+    pub requested_by: uuid::Uuid,
+    pub requested_at: i64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

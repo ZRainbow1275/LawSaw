@@ -1,10 +1,11 @@
 "use client";
 
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
 	useKnowledgeEntity,
 	useKnowledgeEntityArticles,
 } from "@/hooks/use-knowledge";
+import type { RoleTier } from "@/lib/authz";
 import { formatDateTime, withLocalePath } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
@@ -12,6 +13,7 @@ import {
 	ExternalLink,
 	FileText,
 	Loader2,
+	LockKeyhole,
 	PanelRight,
 	Sparkles,
 } from "lucide-react";
@@ -19,9 +21,13 @@ import Link from "next/link";
 
 export function EntityInspector({
 	selectedEntityId,
+	canSeeArticles = true,
+	currentTier,
 	className,
 }: {
 	selectedEntityId: string | null;
+	canSeeArticles?: boolean;
+	currentTier?: RoleTier;
 	className?: string;
 }) {
 	const locale = useLocale();
@@ -124,14 +130,60 @@ export function EntityInspector({
 								<div className="text-xs font-medium uppercase tracking-wider text-neutral-400">
 									{t("Related articles")}
 								</div>
-								{articlesQuery.isFetching && (
+								{canSeeArticles && articlesQuery.isFetching && (
 									<div className="text-xs text-neutral-500">
 										{t("Refreshing...")}
 									</div>
 								)}
 							</div>
 
-							{articlesQuery.isLoading ? (
+							{!canSeeArticles ? (
+								<div
+									className="mt-2 rounded-xl border p-4 text-sm"
+									style={{
+										backgroundColor: "var(--surface-muted-bg)",
+										borderColor: "var(--surface-muted-border)",
+										color: "var(--surface-muted-text)",
+									}}
+								>
+									<div className="flex items-start gap-2">
+										<LockKeyhole
+											aria-hidden="true"
+											className="mt-0.5 h-4 w-4 shrink-0"
+										/>
+										<div className="min-w-0 space-y-2">
+											<div
+												className="font-medium"
+												style={{ color: "var(--field-foreground)" }}
+											>
+												{t("Source articles are a verified perk")}
+											</div>
+											<p className="text-xs leading-5">
+												{t(
+													"Verify your account to follow each entity back to its source articles.",
+												)}
+											</p>
+											{currentTier && (
+												<p className="text-[11px]">
+													{t("Current tier")}: {t(`role.${currentTier}`)}
+												</p>
+											)}
+											<Link
+												href={withLocalePath(locale, "/settings/profile")}
+												className="inline-block"
+											>
+												<Button type="button" size="sm" variant="default">
+													<Sparkles
+														aria-hidden="true"
+														className="mr-1.5 h-3.5 w-3.5"
+													/>
+													{t("Upgrade account")}
+												</Button>
+											</Link>
+										</div>
+									</div>
+								</div>
+							) : articlesQuery.isLoading ? (
 								<div className="mt-2 flex items-center text-sm text-neutral-600">
 									<Loader2
 										aria-hidden="true"

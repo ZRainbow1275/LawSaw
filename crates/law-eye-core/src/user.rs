@@ -628,6 +628,72 @@ impl UserService {
         })
         .await
     }
+
+    /// Read the user's per-tenant `notification_last_seen_seq` cursor (added by
+    /// migration 068). Returns 0 if the row is somehow missing — callers treat
+    /// 0 as "everything is unread".
+    pub async fn get_notification_last_seen_seq(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<i64> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let value: Option<i64> = sqlx::query_scalar(
+                    r#"
+                    SELECT notification_last_seen_seq
+                    FROM users
+                    WHERE id = $1 AND tenant_id = $2
+                    "#,
+                )
+                .bind(user_id)
+                .bind(tenant_id)
+                .fetch_optional(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
+                Ok(value.unwrap_or(0))
+            })
+        })
+        .await
+    }
+
+    /// Update the user's notification cursor. Idempotent + monotonic-friendly:
+    /// if the caller passes a smaller value than what's already persisted (e.g.
+    /// out-of-order webhook ack) we still write it — the FE is responsible for
+    /// clamping. Returns the new value for read-after-write convenience.
+    pub async fn set_notification_last_seen_seq(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        last_seen_seq: i64,
+    ) -> Result<i64> {
+        if last_seen_seq < 0 {
+            return Err(Error::Validation(
+                "notification_last_seen_seq must be >= 0".to_string(),
+            ));
+        }
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let updated: Option<i64> = sqlx::query_scalar(
+                    r#"
+                    UPDATE users
+                    SET notification_last_seen_seq = $3,
+                        updated_at = NOW()
+                    WHERE id = $1 AND tenant_id = $2
+                    RETURNING notification_last_seen_seq
+                    "#,
+                )
+                .bind(user_id)
+                .bind(tenant_id)
+                .bind(last_seen_seq)
+                .fetch_optional(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
+                updated.ok_or_else(|| Error::NotFound(format!("User {} not found", user_id)))
+            })
+        })
+        .await
+    }
 }
 
 fn hash_password(password: &str) -> Result<String> {

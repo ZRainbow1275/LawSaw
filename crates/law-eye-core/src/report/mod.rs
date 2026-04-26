@@ -4,6 +4,7 @@
 pub mod aggregator;
 pub mod exporter;
 pub mod service;
+pub mod subscription_service;
 pub mod template_service;
 pub mod types;
 
@@ -13,6 +14,7 @@ pub use exporter::docx::DocxExporter;
 pub use exporter::html::HtmlExporter;
 pub use exporter::pdf::PdfExporter;
 pub use service::ReportService;
+pub use subscription_service::ReportSubscriptionService;
 pub use template_service::ReportTemplateService;
 pub use types::{
     CreateReportInput, ExportFormat, ExportResult, ListReportsQuery, PeriodType,

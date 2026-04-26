@@ -2,6 +2,7 @@
 
 import { useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
+import { Lock } from "lucide-react";
 
 export type AnalyticsTab =
 	| "overview"
@@ -13,6 +14,12 @@ export type AnalyticsTab =
 interface AnalyticsTabsProps {
 	activeTab: AnalyticsTab;
 	onTabChange: (tab: AnalyticsTab) => void;
+	/**
+	 * Tab keys that are gated by tier. Gated tabs render a lock icon and still
+	 * fire `onTabChange` so the page can swap to an upgrade CTA in place of
+	 * the panel content.
+	 */
+	lockedTabs?: ReadonlySet<AnalyticsTab>;
 }
 
 const TAB_DEFINITIONS: Array<{ key: AnalyticsTab; labelKey: string }> = [
@@ -23,26 +30,44 @@ const TAB_DEFINITIONS: Array<{ key: AnalyticsTab; labelKey: string }> = [
 	{ key: "cross", labelKey: "Cross Analysis" },
 ];
 
-export function AnalyticsTabs({ activeTab, onTabChange }: AnalyticsTabsProps) {
+export function AnalyticsTabs({
+	activeTab,
+	onTabChange,
+	lockedTabs,
+}: AnalyticsTabsProps) {
 	const t = useT();
 
 	return (
 		<div className="mb-6 flex flex-wrap gap-1 rounded-xl border border-neutral-200 bg-neutral-50 p-1">
-			{TAB_DEFINITIONS.map(({ key, labelKey }) => (
-				<button
-					key={key}
-					type="button"
-					onClick={() => onTabChange(key)}
-					className={cn(
-						"rounded-lg px-4 py-2 text-sm font-medium transition-all",
-						activeTab === key
-							? "bg-white text-primary-700 shadow-sm"
-							: "text-neutral-600 hover:bg-white/60 hover:text-neutral-900",
-					)}
-				>
-					{t(labelKey)}
-				</button>
-			))}
+			{TAB_DEFINITIONS.map(({ key, labelKey }) => {
+				const locked = lockedTabs?.has(key) ?? false;
+				return (
+					<button
+						key={key}
+						type="button"
+						onClick={() => onTabChange(key)}
+						aria-disabled={locked || undefined}
+						data-locked={locked || undefined}
+						className={cn(
+							"flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all",
+							activeTab === key
+								? "bg-white text-primary-700 shadow-sm"
+								: locked
+									? "text-neutral-400 hover:bg-white/40"
+									: "text-neutral-600 hover:bg-white/60 hover:text-neutral-900",
+						)}
+					>
+						{locked && (
+							<Lock
+								aria-hidden="true"
+								className="h-3.5 w-3.5"
+								style={{ color: "var(--surface-muted-text)" }}
+							/>
+						)}
+						<span>{t(labelKey)}</span>
+					</button>
+				);
+			})}
 		</div>
 	);
 }

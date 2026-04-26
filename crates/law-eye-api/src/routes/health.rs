@@ -5,7 +5,8 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use serde_json::{json, Value};
+use std::time::{Duration, Instant};
 use tokio::time::timeout;
 use tracing::warn;
 use utoipa::ToSchema;
@@ -105,6 +106,7 @@ pub fn router() -> Router<crate::state::AppState> {
         .route("/ready", get(ready_check))
         .route("/live", get(live_check))
         .route("/slow-queries", get(slow_queries))
+        .route("/full", get(full_check))
 }
 
 #[utoipa::path(
@@ -363,4 +365,199 @@ pub(crate) async fn slow_queries(
             )
         }
     }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Phase G.1 — `/health/full` aggregated subsystem health
+// ══════════════════════════════════════════════════════════════
+
+/// Queues whose depth is surfaced in `/health/full`. Aligned with worker
+/// `QUEUE_*` constants in `crates/law-eye-worker/src/main.rs`.
+const FULL_HEALTH_TRACKED_QUEUES: &[&str] = &[
+    "queue:ingest",
+    "queue:ingest:priority",
+    "queue:ai",
+    "queue:push",
+    "queue:report-export",
+    "queue:report",
+    "queue:tenant_export",
+];
+
+const FULL_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(2);
+
+#[utoipa::path(
+    get,
+    path = "/health/full",
+    responses(
+        (status = 200, description = "Aggregated subsystem health", body = Value),
+        (status = 503, description = "Database is down — overall status=down", body = Value)
+    )
+)]
+pub(crate) async fn full_check(State(state): State<AppState>) -> (StatusCode, Json<Value>) {
+    // database — critical: failure flips overall to "down".
+    let db_started = Instant::now();
+    let db_check = match timeout(
+        FULL_HEALTH_CHECK_TIMEOUT,
+        sqlx::query("SELECT 1").execute(&state.pool),
+    )
+    .await
+    {
+        Ok(Ok(_)) => json!({
+            "status": "ok",
+            "latency_ms": db_started.elapsed().as_millis() as u64,
+        }),
+        Ok(Err(err)) => {
+            warn!(error = %err, "/health/full: postgres SELECT 1 failed");
+            json!({ "status": "down", "error": err.to_string() })
+        }
+        Err(_) => {
+            warn!("/health/full: postgres SELECT 1 timed out");
+            json!({ "status": "down", "error": "timeout" })
+        }
+    };
+    let db_down = db_check
+        .get("status")
+        .and_then(Value::as_str)
+        .map(|s| s == "down")
+        .unwrap_or(true);
+
+    // redis — non-critical: failure -> degraded. cache_service is the dedicated
+    // CacheService::ping (separate from task_queue redis connection pool).
+    let redis_check = match state.cache_service.as_ref() {
+        Some(cache) => {
+            let started = Instant::now();
+            match timeout(FULL_HEALTH_CHECK_TIMEOUT, cache.ping()).await {
+                Ok(Ok(())) => json!({
+                    "status": "ok",
+                    "latency_ms": started.elapsed().as_millis() as u64,
+                }),
+                Ok(Err(err)) => {
+                    warn!(error = %err, "/health/full: redis ping failed");
+                    json!({ "status": "down", "error": err.to_string() })
+                }
+                Err(_) => json!({ "status": "down", "error": "timeout" }),
+            }
+        }
+        None => json!({ "status": "not_configured" }),
+    };
+
+    // task_queue — non-critical: surface depth per queue + ping result.
+    let mut depths = serde_json::Map::new();
+    let mut queue_ok = true;
+    for queue in FULL_HEALTH_TRACKED_QUEUES {
+        match timeout(
+            FULL_HEALTH_CHECK_TIMEOUT,
+            state.task_queue.queue_length(queue),
+        )
+        .await
+        {
+            Ok(Ok(len)) => {
+                depths.insert((*queue).to_string(), Value::from(len));
+            }
+            Ok(Err(err)) => {
+                warn!(queue = %queue, error = %err, "/health/full: queue_length failed");
+                queue_ok = false;
+                depths.insert((*queue).to_string(), Value::Null);
+            }
+            Err(_) => {
+                queue_ok = false;
+                depths.insert((*queue).to_string(), Value::Null);
+            }
+        }
+    }
+    let task_queue_check = if queue_ok {
+        json!({ "status": "ok", "depths": Value::Object(depths) })
+    } else {
+        json!({ "status": "degraded", "depths": Value::Object(depths) })
+    };
+
+    // object_store — non-critical: failure -> degraded.
+    let object_store_check = match state.object_service.as_ref() {
+        Some(svc) => {
+            let started = Instant::now();
+            match timeout(FULL_HEALTH_CHECK_TIMEOUT, svc.health_check()).await {
+                Ok(Ok(())) => json!({
+                    "status": "ok",
+                    "latency_ms": started.elapsed().as_millis() as u64,
+                }),
+                Ok(Err(err)) => {
+                    warn!(error = %err, "/health/full: object_store probe failed");
+                    json!({ "status": "down", "error": err.to_string() })
+                }
+                Err(_) => json!({ "status": "down", "error": "timeout" }),
+            }
+        }
+        None => json!({ "status": "not_configured" }),
+    };
+
+    // ai_gateway — non-critical: skipped if no API key OR ai_service absent.
+    // health_check on LlmGateway uses models().list() — no token burn.
+    let ai_gateway_check = match state.ai_service.as_ref() {
+        Some(svc) => {
+            if std::env::var("OPENAI_API_KEY")
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+                .is_none()
+            {
+                json!({ "status": "skipped", "reason": "no API key" })
+            } else {
+                let started = Instant::now();
+                match timeout(FULL_HEALTH_CHECK_TIMEOUT, svc.health_check()).await {
+                    Ok(Ok(())) => json!({
+                        "status": "ok",
+                        "latency_ms": started.elapsed().as_millis() as u64,
+                    }),
+                    Ok(Err(err)) => {
+                        warn!(error = %err, "/health/full: ai_gateway probe failed");
+                        json!({ "status": "down", "error": err.to_string() })
+                    }
+                    Err(_) => json!({ "status": "down", "error": "timeout" }),
+                }
+            }
+        }
+        None => json!({ "status": "skipped", "reason": "ai_service not configured" }),
+    };
+
+    // Overall:
+    //   - down       if database fails
+    //   - degraded   if any non-critical reports status != ok && != skipped && != not_configured
+    //   - ok         otherwise
+    let status_str = if db_down {
+        "down"
+    } else {
+        let any_degraded = [&redis_check, &task_queue_check, &object_store_check, &ai_gateway_check]
+            .iter()
+            .any(|c| {
+                c.get("status")
+                    .and_then(Value::as_str)
+                    .map(|s| s != "ok" && s != "skipped" && s != "not_configured")
+                    .unwrap_or(false)
+            });
+        if any_degraded {
+            "degraded"
+        } else {
+            "ok"
+        }
+    };
+
+    let response_status_code = if db_down {
+        StatusCode::SERVICE_UNAVAILABLE
+    } else {
+        StatusCode::OK
+    };
+
+    let body = json!({
+        "status": status_str,
+        "checks": {
+            "database": db_check,
+            "redis": redis_check,
+            "task_queue": task_queue_check,
+            "object_store": object_store_check,
+            "ai_gateway": ai_gateway_check,
+        },
+        "version": env!("CARGO_PKG_VERSION"),
+        "checked_at": chrono::Utc::now().to_rfc3339(),
+    });
+
+    (response_status_code, Json(body))
 }

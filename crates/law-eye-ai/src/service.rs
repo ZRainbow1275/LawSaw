@@ -1,6 +1,6 @@
 use crate::{
     AuthorityDetector, Classifier, DomainClassifier, Embedder, ImportanceAssessor, LlmGateway,
-    RiskAssessor, Summarizer, TagExtractor,
+    RiskAssessor, SentimentAspect, SentimentClassifier, SentimentLabel, Summarizer, TagExtractor,
 };
 use law_eye_common::Result;
 use serde_json::json;
@@ -144,6 +144,7 @@ pub struct AiService {
     importance_assessor: ImportanceAssessor,
     domain_classifier: DomainClassifier,
     authority_detector: AuthorityDetector,
+    sentiment_classifier: SentimentClassifier,
     gateway: LlmGateway,
     cache: Mutex<AiResultCache>,
 }
@@ -186,10 +187,11 @@ impl AiService {
             summarizer: Summarizer::new(gateway.clone()),
             risk_assessor: RiskAssessor::new(gateway.clone()),
             tag_extractor: TagExtractor::new(gateway.clone()),
-            embedder: Embedder::new(gateway_arc),
+            embedder: Embedder::new(gateway_arc.clone()),
             importance_assessor: ImportanceAssessor,
             domain_classifier: DomainClassifier,
             authority_detector: AuthorityDetector,
+            sentiment_classifier: SentimentClassifier::new(gateway_arc),
             gateway,
             cache: Mutex::new(AiResultCache::new(cache_ttl, cache_max_entries)),
         }
@@ -218,13 +220,50 @@ impl AiService {
         info!(article_hash = %cache_key, "AI result cache miss");
         info!("Starting full AI processing for article: {}", title);
 
-        // 并行执行分类、摘要、风险评估
-        let (classify_result, summary_result, risk_result, tags_result) = tokio::try_join!(
+        // 并行执行分类、摘要、风险评估、标签、情感分析。
+        // sentiment 单独失败不应阻塞主流程：用 try_join 拿其他四个，sentiment 容错处理。
+        let (classify_result, summary_result, risk_result, tags_result, sentiment_outcome) = tokio::join!(
             self.classifier.classify(title, content),
             self.summarizer.summarize(title, content),
             self.risk_assessor.assess(title, content),
             self.tag_extractor.extract(title, content),
-        )?;
+            self.sentiment_classifier.classify(title, content),
+        );
+
+        // 主链路（分类/摘要/风险/标签）任意失败仍按原行为传播错误。
+        let classify_result = classify_result?;
+        let summary_result = summary_result?;
+        let risk_result = risk_result?;
+        let tags_result = tags_result?;
+
+        // sentiment 容错降级：失败时回落到 neutral / 0.0，不中断 process_article。
+        let (sentiment_label, sentiment_score, sentiment_rationale, sentiment_aspect, sentiment_aspects) =
+            match sentiment_outcome {
+                Ok(s) => {
+                    let label = s.sentiment.as_db_str().to_string();
+                    (
+                        label,
+                        s.score,
+                        s.rationale,
+                        s.aspect,
+                        s.aspects,
+                    )
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        error = %err,
+                        article_title = %title,
+                        "Sentiment analysis failed; degraded to neutral"
+                    );
+                    (
+                        SentimentLabel::Neutral.as_db_str().to_string(),
+                        0.0_f32,
+                        String::new(),
+                        None,
+                        Vec::new(),
+                    )
+                }
+            };
 
         // 生成嵌入
         let embedding_text = format!("{}\n\n{}", title, content);
@@ -262,6 +301,11 @@ impl AiService {
             domain_root: Some(domain.domain_root),
             domain_sub: domain.domain_sub,
             authority_level,
+            sentiment: sentiment_label,
+            sentiment_score,
+            sentiment_rationale,
+            sentiment_aspect,
+            sentiment_aspects,
         };
 
         self.store_cached_result(cache_key, result.clone()).await;
@@ -302,6 +346,15 @@ impl AiService {
     /// 仅嵌入
     pub async fn embed(&self, text: &str) -> Result<crate::EmbeddingResult> {
         self.embedder.embed(text).await
+    }
+
+    /// 仅情感分析（供 worker AI full 链路独立调用，失败由调用方决定如何降级）。
+    pub async fn analyze_sentiment(
+        &self,
+        title: &str,
+        content: &str,
+    ) -> Result<crate::SentimentResult> {
+        self.sentiment_classifier.classify(title, content).await
     }
 
     /// 分块嵌入（用于 RAG / 向量检索）
@@ -345,6 +398,21 @@ pub struct ArticleAiResult {
     pub domain_sub: Option<String>,
     /// Legal authority level (1-10).
     pub authority_level: Option<u8>,
+    /// 情感标签（"positive" / "neutral" / "negative" / "mixed"），落 articles.sentiment 列。
+    #[serde(default)]
+    pub sentiment: String,
+    /// 情感强度 / 置信度，归一化 [0.0, 1.0]，落 articles.sentiment_score 列。
+    #[serde(default)]
+    pub sentiment_score: f32,
+    /// 情感判定理由（中文，≤200 字），落 articles.sentiment_rationale 列。
+    #[serde(default)]
+    pub sentiment_rationale: String,
+    /// 单一首要 aspect（penalty / litigation / compliance / ...），落 articles.sentiment_aspect 列。
+    #[serde(default)]
+    pub sentiment_aspect: Option<String>,
+    /// 多 aspect 细分（不入主表，落 ai_metadata.sentiment_aspects）。
+    #[serde(default)]
+    pub sentiment_aspects: Vec<SentimentAspect>,
 }
 
 impl ArticleAiResult {
@@ -361,6 +429,13 @@ impl ArticleAiResult {
             "domain_root": self.domain_root,
             "domain_sub": self.domain_sub,
             "authority_level": self.authority_level,
+            "sentiment": {
+                "label": self.sentiment,
+                "score": self.sentiment_score,
+                "rationale": self.sentiment_rationale,
+                "aspect": self.sentiment_aspect,
+                "aspects": self.sentiment_aspects,
+            },
         })
     }
 }
@@ -389,6 +464,11 @@ mod tests {
             domain_root: Some("industry".to_string()),
             domain_sub: None,
             authority_level: Some(8),
+            sentiment: "neutral".to_string(),
+            sentiment_score: 0.0,
+            sentiment_rationale: String::new(),
+            sentiment_aspect: None,
+            sentiment_aspects: Vec::new(),
         }
     }
 

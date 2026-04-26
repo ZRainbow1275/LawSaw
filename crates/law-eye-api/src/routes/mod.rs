@@ -1,18 +1,33 @@
+pub mod admin_ai_governance;
+pub mod admin_authz;
+pub mod admin_dashboard;
+pub mod admin_rbac;
 pub mod ai;
+pub mod ai_usage_admin;
 pub mod apikeys;
+pub mod article_pins;
 pub mod articles;
+pub mod audit;
 pub mod auth;
+pub mod authz;
+pub mod banners;
 pub mod categories;
+pub mod channels;
 pub mod feedbacks;
 pub mod health;
 pub mod knowledge;
+pub mod me;
+pub mod notifications;
 pub mod objects;
 pub mod openapi;
 pub mod push;
+pub mod report_subscriptions;
 pub mod reports;
 pub mod search;
 pub mod sources;
 pub mod statistics;
+pub mod super_tenants;
+pub mod system_metrics;
 pub mod tenants;
 pub mod users;
 pub mod webhooks;
@@ -33,9 +48,15 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::Instant;
 
 use crate::middleware::rate_limit::RateLimitLayer;
-use crate::middleware::{RequireAuth, RequirePermission, RequiredPermission, RequiredPermissions};
+use crate::middleware::{
+    require_role_tier, require_role_tier_and_permission, RequireAuth, RequirePermission,
+    RequiredPermission, RequiredPermissions,
+};
 use crate::state::AppState;
 use crate::AppError;
+use law_eye_core::role_tier::{
+    ROLE_TIER_BASIC_USER, ROLE_TIER_SUPER_ADMIN, ROLE_TIER_TENANT_ADMIN,
+};
 
 async fn metrics_endpoint(State(state): State<AppState>, headers: HeaderMap) -> Response {
     if std::env::var_os("PRODUCTION").is_some() {
@@ -404,6 +425,156 @@ pub fn create_router(state: AppState) -> Router {
             "/tenants",
             require_permission(tenants::router(), "tenants:manage"),
         )
+        .nest(
+            "/admin/dashboard",
+            require_permission(admin_dashboard::router(), "tenants:manage"),
+        )
+        // G.4: admin ReBAC list endpoints — tenant-admin gated.
+        .nest(
+            "/admin/authz",
+            require_role_tier_and_permission(
+                admin_authz::router(),
+                ROLE_TIER_TENANT_ADMIN,
+                "tenants:manage",
+            ),
+        )
+        .nest(
+            "/admin",
+            require_role_tier_and_permission(
+                admin_rbac::router(),
+                ROLE_TIER_TENANT_ADMIN,
+                "tenants:manage",
+            ),
+        )
+        // G.1: admin/system/metrics — operational KPIs for ops dashboard.
+        // Tenant-admin gated; reads tenant-scoped tables via RLS.
+        .nest(
+            "/admin/system",
+            require_role_tier_and_permission(
+                system_metrics::router(),
+                ROLE_TIER_TENANT_ADMIN,
+                "tenants:manage",
+            ),
+        )
+        .nest(
+            "/admin/audit",
+            require_role_tier_and_permission(
+                audit::admin_router(),
+                ROLE_TIER_TENANT_ADMIN,
+                "audit:read",
+            ),
+        )
+        .nest(
+            "/me",
+            require_role_tier(me::router(), ROLE_TIER_BASIC_USER),
+        )
+        .nest(
+            "/channels",
+            require_role_tier(channels::public_router(), ROLE_TIER_BASIC_USER),
+        )
+        .nest(
+            "/admin/channels",
+            require_role_tier_and_permission(
+                channels::admin_router(),
+                ROLE_TIER_TENANT_ADMIN,
+                "channels:manage",
+            ),
+        )
+        .nest(
+            "/admin/categories",
+            require_role_tier_and_permission(
+                categories::admin_router(),
+                ROLE_TIER_TENANT_ADMIN,
+                "categories:write",
+            ),
+        )
+        .nest(
+            "/article-pins",
+            require_role_tier(article_pins::public_router(), ROLE_TIER_BASIC_USER),
+        )
+        .nest(
+            "/admin/article-pins",
+            require_role_tier_and_permission(
+                article_pins::admin_router(),
+                ROLE_TIER_TENANT_ADMIN,
+                "pins:manage",
+            ),
+        )
+        .nest(
+            "/report-subscriptions",
+            require_role_tier(report_subscriptions::router(), ROLE_TIER_BASIC_USER),
+        )
+        // B.6a: banners (basic_user public feed + tenant_admin manage).
+        .nest(
+            "/banners",
+            require_role_tier(banners::public_router(), ROLE_TIER_BASIC_USER),
+        )
+        .nest(
+            "/admin/banners",
+            require_role_tier_and_permission(
+                banners::admin_router(),
+                ROLE_TIER_TENANT_ADMIN,
+                "banners:manage",
+            ),
+        )
+        // B.6a: authz endpoints (decision check public to authenticated users
+        // via the inner router; relation mutations gated by tenants:manage
+        // inside the router itself). Top-level role gate keeps drive-by anon
+        // probes out.
+        .nest(
+            "/authz",
+            require_role_tier(authz::router(), ROLE_TIER_BASIC_USER),
+        )
+        // B.6a: notifications router declares absolute paths (`/me/notifications`)
+        // so we merge instead of nest to avoid double-prefixing.
+        .merge(require_role_tier(
+            notifications::router(),
+            ROLE_TIER_BASIC_USER,
+        ))
+        // F.3: admin sources crawler control (manual run + run history).
+        .nest(
+            "/admin/sources",
+            require_role_tier_and_permission(
+                sources::admin_router(),
+                ROLE_TIER_TENANT_ADMIN,
+                "sources:manage",
+            ),
+        )
+        // F.3: admin AI usage time-series + by-model. Reads ai_usage_events directly
+        // (does not depend on the still-locked ai_usage_service in law-eye-ai).
+        .nest(
+            "/admin/ai/usage",
+            require_role_tier_and_permission(
+                ai_usage_admin::router(),
+                ROLE_TIER_TENANT_ADMIN,
+                "ai:usage:read",
+            ),
+        )
+        // G.6: admin AI governance stubs — empty-list payloads aligned with
+        // apps/web/src/hooks/use-ai-governance.ts asserts. Real persistence
+        // (ai_governance_policies / ai_prompt_versions / ai_content_flags /
+        // ai_token_usage_events / ai_budget_alerts / feed_experiment_configs)
+        // is V2 backlog. Auth gate kept tenant-admin so anonymous probes
+        // still get rejected.
+        .nest(
+            "/admin/ai",
+            require_role_tier_and_permission(
+                admin_ai_governance::router(),
+                ROLE_TIER_TENANT_ADMIN,
+                "tenants:manage",
+            ),
+        )
+        // F.5: super-admin tenant CRUD + quotas + feature flags + usage snapshot.
+        // Gated to ROLE_TIER_SUPER_ADMIN with `tenants:manage` permission;
+        // DELETE additionally requires `X-Confirm-Delete: yes` header.
+        .nest(
+            "/super/tenants",
+            require_role_tier_and_permission(
+                super_tenants::router(),
+                ROLE_TIER_SUPER_ADMIN,
+                "tenants:manage",
+            ),
+        )
         // Default deny: everything under /api/v1 requires an authenticated session,
         // except routes explicitly mounted outside this protected router (e.g. /api/v1/auth/*).
         .layer(middleware::from_extractor::<RequireAuth>())
@@ -417,6 +588,10 @@ pub fn create_router(state: AppState) -> Router {
         .nest("/api/v1", protected_api.clone())
         .nest("/api/v2", protected_api)
         .nest("/health", health::router())
+        // G.1: also expose /api/v1/health/* (and /api/v2/) for ops dashboards
+        // and k8s probes that prefer versioned paths. Anonymous on purpose.
+        .nest("/api/v1/health", health::router())
+        .nest("/api/v2/health", health::router())
         .route_layer(middleware::from_fn(apply_api_version_headers))
         .route_layer(middleware::from_fn(track_metrics))
         .route_layer(middleware::from_fn(apply_conditional_cache_headers))

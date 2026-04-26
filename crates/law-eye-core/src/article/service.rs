@@ -704,6 +704,95 @@ impl ArticleService {
         Err(Error::NotFound(format!("Article {} not found", id)))
     }
 
+    /// Persist sentiment-analysis output for a single article.
+    ///
+    /// Writes the four sentiment-related columns (`sentiment`, `sentiment_score`,
+    /// `sentiment_rationale`, `sentiment_aspect`) added by migration 065. All
+    /// non-label fields are optional — pass `None` to leave the column NULL.
+    ///
+    /// Validates inputs against the DB CHECK constraints **before** issuing the UPDATE
+    /// so callers receive a clear validation error instead of an opaque database error:
+    /// * `sentiment` must be one of `positive` / `neutral` / `negative` / `mixed`.
+    /// * `sentiment_score`, when supplied, must be in `[0.0, 1.0]`.
+    /// * `sentiment_aspect`, when supplied, must be one of the values whitelisted in
+    ///   migration 065 (`compliance`, `penalty`, `litigation`, `policy_change`,
+    ///   `industry_trend`, `regulatory_impact`, `company_reputation`,
+    ///   `policy_direction`, `other`).
+    pub async fn update_article_sentiment(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        sentiment: &str,
+        sentiment_score: Option<f64>,
+        sentiment_rationale: Option<&str>,
+        sentiment_aspect: Option<&str>,
+    ) -> Result<Article> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                self.update_article_sentiment_tx(
+                    tenant_id,
+                    tx,
+                    id,
+                    sentiment,
+                    sentiment_score,
+                    sentiment_rationale,
+                    sentiment_aspect,
+                )
+                .await
+            })
+        })
+        .await
+    }
+
+    pub async fn update_article_sentiment_tx(
+        &self,
+        tenant_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+        id: Uuid,
+        sentiment: &str,
+        sentiment_score: Option<f64>,
+        sentiment_rationale: Option<&str>,
+        sentiment_aspect: Option<&str>,
+    ) -> Result<Article> {
+        validate_sentiment_label(sentiment)?;
+        if let Some(score) = sentiment_score {
+            validate_sentiment_score(score)?;
+        }
+        if let Some(aspect) = sentiment_aspect {
+            validate_sentiment_aspect(aspect)?;
+        }
+
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(tenant_id.to_string())
+            .execute(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
+        let updated = sqlx::query_as::<_, Article>(
+            r#"
+            UPDATE articles SET
+                sentiment = $2,
+                sentiment_score = $3,
+                sentiment_rationale = COALESCE($4, sentiment_rationale),
+                sentiment_aspect = COALESCE($5, sentiment_aspect),
+                updated_at = NOW()
+            WHERE id = $1
+              AND deleted_at IS NULL
+            RETURNING *
+            "#,
+        )
+        .bind(id)
+        .bind(sentiment)
+        .bind(sentiment_score)
+        .bind(sentiment_rationale)
+        .bind(sentiment_aspect)
+        .fetch_optional(tx.as_mut())
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        updated.ok_or_else(|| Error::NotFound(format!("Article {} not found", id)))
+    }
+
     /// Batch update status
     pub async fn batch_update_status(
         &self,
@@ -1269,5 +1358,134 @@ impl ArticleService {
                 mixed: row.sentiment_mixed,
             },
         })
+    }
+
+    /// Personalized recommendation via app-tier embedding centroid + pgvector
+    /// cosine search.
+    ///
+    /// 1. Caller supplies `seed_article_ids` (the user's recent finished reads)
+    ///    and `excluded_article_ids` (everything they've already opened).
+    /// 2. We pull `chunk_index = 0` embeddings for the seeds, average them in
+    ///    Rust to a centroid, then run a cosine ANN search against the same
+    ///    column (`embedding`) for the most similar published articles.
+    /// 3. Visible categories are passed in by the route layer (already
+    ///    tier-filtered); `None` means "no category restriction" (premium /
+    ///    admin tiers).
+    /// 4. Returns up to `limit` `Article` rows ordered by similarity desc.
+    ///    Caller falls back to the MVP path when this returns an empty vec.
+    pub async fn recommend_personalized(
+        &self,
+        tenant_id: Uuid,
+        seed_article_ids: &[Uuid],
+        excluded_article_ids: &[Uuid],
+        visible_category_ids: Option<&[Uuid]>,
+        limit: i64,
+    ) -> Result<Vec<Article>> {
+        if seed_article_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let limit = limit.clamp(1, 50);
+
+        let seed_ids = seed_article_ids.to_vec();
+        let excluded = excluded_article_ids.to_vec();
+        let category_filter: Option<Vec<Uuid>> =
+            visible_category_ids.map(|slice| slice.to_vec());
+
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                // Step 1: pull chunk_index=0 embeddings for the seeds. Use
+                // float4 array projection so we can average client-side
+                // without depending on a pgvector Rust adapter.
+                let seed_embeddings: Vec<Vec<f32>> = sqlx::query_scalar::<_, Vec<f32>>(
+                    r#"
+                    SELECT embedding::real[]
+                    FROM article_chunks
+                    WHERE article_id = ANY($1)
+                      AND chunk_index = 0
+                      AND embedding IS NOT NULL
+                    "#,
+                )
+                .bind(&seed_ids)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
+
+                if seed_embeddings.is_empty() {
+                    return Ok(Vec::new());
+                }
+
+                // Step 2: average to a centroid. Vectors share a fixed
+                // dimension (1536) since they come from the same column.
+                let dim = seed_embeddings[0].len();
+                let mut centroid = vec![0f32; dim];
+                let mut counted = 0usize;
+                for vec in &seed_embeddings {
+                    if vec.len() != dim {
+                        continue;
+                    }
+                    for (i, v) in vec.iter().enumerate() {
+                        centroid[i] += *v;
+                    }
+                    counted += 1;
+                }
+                if counted == 0 {
+                    return Ok(Vec::new());
+                }
+                let denom = counted as f32;
+                for v in &mut centroid {
+                    *v /= denom;
+                }
+
+                // Step 3: cosine ANN. Filter by tenant + visible categories +
+                // exclude already-read. We fetch chunk-level matches first,
+                // then dedupe to the article level.
+                let category_filter_active = category_filter.is_some();
+                let category_arg = category_filter.unwrap_or_default();
+
+                // Fetch ~3x candidate chunks so we can dedupe per article.
+                let candidate_chunk_limit = (limit * 4).clamp(limit, 200);
+
+                let rows: Vec<Article> = sqlx::query_as::<_, Article>(
+                    r#"
+                    WITH ranked AS (
+                        SELECT
+                            c.article_id,
+                            MIN(c.embedding <=> $1::vector) AS dist
+                        FROM article_chunks c
+                        WHERE c.embedding IS NOT NULL
+                          AND c.tenant_id = $2
+                          AND ($3::BOOLEAN = false OR NOT (c.article_id = ANY($4)))
+                        GROUP BY c.article_id
+                        ORDER BY dist ASC
+                        LIMIT $5
+                    )
+                    SELECT a.*
+                    FROM ranked r
+                    JOIN articles a
+                      ON a.id = r.article_id
+                     AND a.tenant_id = $2
+                    WHERE a.deleted_at IS NULL
+                      AND a.status = 'published'
+                      AND ($6::BOOLEAN = false OR a.category_id = ANY($7))
+                    ORDER BY r.dist ASC
+                    LIMIT $8
+                    "#,
+                )
+                .bind(&centroid)
+                .bind(tenant_id)
+                .bind(!excluded.is_empty())
+                .bind(&excluded)
+                .bind(candidate_chunk_limit)
+                .bind(category_filter_active)
+                .bind(&category_arg)
+                .bind(limit)
+                .fetch_all(tx.as_mut())
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
+
+                Ok(rows)
+            })
+        })
+        .await
     }
 }

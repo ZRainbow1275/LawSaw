@@ -9,11 +9,57 @@ mod service;
 pub const MAX_ARTICLE_TITLE_BYTES: usize = 8 * 1024;
 pub const MAX_ARTICLE_SUMMARY_BYTES: usize = 256 * 1024;
 pub const MAX_ARTICLE_CONTENT_BYTES: usize = 4 * 1024 * 1024;
+pub const MAX_SENTIMENT_RATIONALE_BYTES: usize = 4 * 1024;
+
+/// Allowed values for `articles.sentiment` (migration 065 + analytics summary buckets).
+pub const ALLOWED_SENTIMENT_LABELS: &[&str] = &["positive", "neutral", "negative", "mixed"];
+
+/// Allowed values for `articles.sentiment_aspect` (migration 065 CHECK constraint).
+pub const ALLOWED_SENTIMENT_ASPECTS: &[&str] = &[
+    "compliance",
+    "penalty",
+    "litigation",
+    "policy_change",
+    "industry_trend",
+    "regulatory_impact",
+    "company_reputation",
+    "policy_direction",
+    "other",
+];
 
 fn validate_max_bytes(field: &str, value: &str, max_bytes: usize) -> Result<()> {
     if value.len() > max_bytes {
         return Err(Error::Validation(format!(
             "{field} too large (max {max_bytes} bytes)"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_sentiment_label(label: &str) -> Result<()> {
+    if !ALLOWED_SENTIMENT_LABELS.contains(&label) {
+        return Err(Error::Validation(format!(
+            "invalid sentiment label '{label}', expected one of {:?}",
+            ALLOWED_SENTIMENT_LABELS
+        )));
+    }
+    Ok(())
+}
+
+fn validate_sentiment_score(score: f64) -> Result<()> {
+    if score.is_nan() || !(0.0..=1.0).contains(&score) {
+        return Err(Error::Validation(format!(
+            "sentiment_score must be in [0.0, 1.0], got {score}"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_sentiment_aspect(aspect: &str) -> Result<()> {
+    if !ALLOWED_SENTIMENT_ASPECTS.contains(&aspect) {
+        return Err(Error::Validation(format!(
+            "invalid sentiment_aspect '{aspect}', expected one of {:?}",
+            ALLOWED_SENTIMENT_ASPECTS
         )));
     }
     Ok(())

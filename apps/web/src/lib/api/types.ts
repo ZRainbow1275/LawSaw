@@ -33,7 +33,7 @@ export interface Article {
 	sentiment: "positive" | "negative" | "neutral" | "mixed" | null;
 	tags: string[];
 	keywords: string[];
-	ai_metadata: Record<string, unknown>;
+	ai_metadata: Record<string, unknown> | null;
 	// Crawler enhancement: legal domain metadata
 	domain_root: string | null;
 	domain_sub: string | null;
@@ -719,6 +719,19 @@ type ArticleWithAiMetadata = Pick<
 	Article,
 	"ai_metadata" | "risk_score" | "tags" | "keywords"
 > & { summary?: string | null };
+
+/**
+ * SPEC-01 §2 tier-aware payload detection:
+ * Returns `true` when the article body ends with the basic_user truncation
+ * marker (a horizontal ellipsis `…`) the backend appends after 200 chars.
+ *
+ * Used by the reader to render the "Upgrade to read in full" CTA. Verified+
+ * users always receive the full body so this returns false for them.
+ */
+export function isArticleBodyTruncated(content: string | null): boolean {
+	if (!content) return false;
+	return content.endsWith("…");
+}
 
 function readString(record: Record<string, unknown>, key: string): string {
 	const raw = record[key];
@@ -1788,8 +1801,11 @@ export function assertArticle(
 	const keywords = getRequired(value, "keywords", path);
 	assertArray(keywords, `${path}.keywords`, assertString);
 
+	// SPEC-01 §2 tier-aware payload: backend serializes `ai_metadata` as JSON
+	// `null` for basic_user / verified_user (no premium AI insights). Treat
+	// null as an empty record so the reader can fall through gracefully.
 	const aiMetadata = getRequired(value, "ai_metadata", path);
-	assertRecord(aiMetadata, `${path}.ai_metadata`);
+	assertNullable(aiMetadata, `${path}.ai_metadata`, assertRecord);
 
 	// Crawler enhancement: legal domain metadata
 	assertNullable(

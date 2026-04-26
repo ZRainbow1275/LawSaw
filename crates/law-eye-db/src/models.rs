@@ -10,6 +10,14 @@ pub struct Tenant {
     pub name: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub status: String,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub quota_users: i32,
+    pub quota_storage_mb: i64,
+    pub quota_ai_tokens_monthly: i64,
+    pub feature_flags: serde_json::Value,
+    pub suspended_at: Option<DateTime<Utc>>,
+    pub suspended_until: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -83,6 +91,33 @@ pub struct Category {
     pub icon: Option<String>,
     pub color: Option<String>,
     pub created_at: DateTime<Utc>,
+    pub visibility_tier: String,
+    pub updated_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateCategory {
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub parent_id: Option<Uuid>,
+    pub icon: Option<String>,
+    pub color: Option<String>,
+    pub visibility_tier: Option<String>,
+    pub sort_order: Option<i32>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UpdateCategory {
+    pub slug: Option<String>,
+    pub name: Option<String>,
+    pub description: Option<Option<String>>,
+    pub parent_id: Option<Option<Uuid>>,
+    pub icon: Option<Option<String>>,
+    pub color: Option<Option<String>>,
+    pub visibility_tier: Option<String>,
+    pub sort_order: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -695,4 +730,221 @@ pub struct UpdateReport {
     pub ai_model: Option<String>,
     pub ai_generated_at: Option<DateTime<Utc>>,
     pub published_at: Option<DateTime<Utc>>,
+}
+
+// ---- B.5 follow-up: orphan-table DTOs ------------------------------------
+//
+// The following DTOs back the `channel`, `article_pin` and
+// `report_subscription` core services. The schemas live in migrations
+// 056_authz_channel_alignment.sql, 058_article_pins.sql and
+// 062_report_subscriptions.sql respectively. Field shapes mirror the SQL
+// `query_as::<_, T>(...)` calls in those services exactly.
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Channel {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub linked_category_id: Option<Uuid>,
+    pub visibility: String,
+    pub is_active: bool,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateChannel {
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub linked_category_id: Option<Uuid>,
+    pub visibility: Option<String>,
+    pub is_active: Option<bool>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ChannelAccessPolicy {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub channel_id: Uuid,
+    pub subject_type: String,
+    pub subject_key: String,
+    pub can_read: bool,
+    pub can_read_source_meta: bool,
+    pub can_access_reports: bool,
+    pub priority: i32,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ArticlePin {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub article_id: Uuid,
+    pub priority: i32,
+    pub starts_at: Option<DateTime<Utc>>,
+    pub ends_at: Option<DateTime<Utc>>,
+    pub pinned_by: Option<Uuid>,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateArticlePin {
+    pub article_id: Uuid,
+    pub priority: Option<i32>,
+    pub starts_at: Option<DateTime<Utc>>,
+    pub ends_at: Option<DateTime<Utc>>,
+    pub pinned_by: Option<Uuid>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ReportSubscription {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+    pub name: String,
+    pub template_id: Uuid,
+    pub period_type: String,
+    pub delivery_channel: String,
+    pub export_format: String,
+    pub filters: serde_json::Value,
+    pub is_active: bool,
+    pub last_triggered_at: Option<DateTime<Utc>>,
+    pub version: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateReportSubscription {
+    pub user_id: Uuid,
+    pub name: String,
+    pub template_id: Uuid,
+    pub period_type: String,
+    pub delivery_channel: String,
+    pub export_format: String,
+    pub filters: Option<serde_json::Value>,
+    pub is_active: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateReportSubscription {
+    pub name: Option<String>,
+    pub template_id: Option<Uuid>,
+    pub period_type: Option<String>,
+    pub delivery_channel: Option<String>,
+    pub export_format: Option<String>,
+    pub filters: Option<serde_json::Value>,
+    pub is_active: Option<bool>,
+}
+
+// ---- B.6a: banners + authz DTOs ------------------------------------------
+//
+// Schemas live in migrations 066_create_banners_baseline.sql,
+// 067_create_authz_baseline.sql and the 056/057 alignment migrations.
+// Field shapes mirror the SQL `query_as::<_, T>(...)` calls in
+// `law_eye_core::banner::BannerService` and `law_eye_core::authz::AuthzService`.
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Banner {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub title: String,
+    pub body: Option<String>,
+    pub image_url: Option<String>,
+    pub cta_label: Option<String>,
+    pub cta_url: Option<String>,
+    pub status: String,
+    pub priority: i32,
+    pub starts_at: Option<DateTime<Utc>>,
+    pub ends_at: Option<DateTime<Utc>>,
+    pub created_by: Option<Uuid>,
+    pub metadata: serde_json::Value,
+    pub archived_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateBanner {
+    pub title: String,
+    pub body: Option<String>,
+    pub image_url: Option<String>,
+    pub cta_label: Option<String>,
+    pub cta_url: Option<String>,
+    pub status: Option<String>,
+    pub priority: Option<i32>,
+    pub starts_at: Option<DateTime<Utc>>,
+    pub ends_at: Option<DateTime<Utc>>,
+    pub metadata: Option<serde_json::Value>,
+    pub created_by: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateBanner {
+    pub title: Option<String>,
+    pub body: Option<String>,
+    pub image_url: Option<String>,
+    pub cta_label: Option<String>,
+    pub cta_url: Option<String>,
+    pub status: Option<String>,
+    pub priority: Option<i32>,
+    pub starts_at: Option<Option<DateTime<Utc>>>,
+    pub ends_at: Option<Option<DateTime<Utc>>>,
+    pub metadata: Option<serde_json::Value>,
+    pub archived_at: Option<Option<DateTime<Utc>>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct BannerTarget {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub banner_id: Uuid,
+    pub target_type: String,
+    pub target_channel_id: Option<Uuid>,
+    pub sort_order: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AuthRelation {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub resource_type: String,
+    pub resource_id: Uuid,
+    pub relation: String,
+    pub subject_type: String,
+    pub subject_id: Option<Uuid>,
+    pub subject_key: String,
+    pub subject_relation: Option<String>,
+    pub properties: serde_json::Value,
+    pub created_by: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateAuthRelation {
+    pub resource_type: String,
+    pub resource_id: Uuid,
+    pub relation: String,
+    pub subject_type: String,
+    pub subject_key: String,
+    pub subject_relation: Option<String>,
+    pub properties: serde_json::Value,
+    pub created_by: Option<Uuid>,
 }

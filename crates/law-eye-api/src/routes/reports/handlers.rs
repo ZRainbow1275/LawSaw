@@ -15,10 +15,12 @@ use super::dto::{
     UpdateTemplateRequest,
 };
 use crate::auth::AuthSession;
+use crate::middleware::role_tier_at_least;
 use crate::routes::{etag_for_version, require_if_match_version};
 use crate::state::AppState;
 use crate::{ApiJson, ApiQuery, ApiResult, AppError};
 
+use law_eye_core::role_tier::{derive_role_tier_from_names, ROLE_TIER_TENANT_ADMIN};
 use law_eye_core::report::{
     CreateReportInput, ExportFormat, ListReportsQuery, ReportStatus, UpdateReportInput,
 };
@@ -44,8 +46,31 @@ pub(crate) async fn list_reports(
         return Err(AppError::validation("offset must be >= 0"));
     }
 
+    let roles = state
+        .user_service
+        .get_user_roles(user.tenant_id, user.id)
+        .await
+        .map_err(AppError::from)?;
+    let role_names: Vec<String> = roles.into_iter().map(|role| role.name).collect();
+    let role_tier = derive_role_tier_from_names(&role_names);
+    let is_admin = role_tier_at_least(&role_tier, ROLE_TIER_TENANT_ADMIN);
+
+    let effective_status = if is_admin {
+        params.status
+    } else {
+        match params.status.as_deref() {
+            None => Some("published".to_string()),
+            Some("published") => Some("published".to_string()),
+            Some(_) => {
+                return Err(AppError::forbidden(
+                    "Only tenant admins may filter reports by non-published status",
+                ))
+            }
+        }
+    };
+
     let query = ListReportsQuery {
-        status: params.status,
+        status: effective_status,
         period_type: params.period_type,
         author_id: params.author_id,
         date_from: params.date_from,

@@ -15,7 +15,7 @@ function hasLocalePrefix(pathname: string): boolean {
 	return isLocale(maybeLocale);
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
 	const { pathname } = request.nextUrl;
 
 	if (
@@ -54,7 +54,6 @@ export function middleware(request: NextRequest) {
 		acceptLanguage: request.headers.get("accept-language"),
 	});
 
-	// Safety: ensure only supported locales are used.
 	const safeLocale = (SUPPORTED_LOCALES as readonly string[]).includes(locale)
 		? locale
 		: DEFAULT_LOCALE;

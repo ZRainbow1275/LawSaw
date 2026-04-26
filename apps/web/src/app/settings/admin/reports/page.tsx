@@ -1,10 +1,10 @@
 "use client";
 
+import { ReportTemplateDrawer } from "@/components/admin/report-template-drawer";
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { Header } from "@/components/layout/header";
 import { MainContent } from "@/components/layout/main-content";
 import { Sidebar } from "@/components/layout/sidebar";
-import { ReportTemplateEditor } from "@/components/reports/report-template-editor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,6 +39,7 @@ import {
 	ClipboardList,
 	FileCode2,
 	FileStack,
+	Pencil,
 	Plus,
 	RefreshCw,
 	Trash2,
@@ -161,6 +162,7 @@ function AdminReportsContent() {
 	const [statusFilter, setStatusFilter] = useState<"all" | ReportStatus>("all");
 	const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 	const [confirmArchiveOpen, setConfirmArchiveOpen] = useState(false);
+	const [drawerTemplateId, setDrawerTemplateId] = useState<string | null>(null);
 	const [draft, setDraft] = useState<TemplateDraft>(() =>
 		createEmptyTemplateDraft(defaultTemplateBodyRef.current),
 	);
@@ -188,6 +190,10 @@ function AdminReportsContent() {
 	const selectedTemplate = useMemo(
 		() => allTemplates.find((item) => item.id === selectedTemplateId) ?? null,
 		[allTemplates, selectedTemplateId],
+	);
+	const drawerTemplate = useMemo(
+		() => allTemplates.find((item) => item.id === drawerTemplateId) ?? null,
+		[allTemplates, drawerTemplateId],
 	);
 
 	useEffect(() => {
@@ -575,17 +581,65 @@ function AdminReportsContent() {
 								</Card>
 
 								<Card>
-									<ReportTemplateEditor
-										draft={draft}
-										onDraftChange={(updater) => setDraft((current) => updater(current))}
-										periodOptions={REPORT_PERIOD_TYPES}
-										getPeriodLabel={(value) => periodLabel(t, value)}
-										selectedTemplate={selectedTemplate}
-										templateBusy={templateBusy}
-										onReset={handleResetDraft}
-										onSubmit={handleSubmitTemplate}
-										onDelete={handleDeleteTemplate}
-									/>
+									<CardHeader>
+										<div className="flex items-center justify-between gap-3">
+											<div>
+												<CardTitle>{selectedTemplate ? t("Edit template") : t("New template")}</CardTitle>
+												<CardDescription>
+													{t("Authoring is markdown-first; use the rich editor for collaborative review and live preview.")}
+												</CardDescription>
+											</div>
+											<div className="flex flex-wrap gap-2">
+												<Button type="button" variant="outline" onClick={handleResetDraft} disabled={templateBusy}>{t("Reset")}</Button>
+												{selectedTemplate ? (
+													<Button type="button" variant="outline" onClick={() => setDrawerTemplateId(selectedTemplate.id)}>
+														<Pencil aria-hidden="true" className="h-4 w-4" />
+														{t("Open rich editor")}
+													</Button>
+												) : null}
+											</div>
+										</div>
+									</CardHeader>
+									<CardContent className="space-y-3">
+										<div className="grid gap-3 md:grid-cols-2">
+											<div>
+												<label htmlFor="report-template-name" className="mb-1 block text-xs uppercase tracking-wide" style={mutedTextStyle}>{t("Template name")}</label>
+												<Input id="report-template-name" value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} style={fieldSurfaceStyle} />
+											</div>
+											<div>
+												<label htmlFor="report-template-period" className="mb-1 block text-xs uppercase tracking-wide" style={mutedTextStyle}>{t("Cadence")}</label>
+												<select id="report-template-period" value={draft.period_type} onChange={(event) => setDraft((current) => ({ ...current, period_type: event.target.value as ReportPeriodType }))} className="h-10 w-full rounded-lg border px-3 text-sm outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary-300)]" style={fieldSurfaceStyle}>
+													{REPORT_PERIOD_TYPES.map((value) => (
+														<option key={value} value={value}>{periodLabel(t, value)}</option>
+													))}
+												</select>
+											</div>
+										</div>
+										<div>
+											<label htmlFor="report-template-description" className="mb-1 block text-xs uppercase tracking-wide" style={mutedTextStyle}>{t("Description")}</label>
+											<Input id="report-template-description" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} style={fieldSurfaceStyle} />
+										</div>
+										<div>
+											<label htmlFor="report-template-body" className="mb-1 block text-xs uppercase tracking-wide" style={mutedTextStyle}>{t("Template body (Markdown)")}</label>
+											<textarea id="report-template-body" value={draft.template_body} onChange={(event) => setDraft((current) => ({ ...current, template_body: event.target.value }))} className="min-h-48 w-full rounded-lg border px-3 py-2 font-mono text-xs outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary-300)]" style={fieldSurfaceStyle} />
+										</div>
+										<div className="flex flex-wrap items-center justify-between gap-3">
+											<p className="text-xs" style={mutedTextStyle}>
+												{selectedTemplate?.is_builtin ? t("Built-in templates are read-only.") : t("Saving creates a new active version; previous versions are archived.")}
+											</p>
+											<div className="flex flex-wrap gap-2">
+												{selectedTemplate && !selectedTemplate.is_builtin ? (
+													<Button type="button" variant="destructive" onClick={handleDeleteTemplate} disabled={templateBusy}>
+														<Trash2 aria-hidden="true" className="h-4 w-4" />
+														{t("Archive")}
+													</Button>
+												) : null}
+												<Button type="button" onClick={handleSubmitTemplate} disabled={templateBusy || (selectedTemplate?.is_builtin ?? false)}>
+													{selectedTemplate ? t("Save template") : t("Create template")}
+												</Button>
+											</div>
+										</div>
+									</CardContent>
 								</Card>
 							</div>
 						</>
@@ -602,6 +656,23 @@ function AdminReportsContent() {
 				confirmLabel={t("Archive template")}
 				cancelLabel={t("Cancel")}
 				busy={deleteTemplate.isPending}
+			/>
+			<ReportTemplateDrawer
+				open={drawerTemplateId !== null}
+				template={drawerTemplate}
+				onClose={() => setDrawerTemplateId(null)}
+				saving={updateTemplate.isPending}
+				onSaveTemplateBody={async (next) => {
+					if (!drawerTemplate) return;
+					await updateTemplate.mutateAsync({
+						id: drawerTemplate.id,
+						name: drawerTemplate.name,
+						description: drawerTemplate.description ?? undefined,
+						period_type: drawerTemplate.period_type,
+						template_body: next,
+						css_styles: drawerTemplate.css_styles ?? undefined,
+					});
+				}}
 			/>
 		</>
 	);

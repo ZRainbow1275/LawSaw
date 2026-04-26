@@ -3,10 +3,12 @@ use law_eye_common::config::ConfigRuntime;
 use law_eye_common::vault::SensitiveStringCipher;
 use law_eye_common::CacheService;
 use law_eye_core::{
-    ApiKeyService, ArticleService, AuditService, CategoryService, EmailVerificationService,
+    ApiKeyService, ArticlePinService, ArticleReadService, ArticleService, AuditService,
+    AuthzService, BannerService, CategoryService, ChannelService, EmailVerificationService,
     FeedbackService, KnowledgeService, MfaTotpService, OAuthIdentityService, ObjectService,
-    PasswordResetService, RagService, ReportService, ReportTemplateService, SourceService,
-    StatisticsService, TenantService, UserService, WebPushSubscriptionService, WebhookService,
+    PasswordResetService, RagService, ReportService, ReportSubscriptionService,
+    ReportTemplateService, SourceService, StatisticsService, TenantService, UserService,
+    WebPushSubscriptionService, WebhookService,
 };
 use law_eye_queue::TaskQueue;
 use metrics_exporter_prometheus::PrometheusHandle;
@@ -59,6 +61,14 @@ pub struct AppState {
     pub statistics_service: Arc<StatisticsService>,
     pub report_service: Arc<ReportService>,
     pub report_template_service: Arc<ReportTemplateService>,
+    // B.5: orphan-route services wired in for SPEC-01/02 user/admin panels.
+    pub channel_service: Arc<ChannelService>,
+    pub article_pin_service: Arc<ArticlePinService>,
+    pub article_read_service: Arc<ArticleReadService>,
+    pub report_subscription_service: Arc<ReportSubscriptionService>,
+    // B.6a: banners + authz services (migrations 066/067 add the underlying tables).
+    pub banner_service: Arc<BannerService>,
+    pub authz_service: Arc<AuthzService>,
     pub metrics_handle: PrometheusHandle,
     pub metrics_token: Option<String>,
     pub allow_internal_source_urls: bool,
@@ -125,6 +135,12 @@ impl AppState {
             statistics_service: Arc::new(StatisticsService::new(pool.clone())),
             report_service: Arc::new(ReportService::new(pool.clone())),
             report_template_service: Arc::new(ReportTemplateService::new(pool.clone())),
+            channel_service: Arc::new(ChannelService::new(pool.clone())),
+            article_pin_service: Arc::new(ArticlePinService::new(pool.clone())),
+            article_read_service: Arc::new(ArticleReadService::new(pool.clone())),
+            report_subscription_service: Arc::new(ReportSubscriptionService::new(pool.clone())),
+            banner_service: Arc::new(BannerService::new(pool.clone())),
+            authz_service: Arc::new(AuthzService::new(pool.clone())),
             metrics_handle,
             metrics_token,
             allow_internal_source_urls,

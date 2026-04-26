@@ -6,6 +6,37 @@ use sqlx::{PgPool, Postgres, Transaction};
 use tracing::info;
 use uuid::Uuid;
 
+/// Input for super-admin tenant updates (quota / feature flags / status).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SuperUpdateTenantInput {
+    pub name: Option<String>,
+    pub status: Option<String>,
+    pub quota_users: Option<i32>,
+    pub quota_storage_mb: Option<i64>,
+    pub quota_ai_tokens_monthly: Option<i64>,
+    pub feature_flags: Option<serde_json::Value>,
+}
+
+/// Snapshot of tenant usage for the super-admin dashboard.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SuperTenantUsageSnapshot {
+    pub tenant_id: Uuid,
+    pub current_users: i32,
+    pub current_articles: i32,
+    pub current_storage_mb: i64,
+    pub ai_tokens_this_month: i64,
+}
+
+/// Filter for super-admin tenant list.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SuperListTenantsFilter {
+    pub q: Option<String>,
+    pub status: Option<String>,
+    pub include_deleted: Option<bool>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
 /// Input for updating tenant config (all fields optional for partial update).
 #[derive(Debug, Clone, Deserialize)]
 pub struct UpdateTenantConfigInput {
@@ -402,6 +433,227 @@ impl TenantService {
         };
 
         Ok(within_quota)
+    }
+
+    // ── Super-admin operations (tenant-level CRUD with quotas / status) ──
+
+    /// Super-admin list with optional q/status filters and pagination.
+    pub async fn super_list_tenants(
+        &self,
+        filter: SuperListTenantsFilter,
+    ) -> Result<Vec<Tenant>> {
+        let q = filter
+            .q
+            .as_deref()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let status = filter
+            .status
+            .as_deref()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let include_deleted = filter.include_deleted.unwrap_or(false);
+        let limit = filter.limit.unwrap_or(50).clamp(1, 500);
+        let offset = filter.offset.unwrap_or(0).max(0);
+
+        sqlx::query_as::<_, Tenant>(
+            r#"
+            SELECT * FROM tenants
+            WHERE ($1::TEXT IS NULL OR slug ILIKE '%' || $1 || '%' OR name ILIKE '%' || $1 || '%')
+              AND ($2::TEXT IS NULL OR status = $2)
+              AND ($3::BOOLEAN OR deleted_at IS NULL)
+            ORDER BY created_at DESC
+            LIMIT $4 OFFSET $5
+            "#,
+        )
+        .bind(q)
+        .bind(status)
+        .bind(include_deleted)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))
+    }
+
+    /// Super-admin create: insert new tenant row with slug uniqueness check.
+    pub async fn super_create_tenant(&self, slug: &str, name: &str) -> Result<Tenant> {
+        let slug = slug.trim();
+        let name = name.trim();
+        if slug.is_empty() {
+            return Err(Error::Validation("slug cannot be empty".to_string()));
+        }
+        if name.is_empty() {
+            return Err(Error::Validation(
+                "Tenant name cannot be empty".to_string(),
+            ));
+        }
+        if !slug
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        {
+            return Err(Error::Validation(
+                "slug must contain only lowercase letters, digits, and hyphens"
+                    .to_string(),
+            ));
+        }
+
+        sqlx::query_as::<_, Tenant>(
+            r#"
+            INSERT INTO tenants (slug, name)
+            VALUES ($1, $2)
+            ON CONFLICT (slug) DO NOTHING
+            RETURNING *
+            "#,
+        )
+        .bind(slug)
+        .bind(name)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?
+        .ok_or_else(|| Error::Conflict(format!("Tenant slug '{}' already exists", slug)))
+    }
+
+    /// Super-admin partial update: name / status / quotas / feature_flags.
+    pub async fn super_update_tenant(
+        &self,
+        id: Uuid,
+        input: SuperUpdateTenantInput,
+    ) -> Result<Tenant> {
+        if let Some(name) = input.name.as_ref() {
+            if name.trim().is_empty() {
+                return Err(Error::Validation(
+                    "Tenant name cannot be empty".to_string(),
+                ));
+            }
+        }
+        if let Some(status) = input.status.as_ref() {
+            match status.as_str() {
+                "active" | "suspended" | "pending" => {}
+                other => {
+                    return Err(Error::Validation(format!(
+                        "status must be active|suspended|pending (got '{}')",
+                        other
+                    )));
+                }
+            }
+        }
+
+        sqlx::query_as::<_, Tenant>(
+            r#"
+            UPDATE tenants
+            SET
+                name                    = COALESCE($2, name),
+                status                  = COALESCE($3, status),
+                quota_users             = COALESCE($4, quota_users),
+                quota_storage_mb        = COALESCE($5, quota_storage_mb),
+                quota_ai_tokens_monthly = COALESCE($6, quota_ai_tokens_monthly),
+                feature_flags           = COALESCE($7, feature_flags),
+                updated_at              = NOW()
+            WHERE id = $1 AND deleted_at IS NULL
+            RETURNING *
+            "#,
+        )
+        .bind(id)
+        .bind(input.name.as_deref().map(str::trim))
+        .bind(input.status.as_deref())
+        .bind(input.quota_users)
+        .bind(input.quota_storage_mb)
+        .bind(input.quota_ai_tokens_monthly)
+        .bind(input.feature_flags)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?
+        .ok_or_else(|| Error::NotFound(format!("Tenant {} not found", id)))
+    }
+
+    /// Super-admin soft delete: sets deleted_at and flips status to suspended
+    /// to lock out the tenant immediately. Caller is expected to gate this
+    /// behind an `X-Confirm-Delete: yes` header for safety.
+    pub async fn super_soft_delete_tenant(&self, id: Uuid) -> Result<()> {
+        let result = sqlx::query(
+            r#"
+            UPDATE tenants
+            SET deleted_at = NOW(), status = 'suspended', updated_at = NOW()
+            WHERE id = $1 AND deleted_at IS NULL
+            "#,
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+        if result.rows_affected() == 0 {
+            return Err(Error::NotFound(format!("Tenant {} not found", id)));
+        }
+        info!(tenant_id = %id, "Tenant soft-deleted by super-admin");
+        Ok(())
+    }
+
+    /// Super-admin usage snapshot: live counts joined with monthly AI token
+    /// totals from `ai_usage_events` (falls back to 0 if the table is empty).
+    pub async fn super_tenant_usage(&self, id: Uuid) -> Result<SuperTenantUsageSnapshot> {
+        // Verify tenant exists (also covers deleted_at NULL via super_get; but
+        // here we tolerate soft-deleted tenants so usage panel can still load).
+        let _ = sqlx::query_scalar::<_, Uuid>("SELECT id FROM tenants WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?
+            .ok_or_else(|| Error::NotFound(format!("Tenant {} not found", id)))?;
+
+        let users: i32 = sqlx::query_scalar(
+            "SELECT COUNT(*)::int FROM users WHERE tenant_id = $1 AND is_active = true",
+        )
+        .bind(id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        let articles: i32 = sqlx::query_scalar(
+            "SELECT COUNT(*)::int FROM articles WHERE tenant_id = $1 AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        let storage_mb: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COALESCE(SUM(byte_size)::bigint / (1024 * 1024), 0)
+            FROM objects
+            WHERE tenant_id = $1 AND deleted_at IS NULL
+            "#,
+        )
+        .bind(id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+        // ai_usage_events may not exist on all deployments; tolerate the
+        // missing-table case as 0 instead of bubbling up an error.
+        let ai_tokens: i64 = match sqlx::query_scalar::<_, Option<i64>>(
+            r#"
+            SELECT COALESCE(SUM(total_tokens)::bigint, 0)
+            FROM ai_usage_events
+            WHERE tenant_id = $1
+              AND created_at >= date_trunc('month', NOW())
+            "#,
+        )
+        .bind(id)
+        .fetch_one(&self.pool)
+        .await
+        {
+            Ok(value) => value.unwrap_or(0),
+            Err(_) => 0,
+        };
+
+        Ok(SuperTenantUsageSnapshot {
+            tenant_id: id,
+            current_users: users,
+            current_articles: articles,
+            current_storage_mb: storage_mb,
+            ai_tokens_this_month: ai_tokens,
+        })
     }
 }
 

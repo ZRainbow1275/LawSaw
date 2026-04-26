@@ -4,6 +4,7 @@ import { DomainBarChart } from "@/components/statistics/industry/domain-bar-char
 import { DomainPieChart } from "@/components/statistics/industry/domain-pie-chart";
 import { DOMAIN_LABELS } from "@/components/statistics/constants";
 import { ChinaMap } from "@/components/statistics/regional/china-map";
+import { AnimatedNumber } from "@/components/ui/animated-number";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -313,11 +314,27 @@ export function DashboardHero() {
 	return (
 		<div className="mb-8 grid gap-6 xl:grid-cols-[1.4fr_0.9fr]">
 			<Card
-				className="overflow-hidden"
+				className="relative overflow-hidden"
 				style={dashboardHeroShellStyle}
 			>
+				<div
+					aria-hidden="true"
+					className="pointer-events-none absolute inset-0"
+					style={{
+						background:
+							"radial-gradient(ellipse at 30% 20%, color-mix(in srgb, var(--color-primary-500) 12%, transparent) 0%, transparent 60%)",
+					}}
+				/>
+				<div
+					aria-hidden="true"
+					className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full"
+					style={{
+						background:
+							"radial-gradient(circle, color-mix(in srgb, var(--color-primary-400) 14%, transparent) 0%, transparent 70%)",
+					}}
+				/>
 				<CardHeader
-					className="border-b"
+					className="relative border-b"
 					style={{ borderColor: "var(--surface-muted-border)" }}
 				>
 					<div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -326,6 +343,11 @@ export function DashboardHero() {
 								className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em]"
 								style={dashboardHeroEyebrowTextStyle}
 							>
+								<span
+									aria-hidden="true"
+									className="h-2 w-2 animate-pulse-live rounded-full"
+									style={{ backgroundColor: "var(--color-success)" }}
+								/>
 								<Sparkles aria-hidden="true" className="h-4 w-4" />
 								{t("Dashboard hero")}
 							</div>
@@ -387,7 +409,7 @@ export function DashboardHero() {
 						</div>
 					</div>
 				</CardHeader>
-				<CardContent className="grid gap-6 p-6 lg:grid-cols-[1.1fr_0.9fr]">
+				<CardContent className="relative grid gap-6 p-6 lg:grid-cols-[1.1fr_0.9fr]">
 					<div className="space-y-6">
 						<div className="grid gap-4 sm:grid-cols-2">
 							<div
@@ -408,12 +430,18 @@ export function DashboardHero() {
 										>
 											{t("Corpus")}
 										</p>
-										<p
-											className="mt-1 text-3xl font-semibold"
-											style={dashboardHeroStrongTextStyle}
-										>
-											{overviewQuery.isLoading ? "…" : coverageTotal}
-										</p>
+										<div className="mt-1" style={dashboardHeroStrongTextStyle}>
+											{overviewQuery.isLoading ? (
+												<p className="text-3xl font-semibold">…</p>
+											) : (
+												<AnimatedNumber
+													value={coverageTotal}
+													duration={1200}
+													animateOnView
+													numberClassName="text-3xl font-semibold"
+												/>
+											)}
+										</div>
 									</div>
 								</div>
 								<p className="mt-4 text-sm" style={dashboardHeroMutedTextStyle}>
@@ -438,12 +466,17 @@ export function DashboardHero() {
 										>
 											{t("Trend window")}
 										</p>
-										<p
-											className="mt-1 text-3xl font-semibold"
+										<div
+											className="mt-1"
 											style={dashboardHeroStrongTextStyle}
 										>
-											{timeWindow}
-										</p>
+											<AnimatedNumber
+												value={timeWindow}
+												duration={800}
+												animateOnView
+												numberClassName="text-3xl font-semibold"
+											/>
+										</div>
 									</div>
 								</div>
 								<p className="mt-4 text-sm" style={dashboardHeroMutedTextStyle}>

@@ -4,6 +4,9 @@ use axum::{
     http::Method,
     response::{IntoResponse, Response},
 };
+pub use law_eye_core::role_tier::{
+    derive_role_tier_from_names, role_tier_at_least, role_tier_rank,
+};
 
 use crate::auth::AuthSession;
 use crate::AppError;
@@ -97,5 +100,66 @@ where
         }
 
         Ok(RequirePermission)
+    }
+}
+
+/// Minimum role tier required to access a route. Attach via `Extension(RequiredRoleTier(...))`.
+#[derive(Debug, Clone)]
+pub struct RequiredRoleTier(pub &'static str);
+
+/// Default-deny role-tier guard.
+///
+/// Usage pattern (mirrors `RequirePermission`):
+/// - Attach `RequiredRoleTier("<tier>")` via `Extension`
+/// - Add `middleware::from_extractor::<RequireRoleTier>()`
+///
+/// If no required tier is attached, the request is rejected (403).
+pub struct RequireRoleTier;
+
+impl<S> FromRequestParts<S> for RequireRoleTier
+where
+    S: Send + Sync,
+{
+    type Rejection = Response;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let required = parts
+            .extensions
+            .get::<RequiredRoleTier>()
+            .map(|value| value.0)
+            .ok_or_else(|| {
+                AppError::forbidden("Role tier policy is not configured for this route")
+                    .into_response()
+            })?;
+
+        let auth_session = AuthSession::from_request_parts(parts, state)
+            .await
+            .map_err(|e| e.into_response())?;
+
+        let user = auth_session
+            .user
+            .ok_or_else(|| AppError::unauthorized("Authentication required").into_response())?;
+
+        if !user.is_active {
+            return Err(AppError::forbidden("User account is disabled").into_response());
+        }
+
+        let roles = auth_session
+            .backend
+            .user_service()
+            .get_user_roles(user.tenant_id, user.id)
+            .await
+            .map_err(|e| AppError::from(e).into_response())?;
+        let role_names: Vec<String> = roles.into_iter().map(|role| role.name).collect();
+        let role_tier = derive_role_tier_from_names(&role_names);
+
+        if !role_tier_at_least(&role_tier, required) {
+            return Err(AppError::forbidden(format!(
+                "Requires role tier '{required}', current '{role_tier}'"
+            ))
+            .into_response());
+        }
+
+        Ok(RequireRoleTier)
     }
 }

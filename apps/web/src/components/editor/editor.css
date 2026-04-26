@@ -1,0 +1,82 @@
+/*
+ * Markdown editor surface styles.
+ *
+ * Imports Milkdown Crepe base theme + frame skins, then layers LawSaw
+ * surface tokens on top so the editor inherits the rest of the design
+ * system (no pure-white panels, no "白花花" feel).
+ *
+ * The light/dark frame stylesheets are scoped via the [data-theme]
+ * attribute we set in markdown-editor-impl.tsx so SSR-driven theme
+ * switching does not flash.
+ */
+
+@import "@milkdown/crepe/theme/common/style.css";
+@import "@milkdown/crepe/theme/frame.css";
+@import "@milkdown/crepe/theme/frame-dark.css";
+
+.lawsaw-md-editor {
+	border: 1px solid var(--surface-muted-border);
+	background-color: var(--surface-popover-bg);
+	color: var(--field-foreground);
+	border-radius: 0.875rem;
+	overflow: hidden;
+	transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.lawsaw-md-editor:focus-within {
+	border-color: var(--surface-accent-border);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--surface-accent-border) 30%, transparent);
+}
+
+.lawsaw-md-editor[data-readonly="true"] {
+	background-color: var(--surface-muted-bg);
+}
+
+.lawsaw-md-editor .milkdown {
+	background: transparent;
+	color: var(--field-foreground);
+}
+
+/* The ProseMirror surface itself — keep it transparent, the wrapper owns the bg. */
+.lawsaw-md-editor .ProseMirror {
+	min-height: var(--lawsaw-md-min-height, 240px);
+	padding: 1rem 1.25rem;
+	background: transparent;
+	outline: none;
+}
+
+.lawsaw-md-editor .ProseMirror:focus {
+	outline: none;
+}
+
+/* Crepe's block handle / slash menu / link tooltip should respect our surface tokens. */
+.lawsaw-md-editor milkdown-block-handle,
+.lawsaw-md-editor milkdown-slash-menu,
+.lawsaw-md-editor milkdown-link-edit,
+.lawsaw-md-editor milkdown-link-preview,
+.lawsaw-md-editor milkdown-toolbar {
+	--crepe-color-background: var(--surface-popover-bg);
+	--crepe-color-surface: var(--surface-muted-bg);
+	--crepe-color-on-background: var(--field-foreground);
+	--crepe-color-on-surface: var(--surface-muted-text);
+	--crepe-color-outline: var(--surface-muted-border);
+	--crepe-color-primary: var(--surface-accent-border);
+	--crepe-color-on-primary: var(--surface-accent-strong);
+}
+
+.lawsaw-md-editor[data-variant="minimal"] .ProseMirror {
+	min-height: var(--lawsaw-md-min-height, 160px);
+	padding: 0.75rem 1rem;
+}
+
+.lawsaw-md-editor-skeleton {
+	border: 1px dashed var(--surface-muted-border);
+	background-color: var(--surface-muted-bg);
+	border-radius: 0.875rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--surface-muted-text);
+	font-size: 0.8125rem;
+	min-height: var(--lawsaw-md-min-height, 240px);
+}

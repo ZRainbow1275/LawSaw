@@ -19,6 +19,13 @@
     "e2e:install": "pnpm exec playwright install chromium"
   },
   "dependencies": {
+    "@milkdown/core": "^7.20.0",
+    "@milkdown/crepe": "^7.20.0",
+    "@milkdown/plugin-clipboard": "^7.20.0",
+    "@milkdown/plugin-listener": "^7.20.0",
+    "@milkdown/preset-commonmark": "^7.20.0",
+    "@milkdown/preset-gfm": "^7.20.0",
+    "@milkdown/react": "^7.20.0",
     "@tanstack/react-query": "^5.62.11",
     "@tanstack/react-query-devtools": "^5.91.2",
     "class-variance-authority": "^0.7.1",

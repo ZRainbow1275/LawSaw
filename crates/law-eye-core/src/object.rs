@@ -22,6 +22,7 @@ use crate::AuditService;
 
 pub const OBJECT_KIND_USER_AVATAR: &str = "user.avatar";
 pub const OBJECT_KIND_REPORT_EXPORT: &str = "report.export";
+pub const OBJECT_KIND_TENANT_EXPORT: &str = "tenant.export";
 
 const MAX_AVATAR_BYTES: usize = 1_048_576; // 1 MiB
 const ENSURE_BUCKET_MAX_ATTEMPTS: usize = 10;

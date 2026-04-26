@@ -4,16 +4,20 @@ import { ProtectedRoute } from "@/components/auth/protected-route";
 import { EntityInspector } from "@/components/knowledge/entity-inspector";
 import { EntityPalette } from "@/components/knowledge/entity-palette";
 import { KnowledgeCanvas } from "@/components/knowledge/knowledge-canvas";
+import { KnowledgeStatsBar } from "@/components/knowledge/knowledge-stats-bar";
+import { KnowledgeTierGate } from "@/components/knowledge/knowledge-tier-gate";
 import { Header } from "@/components/layout/header";
 import { MainContent } from "@/components/layout/main-content";
 import { Sidebar } from "@/components/layout/sidebar";
 import {
 	useKnowledgeBackfill,
+	useKnowledgeHybridSearch,
 	useKnowledgeLlmBackfill,
-	useKnowledgeSearchEntities,
 	useKnowledgeTopEntities,
 } from "@/hooks/use-knowledge";
+import { type RoleTier, normalizeRoleTier } from "@/lib/authz";
 import { useT } from "@/lib/i18n-client";
+import { useAuthStore } from "@/stores/auth-store";
 import { useToast } from "@/stores/toast-store";
 import { useCallback, useState } from "react";
 
@@ -23,8 +27,19 @@ export default function KnowledgePage() {
 	const [seedEntityId, setSeedEntityId] = useState<string | null>(null);
 	const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
 
+	const roleTier = useAuthStore((state) => state.roleTier);
+	const tier: RoleTier = normalizeRoleTier(roleTier);
+	const canSeeGraph = tier !== "basic_user";
+	const canSeeArticles =
+		tier === "verified_user" ||
+		tier === "premium_user" ||
+		tier === "tenant_admin" ||
+		tier === "super_admin";
+
 	const topQuery = useKnowledgeTopEntities(50);
-	const searchQuery = useKnowledgeSearchEntities(searchTerm, 50);
+	// Hybrid search relies on the backend reranker (E.1: bge-reranker-v2-m3) for
+	// higher-quality top-k ordering. No frontend tuning needed.
+	const searchQuery = useKnowledgeHybridSearch(searchTerm, 50);
 	const backfillMutation = useKnowledgeBackfill();
 	const llmBackfillMutation = useKnowledgeLlmBackfill();
 
@@ -109,6 +124,8 @@ export default function KnowledgePage() {
 							</p>
 						</div>
 
+						<KnowledgeStatsBar />
+
 						<div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[320px_1fr_360px]">
 							<EntityPalette
 								items={items}
@@ -125,13 +142,25 @@ export default function KnowledgePage() {
 								llmBackfillPending={llmBackfillMutation.isPending}
 							/>
 
-							<KnowledgeCanvas
-								seedEntityId={seedEntityId}
-								selectedEntityId={selectedEntityId}
-								onSelectEntity={setSelectedEntityId}
-							/>
+							{canSeeGraph ? (
+								<KnowledgeCanvas
+									seedEntityId={seedEntityId}
+									selectedEntityId={selectedEntityId}
+									onSelectEntity={setSelectedEntityId}
+								/>
+							) : (
+								<KnowledgeTierGate
+									feature="graph"
+									currentTier={tier}
+									requiredTier="premium_user"
+								/>
+							)}
 
-							<EntityInspector selectedEntityId={selectedEntityId} />
+							<EntityInspector
+								selectedEntityId={selectedEntityId}
+								canSeeArticles={canSeeArticles}
+								currentTier={tier}
+							/>
 						</div>
 					</div>
 				</MainContent>

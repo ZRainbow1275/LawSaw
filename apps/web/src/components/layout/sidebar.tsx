@@ -2,6 +2,7 @@
 
 import { useCategories } from "@/hooks/use-categories";
 import {
+	isAdminTier,
 	normalizeRoleTier,
 	roleTierLabelKey,
 	splitDisplayNameRoleTier,
@@ -15,19 +16,29 @@ import { useSidebarStore } from "@/stores/sidebar-store";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
 	BarChart3,
+	Bell,
+	BrainCircuit,
 	Briefcase,
 	Building2,
 	ChevronDown,
 	ChevronRight,
 	ClipboardList,
+	Database,
 	Eye,
+	FileSearch,
 	FileText,
 	Flame,
+	Globe,
 	Globe2,
 	GraduationCap,
+	History,
+	Key,
 	LayoutDashboard,
 	MessageSquarePlus,
+	MessageSquareText,
+	Network,
 	Newspaper,
+	Pin,
 	Scale,
 	ScrollText,
 	Settings,
@@ -35,6 +46,7 @@ import {
 	Shield,
 	ShieldCheck,
 	TrendingUp,
+	User,
 	X,
 	type LucideIcon,
 } from "lucide-react";
@@ -81,12 +93,44 @@ const navigation: Array<{
 	{ name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, tourId: "dashboard" },
 	{ name: "My feed", href: "/me/feed", icon: Newspaper },
 	{ name: "All articles", href: "/articles", icon: FileText, tourId: "articles" },
+	{ name: "Reading history", href: "/me/reading-history", icon: History },
 	{ name: "Reports", href: "/reports", icon: ClipboardList, tourId: "reports" },
 	{ name: "Analytics", href: "/analytics", icon: TrendingUp },
 	{ name: "Knowledge Graph", href: "/knowledge", icon: Share2 },
 	{ name: "Feedback", href: "/feedback", icon: MessageSquarePlus, tourId: "feedback" },
 	{ name: "Settings", href: "/settings", icon: Settings, tourId: "settings" },
 ];
+
+/**
+ * Admin workspace shortcuts surfaced to tenant_admin / super_admin tiers.
+ * Anchors mirror SPEC-02-DUAL-PANEL §2.1 and link to the new
+ * `/<locale>/admin/*` workspace introduced in B.4.
+ */
+const adminNavigation: Array<{
+	name: string;
+	href: string;
+	icon: LucideIcon;
+}> = [
+	{ name: "Admin workspace", href: "/admin", icon: Shield },
+	{ name: "User directory", href: "/admin/users", icon: User },
+	{ name: "Authorization relations", href: "/admin/relations", icon: Network },
+	{ name: "Channel management", href: "/admin/channels", icon: Globe },
+	{ name: "Banner management", href: "/admin/banners", icon: Bell },
+	{ name: "Pinned articles", href: "/admin/pins", icon: Pin },
+	{ name: "Feedback desk", href: "/admin/feedbacks", icon: MessageSquareText },
+	{ name: "Audit trail", href: "/admin/audit", icon: FileSearch },
+	{ name: "AI usage", href: "/admin/ai-usage", icon: BrainCircuit },
+	{ name: "API keys", href: "/admin/apikeys", icon: Key },
+	{ name: "Reports", href: "/admin/reports", icon: Database },
+	{ name: "Knowledge graph", href: "/admin/knowledge", icon: BarChart3 },
+];
+
+function isAdminNavigationItemActive(pathname: string, href: string): boolean {
+	if (href === "/admin") {
+		return pathname === "/admin";
+	}
+	return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 function roleTierBadgeStyle(tier: RoleTier): React.CSSProperties {
 	switch (tier) {
@@ -405,6 +449,74 @@ function SidebarPanel({
 						);
 					})}
 				</div>
+
+				{/* Admin shortcuts (tenant_admin / super_admin only) */}
+				{isAdminTier(actualRoleTier) && (
+					<div
+						className="mb-4 border-t pt-4"
+						style={{ borderColor: "var(--surface-muted-border)" }}
+					>
+						{!collapsed ? (
+							<p
+								className="mb-2 px-3 text-xs font-medium uppercase tracking-wider"
+								style={sidebarMutedTextStyle}
+							>
+								{t("Admin")}
+							</p>
+						) : null}
+						{adminNavigation.map((item) => {
+							const isActive = isAdminNavigationItemActive(
+								pathname,
+								item.href,
+							);
+							return (
+								<div key={item.name}>
+									<Link
+										href={withLocalePath(locale, item.href)}
+										onClick={onNavigate}
+										className={cn(
+											"group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium",
+											"transition-colors duration-150",
+											isActive
+												? "text-[var(--nav-active-text)]"
+												: sidebarSurfaceHoverClassName,
+											collapsed && "justify-center",
+										)}
+										style={
+											isActive
+												? { color: "var(--nav-active-text)" }
+												: sidebarMutedTextStyle
+										}
+									>
+										{isActive && (
+											<div
+												className="absolute inset-0 rounded-xl shadow-sm"
+												style={{
+													backgroundColor: "var(--nav-active-surface)",
+												}}
+											/>
+										)}
+										<div className="relative z-10">
+											<item.icon
+												className="h-5 w-5 shrink-0"
+												style={
+													isActive
+														? { color: "var(--nav-active-text)" }
+														: sidebarMutedTextStyle
+												}
+											/>
+										</div>
+										{!collapsed ? (
+											<span className="relative z-10 whitespace-nowrap">
+												{t(item.name)}
+											</span>
+										) : null}
+									</Link>
+								</div>
+							);
+						})}
+					</div>
+				)}
 
 				{/* Categories */}
 				{!collapsed && canReadCategories && (

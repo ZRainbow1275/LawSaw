@@ -1,10 +1,10 @@
 use crate::tenant::with_tenant_tx;
-use law_eye_ai::{Embedder, LlmGateway};
+use law_eye_ai::{Embedder, LlmGateway, RerankClient, RerankRequest};
 use law_eye_common::{normalize_vector_for_storage, Error, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
-use tracing::info;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,6 +34,7 @@ pub struct RagService {
     pool: PgPool,
     embedder: Embedder,
     gateway: Arc<LlmGateway>,
+    reranker: Option<Arc<RerankClient>>,
 }
 
 impl RagService {
@@ -42,7 +43,18 @@ impl RagService {
             pool,
             embedder: Embedder::new(gateway.clone()),
             gateway,
+            reranker: None,
         }
+    }
+
+    /// Attach a `RerankClient` so [`Self::search_reranked`] runs recall + rerank.
+    pub fn with_reranker(mut self, reranker: Arc<RerankClient>) -> Self {
+        self.reranker = Some(reranker);
+        self
+    }
+
+    pub fn has_reranker(&self) -> bool {
+        self.reranker.is_some()
     }
 
     /// Semantic search for relevant chunks
@@ -103,6 +115,83 @@ impl RagService {
 
         info!("Found {} relevant chunks for query", search_results.len());
         Ok(search_results)
+    }
+
+    /// Recall + rerank pipeline (SPEC-03 §2.3).
+    ///
+    /// Pipeline: vector top-`recall_vector` ∪ BM25 top-`recall_bm25` (RRF fused, dedup) →
+    /// rerank top-`top_n` via `bge-reranker-v2-m3`.
+    ///
+    /// Falls back to plain hybrid search if no reranker is configured or the rerank call fails;
+    /// the returned `RagSearchResult.similarity` then carries the rerank `relevance_score`.
+    pub async fn search_reranked(
+        &self,
+        tenant_id: Uuid,
+        query: &str,
+        recall_vector: i64,
+        recall_bm25: i64,
+        top_n: usize,
+    ) -> Result<Vec<RagSearchResult>> {
+        let recall_pool = self
+            .hybrid_search(
+                tenant_id,
+                query,
+                recall_vector.max(recall_bm25).clamp(10, 200),
+            )
+            .await?;
+
+        if recall_pool.is_empty() {
+            return Ok(recall_pool);
+        }
+
+        let reranker = match &self.reranker {
+            Some(r) => r.clone(),
+            None => {
+                warn!(
+                    %tenant_id,
+                    "RAG search_reranked invoked without reranker; returning hybrid recall only"
+                );
+                return Ok(recall_pool.into_iter().take(top_n).collect());
+            }
+        };
+
+        let documents: Vec<String> = recall_pool.iter().map(|c| c.content.clone()).collect();
+        let request = RerankRequest {
+            model: reranker.model().to_string(),
+            query: query.to_string(),
+            documents,
+            top_n: top_n as u32,
+            return_documents: false,
+            max_chunks_per_doc: None,
+        };
+
+        let response = match reranker.rerank(request).await {
+            Ok(r) => r,
+            Err(err) => {
+                warn!(error = %err, "rerank stage failed; falling back to recall ordering");
+                return Ok(recall_pool.into_iter().take(top_n).collect());
+            }
+        };
+
+        let mut reranked: Vec<RagSearchResult> = Vec::with_capacity(response.results.len());
+        for r in response.results {
+            if let Some(base) = recall_pool.get(r.index as usize) {
+                reranked.push(RagSearchResult {
+                    chunk_id: base.chunk_id,
+                    article_id: base.article_id,
+                    content: base.content.clone(),
+                    similarity: r.relevance_score as f64,
+                });
+            }
+        }
+
+        info!(
+            %tenant_id,
+            recall = recall_pool.len(),
+            reranked = reranked.len(),
+            "RAG search_reranked finished"
+        );
+        Ok(reranked)
     }
 
     /// Answer a question using RAG

@@ -32,3 +32,4 @@ chrono.workspace = true
 cron.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
+flate2 = "1"

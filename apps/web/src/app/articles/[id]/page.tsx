@@ -39,7 +39,10 @@ import {
 } from "@/lib/authz";
 import { withLocalePath } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
-import { normalizeArticleAiInsights } from "@/lib/api/types";
+import {
+	isArticleBodyTruncated,
+	normalizeArticleAiInsights,
+} from "@/lib/api/types";
 import {
 	formatArticlePublishedAtLabel,
 	parseArticlePublishedAt,
@@ -53,7 +56,7 @@ import {
 } from "@/stores/reading-store";
 import { useToast } from "@/stores/toast-store";
 import { motion } from "framer-motion";
-import { ArrowLeft, ExternalLink, Loader2 } from "lucide-react";
+import { ArrowLeft, ExternalLink, Loader2, Lock, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { type CSSProperties, useCallback, useMemo, useRef, useState } from "react";
@@ -372,7 +375,13 @@ export default function ArticleDetailPage() {
 		writeDecision.data?.allow ?? hasPermission(permissions, "articles:write");
 	const canPublishArticle =
 		publishDecision.data?.allow ?? hasPermission(permissions, "articles:publish");
-	const showAiInsights = Boolean(aiInsights) && isRoleTierAtLeast(roleTier, "premium_user");
+	const isPremiumOrAbove = isRoleTierAtLeast(roleTier, "premium_user");
+	const isVerifiedOrAbove = isRoleTierAtLeast(roleTier, "verified_user");
+	const isBasicTier = !isVerifiedOrAbove;
+	const showAiInsights = Boolean(aiInsights) && isPremiumOrAbove;
+	const isContentTruncated =
+		isBasicTier && isArticleBodyTruncated(article?.content ?? null);
+	const showAiUpgradeHint = !isPremiumOrAbove;
 	const readerTocItems = useMemo(() => {
 		const items: TOCItem[] = [
 			{ id: "article-overview-section", text: t("Overview"), level: 1 as const },
@@ -670,7 +679,7 @@ export default function ArticleDetailPage() {
 										>
 											{canWriteArticle ? t("Manage article") : t("Read-only access")}
 										</span>
-										{!showAiInsights && aiInsights ? (
+										{showAiUpgradeHint ? (
 											<span
 												className={readerInlineChipClassName}
 												data-testid="article-ai-insights-locked"
@@ -847,6 +856,76 @@ export default function ArticleDetailPage() {
 								</>
 							) : null}
 						</motion.div>
+
+						{isContentTruncated ? (
+							<aside
+								className="mt-10 rounded-3xl border p-6"
+								style={readerTone.panelStyle}
+								data-testid="article-content-upgrade-cta"
+							>
+								<div className="flex items-start gap-3">
+									<span
+										className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl"
+										style={readerAccentChipStyle}
+									>
+										<Lock aria-hidden="true" className="h-4 w-4" />
+									</span>
+									<div className="min-w-0 flex-1">
+										<p className="text-sm font-semibold" style={readerTone.titleStyle}>
+											{t("Upgrade to read the full article")}
+										</p>
+										<p className="mt-1 text-sm" style={readerTone.mutedStyle}>
+											{t("Basic readers see a 200-character preview. Verified and Premium tiers unlock the full body, source URL, and AI insights.")}
+										</p>
+										<div className="mt-4">
+											<Link
+												href={withLocalePath(locale, "/settings")}
+												className={readerInlineButtonClassName}
+												style={readerInlineButtonStyle}
+												data-testid="article-content-upgrade-button"
+											>
+												{t("Upgrade plan")}
+											</Link>
+										</div>
+									</div>
+								</div>
+							</aside>
+						) : null}
+
+						{showAiUpgradeHint && !isContentTruncated ? (
+							<aside
+								className="mt-10 rounded-3xl border p-6"
+								style={readerTone.panelStyle}
+								data-testid="article-ai-upgrade-cta"
+							>
+								<div className="flex items-start gap-3">
+									<span
+										className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl"
+										style={readerAccentChipStyle}
+									>
+										<Sparkles aria-hidden="true" className="h-4 w-4" />
+									</span>
+									<div className="min-w-0 flex-1">
+										<p className="text-sm font-semibold" style={readerTone.titleStyle}>
+											{t("Upgrade to view AI deep-dive insights")}
+										</p>
+										<p className="mt-1 text-sm" style={readerTone.mutedStyle}>
+											{t("Premium readers see structured summaries, key entities, risk dimensions, and recommended next steps.")}
+										</p>
+										<div className="mt-4">
+											<Link
+												href={withLocalePath(locale, "/settings")}
+												className={readerInlineButtonClassName}
+												style={readerInlineButtonStyle}
+												data-testid="article-ai-upgrade-button"
+											>
+												{t("Upgrade plan")}
+											</Link>
+										</div>
+									</div>
+								</div>
+							</aside>
+						) : null}
 
 						<footer className="mt-16 border-t border-current/10 pt-8">
 							<div className="flex items-center justify-between text-sm">

@@ -11,14 +11,14 @@ use base64::Engine;
 use hmac::{Hmac, Mac};
 use law_eye_ai::{
     AiService, ClassifyResult, Entity, EntityType, RiskAssessment, RiskDimension, RiskLevel,
-    SummaryResult, TagsResult,
+    SentimentResult, SummaryResult, TagsResult,
 };
 use law_eye_common::egress::{validate_outbound_url, OutboundUrlPolicy};
 use law_eye_common::{normalize_vector_for_storage, AppConfig};
 use law_eye_core::{
     source::CrawlFetchStats, ArticleService, CrawlLogService, DomainEventInput, DomainEventService,
     KnowledgeService, ObjectService, ReportService, ReportTemplateService, SourceService,
-    OBJECT_KIND_REPORT_EXPORT, OBJECT_KIND_USER_AVATAR,
+    OBJECT_KIND_REPORT_EXPORT, OBJECT_KIND_TENANT_EXPORT, OBJECT_KIND_USER_AVATAR,
 };
 use law_eye_crawler::{
     AdapterRegistry, ConcurrencyConfig, ConcurrencyController, CrawlJobConfig, CrawlOrchestrator,
@@ -29,7 +29,7 @@ use law_eye_db::{
     CreateCrawlLog, FinishCrawlLog,
 };
 use law_eye_queue::{
-    AiTask, AiTaskType, IngestTask, OrderedTaskGate, PushTask, ReportExportTask,
+    AiTask, AiTaskType, ExportTenantTask, IngestTask, OrderedTaskGate, PushTask, ReportExportTask,
     ReportGenerateTask, ReservedTask, RetryableTask, TaskQueue,
 };
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
@@ -53,10 +53,18 @@ const QUEUE_AI: &str = "queue:ai";
 const QUEUE_PUSH: &str = "queue:push";
 const QUEUE_REPORT_EXPORT: &str = "queue:report-export";
 const QUEUE_REPORT_GENERATE: &str = "queue:report";
+const QUEUE_TENANT_EXPORT: &str = "queue:tenant_export";
 
 const MAINTENANCE_INTERVAL_SECS: u64 = 15;
 const MAINTENANCE_MAX_BATCH: usize = 200;
 const SCHEDULER_INTERVAL_SECS: u64 = 60;
+// F.3.b: source_runs status machine maintenance.
+// Orphan timeout: a `running` row with started_at older than this is force-flipped to `fail`.
+const SOURCE_RUNS_ORPHAN_TIMEOUT_HOURS: i64 = 24;
+// Retention: drop rows older than this from source_runs to keep the admin history bounded.
+const SOURCE_RUNS_RETENTION_DAYS: i64 = 90;
+// Maintenance cadence for source_runs (orphan + cleanup). Not every loop, to keep DB load low.
+const SOURCE_RUNS_MAINTENANCE_INTERVAL_SECS: u64 = 5 * 60;
 const OUTBOX_FLUSH_MAX_BATCH: i64 = 500;
 const OUTBOX_LOCK_TIMEOUT_MS: i64 = 2 * 60 * 1_000;
 const WEBHOOK_FLUSH_MAX_BATCH: i64 = 200;
@@ -73,6 +81,7 @@ const VISIBILITY_TIMEOUT_AI_MS: i64 = 20 * 60 * 1_000;
 const VISIBILITY_TIMEOUT_PUSH_MS: i64 = 5 * 60 * 1_000;
 const VISIBILITY_TIMEOUT_REPORT_EXPORT_MS: i64 = 15 * 60 * 1_000;
 const VISIBILITY_TIMEOUT_REPORT_GENERATE_MS: i64 = 20 * 60 * 1_000;
+const VISIBILITY_TIMEOUT_TENANT_EXPORT_MS: i64 = 30 * 60 * 1_000;
 
 const EVENT_VERSION_V1: i32 = 1;
 
@@ -82,6 +91,7 @@ const TASK_TIMEOUT_AI_SECS: u64 = 10 * 60;
 const TASK_TIMEOUT_PUSH_SECS: u64 = 60;
 const TASK_TIMEOUT_REPORT_EXPORT_SECS: u64 = 10 * 60;
 const TASK_TIMEOUT_REPORT_GENERATE_SECS: u64 = 15 * 60;
+const TASK_TIMEOUT_TENANT_EXPORT_SECS: u64 = 25 * 60;
 const DLQ_REPLAY_MAX_BATCH: usize = 20;
 const DEFAULT_INCREMENTAL_SEED_LIMIT: i64 = 200_000;
 const MAX_INCREMENTAL_SEED_LIMIT: i64 = 2_000_000;
@@ -1053,12 +1063,23 @@ impl Worker {
             last_object_purge = Instant::now() - interval;
         }
 
+        // F.3.b — source_runs maintenance: orphan timeout + retention cleanup.
+        let source_runs_interval = Duration::from_secs(SOURCE_RUNS_MAINTENANCE_INTERVAL_SECS);
+        let mut last_source_runs = Instant::now() - source_runs_interval;
+
         while !self.shutdown.load(Ordering::Relaxed) {
             if last_maintenance.elapsed() >= maintenance_interval {
                 if let Err(e) = self.run_queue_maintenance().await {
                     error!("Queue maintenance failed: {}", e);
                 }
                 last_maintenance = Instant::now();
+            }
+
+            if last_source_runs.elapsed() >= source_runs_interval {
+                if let Err(e) = self.run_source_runs_maintenance().await {
+                    error!("source_runs maintenance failed: {}", e);
+                }
+                last_source_runs = Instant::now();
             }
 
             if let Some(interval) = object_purge_interval {
@@ -1086,6 +1107,7 @@ impl Worker {
                 res_push,
                 res_report_export,
                 res_report_generate,
+                res_tenant_export,
             ) = tokio::join!(
                 self.task_queue
                     .reserve_retryable::<IngestTask>(QUEUE_INGEST_PRIORITY, 1),
@@ -1097,6 +1119,8 @@ impl Worker {
                     .reserve_retryable::<ReportExportTask>(QUEUE_REPORT_EXPORT, 1),
                 self.task_queue
                     .reserve_retryable::<ReportGenerateTask>(QUEUE_REPORT_GENERATE, 1),
+                self.task_queue
+                    .reserve_retryable::<ExportTenantTask>(QUEUE_TENANT_EXPORT, 1),
             );
 
             let mut had_task = false;
@@ -1195,6 +1219,18 @@ impl Worker {
                 }
             }
 
+            match res_tenant_export {
+                Ok(Some(reserved)) => {
+                    self.handle_tenant_export_reserved(reserved).await;
+                    had_task = true;
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    error!("Failed to reserve from {}: {}", QUEUE_TENANT_EXPORT, e);
+                    had_error = true;
+                }
+            }
+
             // If all queues were empty and no errors, brief sleep to avoid busy-loop.
             // If there was an error, back off slightly longer.
             if !had_task {
@@ -1219,6 +1255,7 @@ impl Worker {
             (QUEUE_PUSH, VISIBILITY_TIMEOUT_PUSH_MS),
             (QUEUE_REPORT_EXPORT, VISIBILITY_TIMEOUT_REPORT_EXPORT_MS),
             (QUEUE_REPORT_GENERATE, VISIBILITY_TIMEOUT_REPORT_GENERATE_MS),
+            (QUEUE_TENANT_EXPORT, VISIBILITY_TIMEOUT_TENANT_EXPORT_MS),
         ];
 
         for (queue, visibility_timeout_ms) in queues {
@@ -1304,6 +1341,19 @@ impl Worker {
                 error!(
                     "Failed to replay DLQ tasks for {}: {}",
                     QUEUE_REPORT_GENERATE, e
+                );
+            }
+            if let Err(e) = self
+                .task_queue
+                .replay_dead_letter_tasks::<ExportTenantTask>(
+                    QUEUE_TENANT_EXPORT,
+                    DLQ_REPLAY_MAX_BATCH,
+                )
+                .await
+            {
+                error!(
+                    "Failed to replay DLQ tasks for {}: {}",
+                    QUEUE_TENANT_EXPORT, e
                 );
             }
         }
@@ -1395,6 +1445,18 @@ impl Worker {
                             source_name = %source.name,
                             "scheduler: enqueued ingest task"
                         );
+                        // F.3.b — Pre-insert a queued source_runs row so admin history shows
+                        // the scheduled trigger as soon as it lands. Best-effort: failure here
+                        // only loses the bookkeeping row, never blocks the actual crawl.
+                        if let Err(e) = self
+                            .enqueue_scheduled_source_run(source.tenant_id, source.id)
+                            .await
+                        {
+                            warn!(
+                                source_id = %source.id,
+                                "scheduler: failed to insert source_runs queued row: {}", e
+                            );
+                        }
                     }
                     Err(e) => {
                         warn!(
@@ -1695,6 +1757,176 @@ impl Worker {
             .execute(&mut *tx)
             .await?;
         Ok(tx)
+    }
+
+    /// F.3.b — Claim an existing `queued` source_runs row (manual triggered via
+    /// `POST /admin/sources/{id}/run` or scheduled enqueue) for this source, or
+    /// create a new `running` row if none is queued. Returns the row id.
+    ///
+    /// The "claim" path picks the oldest queued row to preserve FIFO ordering when
+    /// multiple manual runs are stacked. The "create" path is the fallback for
+    /// tasks enqueued via the legacy `/sources/{id}/fetch` endpoint that does not
+    /// pre-insert a queued row.
+    async fn claim_or_create_source_run(
+        &self,
+        tenant_id: uuid::Uuid,
+        source_id: uuid::Uuid,
+        fallback_trigger_kind: &str,
+    ) -> anyhow::Result<uuid::Uuid> {
+        let mut tx = self.begin_tenant_tx(tenant_id).await?;
+        let claimed: Option<(uuid::Uuid,)> = sqlx::query_as(
+            r#"
+            UPDATE source_runs
+            SET status = 'running', started_at = NOW(), updated_at = NOW()
+            WHERE id = (
+                SELECT id FROM source_runs
+                WHERE source_id = $1 AND status = 'queued'
+                ORDER BY created_at ASC
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+            )
+            RETURNING id
+            "#,
+        )
+        .bind(source_id)
+        .fetch_optional(tx.as_mut())
+        .await?;
+
+        let run_id = match claimed {
+            Some((id,)) => id,
+            None => {
+                let row: (uuid::Uuid,) = sqlx::query_as(
+                    r#"
+                    INSERT INTO source_runs (
+                        tenant_id, source_id, trigger_kind, status, started_at
+                    )
+                    VALUES ($1, $2, $3, 'running', NOW())
+                    RETURNING id
+                    "#,
+                )
+                .bind(tenant_id)
+                .bind(source_id)
+                .bind(fallback_trigger_kind)
+                .fetch_one(tx.as_mut())
+                .await?;
+                row.0
+            }
+        };
+        tx.commit().await?;
+        Ok(run_id)
+    }
+
+    /// F.3.b — Mark a source_runs row as terminal (success/fail/skipped).
+    /// Failures should pass `Some(error_message)`. Returns Ok(()) even if the
+    /// row no longer exists (best-effort: we never want bookkeeping to fail
+    /// the whole crawl pipeline).
+    async fn finish_source_run(
+        &self,
+        tenant_id: uuid::Uuid,
+        run_id: uuid::Uuid,
+        status: &str,
+        articles_ingested: i32,
+        error_message: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let mut tx = self.begin_tenant_tx(tenant_id).await?;
+        sqlx::query(
+            r#"
+            UPDATE source_runs
+            SET status = $2,
+                articles_ingested = $3,
+                error_message = $4,
+                finished_at = NOW(),
+                updated_at = NOW()
+            WHERE id = $1
+            "#,
+        )
+        .bind(run_id)
+        .bind(status)
+        .bind(articles_ingested)
+        .bind(error_message)
+        .execute(tx.as_mut())
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// F.3.b — Pre-insert a `queued` source_runs row so the scheduled crawl
+    /// shows up in admin history with `trigger_kind='scheduled'`. Best-effort:
+    /// failure here is logged but does not block the enqueue.
+    async fn enqueue_scheduled_source_run(
+        &self,
+        tenant_id: uuid::Uuid,
+        source_id: uuid::Uuid,
+    ) -> anyhow::Result<()> {
+        let mut tx = self.begin_tenant_tx(tenant_id).await?;
+        sqlx::query(
+            r#"
+            INSERT INTO source_runs (tenant_id, source_id, trigger_kind, status)
+            VALUES ($1, $2, 'scheduled', 'queued')
+            "#,
+        )
+        .bind(tenant_id)
+        .bind(source_id)
+        .execute(tx.as_mut())
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// F.3.b — Periodic maintenance for source_runs:
+    ///   1) Force-fail rows stuck in `running` for > 24h (worker died mid-crawl)
+    ///   2) Drop rows older than 90 days to keep the admin history bounded
+    /// Runs across all tenants; uses a tenant-scoped tx for each tenant_id present.
+    async fn run_source_runs_maintenance(&self) -> anyhow::Result<()> {
+        // Collect distinct tenant_ids that have any source_runs. We only need to
+        // touch tenants with data; this avoids a full tenants scan.
+        let tenant_ids: Vec<uuid::Uuid> =
+            sqlx::query_scalar("SELECT DISTINCT tenant_id FROM source_runs")
+                .fetch_all(&self.pool)
+                .await?;
+
+        let mut orphaned = 0i64;
+        let mut deleted = 0i64;
+        for tenant_id in tenant_ids {
+            let mut tx = self.begin_tenant_tx(tenant_id).await?;
+            let orphan_rows = sqlx::query(
+                r#"
+                UPDATE source_runs
+                SET status = 'fail',
+                    error_message = COALESCE(error_message, 'timeout — orphaned'),
+                    finished_at = NOW(),
+                    updated_at = NOW()
+                WHERE status = 'running'
+                  AND started_at IS NOT NULL
+                  AND started_at < NOW() - make_interval(hours => $1::int)
+                "#,
+            )
+            .bind(SOURCE_RUNS_ORPHAN_TIMEOUT_HOURS as i32)
+            .execute(tx.as_mut())
+            .await?;
+            orphaned += orphan_rows.rows_affected() as i64;
+
+            let cleanup_rows = sqlx::query(
+                r#"
+                DELETE FROM source_runs
+                WHERE created_at < NOW() - make_interval(days => $1::int)
+                "#,
+            )
+            .bind(SOURCE_RUNS_RETENTION_DAYS as i32)
+            .execute(tx.as_mut())
+            .await?;
+            deleted += cleanup_rows.rows_affected() as i64;
+
+            tx.commit().await?;
+        }
+
+        if orphaned > 0 || deleted > 0 {
+            info!(
+                orphaned,
+                deleted, "source_runs maintenance: orphan-failed and cleaned up old rows"
+            );
+        }
+        Ok(())
     }
 
     async fn ensure_incremental_seed_for_tenant(
@@ -3013,6 +3245,27 @@ impl Worker {
             .await
             .map_err(|e| anyhow::anyhow!("Failed to fetch source {}: {}", task.source_id, e))?;
 
+        // F.3.b — Take ownership of a source_runs row for this crawl. Either claim
+        // an existing `queued` row (manual run from admin endpoint, scheduled enqueue)
+        // or insert a fresh `running` row (legacy /sources/{id}/fetch path). Failure
+        // here is non-fatal; the crawl itself proceeds and the admin history just
+        // misses one entry.
+        let source_run_id = match self
+            .claim_or_create_source_run(tenant_id, task.source_id, "manual")
+            .await
+        {
+            Ok(id) => Some(id),
+            Err(err) => {
+                warn!(
+                    %tenant_id,
+                    source_id = %task.source_id,
+                    error = %err,
+                    "claim_or_create_source_run failed; admin history will not record this run"
+                );
+                None
+            }
+        };
+
         // Build CrawlJobConfig from IngestTask + source record
         let job = CrawlJobConfig {
             tenant_id,
@@ -3203,6 +3456,27 @@ impl Worker {
                         .await;
                 }
 
+                // F.3.b — Close out the source_runs row with success.
+                if let Some(run_id) = source_run_id {
+                    if let Err(err) = self
+                        .finish_source_run(
+                            tenant_id,
+                            run_id,
+                            "success",
+                            saved_article_ids.len() as i32,
+                            None,
+                        )
+                        .await
+                    {
+                        warn!(
+                            %tenant_id,
+                            %run_id,
+                            error = %err,
+                            "finish_source_run(success) failed"
+                        );
+                    }
+                }
+
                 Ok(())
             }
             CrawlOutcome::Failed => {
@@ -3242,6 +3516,21 @@ impl Worker {
                             },
                         )
                         .await;
+                }
+
+                // F.3.b — Close out the source_runs row with fail.
+                if let Some(run_id) = source_run_id {
+                    if let Err(err) = self
+                        .finish_source_run(tenant_id, run_id, "fail", 0, Some(msg.as_str()))
+                        .await
+                    {
+                        warn!(
+                            %tenant_id,
+                            %run_id,
+                            error = %err,
+                            "finish_source_run(fail) failed"
+                        );
+                    }
                 }
 
                 Err(anyhow::anyhow!(msg))
@@ -3381,6 +3670,29 @@ impl Worker {
                     };
                 stage_reports.push(tags_stage);
 
+                // Sentiment analysis (graceful: 失败时不阻塞主链路，落库 None 即可)
+                let (sentiment_opt, sentiment_stage) = match ai_service
+                    .analyze_sentiment(&article.title, content)
+                    .await
+                {
+                    Ok(sentiment) => (Some(sentiment), AiStageReport::success("sentiment")),
+                    Err(err) => {
+                        warn!(
+                            article_id = %task.article_id,
+                            error = %err,
+                            "AI full sentiment analysis failed, falling back to NULL"
+                        );
+                        (
+                            None,
+                            AiStageReport::degraded(
+                                "sentiment",
+                                sanitize_error_message(err.to_string()),
+                            ),
+                        )
+                    }
+                };
+                stage_reports.push(sentiment_stage);
+
                 // Knowledge graph: extract entities and relations
                 if let Some(ref ks) = self.knowledge_service {
                     let entities_stage = match ks
@@ -3419,6 +3731,7 @@ impl Worker {
                     &summary,
                     &risk,
                     &tags,
+                    sentiment_opt.as_ref(),
                     &stage_summary,
                 )
                 .await?;
@@ -3579,6 +3892,7 @@ impl Worker {
                     AiStageReport::degraded("summarize", "ai service unavailable".to_string()),
                     AiStageReport::degraded("risk_assess", "ai service unavailable".to_string()),
                     AiStageReport::degraded("extract_tags", "ai service unavailable".to_string()),
+                    AiStageReport::degraded("sentiment", "ai service unavailable".to_string()),
                 ]);
                 self.update_article_full(
                     tenant_id,
@@ -3587,6 +3901,7 @@ impl Worker {
                     &summary,
                     &risk,
                     &tags,
+                    None,
                     &stage_summary,
                 )
                 .await
@@ -3637,8 +3952,21 @@ impl Worker {
         summary: &SummaryResult,
         risk: &RiskAssessment,
         tags: &TagsResult,
+        sentiment: Option<&SentimentResult>,
         stage_summary: &AiFullStageSummary,
     ) -> anyhow::Result<()> {
+        // sentiment 部分：成功时附带细分 aspect 列表入 ai_metadata；
+        // 主表 4 列由 articles.sentiment / sentiment_score / sentiment_rationale / sentiment_aspect 承接。
+        let sentiment_meta = sentiment.map(|s| {
+            json!({
+                "label": s.sentiment.as_db_str(),
+                "score": s.score,
+                "rationale": &s.rationale,
+                "aspect": &s.aspect,
+                "aspects": &s.aspects,
+            })
+        });
+
         let metadata_patch = json!({
             "category_confidence": classify.confidence,
             "sub_categories": &classify.sub_categories,
@@ -3649,6 +3977,7 @@ impl Worker {
             "recommendations": &risk.recommendations,
             "risk_level": format!("{:?}", risk.level).to_lowercase(),
             "abstract": &summary.abstract_text,
+            "sentiment": sentiment_meta,
             "full_status": stage_summary.full_status,
             "partial_success": stage_summary.partial_success,
             "degraded": stage_summary.degraded,
@@ -3656,6 +3985,13 @@ impl Worker {
             "stage_status": &stage_summary.stage_status,
             "tasks": &stage_summary.tasks,
         });
+
+        let sentiment_label: Option<&str> = sentiment.map(|s| s.sentiment.as_db_str());
+        let sentiment_score: Option<f64> = sentiment.map(|s| s.score as f64);
+        let sentiment_rationale: Option<&str> = sentiment
+            .map(|s| s.rationale.as_str())
+            .filter(|s| !s.is_empty());
+        let sentiment_aspect: Option<&str> = sentiment.and_then(|s| s.aspect.as_deref());
 
         let mut tx = self.begin_tenant_tx(tenant_id).await?;
         sqlx::query(
@@ -3667,6 +4003,10 @@ impl Worker {
                 tags = $5,
                 keywords = $6,
                 ai_metadata = COALESCE(ai_metadata, '{}'::jsonb) || $7::jsonb,
+                sentiment = COALESCE($8, sentiment),
+                sentiment_score = COALESCE($9, sentiment_score),
+                sentiment_rationale = COALESCE($10, sentiment_rationale),
+                sentiment_aspect = COALESCE($11, sentiment_aspect),
                 ai_processed_at = NOW(),
                 updated_at = NOW()
             WHERE id = $1
@@ -3679,6 +4019,10 @@ impl Worker {
         .bind(&tags.tags)
         .bind(&tags.keywords)
         .bind(&metadata_patch)
+        .bind(sentiment_label)
+        .bind(sentiment_score)
+        .bind(sentiment_rationale)
+        .bind(sentiment_aspect)
         .execute(&mut *tx)
         .await?;
 
@@ -4548,6 +4892,440 @@ impl Worker {
             "Report export task completed successfully"
         );
 
+        Ok(())
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // 租户导出队列处理 (Phase F.6 / Task #38)
+    // ══════════════════════════════════════════════════════════════
+
+    async fn handle_tenant_export_reserved(&self, reserved: ReservedTask<ExportTenantTask>) {
+        let queue = QUEUE_TENANT_EXPORT;
+        let task = reserved.task;
+        let task_id = task.id;
+        let payload = task.payload.clone();
+        let export_id = payload.export_id;
+        let tenant_id = payload.tenant_id;
+        let request_id = task_id.to_string();
+
+        // Idempotency: skip if a previous worker already finished this task.
+        match self.task_queue.is_done(queue, task_id).await {
+            Ok(true) => {
+                if let Err(e) = self
+                    .task_queue
+                    .ack_reserved(queue, &reserved.raw_payload)
+                    .await
+                {
+                    error!("Failed to ack duplicate tenant export task {}: {}", task_id, e);
+                }
+                return;
+            }
+            Ok(false) => {}
+            Err(e) => {
+                error!(
+                    "Failed to check tenant export task {} done: {}",
+                    task_id, e
+                );
+                return;
+            }
+        }
+
+        let result = timeout(
+            Duration::from_secs(TASK_TIMEOUT_TENANT_EXPORT_SECS),
+            self.run_tenant_export(payload, &request_id),
+        )
+        .await;
+
+        match result {
+            Ok(Ok(())) => {
+                if let Err(e) = self.task_queue.mark_done(queue, task_id).await {
+                    error!("Failed to mark tenant export task {} done: {}", task_id, e);
+                }
+                if let Err(e) = self
+                    .task_queue
+                    .ack_reserved(queue, &reserved.raw_payload)
+                    .await
+                {
+                    error!("Failed to ack tenant export task {}: {}", task_id, e);
+                }
+            }
+            Ok(Err(e)) => {
+                let error_msg = sanitize_error_message(e.to_string());
+                error!(
+                    %task_id,
+                    %export_id,
+                    %tenant_id,
+                    %error_msg,
+                    "Tenant export task failed"
+                );
+                // Persist failure to tenant_exports row (best-effort, ignore secondary error).
+                if let Err(persist_err) = self
+                    .write_tenant_export_failure(tenant_id, export_id, &error_msg)
+                    .await
+                {
+                    warn!(
+                        %task_id,
+                        %export_id,
+                        %tenant_id,
+                        error = %persist_err,
+                        "Failed to record tenant_exports failure row"
+                    );
+                }
+                match self
+                    .task_queue
+                    .retry_or_dead_letter(queue, task, error_msg)
+                    .await
+                {
+                    Ok(_) => {
+                        if let Err(e) = self
+                            .task_queue
+                            .ack_reserved(queue, &reserved.raw_payload)
+                            .await
+                        {
+                            error!("Failed to ack failed tenant export task {}: {}", task_id, e);
+                        }
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to schedule retry/DLQ for tenant export task {}: {}",
+                            task_id, e
+                        );
+                    }
+                }
+            }
+            Err(_) => {
+                let error_msg = format!("TASK_TIMEOUT after {}s", TASK_TIMEOUT_TENANT_EXPORT_SECS);
+                error!(
+                    %task_id,
+                    %export_id,
+                    %tenant_id,
+                    %error_msg,
+                    "Tenant export task timed out"
+                );
+                if let Err(persist_err) = self
+                    .write_tenant_export_failure(tenant_id, export_id, &error_msg)
+                    .await
+                {
+                    warn!(
+                        %task_id,
+                        %export_id,
+                        %tenant_id,
+                        error = %persist_err,
+                        "Failed to record tenant_exports timeout row"
+                    );
+                }
+                match self
+                    .task_queue
+                    .retry_or_dead_letter(queue, task, error_msg)
+                    .await
+                {
+                    Ok(_) => {
+                        if let Err(e) = self
+                            .task_queue
+                            .ack_reserved(queue, &reserved.raw_payload)
+                            .await
+                        {
+                            error!(
+                                "Failed to ack timed out tenant export task {}: {}",
+                                task_id, e
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to schedule retry/DLQ for timed out tenant export task {}: {}",
+                            task_id, e
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// 处理租户导出任务：标记 running → 聚合 6 个表（PII 已脱敏）→ JSON+gzip → 上传对象存储 → 标记 completed。
+    /// 全程在 tenant-scoped 事务内读取（RLS 保证只看到本租户行）；写入 tenant_exports 同样受 RLS 隔离。
+    async fn run_tenant_export(
+        &self,
+        task: ExportTenantTask,
+        request_id: &str,
+    ) -> anyhow::Result<()> {
+        let tenant_id = task.tenant_id;
+        let export_id = task.export_id;
+        let requested_by = task.requested_by;
+
+        info!(
+            %tenant_id,
+            %export_id,
+            %requested_by,
+            request_id = %request_id,
+            "Processing tenant export task"
+        );
+
+        let object_service = self
+            .object_service
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Object storage not configured for tenant export"))?;
+
+        // 1. 标记 running. RLS 已启用，tenant_exports UPDATE 必须走 with_tenant_tx。
+        law_eye_core::tenant::with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move {
+                let res = sqlx::query(
+                    r#"
+                    UPDATE tenant_exports
+                       SET status = 'running',
+                           started_at = NOW()
+                     WHERE id = $1
+                       AND tenant_id = $2
+                       AND status = 'queued'
+                    "#,
+                )
+                .bind(export_id)
+                .bind(tenant_id)
+                .execute(tx.as_mut())
+                .await
+                .map_err(|e| law_eye_common::Error::Database(e.to_string()))?;
+                if res.rows_affected() == 0 {
+                    // Either non-existent or already running/completed/failed; let downstream
+                    // status update flow decide. Don't error out here.
+                    warn!(%tenant_id, %export_id, "tenant_exports row not flipped to running (already advanced or missing)");
+                }
+                Ok(())
+            })
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("Mark tenant_export running failed: {}", e))?;
+
+        // 2. 聚合数据（事务级 SET LOCAL app.tenant_id 让 RLS 自动过滤）。
+        let dump_json: serde_json::Value =
+            law_eye_core::tenant::with_tenant_tx(&self.pool, tenant_id, |tx| {
+                Box::pin(async move {
+                    let articles: Vec<serde_json::Value> = sqlx::query_scalar(
+                        r#"
+                        SELECT to_jsonb(a) - 'embedding'
+                          FROM articles a
+                         WHERE a.tenant_id = $1
+                         ORDER BY a.created_at ASC
+                        "#,
+                    )
+                    .bind(tenant_id)
+                    .fetch_all(tx.as_mut())
+                    .await
+                    .map_err(|e| law_eye_common::Error::Database(e.to_string()))?;
+
+                    let categories: Vec<serde_json::Value> = sqlx::query_scalar(
+                        r#"
+                        SELECT to_jsonb(c)
+                          FROM categories c
+                         WHERE c.tenant_id = $1
+                         ORDER BY c.created_at ASC
+                        "#,
+                    )
+                    .bind(tenant_id)
+                    .fetch_all(tx.as_mut())
+                    .await
+                    .map_err(|e| law_eye_common::Error::Database(e.to_string()))?;
+
+                    let sources: Vec<serde_json::Value> = sqlx::query_scalar(
+                        r#"
+                        SELECT to_jsonb(s)
+                          FROM sources s
+                         WHERE s.tenant_id = $1
+                         ORDER BY s.created_at ASC
+                        "#,
+                    )
+                    .bind(tenant_id)
+                    .fetch_all(tx.as_mut())
+                    .await
+                    .map_err(|e| law_eye_common::Error::Database(e.to_string()))?;
+
+                    let channels: Vec<serde_json::Value> = sqlx::query_scalar(
+                        r#"
+                        SELECT to_jsonb(ch)
+                          FROM channels ch
+                         WHERE ch.tenant_id = $1
+                         ORDER BY ch.created_at ASC
+                        "#,
+                    )
+                    .bind(tenant_id)
+                    .fetch_all(tx.as_mut())
+                    .await
+                    .map_err(|e| law_eye_common::Error::Database(e.to_string()))?;
+
+                    // PII redaction red lines: never export password_hash, mfa secrets,
+                    // oauth tokens, or api_keys. We project an explicit allow-list.
+                    let users: Vec<serde_json::Value> = sqlx::query_scalar(
+                        r#"
+                        SELECT jsonb_build_object(
+                                  'id', u.id,
+                                  'email', u.email,
+                                  'display_name', u.display_name,
+                                  'avatar_url', u.avatar_url,
+                                  'is_active', u.is_active,
+                                  'last_login', u.last_login,
+                                  'created_at', u.created_at,
+                                  'updated_at', u.updated_at
+                               )
+                          FROM users u
+                         WHERE u.tenant_id = $1
+                         ORDER BY u.created_at ASC
+                        "#,
+                    )
+                    .bind(tenant_id)
+                    .fetch_all(tx.as_mut())
+                    .await
+                    .map_err(|e| law_eye_common::Error::Database(e.to_string()))?;
+
+                    let audit_log: Vec<serde_json::Value> = sqlx::query_scalar(
+                        r#"
+                        SELECT to_jsonb(al)
+                          FROM audit_logs al
+                         WHERE al.tenant_id = $1
+                           AND al.created_at >= NOW() - INTERVAL '90 days'
+                         ORDER BY al.created_at ASC
+                        "#,
+                    )
+                    .bind(tenant_id)
+                    .fetch_all(tx.as_mut())
+                    .await
+                    .map_err(|e| law_eye_common::Error::Database(e.to_string()))?;
+
+                    Ok(json!({
+                        "schema_version": 1,
+                        "tenant_id": tenant_id,
+                        "exported_at": chrono::Utc::now().to_rfc3339(),
+                        "audit_log_window_days": 90,
+                        "articles": articles,
+                        "categories": categories,
+                        "sources": sources,
+                        "channels": channels,
+                        "users": users,
+                        "audit_log": audit_log,
+                    }))
+                })
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("Aggregate tenant export data failed: {}", e))?;
+
+        // 3. JSON 序列化 + gzip 压缩。
+        let raw_json =
+            serde_json::to_vec(&dump_json).context("Serialize tenant export JSON failed")?;
+        let compressed = {
+            use flate2::write::GzEncoder;
+            use flate2::Compression;
+            use std::io::Write;
+            let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+            encoder
+                .write_all(&raw_json)
+                .context("gzip write tenant export bytes failed")?;
+            encoder
+                .finish()
+                .context("gzip finalize tenant export bytes failed")?
+        };
+        let size_bytes = compressed.len() as i64;
+        let object_key = format!("{}/{}.json.gz", tenant_id, export_id);
+
+        // 4. 上传到对象存储；记录元数据用 tenant_id 作为 RLS 锚点。
+        object_service
+            .upload_raw_bytes_with_record(
+                tenant_id,
+                Some(requested_by),
+                OBJECT_KIND_TENANT_EXPORT,
+                &object_key,
+                "application/gzip",
+                compressed,
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("Upload tenant export to object storage failed: {}", e))?;
+
+        info!(
+            %tenant_id,
+            %export_id,
+            request_id = %request_id,
+            %object_key,
+            size_bytes,
+            "Tenant export uploaded to object storage"
+        );
+
+        // 5. 标记 completed + 写入 download_url + size_bytes。download_url 暂存 object_key；
+        // 实际签名 URL 由 super-admin 下载接口按需 issue。
+        law_eye_core::tenant::with_tenant_tx(&self.pool, tenant_id, |tx| {
+            let object_key = object_key.clone();
+            Box::pin(async move {
+                sqlx::query(
+                    r#"
+                    UPDATE tenant_exports
+                       SET status = 'completed',
+                           download_url = $3,
+                           size_bytes = $4,
+                           finished_at = NOW(),
+                           error_message = NULL
+                     WHERE id = $1
+                       AND tenant_id = $2
+                    "#,
+                )
+                .bind(export_id)
+                .bind(tenant_id)
+                .bind(&object_key)
+                .bind(size_bytes)
+                .execute(tx.as_mut())
+                .await
+                .map_err(|e| law_eye_common::Error::Database(e.to_string()))?;
+                Ok(())
+            })
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("Mark tenant_export completed failed: {}", e))?;
+
+        info!(
+            %tenant_id,
+            %export_id,
+            request_id = %request_id,
+            %object_key,
+            size_bytes,
+            "Tenant export task completed successfully"
+        );
+
+        Ok(())
+    }
+
+    /// 在 handler 失败/超时分支调用，把 tenant_exports 标记为 failed。
+    /// RLS 启用，因此用 with_tenant_tx；任何 DB 错误返回给调用方记 warn。
+    async fn write_tenant_export_failure(
+        &self,
+        tenant_id: uuid::Uuid,
+        export_id: uuid::Uuid,
+        error_msg: &str,
+    ) -> anyhow::Result<()> {
+        let trimmed = if error_msg.len() > 1024 {
+            error_msg.chars().take(1024).collect::<String>()
+        } else {
+            error_msg.to_string()
+        };
+        law_eye_core::tenant::with_tenant_tx(&self.pool, tenant_id, |tx| {
+            let trimmed = trimmed.clone();
+            Box::pin(async move {
+                sqlx::query(
+                    r#"
+                    UPDATE tenant_exports
+                       SET status = 'failed',
+                           error_message = $3,
+                           finished_at = NOW()
+                     WHERE id = $1
+                       AND tenant_id = $2
+                       AND status IN ('queued','running')
+                    "#,
+                )
+                .bind(export_id)
+                .bind(tenant_id)
+                .bind(&trimmed)
+                .execute(tx.as_mut())
+                .await
+                .map_err(|e| law_eye_common::Error::Database(e.to_string()))?;
+                Ok(())
+            })
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("Mark tenant_export failed failed: {}", e))?;
         Ok(())
     }
 
