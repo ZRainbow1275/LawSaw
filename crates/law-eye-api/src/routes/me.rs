@@ -23,6 +23,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthSession;
 use crate::routes::articles::ArticleResponse;
+use crate::routes::auth::{AuthResponse, UserResponse};
 use crate::state::AppState;
 use crate::{ApiError, ApiJson, ApiResult, AppError};
 
@@ -665,9 +666,41 @@ pub(crate) async fn list_reading_history(
     }))
 }
 
+/// `GET /api/v1/me/profile` — alias of `/api/v1/auth/me`.
+///
+/// SPEC-01 §6.1 mirrors the auth-store contract on the client; the FE expected
+/// `/me/profile` while the backend canonical path is `/auth/me`. Returning the
+/// identical AuthResponse shape (success + user) keeps both routes
+/// interchangeable until consumers migrate.
+#[utoipa::path(
+    get,
+    path = "/api/v1/me/profile",
+    security(("session" = [])),
+    responses(
+        (status = 200, description = "Current user", body = AuthResponse),
+        (status = 401, description = "Not authenticated", body = ApiError)
+    ),
+    tag = "me"
+)]
+pub(crate) async fn get_my_profile(auth_session: AuthSession) -> ApiResult<Json<AuthResponse>> {
+    let user = auth_session
+        .user
+        .ok_or_else(|| AppError::unauthorized("Not authenticated"))?;
+
+    let user_resp: UserResponse = user.into();
+    Ok(Json(AuthResponse {
+        success: true,
+        message: "Authenticated".to_string(),
+        user: Some(user_resp),
+        mfa_required: Some(false),
+        mfa_challenge: None,
+    }))
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/feed", get(get_feed))
+        .route("/profile", get(get_my_profile))
         .route("/articles/{id}/ai", get(get_my_article_ai))
         .route("/articles/{id}/read", post(record_article_read))
         .route("/reading-history", get(list_reading_history))

@@ -19,7 +19,13 @@ use crate::state::AppState;
 use crate::{ApiJson, ApiResult, AppError};
 
 pub fn public_router() -> Router<AppState> {
-    Router::new().route("/active", get(list_active_banners))
+    // `/active` is the canonical SPEC-04 §3.2 route. `/` is a back-compat alias
+    // — the FE landed on `GET /api/v1/banners` first; until all callers migrate
+    // we keep both pointing at the same handler so a basic_user feed isn't
+    // broken by a 404.
+    Router::new()
+        .route("/active", get(list_active_banners))
+        .route("/", get(list_active_banners))
 }
 
 pub fn admin_router() -> Router<AppState> {
