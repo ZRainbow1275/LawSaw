@@ -56,6 +56,9 @@ test-results/
 active/
 archived/
 expired/
+/active
+/archived
+/expired
 tmpclaude-*/
 list_sessions.js
 **/tmp/
@@ -81,3 +84,36 @@ coverage/
 # Python
 **/__pycache__/
 .gitnexus
+
+# 0430 close-out housekeeping — abandoned scaffolding from prior tasks
+# These untracked paths produce 21 typecheck errors in a fresh checkout but
+# are not part of any feature branch. They are scoped here until the owning
+# tasks land or are explicitly retired.
+apps/web/src/components/analytics/prototype/
+apps/web/src/components/articles/prototype/
+apps/web/src/components/dashboard/prototype/
+apps/web/src/components/knowledge/prototype/
+apps/web/src/components/reports/prototype/
+apps/web/src/components/brand/
+apps/web/src/components/feed/
+apps/web/src/components/feedback/
+apps/web/src/components/settings/
+apps/web/src/components/layout/search-overlay.tsx
+apps/web/src/stores/workspace-store.test.ts
+apps/web/run-a5-runtime-check.mjs
+apps/web/src/app/\[locale\]/me/page.tsx
+prototype/*.mp4
+tmp-ai-cookies.txt
+customer-feed-*.png
+customer-feed.png
+admin-users-*.png
+admin-users.png
+verify-*.jpeg
+docker-compose.devtest.yml
+# Reserved migration numbers held by other in-flight branches
+crates/law-eye-db/migrations/075_role_tier_seed_v3.sql
+crates/law-eye-db/migrations/078_ai_governance.sql
+
+# Misc local artifacts not tied to any feature branch
+.agents/skills/trellis-meta/
+scripts/seed-knowledge-qa.sql
