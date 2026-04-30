@@ -710,7 +710,7 @@ export default function MeSettingsPage() {
 										</Badge>
 										{t(roleTierLabelKeyFor(tier))}
 									</div>
-									<Link href={withLocalePath(locale, "/settings/profile")}>
+									<Link href={withLocalePath(locale, "/me/settings")}>
 										<Button>
 											<Sparkles
 												aria-hidden="true"

@@ -169,7 +169,7 @@ export function SettingsBillingTab({ tier }: BillingTabProps) {
 							</div>
 						</div>
 						{!isStaffTier && tier !== "premium_user" && (
-							<Link href={withLocalePath(locale, "/settings/profile")}>
+							<Link href={withLocalePath(locale, "/me/settings")}>
 								<Button>
 									<Sparkles aria-hidden="true" className="mr-2 h-4 w-4" />
 									{t("Upgrade account")}
@@ -248,7 +248,7 @@ export function SettingsBillingTab({ tier }: BillingTabProps) {
 								</ul>
 								{isUpgrade && (
 									<Link
-										href={withLocalePath(locale, "/settings/profile")}
+										href={withLocalePath(locale, "/me/settings")}
 										className="block"
 									>
 										<Button variant="outline" className="w-full">

@@ -102,7 +102,7 @@ export function KnowledgeTierGate({
 							</p>
 						</div>
 					</div>
-					<Link href={withLocalePath(locale, "/settings/profile")}>
+					<Link href={withLocalePath(locale, "/me/settings")}>
 						<Button variant="default">
 							<Sparkles aria-hidden="true" className="mr-2 h-4 w-4" />
 							{t("Upgrade account")}

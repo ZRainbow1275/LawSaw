@@ -169,7 +169,7 @@ export function EntityInspector({
 												</p>
 											)}
 											<Link
-												href={withLocalePath(locale, "/settings/profile")}
+												href={withLocalePath(locale, "/me/settings")}
 												className="inline-block"
 											>
 												<Button type="button" size="sm" variant="default">
