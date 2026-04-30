@@ -1785,5 +1785,21 @@
 	"Quota & budgets": "配额与预算",
 	"Choose default model and tenant model overrides.": "选择默认模型与租户模型覆盖。",
 	"Inspect prompt revisions and rollout status.": "查看提示词版本与发布状态。",
-	"Configure tenant AI quota and budget alerts.": "配置租户 AI 配额与预算告警。"
+	"Configure tenant AI quota and budget alerts.": "配置租户 AI 配额与预算告警。",
+	"This admin sub-route is reserved by the SPEC-02 dual-panel migration. The CRUD and detail UI will land in a follow-up wave; navigation and authorization are already wired so that no admin links break.": "此管理子路由由 SPEC-02 双面板迁移预留。CRUD 与详情 UI 将在后续阶段交付；导航与授权已就绪，确保管理链接不会失效。",
+	"Govern model allow-lists, redaction policy, and tenant AI spend caps.": "管理模型白名单、脱敏策略以及租户 AI 支出上限。",
+	"Compose a tenant or audience-segment-scoped banner ahead of publication.": "在发布前编写按租户或受众分群作用域的横幅。",
+	"User profile": "用户档案",
+	"Inspect a tenant member's roles, ReBAC tuples, and recent activity.": "查看租户成员的角色、ReBAC 关系元组以及近期活动。",
+	"Report template": "报告模板",
+	"Edit a single report template, preview its markdown rendering, and manage ReBAC scope.": "编辑单个报告模板，预览 Markdown 渲染并管理 ReBAC 作用域。",
+	"Inspect the report generation pipeline, retry failures, and audit historical outputs.": "审视报告生成流水线、重试失败以及审计历史输出。",
+	"New report": "新建报告",
+	"Schedule a new report generation run from a published template.": "基于已发布模板编排一次新的报告生成。",
+	"Feedback ticket": "反馈工单",
+	"Triage a single feedback record, post a reply, and audit prior interactions.": "处理单条反馈、发表回复并审计历史交互。",
+	"Knowledge entity": "知识实体",
+	"Inspect a single knowledge graph entity, its relations, mentions, and embedding coverage.": "查看单个知识图谱实体的关系、提及以及嵌入覆盖。",
+	"Inspect a single channel's subscribers, included sources, and visibility policy.": "查看单个频道的订阅者、纳入源以及可见性策略。",
+	"Inspect a single ingestion source's recent runs, error history, and ingested articles.": "查看单个采集源的近期运行、错误历史以及入库文章。"
 }

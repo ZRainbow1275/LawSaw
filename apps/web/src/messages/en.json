@@ -1758,5 +1758,21 @@
 	"Quota & budgets": "Quota & budgets",
 	"Choose default model and tenant model overrides.": "Choose default model and tenant model overrides.",
 	"Inspect prompt revisions and rollout status.": "Inspect prompt revisions and rollout status.",
-	"Configure tenant AI quota and budget alerts.": "Configure tenant AI quota and budget alerts."
+	"Configure tenant AI quota and budget alerts.": "Configure tenant AI quota and budget alerts.",
+	"This admin sub-route is reserved by the SPEC-02 dual-panel migration. The CRUD and detail UI will land in a follow-up wave; navigation and authorization are already wired so that no admin links break.": "This admin sub-route is reserved by the SPEC-02 dual-panel migration. The CRUD and detail UI will land in a follow-up wave; navigation and authorization are already wired so that no admin links break.",
+	"Govern model allow-lists, redaction policy, and tenant AI spend caps.": "Govern model allow-lists, redaction policy, and tenant AI spend caps.",
+	"Compose a tenant or audience-segment-scoped banner ahead of publication.": "Compose a tenant or audience-segment-scoped banner ahead of publication.",
+	"User profile": "User profile",
+	"Inspect a tenant member's roles, ReBAC tuples, and recent activity.": "Inspect a tenant member's roles, ReBAC tuples, and recent activity.",
+	"Report template": "Report template",
+	"Edit a single report template, preview its markdown rendering, and manage ReBAC scope.": "Edit a single report template, preview its markdown rendering, and manage ReBAC scope.",
+	"Inspect the report generation pipeline, retry failures, and audit historical outputs.": "Inspect the report generation pipeline, retry failures, and audit historical outputs.",
+	"New report": "New report",
+	"Schedule a new report generation run from a published template.": "Schedule a new report generation run from a published template.",
+	"Feedback ticket": "Feedback ticket",
+	"Triage a single feedback record, post a reply, and audit prior interactions.": "Triage a single feedback record, post a reply, and audit prior interactions.",
+	"Knowledge entity": "Knowledge entity",
+	"Inspect a single knowledge graph entity, its relations, mentions, and embedding coverage.": "Inspect a single knowledge graph entity, its relations, mentions, and embedding coverage.",
+	"Inspect a single channel's subscribers, included sources, and visibility policy.": "Inspect a single channel's subscribers, included sources, and visibility policy.",
+	"Inspect a single ingestion source's recent runs, error history, and ingested articles.": "Inspect a single ingestion source's recent runs, error history, and ingested articles."
 }
