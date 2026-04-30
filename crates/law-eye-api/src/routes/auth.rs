@@ -60,6 +60,46 @@ async fn ensure_tenant_roles_seeded(
                         '["articles:read","sources:read","categories:read","feedbacks:write","feedbacks:read","users:read","objects:read"]'::jsonb,
                         '只读用户',
                         NOW()
+                    ),
+                    (
+                        gen_random_uuid(),
+                        $1,
+                        'basic_user',
+                        '["articles:read","categories:read","sources:read","channels:read","reports:read","analytics:read","banners:read","knowledge:read","feedbacks:write","feedbacks:read","objects:read"]'::jsonb,
+                        '普通用户（basic_user）',
+                        NOW()
+                    ),
+                    (
+                        gen_random_uuid(),
+                        $1,
+                        'verified_user',
+                        '["articles:read","categories:read","sources:read","channels:read","reports:read","analytics:read","banners:read","knowledge:read","feedbacks:write","feedbacks:read","objects:read","ai:use:summary"]'::jsonb,
+                        '认证用户（verified_user）',
+                        NOW()
+                    ),
+                    (
+                        gen_random_uuid(),
+                        $1,
+                        'premium_user',
+                        '["articles:read","categories:read","sources:read","channels:read","reports:read","analytics:read","banners:read","knowledge:read","feedbacks:write","feedbacks:read","objects:read","ai:use:summary","reports:export","ai:use:sentiment"]'::jsonb,
+                        '高级用户（premium_user）',
+                        NOW()
+                    ),
+                    (
+                        gen_random_uuid(),
+                        $1,
+                        'tenant_admin',
+                        '["*"]'::jsonb,
+                        '租户管理员（tenant_admin）',
+                        NOW()
+                    ),
+                    (
+                        gen_random_uuid(),
+                        $1,
+                        'super_admin',
+                        '["*"]'::jsonb,
+                        '超级管理员（super_admin）',
+                        NOW()
                     )
                 ON CONFLICT (tenant_id, name) DO NOTHING
                 "#,
