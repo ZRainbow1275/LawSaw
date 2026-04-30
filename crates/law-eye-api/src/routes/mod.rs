@@ -405,9 +405,14 @@ pub fn create_router(state: AppState) -> Router {
             "/apikeys",
             require_permission(apikeys::router(), "apikeys:manage"),
         )
+        // Knowledge graph: outer gate is the read-tier permission so basic
+        // users can hit search/stats/analytics endpoints. Write-tier handlers
+        // (merge/backfill/backfill-llm) call `require_knowledge_manage` in
+        // `routes/knowledge/handlers.rs`, which enforces the SPEC-01
+        // `knowledge:manage` permission tenant-admin and super-admin hold.
         .nest(
             "/knowledge",
-            require_permission(knowledge::router(), "articles:read"),
+            require_permission(knowledge::router(), "knowledge:read"),
         )
         .nest(
             "/statistics",
