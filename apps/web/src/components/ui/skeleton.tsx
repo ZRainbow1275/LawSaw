@@ -166,7 +166,9 @@ interface ChartPanelSkeletonProps {
 }
 
 /** Chart panel skeleton. */
-export function ChartPanelSkeleton({ height = 224 }: ChartPanelSkeletonProps = {}) {
+export function ChartPanelSkeleton({
+	height = 224,
+}: ChartPanelSkeletonProps = {}) {
 	return (
 		<div className="rounded-xl border border-neutral-100 bg-white p-4 space-y-4">
 			{/* Toolbar */}
@@ -193,7 +195,7 @@ export function ChartPanelSkeleton({ height = 224 }: ChartPanelSkeletonProps = {
 							key={key}
 							variant="rectangular"
 							width="100%"
-							height={`${30 + (idx * 11) % 60}%`}
+							height={`${30 + ((idx * 11) % 60)}%`}
 							className="flex-1"
 						/>
 					))}

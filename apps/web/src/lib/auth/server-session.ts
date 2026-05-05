@@ -1,8 +1,8 @@
 import "server-only";
 
+import { type ServerSession, fetchSession } from "@/lib/auth/server";
+import type { RoleTier } from "@/lib/authz";
 import { cache } from "react";
-import { type RoleTier } from "@/lib/authz";
-import { fetchSession, type ServerSession } from "@/lib/auth/server";
 
 /**
  * SSR session DTO consumed by Server Components for routing decisions.
@@ -39,10 +39,8 @@ function toSessionDto(session: ServerSession): SessionDto {
  * - Wrapped in React `cache()` so that multiple Server Components in the same
  *   request share a single API call (deduplicated within one render).
  */
-export const getServerSession = cache(
-	async (): Promise<SessionDto | null> => {
-		const session = await fetchSession();
-		if (!session) return null;
-		return toSessionDto(session);
-	},
-);
+export const getServerSession = cache(async (): Promise<SessionDto | null> => {
+	const session = await fetchSession();
+	if (!session) return null;
+	return toSessionDto(session);
+});

@@ -16,6 +16,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import {
+	useChangePassword,
+	useLoginActivity,
+	useMfaTotpConfirm,
+	useMfaTotpDisable,
+	useMfaTotpSetup,
+} from "@/hooks/use-security";
+import {
 	useCreateTenant,
 	useDeleteTenant,
 	useRefreshTenantUsage,
@@ -33,13 +40,6 @@ import {
 	useUpdateWebhook,
 	useWebhooks,
 } from "@/hooks/use-webhooks";
-import {
-	useChangePassword,
-	useLoginActivity,
-	useMfaTotpConfirm,
-	useMfaTotpDisable,
-	useMfaTotpSetup,
-} from "@/hooks/use-security";
 import { ApiClientError, apiClient, ifMatchFromVersion } from "@/lib/api";
 import {
 	type ApiKey,
@@ -65,9 +65,9 @@ import {
 	Building2,
 	Copy,
 	Database,
+	ExternalLink,
 	Eye,
 	EyeOff,
-	ExternalLink,
 	Globe,
 	Key,
 	Lock,
@@ -356,10 +356,7 @@ function SettingsContent() {
 			);
 			await refreshWebPushStatus();
 		} catch (err) {
-			toastError(
-				t("Failed to enable Web Push"),
-				uiMessageFromError(err, t),
-			);
+			toastError(t("Failed to enable Web Push"), uiMessageFromError(err, t));
 			await refreshWebPushStatus();
 		} finally {
 			setWebPush((prev) => ({ ...prev, busy: false }));
@@ -386,10 +383,7 @@ function SettingsContent() {
 			toastSuccess(t("Web Push disabled"));
 			await refreshWebPushStatus();
 		} catch (err) {
-			toastError(
-				t("Failed to disable Web Push"),
-				uiMessageFromError(err, t),
-			);
+			toastError(t("Failed to disable Web Push"), uiMessageFromError(err, t));
 			await refreshWebPushStatus();
 		} finally {
 			setWebPush((prev) => ({ ...prev, busy: false }));
@@ -1189,7 +1183,9 @@ function SettingsContent() {
 											<CardHeader>
 												<CardTitle>{t("Tenant management")}</CardTitle>
 												<CardDescription>
-													{t("You don't have permission to access this resource.")}
+													{t(
+														"You don't have permission to access this resource.",
+													)}
 												</CardDescription>
 											</CardHeader>
 										</Card>
@@ -1204,7 +1200,9 @@ function SettingsContent() {
 											<CardHeader>
 												<CardTitle>{t("Webhook management")}</CardTitle>
 												<CardDescription>
-													{t("You don't have permission to access this resource.")}
+													{t(
+														"You don't have permission to access this resource.",
+													)}
 												</CardDescription>
 											</CardHeader>
 										</Card>

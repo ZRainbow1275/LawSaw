@@ -79,8 +79,12 @@ export interface UseReadingHistoryOptions {
 }
 
 export function useReadingHistory(options: UseReadingHistoryOptions = {}) {
-	const { limit = 30, offset = 0, finishedOnly = false, enabled = true } =
-		options;
+	const {
+		limit = 30,
+		offset = 0,
+		finishedOnly = false,
+		enabled = true,
+	} = options;
 	const qs = new URLSearchParams();
 	qs.set("limit", String(limit));
 	qs.set("offset", String(offset));

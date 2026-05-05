@@ -145,18 +145,15 @@ export function VirtualList<TItem>({
 		setScrollTop(event.currentTarget.scrollTop);
 	}, []);
 
-	const measureRow = useCallback(
-		(index: number, size: number) => {
-			setDynamicSizes((previous) => {
-				const current = previous.get(index);
-				if (current === size) return previous;
-				const updated = new Map(previous);
-				updated.set(index, size);
-				return updated;
-			});
-		},
-		[],
-	);
+	const measureRow = useCallback((index: number, size: number) => {
+		setDynamicSizes((previous) => {
+			const current = previous.get(index);
+			if (current === size) return previous;
+			const updated = new Map(previous);
+			updated.set(index, size);
+			return updated;
+		});
+	}, []);
 
 	const visibleRows = useMemo(() => {
 		const rendered: ReactNode[] = [];
@@ -201,7 +198,10 @@ export function VirtualList<TItem>({
 			style={{ height, ...style }}
 			onScroll={handleScroll}
 		>
-			<div style={{ height: totalSize, position: "relative" }} role="presentation">
+			<div
+				style={{ height: totalSize, position: "relative" }}
+				role="presentation"
+			>
 				{visibleRows}
 			</div>
 		</ul>

@@ -1,17 +1,11 @@
-"use client";
+import { DEFAULT_LOCALE, withLocalePath } from "@/lib/i18n";
+import { redirect } from "next/navigation";
 
-import { UserShell } from "@/components/layout/user-shell";
-import { UserReportReader } from "@/components/reports/user-report-reader";
-import { useParams } from "next/navigation";
-
-export default function ReportReaderPage() {
-	const params = useParams<{ id: string }>();
-	const id = typeof params?.id === "string" ? params.id : "";
-	if (!id) return null;
-
-	return (
-		<UserShell widthVariant="wide">
-			<UserReportReader reportId={id} />
-		</UserShell>
-	);
+export default async function ReportReaderRedirect({
+	params,
+}: {
+	params: Promise<{ id: string }>;
+}): Promise<never> {
+	const { id } = await params;
+	redirect(withLocalePath(DEFAULT_LOCALE, `/reports/${encodeURIComponent(id)}`));
 }

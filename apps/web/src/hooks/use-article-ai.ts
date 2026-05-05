@@ -78,9 +78,7 @@ export function assertMeArticleAiResponse(
 		);
 	}
 	if (!isStringArray(value.tags) || !isStringArray(value.keywords)) {
-		throw new Error(
-			"MeArticleAiResponse: tags/keywords must be string[]",
-		);
+		throw new Error("MeArticleAiResponse: tags/keywords must be string[]");
 	}
 }
 
@@ -117,7 +115,9 @@ export function useArticleAi(articleId: string | null | undefined) {
  * Coerce `summary_key_points` (Value/JSON) into a clean `string[]` for UI.
  * Backend stores `[]` by default; tolerate both legacy `null` and bad shape.
  */
-export function readKeyPoints(payload: MeArticleAiResponse | undefined): string[] {
+export function readKeyPoints(
+	payload: MeArticleAiResponse | undefined,
+): string[] {
 	if (!payload) return [];
 	const raw = payload.summary_key_points;
 	return isStringArray(raw) ? raw : [];

@@ -1,12 +1,9 @@
 import "server-only";
 
-import { cookies, headers } from "next/headers";
 import type { AuthResponse, User, UserDetailResponse } from "@/lib/api/types";
-import {
-	assertAuthResponse,
-	assertUserDetailResponse,
-} from "@/lib/api/types";
-import { type RoleTier, normalizeRoleTier } from "@/lib/authz";
+import { assertAuthResponse, assertUserDetailResponse } from "@/lib/api/types";
+import { type RoleTier, deriveRoleTierFromRoles } from "@/lib/authz";
+import { cookies, headers } from "next/headers";
 
 export interface ServerSession {
 	user: User;
@@ -20,7 +17,9 @@ const DEFAULT_TIMEOUT_MS = 5_000;
 
 function resolveInternalApiBaseUrl(): string {
 	const proxyTarget =
-		process.env.LAW_EYE_API_PROXY_TARGET ?? process.env.NEXT_PUBLIC_API_URL ?? "";
+		process.env.LAW_EYE_API_PROXY_TARGET ??
+		process.env.NEXT_PUBLIC_API_URL ??
+		"";
 	const trimmed = proxyTarget.trim();
 	if (!trimmed) return "http://127.0.0.1:3001";
 	return trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
@@ -90,16 +89,6 @@ async function fetchJson<T>(
 	return parsed;
 }
 
-export function deriveRoleTierFromRoles(roleNames: readonly string[]): RoleTier {
-	if (roleNames.includes("super_admin")) return "super_admin";
-	if (roleNames.some((role) => role === "tenant_admin" || role === "admin"))
-		return "tenant_admin";
-	if (roleNames.includes("premium_user")) return "premium_user";
-	if (roleNames.some((role) => role === "verified_user" || role === "editor"))
-		return "verified_user";
-	return "basic_user";
-}
-
 export async function fetchSession(): Promise<ServerSession | null> {
 	const auth = await fetchJson<AuthResponse>(
 		"/api/v1/auth/me",
@@ -118,7 +107,7 @@ export async function fetchSession(): Promise<ServerSession | null> {
 		user: auth.user,
 		roles,
 		permissions,
-		roleTier: normalizeRoleTier(deriveRoleTierFromRoles(roles)),
+		roleTier: deriveRoleTierFromRoles(roles, auth.user.display_name ?? null),
 	};
 }
 

@@ -14,16 +14,27 @@ export interface AuthzDecisionRecord {
 }
 
 function isStringArray(value: unknown): value is string[] {
-	return Array.isArray(value) && value.every((item) => typeof item === "string");
+	return (
+		Array.isArray(value) && value.every((item) => typeof item === "string")
+	);
 }
 
-export function assertAuthzDecisionRecord(value: unknown): asserts value is AuthzDecisionRecord {
-	if (typeof value !== "object" || value === null || typeof (value as { allow?: unknown }).allow !== "boolean") {
+export function assertAuthzDecisionRecord(
+	value: unknown,
+): asserts value is AuthzDecisionRecord {
+	if (
+		typeof value !== "object" ||
+		value === null ||
+		typeof (value as { allow?: unknown }).allow !== "boolean"
+	) {
 		throw new Error("Invalid authz decision response");
 	}
 
 	const candidate = value as Record<string, unknown>;
-	if (candidate.decision_path != null && !isStringArray(candidate.decision_path)) {
+	if (
+		candidate.decision_path != null &&
+		!isStringArray(candidate.decision_path)
+	) {
 		throw new Error("Invalid authz decision path");
 	}
 	if (candidate.roles != null && !isStringArray(candidate.roles)) {
@@ -34,7 +45,11 @@ export function assertAuthzDecisionRecord(value: unknown): asserts value is Auth
 	}
 }
 
-export function useAuthzDecision(resourceType: string, resourceId: string | null, permission: string) {
+export function useAuthzDecision(
+	resourceType: string,
+	resourceId: string | null,
+	permission: string,
+) {
 	return useQuery({
 		queryKey: ["authzDecision", resourceType, resourceId, permission],
 		queryFn: () =>

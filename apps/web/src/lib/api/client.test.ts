@@ -103,7 +103,9 @@ describe("ApiClient request dedupe", () => {
 			},
 		});
 
-		const fetchMock: typeof fetch = vi.fn(async () => jsonResponse({ ok: true }));
+		const fetchMock: typeof fetch = vi.fn(async () =>
+			jsonResponse({ ok: true }),
+		);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 
 		const client = new ApiClient("http://172.19.96.1:8850", null);

@@ -69,8 +69,7 @@ export function ContinueReadingCard() {
 	const headingStyle: CSSProperties = { color: "var(--color-foreground)" };
 	const mutedStyle: CSSProperties = { color: "var(--surface-muted-text)" };
 	const itemSurface: CSSProperties = {
-		borderColor:
-			"color-mix(in srgb, var(--color-border) 78%, transparent)",
+		borderColor: "color-mix(in srgb, var(--color-border) 78%, transparent)",
 		backgroundColor: "var(--color-background)",
 	};
 	const progressTrackStyle: CSSProperties = {
@@ -85,10 +84,7 @@ export function ContinueReadingCard() {
 			<CardHeader>
 				<div className="flex flex-wrap items-start justify-between gap-3">
 					<div>
-						<CardTitle
-							className="flex items-center gap-2"
-							style={headingStyle}
-						>
+						<CardTitle className="flex items-center gap-2" style={headingStyle}>
 							<BookOpen aria-hidden="true" className="h-5 w-5" />
 							{t("Continue reading")}
 						</CardTitle>

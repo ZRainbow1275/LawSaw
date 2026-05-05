@@ -75,7 +75,6 @@ function visibilityVariant(
 			return "secondary";
 		case "premium":
 			return "warning";
-		case "restricted":
 		default:
 			return "outline";
 	}
@@ -188,17 +187,17 @@ export function ChannelDetailDrawer({
 						onClick={onClose}
 						aria-hidden="true"
 					/>
-					<motion.aside
+					<motion.dialog
+						open
 						variants={PANEL_VARIANTS}
 						initial="hidden"
 						animate="visible"
 						exit="exit"
-						className="ml-auto flex h-full w-full max-w-2xl flex-col overflow-hidden border-l shadow-2xl"
+						className="m-0 ml-auto flex h-full w-full max-h-none max-w-2xl flex-col overflow-hidden border-0 border-l p-0 shadow-2xl"
 						style={{
 							backgroundColor: "var(--color-background)",
 							borderColor: "var(--surface-muted-border)",
 						}}
-						role="dialog"
 						aria-label={t("Channel detail")}
 					>
 						<header
@@ -220,14 +219,10 @@ export function ChannelDetailDrawer({
 								</h2>
 								<div className="mt-2 flex flex-wrap gap-2">
 									<Badge variant="outline">/{channel.slug}</Badge>
-									<Badge
-										variant={visibilityVariant(channel.visibility)}
-									>
+									<Badge variant={visibilityVariant(channel.visibility)}>
 										{t(visibilityLabelKey(channel.visibility))}
 									</Badge>
-									<Badge
-										variant={channel.is_active ? "success" : "secondary"}
-									>
+									<Badge variant={channel.is_active ? "success" : "secondary"}>
 										{channel.is_active ? t("Active") : t("Archived")}
 									</Badge>
 								</div>
@@ -258,9 +253,7 @@ export function ChannelDetailDrawer({
 								active={activeTab === "policies"}
 								onClick={() => setActiveTab("policies")}
 								label={t("Access policies")}
-								icon={
-									<ShieldCheck aria-hidden="true" className="h-4 w-4" />
-								}
+								icon={<ShieldCheck aria-hidden="true" className="h-4 w-4" />}
 							/>
 							<TabButton
 								active={activeTab === "banners"}
@@ -272,9 +265,7 @@ export function ChannelDetailDrawer({
 								active={activeTab === "actions"}
 								onClick={() => setActiveTab("actions")}
 								label={t("Actions")}
-								icon={
-									<ClipboardList aria-hidden="true" className="h-4 w-4" />
-								}
+								icon={<ClipboardList aria-hidden="true" className="h-4 w-4" />}
 							/>
 						</nav>
 
@@ -329,7 +320,7 @@ export function ChannelDetailDrawer({
 								/>
 							) : null}
 						</div>
-					</motion.aside>
+					</motion.dialog>
 				</div>
 			) : null}
 		</AnimatePresence>
@@ -395,10 +386,7 @@ function OverviewTab({
 				style={surfaceStyle}
 				data-testid="channel-overview-profile"
 			>
-				<h3
-					className="text-xs uppercase tracking-wide"
-					style={mutedStyle}
-				>
+				<h3 className="text-xs uppercase tracking-wide" style={mutedStyle}>
 					{t("Profile")}
 				</h3>
 				<dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
@@ -458,10 +446,7 @@ function OverviewTab({
 				style={surfaceStyle}
 				data-testid="channel-overview-description"
 			>
-				<h3
-					className="text-xs uppercase tracking-wide"
-					style={mutedStyle}
-				>
+				<h3 className="text-xs uppercase tracking-wide" style={mutedStyle}>
 					{t("Description")}
 				</h3>
 				<p className="mt-2 text-sm" style={headingStyle}>
@@ -474,10 +459,7 @@ function OverviewTab({
 				style={surfaceStyle}
 				data-testid="channel-overview-metadata"
 			>
-				<h3
-					className="text-xs uppercase tracking-wide"
-					style={mutedStyle}
-				>
+				<h3 className="text-xs uppercase tracking-wide" style={mutedStyle}>
 					{t("Metadata")}
 				</h3>
 				{metadataEntries.length === 0 ? (
@@ -495,9 +477,7 @@ function OverviewTab({
 									{key}
 								</dt>
 								<dd className="truncate" style={headingStyle}>
-									{typeof value === "string"
-										? value
-										: JSON.stringify(value)}
+									{typeof value === "string" ? value : JSON.stringify(value)}
 								</dd>
 							</div>
 						))}
@@ -596,9 +576,7 @@ function PoliciesTab({
 				<span className="col-span-4">{t("Subject")}</span>
 				<span className="col-span-2 text-center">{t("Priority")}</span>
 				<span className="col-span-2 text-center">{t("Read")}</span>
-				<span className="col-span-2 text-center">
-					{t("Source meta")}
-				</span>
+				<span className="col-span-2 text-center">{t("Source meta")}</span>
 				<span className="col-span-2 text-center">{t("Reports")}</span>
 			</header>
 			{entries.map((entry) => (
@@ -790,10 +768,7 @@ function ActionsTab({
 						disabled={pending}
 					>
 						{pending ? (
-							<Loader2
-								aria-hidden="true"
-								className="h-4 w-4 animate-spin"
-							/>
+							<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
 						) : channel.is_active ? (
 							<Archive aria-hidden="true" className="h-4 w-4" />
 						) : (

@@ -77,7 +77,9 @@ export function sanitizeRenderedHtml(renderedContent: string): string {
 
 	const doc = new DOMParser().parseFromString(sanitized, "text/html");
 
-	for (const anchor of Array.from(doc.querySelectorAll<HTMLAnchorElement>("a"))) {
+	for (const anchor of Array.from(
+		doc.querySelectorAll<HTMLAnchorElement>("a"),
+	)) {
 		const href = anchor.getAttribute("href")?.trim();
 		if (href && !isSafeUrl(href, allowedLinkProtocols)) {
 			anchor.removeAttribute("href");
@@ -101,7 +103,9 @@ export function sanitizeRenderedHtml(renderedContent: string): string {
 		}
 	}
 
-	for (const img of Array.from(doc.querySelectorAll<HTMLImageElement>("img[src]"))) {
+	for (const img of Array.from(
+		doc.querySelectorAll<HTMLImageElement>("img[src]"),
+	)) {
 		const src = img.getAttribute("src")?.trim();
 		if (!src || !isSafeUrl(src, allowedImageProtocols)) {
 			img.remove();
@@ -110,4 +114,3 @@ export function sanitizeRenderedHtml(renderedContent: string): string {
 
 	return doc.body.innerHTML;
 }
-

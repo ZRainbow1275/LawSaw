@@ -22,20 +22,17 @@
  */
 
 import { InviteUserModal } from "@/components/admin/invite-user-modal";
+import { useAdminDeepLink } from "@/hooks/use-admin-deep-link";
 import { UserDetailDrawer } from "@/components/admin/user-detail-drawer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import {
 	type AdminUserRow,
 	deriveRoleTierFromRoles,
+	useAdminUserDetail,
 	useAdminUsers,
 } from "@/hooks/use-admin-users";
 import {
@@ -55,7 +52,7 @@ import {
 	UsersRound,
 	XCircle,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const PAGE_SIZE = 50;
 
@@ -87,7 +84,7 @@ const rowVariants = {
 function inferTierFromRow(row: AdminUserRow): RoleTier {
 	const { roleTier } = splitDisplayNameRoleTier(row.display_name ?? null);
 	return deriveRoleTierFromRoles(
-		roleTier ? [roleTier] : [],
+		row.roles.length > 0 ? row.roles : [roleTier ?? row.role_tier],
 		row.display_name ?? null,
 	);
 }
@@ -95,6 +92,7 @@ function inferTierFromRow(row: AdminUserRow): RoleTier {
 export default function AdminUsersPage() {
 	const t = useT();
 	const locale = useLocale();
+	const { searchParams, clearSearchParams } = useAdminDeepLink();
 	// Server-side admin guard at [locale]/admin/layout.tsx — non-admin tiers
 	// are redirected to /me/feed before this client component is mounted, so
 	// the legacy `isAdmin` early-return is collapsed to a constant `true`.
@@ -105,15 +103,56 @@ export default function AdminUsersPage() {
 	const [tierFilter, setTierFilter] = useState<"all" | RoleTier>("all");
 	const [selectedUser, setSelectedUser] = useState<AdminUserRow | null>(null);
 	const [inviteOpen, setInviteOpen] = useState(false);
+	const userIdParam = searchParams.get("userId");
 
 	const usersQuery = useAdminUsers({
 		limit: PAGE_SIZE,
 		offset: page * PAGE_SIZE,
 		enabled: isAdmin,
 	});
+	const deepLinkedUserQuery = useAdminUserDetail(userIdParam);
 
 	const allRows = usersQuery.data?.data ?? [];
 	const total = usersQuery.data?.total ?? 0;
+
+	const deepLinkedUser = useMemo<AdminUserRow | null>(() => {
+		if (!userIdParam) return null;
+		const row = allRows.find((item) => item.id === userIdParam);
+		if (row) return row;
+
+		const detail = deepLinkedUserQuery.data;
+		if (!detail || detail.user.id !== userIdParam) return null;
+
+		return {
+			id: detail.user.id,
+			tenant_id: "",
+			email: detail.user.email,
+			display_name: detail.user.display_name,
+			avatar_url: detail.user.avatar_url,
+			is_active: detail.user.is_active,
+			email_verified_at: null,
+			last_login: detail.user.last_login,
+			version: detail.user.version,
+			created_at: detail.user.created_at,
+			roles: detail.roles,
+			role_tier: deriveRoleTierFromRoles(
+				detail.roles,
+				detail.user.display_name,
+			),
+		};
+	}, [allRows, deepLinkedUserQuery.data, userIdParam]);
+
+	useEffect(() => {
+		if (!userIdParam || !deepLinkedUser) return;
+		setSearchQuery("");
+		setTierFilter("all");
+		setSelectedUser(deepLinkedUser);
+	}, [deepLinkedUser, userIdParam]);
+
+	const closeUserDrawer = () => {
+		setSelectedUser(null);
+		clearSearchParams(["userId"]);
+	};
 
 	const filteredRows = useMemo(() => {
 		const trimmed = searchQuery.trim().toLowerCase();
@@ -213,8 +252,7 @@ export default function AdminUsersPage() {
 										style={
 											tierFilter === option.value
 												? {
-														backgroundColor:
-															"var(--surface-accent-strong)",
+														backgroundColor: "var(--surface-accent-strong)",
 														borderColor: "var(--color-primary-500)",
 														color: "var(--color-foreground)",
 													}
@@ -239,10 +277,7 @@ export default function AdminUsersPage() {
 							className="flex items-center gap-2 text-sm"
 							style={mutedTextStyle}
 						>
-							<Loader2
-								aria-hidden="true"
-								className="h-4 w-4 animate-spin"
-							/>
+							<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
 							{t("Loading users")}
 						</div>
 					) : usersQuery.isError ? (
@@ -289,8 +324,7 @@ export default function AdminUsersPage() {
 											<div
 												className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold"
 												style={{
-													backgroundColor:
-														"var(--surface-accent-strong)",
+													backgroundColor: "var(--surface-accent-strong)",
 													color: "var(--color-foreground)",
 												}}
 											>
@@ -358,17 +392,15 @@ export default function AdminUsersPage() {
 							style={mutedTextStyle}
 						>
 							<p>
-								{t("Page")} {page + 1} / {totalPages} ·{" "}
-								{t("Showing")} {filteredRows.length}
+								{t("Page")} {page + 1} / {totalPages} · {t("Showing")}{" "}
+								{filteredRows.length}
 							</p>
 							<div className="flex gap-2">
 								<Button
 									type="button"
 									size="sm"
 									variant="outline"
-									onClick={() =>
-										setPage((value) => Math.max(0, value - 1))
-									}
+									onClick={() => setPage((value) => Math.max(0, value - 1))}
 									disabled={page === 0 || usersQuery.isFetching}
 								>
 									{t("Previous")}
@@ -378,13 +410,9 @@ export default function AdminUsersPage() {
 									size="sm"
 									variant="outline"
 									onClick={() =>
-										setPage((value) =>
-											Math.min(totalPages - 1, value + 1),
-										)
+										setPage((value) => Math.min(totalPages - 1, value + 1))
 									}
-									disabled={
-										page >= totalPages - 1 || usersQuery.isFetching
-									}
+									disabled={page >= totalPages - 1 || usersQuery.isFetching}
 								>
 									{t("Next")}
 								</Button>
@@ -397,7 +425,7 @@ export default function AdminUsersPage() {
 			<UserDetailDrawer
 				open={selectedUser !== null}
 				user={selectedUser}
-				onClose={() => setSelectedUser(null)}
+				onClose={closeUserDrawer}
 			/>
 
 			<InviteUserModal

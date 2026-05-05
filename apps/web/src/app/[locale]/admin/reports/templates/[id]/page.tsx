@@ -1,16 +1,12 @@
-import { AdminPlaceholderPage } from "@/components/admin/admin-placeholder-page";
+import { DEFAULT_LOCALE, isLocale, withLocalePath } from "@/lib/i18n";
+import { redirect } from "next/navigation";
 
-/**
- * /<locale>/admin/reports/templates/[id] — placeholder per SPEC-02 §4 / P1.3.
- * Per-template editor (markdown body + CSS + ReBAC scoping) ships in a
- * follow-up wave. The reports admin page already opens an inline drawer
- * for in-place edits.
- */
-export default function AdminReportTemplateDetailPage() {
-	return (
-		<AdminPlaceholderPage
-			titleKey="Report template"
-			descriptionKey="Edit a single report template, preview its markdown rendering, and manage ReBAC scope."
-		/>
-	);
+export default async function AdminReportTemplateDetailPage({
+	params,
+}: {
+	params: Promise<{ locale: string; id: string }>;
+}): Promise<never> {
+	const resolved = await params;
+	const locale = isLocale(resolved.locale) ? resolved.locale : DEFAULT_LOCALE;
+	redirect(withLocalePath(locale, `/admin/reports?templateId=${encodeURIComponent(resolved.id)}`));
 }

@@ -3,12 +3,15 @@
 import { Button } from "@/components/ui/button";
 import { CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import type { ReportPeriodType, ReportTemplate } from "@/lib/api/types";
 import { renderArticleBodyHtml } from "@/lib/article-reader";
+import { formatDateTime } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { sanitizeRenderedHtml } from "@/lib/safe-html";
-import { GLOBAL_SAVE_SHORTCUT_EVENT, type GlobalSaveShortcutDetail } from "@/lib/shortcuts";
-import type { ReportPeriodType, ReportTemplate } from "@/lib/api/types";
-import { formatDateTime } from "@/lib/i18n";
+import {
+	GLOBAL_SAVE_SHORTCUT_EVENT,
+	type GlobalSaveShortcutDetail,
+} from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 import {
 	Bold,
@@ -17,9 +20,9 @@ import {
 	FileText,
 	Heading1,
 	Heading2,
+	Link2,
 	List,
 	ListOrdered,
-	Link2,
 	Quote,
 	RefreshCw,
 	Trash2,
@@ -67,10 +70,27 @@ const SNIPPET_BUTTONS = [
 	{ key: "h2", icon: Heading2, before: "## ", labelKey: "Heading 2" },
 	{ key: "bold", icon: Bold, before: "**", after: "**", labelKey: "Bold" },
 	{ key: "bullet", icon: List, before: "- ", labelKey: "Bullet list" },
-	{ key: "ordered", icon: ListOrdered, before: "1. ", labelKey: "Numbered list" },
+	{
+		key: "ordered",
+		icon: ListOrdered,
+		before: "1. ",
+		labelKey: "Numbered list",
+	},
 	{ key: "quote", icon: Quote, before: "> ", labelKey: "Quote" },
-	{ key: "link", icon: Link2, before: "[", after: "](https://example.com)", labelKey: "Link" },
-	{ key: "code", icon: Code2, before: "```\n", after: "\n```", labelKey: "Code block" },
+	{
+		key: "link",
+		icon: Link2,
+		before: "[",
+		after: "](https://example.com)",
+		labelKey: "Link",
+	},
+	{
+		key: "code",
+		icon: Code2,
+		before: "```\n",
+		after: "\n```",
+		labelKey: "Code block",
+	},
 ];
 
 export function ReportTemplateEditor({
@@ -100,7 +120,8 @@ export function ReportTemplateEditor({
 	const [editorMode, setEditorMode] = useState<EditorMode>("split");
 
 	const renderedPreview = useMemo(
-		() => sanitizeRenderedHtml(renderArticleBodyHtml(draft.template_body.trim())),
+		() =>
+			sanitizeRenderedHtml(renderArticleBodyHtml(draft.template_body.trim())),
 		[draft.template_body],
 	);
 	const headingOutline = useMemo(
@@ -116,11 +137,17 @@ export function ReportTemplateEditor({
 						line: index + 1,
 					};
 				})
-				.filter((item): item is { level: number; title: string; line: number } => !!item),
+				.filter(
+					(item): item is { level: number; title: string; line: number } =>
+						!!item,
+				),
 		[draft.template_body],
 	);
 	const editorMetrics = useMemo(() => {
-		const lines = draft.template_body.length === 0 ? 0 : draft.template_body.split(/\r?\n/).length;
+		const lines =
+			draft.template_body.length === 0
+				? 0
+				: draft.template_body.split(/\r?\n/).length;
 		const words = draft.template_body.trim()
 			? draft.template_body.trim().split(/\s+/).length
 			: 0;
@@ -191,11 +218,16 @@ export function ReportTemplateEditor({
 
 		window.requestAnimationFrame(() => {
 			textarea.focus();
-			textarea.setSelectionRange(next.nextSelectionStart, next.nextSelectionEnd);
+			textarea.setSelectionRange(
+				next.nextSelectionStart,
+				next.nextSelectionEnd,
+			);
 		});
 	};
 
-	const handleBodyKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+	const handleBodyKeyDown = (
+		event: React.KeyboardEvent<HTMLTextAreaElement>,
+	) => {
 		if (event.key === "Tab") {
 			event.preventDefault();
 			applySnippet("  ");
@@ -232,12 +264,18 @@ export function ReportTemplateEditor({
 				<div className="flex items-center justify-between gap-3">
 					<div>
 						<CardTitle>
-							{selectedTemplate ? t("Template editor") : t("Create report template")}
+							{selectedTemplate
+								? t("Template editor")
+								: t("Create report template")}
 						</CardTitle>
 						<CardDescription>
 							{selectedTemplate
-								? t("Edit the selected template body, cadence, and styling rules.")
-								: t("Create a new tenant-specific template for real report generation.")}
+								? t(
+										"Edit the selected template body, cadence, and styling rules.",
+									)
+								: t(
+										"Create a new tenant-specific template for real report generation.",
+									)}
 						</CardDescription>
 					</div>
 					<div className="flex flex-wrap items-center gap-2">
@@ -270,7 +308,10 @@ export function ReportTemplateEditor({
 							id="report-template-name"
 							value={draft.name}
 							onChange={(event) =>
-								onDraftChange((current) => ({ ...current, name: event.target.value }))
+								onDraftChange((current) => ({
+									...current,
+									name: event.target.value,
+								}))
 							}
 							placeholder={t("Tenant report template name")}
 						/>
@@ -321,7 +362,9 @@ export function ReportTemplateEditor({
 								description: event.target.value,
 							}))
 						}
-						placeholder={t("Explain who should use this template and under which reporting scenario.")}
+						placeholder={t(
+							"Explain who should use this template and under which reporting scenario.",
+						)}
 					/>
 				</div>
 
@@ -335,7 +378,9 @@ export function ReportTemplateEditor({
 								{t("Markdown editor")}
 							</p>
 							<p className="mt-1 text-xs" style={mutedTextStyle}>
-								{t("Write raw Markdown, preview rendered output instantly, and save with Ctrl+S.")}
+								{t(
+									"Write raw Markdown, preview rendered output instantly, and save with Ctrl+S.",
+								)}
 							</p>
 						</div>
 						<div className="flex flex-wrap items-center gap-2">
@@ -400,7 +445,9 @@ export function ReportTemplateEditor({
 											{t("Markdown source")}
 										</p>
 										<p className="mt-1 text-xs" style={mutedTextStyle}>
-											{t("Use headings, lists, quotes, and links exactly as they will be saved.")}
+											{t(
+												"Use headings, lists, quotes, and links exactly as they will be saved.",
+											)}
 										</p>
 									</div>
 									<span
@@ -438,7 +485,9 @@ export function ReportTemplateEditor({
 											{t("Live preview")}
 										</p>
 										<p className="mt-1 text-xs" style={mutedTextStyle}>
-											{t("Review the rendered report structure before saving it to real operations.")}
+											{t(
+												"Review the rendered report structure before saving it to real operations.",
+											)}
 										</p>
 									</div>
 									{selectedTemplate ? (
@@ -482,30 +531,68 @@ export function ReportTemplateEditor({
 
 				<div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_18rem]">
 					<div className="rounded-2xl border px-4 py-3" style={surfaceStyle}>
-						<p className="text-sm font-semibold" style={headingStyle}>{t("Editor metrics")}</p>
+						<p className="text-sm font-semibold" style={headingStyle}>
+							{t("Editor metrics")}
+						</p>
 						<div className="mt-3 grid gap-3 sm:grid-cols-3">
-							<div className="rounded-xl border px-3 py-2" style={softSurfaceStyle}>
-								<p className="text-[11px] uppercase tracking-[0.18em]" style={mutedTextStyle}>{t("Lines")}</p>
-								<p className="mt-1 text-lg font-semibold" style={headingStyle}>{editorMetrics.lines}</p>
+							<div
+								className="rounded-xl border px-3 py-2"
+								style={softSurfaceStyle}
+							>
+								<p
+									className="text-[11px] uppercase tracking-[0.18em]"
+									style={mutedTextStyle}
+								>
+									{t("Lines")}
+								</p>
+								<p className="mt-1 text-lg font-semibold" style={headingStyle}>
+									{editorMetrics.lines}
+								</p>
 							</div>
-							<div className="rounded-xl border px-3 py-2" style={softSurfaceStyle}>
-								<p className="text-[11px] uppercase tracking-[0.18em]" style={mutedTextStyle}>{t("Words")}</p>
-								<p className="mt-1 text-lg font-semibold" style={headingStyle}>{editorMetrics.words}</p>
+							<div
+								className="rounded-xl border px-3 py-2"
+								style={softSurfaceStyle}
+							>
+								<p
+									className="text-[11px] uppercase tracking-[0.18em]"
+									style={mutedTextStyle}
+								>
+									{t("Words")}
+								</p>
+								<p className="mt-1 text-lg font-semibold" style={headingStyle}>
+									{editorMetrics.words}
+								</p>
 							</div>
-							<div className="rounded-xl border px-3 py-2" style={softSurfaceStyle}>
-								<p className="text-[11px] uppercase tracking-[0.18em]" style={mutedTextStyle}>{t("Headings")}</p>
-								<p className="mt-1 text-lg font-semibold" style={headingStyle}>{editorMetrics.headings}</p>
+							<div
+								className="rounded-xl border px-3 py-2"
+								style={softSurfaceStyle}
+							>
+								<p
+									className="text-[11px] uppercase tracking-[0.18em]"
+									style={mutedTextStyle}
+								>
+									{t("Headings")}
+								</p>
+								<p className="mt-1 text-lg font-semibold" style={headingStyle}>
+									{editorMetrics.headings}
+								</p>
 							</div>
 						</div>
 						<p className="mt-3 text-xs" style={mutedTextStyle}>
-							{t("Use Tab for indentation, Ctrl+1 / Ctrl+2 for headings, Ctrl+B for bold, and Ctrl+K for links while keeping the raw Markdown workflow intact.")}
+							{t(
+								"Use Tab for indentation, Ctrl+1 / Ctrl+2 for headings, Ctrl+B for bold, and Ctrl+K for links while keeping the raw Markdown workflow intact.",
+							)}
 						</p>
 					</div>
 
 					<div className="rounded-2xl border px-4 py-3" style={surfaceStyle}>
-						<p className="text-sm font-semibold" style={headingStyle}>{t("Outline")}</p>
+						<p className="text-sm font-semibold" style={headingStyle}>
+							{t("Outline")}
+						</p>
 						<p className="mt-1 text-xs" style={mutedTextStyle}>
-							{t("Track the current section structure before saving to production report operations.")}
+							{t(
+								"Track the current section structure before saving to production report operations.",
+							)}
 						</p>
 						{headingOutline.length === 0 ? (
 							<p className="mt-4 text-sm" style={mutedTextStyle}>
@@ -523,8 +610,13 @@ export function ReportTemplateEditor({
 										)}
 										style={{ ...softSurfaceStyle, ...mutedTextStyle }}
 									>
-										<p className="font-medium" style={headingStyle}>{item.title}</p>
-										<p className="mt-1 text-[11px] uppercase tracking-[0.18em]" style={mutedTextStyle}>
+										<p className="font-medium" style={headingStyle}>
+											{item.title}
+										</p>
+										<p
+											className="mt-1 text-[11px] uppercase tracking-[0.18em]"
+											style={mutedTextStyle}
+										>
 											{t("Line")} {item.line}
 										</p>
 									</div>
@@ -554,14 +646,20 @@ export function ReportTemplateEditor({
 						className="min-h-40 w-full rounded-2xl border px-4 py-3 font-mono text-sm leading-6 outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary-300)]"
 						style={fieldSurfaceStyle}
 						spellCheck={false}
-						placeholder={t("Optional print styles or layout overrides for report export.")}
+						placeholder={t(
+							"Optional print styles or layout overrides for report export.",
+						)}
 					/>
 				</div>
 
 				<div className="rounded-2xl border px-4 py-3" style={surfaceStyle}>
-					<p className="text-sm font-semibold" style={headingStyle}>{t("Markdown syntax support")}</p>
+					<p className="text-sm font-semibold" style={headingStyle}>
+						{t("Markdown syntax support")}
+					</p>
 					<p className="mt-1 text-xs" style={mutedTextStyle}>
-						{t("Use # Heading, ## Section, - Bullet, 1. Numbered list, > Quote, and fenced code blocks to structure operational reports.")}
+						{t(
+							"Use # Heading, ## Section, - Bullet, 1. Numbered list, > Quote, and fenced code blocks to structure operational reports.",
+						)}
 					</p>
 				</div>
 
@@ -570,11 +668,17 @@ export function ReportTemplateEditor({
 					style={{ ...softSurfaceStyle, ...mutedTextStyle }}
 				>
 					<div>
-						<p className="font-medium" style={headingStyle}>{t("Operational note")}</p>
+						<p className="font-medium" style={headingStyle}>
+							{t("Operational note")}
+						</p>
 						<p className="mt-1">
 							{selectedTemplate?.is_builtin
-								? t("This template is built-in and remains protected from deletion.")
-								: t("Custom templates can be updated live and soft deleted without losing audit history.")}
+								? t(
+										"This template is built-in and remains protected from deletion.",
+									)
+								: t(
+										"Custom templates can be updated live and soft deleted without losing audit history.",
+									)}
 						</p>
 					</div>
 					<div className="flex flex-wrap gap-2">
@@ -583,7 +687,10 @@ export function ReportTemplateEditor({
 						</Button>
 						<Button type="button" onClick={onSubmit} disabled={templateBusy}>
 							{templateBusy ? (
-								<RefreshCw aria-hidden="true" className="h-4 w-4 animate-spin" />
+								<RefreshCw
+									aria-hidden="true"
+									className="h-4 w-4 animate-spin"
+								/>
 							) : null}
 							{selectedTemplate ? t("Save template") : t("Create template")}
 						</Button>
@@ -591,7 +698,9 @@ export function ReportTemplateEditor({
 							type="button"
 							variant="destructive"
 							onClick={onDelete}
-							disabled={templateBusy || !selectedTemplate || selectedTemplate.is_builtin}
+							disabled={
+								templateBusy || !selectedTemplate || selectedTemplate.is_builtin
+							}
 						>
 							<Trash2 aria-hidden="true" className="h-4 w-4" />
 							{t("Archive template")}

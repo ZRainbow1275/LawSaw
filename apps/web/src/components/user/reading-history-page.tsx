@@ -19,9 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import {
-	useReadingHistory,
-} from "@/hooks/use-reading-history";
+import { useReadingHistory } from "@/hooks/use-reading-history";
 import { formatDateTime, withLocalePath } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { motion } from "framer-motion";
@@ -35,7 +33,7 @@ import {
 	PlayCircle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, type CSSProperties } from "react";
+import { type CSSProperties, useState } from "react";
 
 type StatusFilter = "all" | "finished" | "in_progress";
 
@@ -108,8 +106,7 @@ function ReadingHistoryContent() {
 	const headingStyle: CSSProperties = { color: "var(--color-foreground)" };
 	const mutedStyle: CSSProperties = { color: "var(--surface-muted-text)" };
 	const surfaceStyle: CSSProperties = {
-		borderColor:
-			"color-mix(in srgb, var(--color-border) 78%, transparent)",
+		borderColor: "color-mix(in srgb, var(--color-border) 78%, transparent)",
 		backgroundColor: "var(--color-background)",
 	};
 	const progressTrackStyle: CSSProperties = {
@@ -166,8 +163,7 @@ function ReadingHistoryContent() {
 											style={
 												active
 													? {
-															backgroundColor:
-																"var(--surface-accent-strong)",
+															backgroundColor: "var(--surface-accent-strong)",
 															borderColor: "var(--color-primary-500)",
 															color: "var(--color-foreground)",
 														}
@@ -234,9 +230,7 @@ function ReadingHistoryContent() {
 									>
 										<span className="col-span-5">{t("Title")}</span>
 										<span className="col-span-2">{t("Category")}</span>
-										<span className="col-span-2">
-											{t("Reading progress")}
-										</span>
+										<span className="col-span-2">{t("Reading progress")}</span>
 										<span className="col-span-1">{t("Time spent")}</span>
 										<span className="col-span-2 text-right">
 											{t("Last read")}
@@ -291,10 +285,7 @@ function ReadingHistoryContent() {
 																{item.category_slug}
 															</Badge>
 														) : (
-															<span
-																className="text-xs"
-																style={mutedStyle}
-															>
+															<span className="text-xs" style={mutedStyle}>
 																—
 															</span>
 														)}
@@ -323,10 +314,7 @@ function ReadingHistoryContent() {
 														className="col-span-1 flex items-center gap-1 text-xs tabular-nums"
 														style={mutedStyle}
 													>
-														<Clock3
-															aria-hidden="true"
-															className="h-3 w-3"
-														/>
+														<Clock3 aria-hidden="true" className="h-3 w-3" />
 														{formatDwell(t, item.dwell_ms_total)}
 													</div>
 													<div
@@ -353,9 +341,7 @@ function ReadingHistoryContent() {
 										type="button"
 										variant="outline"
 										size="sm"
-										onClick={() =>
-											setPageOffset((prev) => prev + PAGE_SIZE)
-										}
+										onClick={() => setPageOffset((prev) => prev + PAGE_SIZE)}
 										disabled={query.isFetching}
 									>
 										{query.isFetching ? (

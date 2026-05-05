@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 
 interface RouteTransitionProviderProps {
 	children: ReactNode;
@@ -18,10 +18,10 @@ export function RouteTransitionProvider({
 			const main = document.querySelector("#main-content");
 			const hasMainChildren =
 				main instanceof HTMLElement && main.children.length > 0;
-			const hasVisibleText = (document.body?.innerText || "").trim().length > 24;
+			const hasVisibleText =
+				(document.body?.innerText || "").trim().length > 24;
 			const hasSpinner = !!document.querySelector(".animate-spin");
-			const shouldRecover =
-				!hasMainChildren && !hasVisibleText && !hasSpinner;
+			const shouldRecover = !hasMainChildren && !hasVisibleText && !hasSpinner;
 
 			if (!shouldRecover) return;
 

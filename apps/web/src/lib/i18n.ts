@@ -99,10 +99,19 @@ export function t(
 	key: string,
 	params?: TranslationParams,
 ): string {
-	const zh = zhTranslations as Record<string, string>;
-	const en = enTranslations as Record<string, string>;
-	const template =
-		locale === "zh" ? (zh[key] ?? key) : (en[key] ?? key);
+	const dict =
+		locale === "zh"
+			? (zhTranslations as Record<string, string>)
+			: (enTranslations as Record<string, string>);
+	const template = dict[key];
+	if (template === undefined) {
+		if (process.env.NODE_ENV === "development") {
+			console.error(
+				`[i18n] missing ${locale} key: ${JSON.stringify(key)}`,
+			);
+		}
+		return interpolate(key, params);
+	}
 	return interpolate(template, params);
 }
 

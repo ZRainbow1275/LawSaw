@@ -7,11 +7,17 @@ import {
 	type ReportListResponse,
 	type ReportPeriodType,
 	type ReportStatus,
+	type ReportSubscription,
+	type ReportSubscriptionListResponse,
+	type ReportSubscriptionTriggerResponse,
 	type ReportTaskEnqueuedResponse,
 	type ReportTemplate,
 	assertDeleteResponse,
 	assertReport,
 	assertReportListResponse,
+	assertReportSubscription,
+	assertReportSubscriptionListResponse,
+	assertReportSubscriptionTriggerResponse,
 	assertReportTaskEnqueuedResponse,
 	assertReportTemplate,
 	assertReportTemplateList,
@@ -30,6 +36,7 @@ interface ReportFilters {
 	author_id?: string;
 	date_from?: string;
 	date_to?: string;
+	enabled?: boolean;
 }
 
 export function useReports(filters: ReportFilters = {}) {
@@ -41,6 +48,7 @@ export function useReports(filters: ReportFilters = {}) {
 		author_id,
 		date_from,
 		date_to,
+		enabled = true,
 	} = filters;
 
 	const queryParams = new URLSearchParams();
@@ -53,12 +61,13 @@ export function useReports(filters: ReportFilters = {}) {
 	if (date_to) queryParams.set("date_to", date_to);
 
 	return useQuery({
-		queryKey: ["reports", filters],
+		queryKey: ["reports", queryParams.toString()],
 		queryFn: () =>
 			apiClient.get<ReportListResponse>(
 				`/api/v1/reports?${queryParams.toString()}`,
 				assertReportListResponse,
 			),
+		enabled,
 	});
 }
 
@@ -203,7 +212,15 @@ export function useExportReport() {
 // Templates — Query hooks
 // ---------------------------------------------------------------------------
 
-export function useReportTemplates(periodType?: string) {
+interface UseReportTemplatesOptions {
+	enabled?: boolean;
+}
+
+export function useReportTemplates(
+	periodType?: string,
+	options: UseReportTemplatesOptions = {},
+) {
+	const { enabled = true } = options;
 	const qs = periodType ? `?period_type=${encodeURIComponent(periodType)}` : "";
 
 	return useQuery({
@@ -214,6 +231,7 @@ export function useReportTemplates(periodType?: string) {
 				assertReportTemplateList,
 			),
 		staleTime: 60_000,
+		enabled,
 	});
 }
 
@@ -297,6 +315,119 @@ export function useDeleteReportTemplate() {
 			apiClient.delete(`/api/v1/report-templates/${id}`, assertDeleteResponse),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["reportTemplates"] });
+		},
+	});
+}
+
+// ---------------------------------------------------------------------------
+// Subscriptions — Query hook
+// ---------------------------------------------------------------------------
+
+interface UseReportSubscriptionsOptions {
+	enabled?: boolean;
+}
+
+export function useReportSubscriptions(
+	options: UseReportSubscriptionsOptions = {},
+) {
+	const { enabled = true } = options;
+
+	return useQuery({
+		queryKey: ["reportSubscriptions"],
+		queryFn: () =>
+			apiClient.get<ReportSubscriptionListResponse>(
+				"/api/v1/report-subscriptions",
+				assertReportSubscriptionListResponse,
+			),
+		enabled,
+	});
+}
+
+// ---------------------------------------------------------------------------
+// Subscriptions — Mutation hooks
+// ---------------------------------------------------------------------------
+
+interface CreateReportSubscriptionInput {
+	name: string;
+	template_id: string;
+	period_type: string;
+	delivery_channel: string;
+	export_format: string;
+	filters?: Record<string, unknown>;
+	is_active?: boolean;
+}
+
+export function useCreateReportSubscription() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: (input: CreateReportSubscriptionInput) =>
+			apiClient.post<ReportSubscription>(
+				"/api/v1/report-subscriptions",
+				input,
+				assertReportSubscription,
+			),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["reportSubscriptions"] });
+		},
+	});
+}
+
+interface UpdateReportSubscriptionInput {
+	id: string;
+	name?: string;
+	template_id?: string;
+	period_type?: string;
+	delivery_channel?: string;
+	export_format?: string;
+	filters?: Record<string, unknown>;
+	is_active?: boolean;
+}
+
+export function useUpdateReportSubscription() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: ({ id, ...data }: UpdateReportSubscriptionInput) =>
+			apiClient.put<ReportSubscription>(
+				`/api/v1/report-subscriptions/${id}`,
+				data,
+				assertReportSubscription,
+			),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["reportSubscriptions"] });
+		},
+	});
+}
+
+export function useDeleteReportSubscription() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: (id: string) =>
+			apiClient.delete(
+				`/api/v1/report-subscriptions/${id}`,
+				assertDeleteResponse,
+			),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["reportSubscriptions"] });
+		},
+	});
+}
+
+export function useTriggerReportSubscription() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: (id: string) =>
+			apiClient.post<ReportSubscriptionTriggerResponse>(
+				`/api/v1/report-subscriptions/${id}/trigger`,
+				undefined,
+				assertReportSubscriptionTriggerResponse,
+			),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["reportSubscriptions"] });
+			queryClient.invalidateQueries({ queryKey: ["reports"] });
 		},
 	});
 }

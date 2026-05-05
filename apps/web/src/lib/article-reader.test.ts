@@ -4,7 +4,7 @@ import { extractMarkdownSource, renderArticleBodyHtml } from "./article-reader";
 
 describe("renderArticleBodyHtml", () => {
 	it("keeps existing rich HTML content unchanged", () => {
-		const html = "<h2 id=\"scope\">Scope</h2><p>Rendered upstream.</p>";
+		const html = '<h2 id="scope">Scope</h2><p>Rendered upstream.</p>';
 
 		expect(renderArticleBodyHtml(html)).toBe(html);
 	});
@@ -23,7 +23,7 @@ describe("renderArticleBodyHtml", () => {
 		expect(renderArticleBodyHtml(markdown)).toBe(
 			[
 				"<p>Intro paragraph line one.<br />Intro paragraph line two.</p>",
-				"<h1 id=\"comments-0\">Comments: 0</h1>",
+				'<h1 id="comments-0">Comments: 0</h1>',
 				"<ul><li>First point</li><li>Second point</li></ul>",
 			].join("\n"),
 		);
@@ -33,8 +33,8 @@ describe("renderArticleBodyHtml", () => {
 		const markdown = ["# Comments", "Paragraph", "", "# Comments"].join("\n");
 		const html = renderArticleBodyHtml(markdown);
 
-		expect(html).toContain("<h1 id=\"comments\">Comments</h1>");
-		expect(html).toContain("<h1 id=\"comments-2\">Comments</h1>");
+		expect(html).toContain('<h1 id="comments">Comments</h1>');
+		expect(html).toContain('<h1 id="comments-2">Comments</h1>');
 	});
 });
 
@@ -87,7 +87,7 @@ describe("extractMarkdownSource", () => {
 	it("converts HTML into normalized markdown", () => {
 		const html = [
 			"<h2>Title</h2>",
-			"<p>Intro <strong>bold</strong> and <a href=\"https://example.com\">link</a>.</p>",
+			'<p>Intro <strong>bold</strong> and <a href="https://example.com">link</a>.</p>',
 			"<ul><li>Alpha</li><li>Beta</li></ul>",
 		].join("");
 

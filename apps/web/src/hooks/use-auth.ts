@@ -3,6 +3,7 @@
 import { ApiClientError, apiClient } from "@/lib/api";
 import type { User } from "@/lib/api/types";
 import { assertAuthResponse, assertUserDetailResponse } from "@/lib/api/types";
+import { deriveRoleTierFromRoles } from "@/lib/authz";
 import { type Locale, t } from "@/lib/i18n";
 import { reportClientError } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
@@ -95,7 +96,14 @@ export function useAuth() {
 					`/api/v1/users/${nextUser.id}`,
 					assertUserDetailResponse,
 				);
-				setAuthz({ roles: detail.roles, permissions: detail.permissions });
+				setAuthz({
+					roles: detail.roles,
+					permissions: detail.permissions,
+					roleTier: deriveRoleTierFromRoles(
+						detail.roles,
+						detail.user.display_name ?? nextUser.display_name ?? null,
+					),
+				});
 			} catch (err) {
 				if (shouldReportError(err)) {
 					reportClientError(err, {

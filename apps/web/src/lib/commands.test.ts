@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
-	appendRecentCommandId,
-	builtinCommands,
 	COMMAND_PALETTE_RECENT_KEY,
 	COMMAND_PALETTE_RECENT_MAX,
+	type Command,
+	REGISTERED_SHORTCUTS,
+	appendRecentCommandId,
+	builtinCommands,
 	filterAndRankCommands,
 	groupedShortcuts,
 	matchCommand,
 	readRecentCommandIds,
-	REGISTERED_SHORTCUTS,
 	shortcutGroupTitle,
 	writeRecentCommandIds,
-	type Command,
 } from "./commands";
 
 function findCommand(id: string, commands: Command[]): Command {
@@ -100,7 +100,10 @@ describe("filterAndRankCommands", () => {
 	it("ranks matching commands first and excludes non-matches", () => {
 		const ranked = filterAndRankCommands(commands, "theme");
 		expect(ranked.length).toBeGreaterThan(0);
-		expect(ranked[0]?.id.startsWith("action.theme") || ranked[0]?.id === "settings.appearance").toBe(true);
+		expect(
+			ranked[0]?.id.startsWith("action.theme") ||
+				ranked[0]?.id === "settings.appearance",
+		).toBe(true);
 		expect(ranked.every((cmd) => cmd.id !== "action.logout")).toBe(true);
 	});
 
@@ -160,11 +163,18 @@ describe("appendRecentCommandId", () => {
 	});
 
 	it("deduplicates existing entries, moving them to the head", () => {
-		expect(appendRecentCommandId(["a", "b", "c"], "c")).toEqual(["c", "a", "b"]);
+		expect(appendRecentCommandId(["a", "b", "c"], "c")).toEqual([
+			"c",
+			"a",
+			"b",
+		]);
 	});
 
 	it("enforces the max cap", () => {
-		const ids = Array.from({ length: COMMAND_PALETTE_RECENT_MAX }, (_, i) => `cmd-${i}`);
+		const ids = Array.from(
+			{ length: COMMAND_PALETTE_RECENT_MAX },
+			(_, i) => `cmd-${i}`,
+		);
 		const next = appendRecentCommandId(ids, "new");
 		expect(next.length).toBe(COMMAND_PALETTE_RECENT_MAX);
 		expect(next[0]).toBe("new");

@@ -3,7 +3,8 @@ import { type Locale, formatDateTime, t as translate } from "@/lib/i18n";
 const KNOWN_HTML_TAG_PATTERN =
 	/<(?:p|br|h[1-6]|strong|b|em|i|u|s|strike|a|img|figure|figcaption|ul|ol|li|blockquote|pre|code|table|thead|tbody|tr|th|td|div|span|hr)\b/i;
 const INLINE_LINK_PATTERN = /(?<!["'=])((?:https?:\/\/|mailto:|tel:)[^\s<]+)/g;
-const MARKDOWN_LINK_PATTERN = /\[([^\]]+)\]\(((?:https?:\/\/|mailto:|tel:)[^)]+)\)/g;
+const MARKDOWN_LINK_PATTERN =
+	/\[([^\]]+)\]\(((?:https?:\/\/|mailto:|tel:)[^)]+)\)/g;
 
 function escapeHtml(value: string): string {
 	return value
@@ -54,7 +55,9 @@ function renderPlainTextArticleContent(content: string): string {
 
 	const flushQuote = () => {
 		if (quoteLines.length === 0) return;
-		html.push(`<blockquote>${quoteLines.map(renderInlineText).join("<br />")}</blockquote>`);
+		html.push(
+			`<blockquote>${quoteLines.map(renderInlineText).join("<br />")}</blockquote>`,
+		);
 		quoteLines = [];
 	};
 
@@ -161,7 +164,8 @@ export interface ArticleMarkdownSource {
 const MARKDOWN_SIGNAL_PATTERN =
 	/^(?:#{1,6}\s+|[-*+]\s+|\d+\.\s+|>\s+|```|\|.+\|)|\[[^\]]+\]\((?:https?:|mailto:|tel:)[^)]+\)|\*\*[^*]+\*\*|__[^_]+__/m;
 
-const BLOCK_TAG_PATTERN = /<(p|h[1-6]|ul|ol|li|blockquote|pre|br|hr|table|tr|td|th|thead|tbody|div|figure|figcaption)\b[^>]*>/i;
+const BLOCK_TAG_PATTERN =
+	/<(p|h[1-6]|ul|ol|li|blockquote|pre|br|hr|table|tr|td|th|thead|tbody|div|figure|figcaption)\b[^>]*>/i;
 
 function decodeHtmlEntities(value: string): string {
 	return value
@@ -184,7 +188,10 @@ function convertHtmlToMarkdown(html: string): string {
 
 	for (let level = 1; level <= 6; level += 1) {
 		const prefix = "#".repeat(level);
-		const regex = new RegExp(`<\\s*h${level}[^>]*>([\\s\\S]*?)<\\s*/\\s*h${level}\\s*>`, "gi");
+		const regex = new RegExp(
+			`<\\s*h${level}[^>]*>([\\s\\S]*?)<\\s*/\\s*h${level}\\s*>`,
+			"gi",
+		);
 		working = working.replace(regex, (_match, inner: string) => {
 			const text = inner.replace(/<[^>]+>/g, "").trim();
 			return `\n\n${prefix} ${text}\n\n`;
@@ -200,54 +207,88 @@ function convertHtmlToMarkdown(html: string): string {
 		},
 	);
 
-	working = working.replace(/<\s*(strong|b)\b[^>]*>([\s\S]*?)<\s*\/\s*\1\s*>/gi, (_m, _tag, inner: string) => `**${inner.trim()}**`);
-	working = working.replace(/<\s*(em|i)\b[^>]*>([\s\S]*?)<\s*\/\s*\1\s*>/gi, (_m, _tag, inner: string) => `*${inner.trim()}*`);
-	working = working.replace(/<\s*code\b[^>]*>([\s\S]*?)<\s*\/\s*code\s*>/gi, (_m, inner: string) => `\`${inner.trim()}\``);
-	working = working.replace(/<\s*pre\b[^>]*>([\s\S]*?)<\s*\/\s*pre\s*>/gi, (_m, inner: string) => {
-		const text = inner.replace(/<[^>]+>/g, "");
-		return `\n\n\`\`\`\n${text.trim()}\n\`\`\`\n\n`;
-	});
+	working = working.replace(
+		/<\s*(strong|b)\b[^>]*>([\s\S]*?)<\s*\/\s*\1\s*>/gi,
+		(_m, _tag, inner: string) => `**${inner.trim()}**`,
+	);
+	working = working.replace(
+		/<\s*(em|i)\b[^>]*>([\s\S]*?)<\s*\/\s*\1\s*>/gi,
+		(_m, _tag, inner: string) => `*${inner.trim()}*`,
+	);
+	working = working.replace(
+		/<\s*code\b[^>]*>([\s\S]*?)<\s*\/\s*code\s*>/gi,
+		(_m, inner: string) => `\`${inner.trim()}\``,
+	);
+	working = working.replace(
+		/<\s*pre\b[^>]*>([\s\S]*?)<\s*\/\s*pre\s*>/gi,
+		(_m, inner: string) => {
+			const text = inner.replace(/<[^>]+>/g, "");
+			return `\n\n\`\`\`\n${text.trim()}\n\`\`\`\n\n`;
+		},
+	);
 
-	working = working.replace(/<\s*blockquote\b[^>]*>([\s\S]*?)<\s*\/\s*blockquote\s*>/gi, (_m, inner: string) => {
-		const lines = inner
-			.replace(/<[^>]+>/g, "")
-			.split("\n")
-			.map((line) => line.trim())
-			.filter((line) => line.length > 0)
-			.map((line) => `> ${line}`)
-			.join("\n");
-		return `\n\n${lines}\n\n`;
-	});
+	working = working.replace(
+		/<\s*blockquote\b[^>]*>([\s\S]*?)<\s*\/\s*blockquote\s*>/gi,
+		(_m, inner: string) => {
+			const lines = inner
+				.replace(/<[^>]+>/g, "")
+				.split("\n")
+				.map((line) => line.trim())
+				.filter((line) => line.length > 0)
+				.map((line) => `> ${line}`)
+				.join("\n");
+			return `\n\n${lines}\n\n`;
+		},
+	);
 
-	working = working.replace(/<\s*ul\b[^>]*>([\s\S]*?)<\s*\/\s*ul\s*>/gi, (_m, inner: string) => {
-		const items = [...inner.matchAll(/<\s*li\b[^>]*>([\s\S]*?)<\s*\/\s*li\s*>/gi)]
-			.map((match) => match[1].replace(/<[^>]+>/g, "").trim())
-			.filter((text) => text.length > 0)
-			.map((text) => `- ${text}`)
-			.join("\n");
-		return `\n\n${items}\n\n`;
-	});
+	working = working.replace(
+		/<\s*ul\b[^>]*>([\s\S]*?)<\s*\/\s*ul\s*>/gi,
+		(_m, inner: string) => {
+			const items = [
+				...inner.matchAll(/<\s*li\b[^>]*>([\s\S]*?)<\s*\/\s*li\s*>/gi),
+			]
+				.map((match) => match[1].replace(/<[^>]+>/g, "").trim())
+				.filter((text) => text.length > 0)
+				.map((text) => `- ${text}`)
+				.join("\n");
+			return `\n\n${items}\n\n`;
+		},
+	);
 
-	working = working.replace(/<\s*ol\b[^>]*>([\s\S]*?)<\s*\/\s*ol\s*>/gi, (_m, inner: string) => {
-		let index = 0;
-		const items = [...inner.matchAll(/<\s*li\b[^>]*>([\s\S]*?)<\s*\/\s*li\s*>/gi)]
-			.map((match) => match[1].replace(/<[^>]+>/g, "").trim())
-			.filter((text) => text.length > 0)
-			.map((text) => {
-				index += 1;
-				return `${index}. ${text}`;
-			})
-			.join("\n");
-		return `\n\n${items}\n\n`;
-	});
+	working = working.replace(
+		/<\s*ol\b[^>]*>([\s\S]*?)<\s*\/\s*ol\s*>/gi,
+		(_m, inner: string) => {
+			let index = 0;
+			const items = [
+				...inner.matchAll(/<\s*li\b[^>]*>([\s\S]*?)<\s*\/\s*li\s*>/gi),
+			]
+				.map((match) => match[1].replace(/<[^>]+>/g, "").trim())
+				.filter((text) => text.length > 0)
+				.map((text) => {
+					index += 1;
+					return `${index}. ${text}`;
+				})
+				.join("\n");
+			return `\n\n${items}\n\n`;
+		},
+	);
 
-	working = working.replace(/<\s*p\b[^>]*>([\s\S]*?)<\s*\/\s*p\s*>/gi, (_m, inner: string) => {
-		const text = inner.replace(/<[^>]+>/g, "").trim();
-		return text.length > 0 ? `\n\n${text}\n\n` : "";
-	});
+	working = working.replace(
+		/<\s*p\b[^>]*>([\s\S]*?)<\s*\/\s*p\s*>/gi,
+		(_m, inner: string) => {
+			const text = inner.replace(/<[^>]+>/g, "").trim();
+			return text.length > 0 ? `\n\n${text}\n\n` : "";
+		},
+	);
 
-	working = working.replace(/<\s*img\b[^>]*alt="([^"]*)"[^>]*src="([^"]+)"[^>]*>/gi, (_m, alt: string, src: string) => `![${alt}](${src})`);
-	working = working.replace(/<\s*img\b[^>]*src="([^"]+)"[^>]*>/gi, (_m, src: string) => `![](${src})`);
+	working = working.replace(
+		/<\s*img\b[^>]*alt="([^"]*)"[^>]*src="([^"]+)"[^>]*>/gi,
+		(_m, alt: string, src: string) => `![${alt}](${src})`,
+	);
+	working = working.replace(
+		/<\s*img\b[^>]*src="([^"]+)"[^>]*>/gi,
+		(_m, src: string) => `![](${src})`,
+	);
 
 	working = working.replace(/<\/?[a-z][^>]*>/gi, "");
 	working = decodeHtmlEntities(working);
@@ -280,18 +321,32 @@ function countWords(value: string): number {
 	return cjk + westernTokens;
 }
 
-export function extractMarkdownSource(content: string | null): ArticleMarkdownSource {
+export function extractMarkdownSource(
+	content: string | null,
+): ArticleMarkdownSource {
 	if (!content) {
-		return { markdown: "", wordCount: 0, lineCount: 0, originalFormat: "plain" };
+		return {
+			markdown: "",
+			wordCount: 0,
+			lineCount: 0,
+			originalFormat: "plain",
+		};
 	}
 	const trimmed = content.trim();
 	if (trimmed.length === 0) {
-		return { markdown: "", wordCount: 0, lineCount: 0, originalFormat: "plain" };
+		return {
+			markdown: "",
+			wordCount: 0,
+			lineCount: 0,
+			originalFormat: "plain",
+		};
 	}
 
 	const originalFormat = detectSourceFormat(trimmed);
 	const markdown =
-		originalFormat === "html" ? convertHtmlToMarkdown(trimmed) : trimmed.replace(/\r\n/g, "\n");
+		originalFormat === "html"
+			? convertHtmlToMarkdown(trimmed)
+			: trimmed.replace(/\r\n/g, "\n");
 	const normalized = markdown.trim();
 
 	if (normalized.length === 0) {

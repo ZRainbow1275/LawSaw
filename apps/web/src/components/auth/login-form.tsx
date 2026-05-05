@@ -12,7 +12,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function validateEmail(value: string): string | null {
+type LoginErrorKey =
+	| "Please enter an email"
+	| "Email is too long"
+	| "Invalid email format"
+	| "Please enter a password"
+	| "Password is too long"
+	| "Please check your input"
+	| "Sign in failed. Please try again."
+	| "Enter the 6-digit verification code"
+	| "MFA verification failed.";
+
+function validateEmail(value: string): LoginErrorKey | null {
 	const trimmed = value.trim();
 	if (!trimmed) return "Please enter an email";
 	if (trimmed.length > 254) return "Email is too long";
@@ -20,7 +31,7 @@ function validateEmail(value: string): string | null {
 	return null;
 }
 
-function validatePassword(value: string): string | null {
+function validatePassword(value: string): LoginErrorKey | null {
 	if (!value.trim()) return "Please enter a password";
 	if (value.length > 1024) return "Password is too long";
 	return null;
@@ -37,7 +48,10 @@ export function LoginForm() {
 	const t = useT();
 	const { login, verifyMfa, refreshSession } = useAuth();
 	const [returnTo, setReturnTo] = useState<string | null>(null);
-	const [error, setError] = useState("");
+	const [errorKey, setErrorKey] = useState<LoginErrorKey | null>(null);
+	const [serverErrorMessage, setServerErrorMessage] = useState<string | null>(
+		null,
+	);
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [touched, setTouched] = useState({ email: false, password: false });
@@ -48,8 +62,9 @@ export function LoginForm() {
 	const mfaInputRef = useRef<HTMLInputElement>(null);
 
 	useEffect(() => {
+		const search = new URLSearchParams(window.location.search);
 		setReturnTo(
-			safeReturnTo(new URLSearchParams(window.location.search).get("returnTo")),
+			safeReturnTo(search.get("next")) ?? safeReturnTo(search.get("returnTo")),
 		);
 	}, []);
 
@@ -60,9 +75,11 @@ export function LoginForm() {
 	}, [mfaState]);
 
 	const navigateAfterLogin = useCallback(async () => {
+		const search = new URLSearchParams(window.location.search);
 		const nextReturnTo =
 			returnTo ||
-			safeReturnTo(new URLSearchParams(window.location.search).get("returnTo"));
+			safeReturnTo(search.get("next")) ||
+			safeReturnTo(search.get("returnTo"));
 		// Force one session recheck before navigation to reduce first-page bootstrap races.
 		await refreshSession();
 		useToastStore.getState().addToast({
@@ -70,20 +87,21 @@ export function LoginForm() {
 			title: t("Signed in"),
 			description: t("Welcome back"),
 		});
-		router.replace(withLocalePath(locale, nextReturnTo || "/"));
+		router.replace(withLocalePath(locale, nextReturnTo || "/dashboard"));
 		router.refresh();
 	}, [returnTo, t, router, locale, refreshSession]);
 
 	const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
 		e.preventDefault();
-		setError("");
+		setErrorKey(null);
+		setServerErrorMessage(null);
 
 		setTouched({ email: true, password: true });
 
 		const emailError = validateEmail(email);
 		const passwordError = validatePassword(password);
 		if (emailError || passwordError) {
-			setError(emailError || passwordError || "Please check your input");
+			setErrorKey(emailError || passwordError || "Please check your input");
 			return;
 		}
 
@@ -99,9 +117,12 @@ export function LoginForm() {
 					challenge: result.mfaChallenge,
 				});
 				setMfaCode("");
-				setError("");
+				setErrorKey(null);
+				setServerErrorMessage(null);
+			} else if (result.error) {
+				setServerErrorMessage(result.error);
 			} else {
-				setError(result.error || "Sign in failed. Please try again.");
+				setErrorKey("Sign in failed. Please try again.");
 			}
 		} finally {
 			setIsSubmitting(false);
@@ -114,11 +135,13 @@ export function LoginForm() {
 
 		const trimmedCode = mfaCode.trim();
 		if (trimmedCode.length !== 6 || !/^\d{6}$/.test(trimmedCode)) {
-			setError("Enter the 6-digit verification code");
+			setErrorKey("Enter the 6-digit verification code");
+			setServerErrorMessage(null);
 			return;
 		}
 
-		setError("");
+		setErrorKey(null);
+		setServerErrorMessage(null);
 		setIsSubmitting(true);
 
 		try {
@@ -129,8 +152,10 @@ export function LoginForm() {
 			});
 			if (result.success) {
 				await navigateAfterLogin();
+			} else if (result.error) {
+				setServerErrorMessage(result.error);
 			} else {
-				setError(result.error || "MFA verification failed.");
+				setErrorKey("MFA verification failed.");
 			}
 		} finally {
 			setIsSubmitting(false);
@@ -140,16 +165,24 @@ export function LoginForm() {
 	const handleBackToLogin = () => {
 		setMfaState(null);
 		setMfaCode("");
-		setError("");
+		setErrorKey(null);
+		setServerErrorMessage(null);
 		setPassword("");
 	};
+
+	const errorText = errorKey
+		? t(errorKey)
+		: serverErrorMessage
+			? serverErrorMessage
+			: "";
+	const hasError = Boolean(errorText);
 
 	if (mfaState) {
 		return (
 			<form onSubmit={handleMfaSubmit} className="space-y-4">
-				{error && (
+				{hasError && (
 					<div className="rounded-lg bg-error-light p-3 text-sm text-error">
-						{t(error)}
+						{errorText}
 					</div>
 				)}
 
@@ -182,13 +215,13 @@ export function LoginForm() {
 						autoComplete="one-time-code"
 						autoFocus
 						aria-label={t("Verification code")}
-						aria-invalid={!!error}
-						aria-describedby={error ? "mfa-error" : undefined}
+						aria-invalid={hasError}
+						aria-describedby={hasError ? "mfa-error" : undefined}
 						className="text-center text-lg tracking-[0.3em]"
 					/>
-					{error && (
+					{hasError && (
 						<p id="mfa-error" className="sr-only">
-							{t(error)}
+							{errorText}
 						</p>
 					)}
 				</div>
@@ -214,9 +247,9 @@ export function LoginForm() {
 
 	return (
 		<form onSubmit={handleSubmit} className="space-y-4">
-			{error && (
+			{hasError && (
 				<div className="rounded-lg bg-error-light p-3 text-sm text-error">
-					{t(error)}
+					{errorText}
 				</div>
 			)}
 
@@ -239,11 +272,14 @@ export function LoginForm() {
 						touched.email && validateEmail(email) ? "email-error" : undefined
 					}
 				/>
-				{touched.email && validateEmail(email) && (
+				{touched.email && validateEmail(email) ? (
 					<p id="email-error" className="text-xs text-error">
-						{t(validateEmail(email) ?? "")}
+						{(() => {
+							const k = validateEmail(email);
+							return k ? t(k) : "";
+						})()}
 					</p>
-				)}
+				) : null}
 			</div>
 
 			<div className="space-y-2">
@@ -270,11 +306,14 @@ export function LoginForm() {
 							: undefined
 					}
 				/>
-				{touched.password && validatePassword(password) && (
+				{touched.password && validatePassword(password) ? (
 					<p id="password-error" className="text-xs text-error">
-						{t(validatePassword(password) ?? "")}
+						{(() => {
+							const k = validatePassword(password);
+							return k ? t(k) : "";
+						})()}
 					</p>
-				)}
+				) : null}
 			</div>
 
 			<Button

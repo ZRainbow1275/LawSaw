@@ -79,8 +79,7 @@ export function NotificationBell() {
 							className="pointer-events-none absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold leading-none text-white"
 							style={{
 								backgroundColor: "var(--color-error)",
-								boxShadow:
-									"0 0 0 2px var(--color-background, #ffffff)",
+								boxShadow: "0 0 0 2px var(--color-background, #ffffff)",
 							}}
 						>
 							{display}

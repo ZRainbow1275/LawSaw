@@ -70,10 +70,10 @@ export function ReportExportDialog({
 	const activeFormat = queuedFormat ?? selectedFormat;
 	const latestExportKey =
 		activeFormat === "pdf"
-			? latestReport?.export_pdf_key ?? null
+			? (latestReport?.export_pdf_key ?? null)
 			: activeFormat === "docx"
-				? latestReport?.export_docx_key ?? null
-				: latestReport?.export_html_key ?? null;
+				? (latestReport?.export_docx_key ?? null)
+				: (latestReport?.export_html_key ?? null);
 	const readyDownloadUrl =
 		showSuccess && latestReport && latestExportKey
 			? `/api/v1/reports/${latestReport.id}/download/${activeFormat}`
@@ -196,38 +196,38 @@ export function ReportExportDialog({
 							</div>
 						)}
 						<div className="grid grid-cols-3 gap-4">
-						{formats.map((fmt) => {
-							const Icon = fmt.icon;
-							const isSelected = selectedFormat === fmt.format;
-							const disabled = isFormatDisabled(fmt.format);
-							return (
-								<button
-									key={fmt.format}
-									type="button"
-									disabled={disabled}
-									onClick={() => setSelectedFormat(fmt.format)}
-									className={cn(
-										"flex flex-col items-center gap-2 p-4 rounded-xl border-2 cursor-pointer transition-all",
-										isSelected && !disabled
-											? "border-primary-500 bg-primary-50 text-primary-700"
-											: "border-neutral-200 bg-white text-neutral-600 hover:border-primary-200 hover:bg-neutral-50",
-										disabled && "cursor-not-allowed opacity-45",
-									)}
-								>
-									<Icon aria-hidden="true" className="h-8 w-8" />
-									<span className="text-sm font-medium">{fmt.label}</span>
-									<span className="text-xs text-center opacity-70">
-										{fmt.description}
-									</span>
-									{disabled && (
-										<span className="text-[10px] font-medium text-amber-600">
-											{t("Template required")}
+							{formats.map((fmt) => {
+								const Icon = fmt.icon;
+								const isSelected = selectedFormat === fmt.format;
+								const disabled = isFormatDisabled(fmt.format);
+								return (
+									<button
+										key={fmt.format}
+										type="button"
+										disabled={disabled}
+										onClick={() => setSelectedFormat(fmt.format)}
+										className={cn(
+											"flex flex-col items-center gap-2 p-4 rounded-xl border-2 cursor-pointer transition-all",
+											isSelected && !disabled
+												? "border-primary-500 bg-primary-50 text-primary-700"
+												: "border-neutral-200 bg-white text-neutral-600 hover:border-primary-200 hover:bg-neutral-50",
+											disabled && "cursor-not-allowed opacity-45",
+										)}
+									>
+										<Icon aria-hidden="true" className="h-8 w-8" />
+										<span className="text-sm font-medium">{fmt.label}</span>
+										<span className="text-xs text-center opacity-70">
+											{fmt.description}
 										</span>
-									)}
-								</button>
-							);
-						})}
-					</div>
+										{disabled && (
+											<span className="text-[10px] font-medium text-amber-600">
+												{t("Template required")}
+											</span>
+										)}
+									</button>
+								);
+							})}
+						</div>
 					</div>
 				)}
 
@@ -247,7 +247,9 @@ export function ReportExportDialog({
 					</Button>
 					<Button
 						onClick={handleExport}
-						disabled={exportReport.isPending || isFormatDisabled(selectedFormat)}
+						disabled={
+							exportReport.isPending || isFormatDisabled(selectedFormat)
+						}
 					>
 						{exportReport.isPending && (
 							<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />

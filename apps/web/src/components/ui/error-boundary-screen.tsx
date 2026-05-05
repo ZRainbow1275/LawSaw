@@ -1,9 +1,9 @@
 "use client";
 
-import { useLocale, useT } from "@/lib/i18n-client";
-import { withLocalePath } from "@/lib/i18n";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { withLocalePath } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n-client";
 import { AlertTriangle, Home, RefreshCcw } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useId } from "react";
@@ -42,7 +42,10 @@ export function ErrorBoundaryScreen({
 	const showDetails = process.env.NODE_ENV !== "production";
 
 	return (
-		<div className="flex min-h-screen items-center justify-center p-6" style={pageStyle}>
+		<div
+			className="flex min-h-screen items-center justify-center p-6"
+			style={pageStyle}
+		>
 			<div className="w-full max-w-lg">
 				<Card role="alert" aria-labelledby={titleId}>
 					<CardHeader>
@@ -66,7 +69,10 @@ export function ErrorBoundaryScreen({
 								<p className="text-xs font-medium" style={detailHeadingStyle}>
 									{t("Error details")}
 								</p>
-								<pre className="mt-2 whitespace-pre-wrap break-words text-xs" style={mutedTextStyle}>
+								<pre
+									className="mt-2 whitespace-pre-wrap break-words text-xs"
+									style={mutedTextStyle}
+								>
 									{error.message}
 								</pre>
 								{error.digest ? (

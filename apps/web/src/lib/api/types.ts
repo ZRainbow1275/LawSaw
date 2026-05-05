@@ -99,18 +99,18 @@ export interface Source {
 	name: string;
 	url: string;
 	source_type: string;
-	config: Record<string, unknown>;
+	config: Record<string, unknown> | null;
 	schedule: string | null;
 	priority: number;
 	is_active: boolean;
 	last_fetch: string | null;
 	last_error: string | null;
 	// Crawler enhancement: health monitoring fields
-	health_status: "healthy" | "degraded" | "unhealthy" | "unknown";
+	health_status: "healthy" | "degraded" | "unhealthy" | "unknown" | "";
 	consecutive_failures: number;
 	total_articles_fetched: number;
 	avg_fetch_duration_ms: number | null;
-	render_mode: "static" | "dynamic";
+	render_mode: "static" | "dynamic" | "";
 	encoding: string | null;
 	created_at: string;
 	updated_at: string;
@@ -428,7 +428,10 @@ export interface RecomputeAiBudgetAlertsResponse {
 
 export interface FeedExperimentConfig {
 	id: string;
-	experiment_key: "feed_ranking" | "banner_delivery";
+	// `feed_ranking` and `banner_delivery` are first-class. Real environments
+	// (and seed/QA tenants) may carry additional experiment keys, so we keep
+	// the type open instead of breaking the page on unknown values.
+	experiment_key: string;
 	is_enabled: boolean;
 	rollout_percent: number;
 	variants: Record<string, unknown>;
@@ -760,15 +763,12 @@ function readEntities(record: Record<string, unknown>): AiEntity[] {
 				typeof entry.entity_type === "string"
 					? (entry.entity_type as AiEntity["entity_type"])
 					: "organization",
-			context:
-				typeof entry.context === "string" ? entry.context : undefined,
+			context: typeof entry.context === "string" ? entry.context : undefined,
 		}))
 		.filter((entity) => entity.name.length > 0);
 }
 
-function readRiskDimensions(
-	record: Record<string, unknown>,
-): RiskDimension[] {
+function readRiskDimensions(record: Record<string, unknown>): RiskDimension[] {
 	const raw = record.risk_dimensions;
 	if (!Array.isArray(raw)) return [];
 	return raw
@@ -811,9 +811,7 @@ export function normalizeArticleAiInsights(
 	const riskDimensions = readRiskDimensions(record);
 	const riskScoreRaw = record.risk_score;
 	const riskScore =
-		typeof riskScoreRaw === "number"
-			? riskScoreRaw
-			: (article.risk_score ?? 0);
+		typeof riskScoreRaw === "number" ? riskScoreRaw : (article.risk_score ?? 0);
 	const riskLevelRaw = record.risk_level;
 	const riskLevel: ArticleAiInsights["risk_level"] =
 		riskLevelRaw === "critical" ||
@@ -844,8 +842,7 @@ export function normalizeArticleAiInsights(
 		risk_dimensions: riskDimensions,
 		recommendations,
 		tags: metadataTags.length > 0 ? metadataTags : article.tags,
-		keywords:
-			metadataKeywords.length > 0 ? metadataKeywords : article.keywords,
+		keywords: metadataKeywords.length > 0 ? metadataKeywords : article.keywords,
 	};
 }
 
@@ -1283,8 +1280,6 @@ const TOKEN_USAGE_STATUSES = ["success", "failed", "degraded"] as const;
 const BUDGET_ALERT_WINDOWS = ["daily", "monthly"] as const;
 
 const BUDGET_ALERT_STATUSES = ["triggered", "resolved", "suppressed"] as const;
-
-const FEED_EXPERIMENT_KEYS = ["feed_ranking", "banner_delivery"] as const;
 
 export function assertAuthzCheckResponse(
 	value: unknown,
@@ -1915,10 +1910,9 @@ export function assertFeedResponse(
 		`${path}.experiments`,
 		(item, itemPath) => {
 			assertRecord(item, itemPath);
-			assertOneOf(
+			assertString(
 				getRequired(item, "experiment_key", itemPath),
 				`${itemPath}.experiment_key`,
-				FEED_EXPERIMENT_KEYS,
 			);
 			assertString(
 				getRequired(item, "variant", itemPath),
@@ -1977,7 +1971,10 @@ export function assertNotificationsResponse(
 		`${path}.items`,
 		assertNotificationEntry,
 	);
-	assertNumber(getRequired(value, "last_seen_seq", path), `${path}.last_seen_seq`);
+	assertNumber(
+		getRequired(value, "last_seen_seq", path),
+		`${path}.last_seen_seq`,
+	);
 	assertNumber(getRequired(value, "total", path), `${path}.total`);
 	assertNumber(getRequired(value, "limit", path), `${path}.limit`);
 	assertNumber(getRequired(value, "offset", path), `${path}.offset`);
@@ -2096,10 +2093,9 @@ function assertFeedExperimentConfig(
 ): asserts value is FeedExperimentConfig {
 	assertRecord(value, path);
 	assertString(getRequired(value, "id", path), `${path}.id`);
-	assertOneOf(
+	assertString(
 		getRequired(value, "experiment_key", path),
 		`${path}.experiment_key`,
-		FEED_EXPERIMENT_KEYS,
 	);
 	assertBoolean(getRequired(value, "is_enabled", path), `${path}.is_enabled`);
 	assertNumber(
@@ -2411,7 +2407,7 @@ export function assertSource(
 	assertString(getRequired(value, "source_type", path), `${path}.source_type`);
 
 	const config = getRequired(value, "config", path);
-	assertRecord(config, `${path}.config`);
+	assertNullable(config, `${path}.config`, assertRecord);
 
 	assertNullable(
 		getRequired(value, "schedule", path),
@@ -2436,6 +2432,7 @@ export function assertSource(
 		"degraded",
 		"unhealthy",
 		"unknown",
+		"",
 	] as const;
 	assertOneOf(
 		getRequired(value, "health_status", path),
@@ -2455,7 +2452,7 @@ export function assertSource(
 		`${path}.avg_fetch_duration_ms`,
 		assertNumber,
 	);
-	const RENDER_MODES = ["static", "dynamic"] as const;
+	const RENDER_MODES = ["static", "dynamic", ""] as const;
 	assertOneOf(
 		getRequired(value, "render_mode", path),
 		`${path}.render_mode`,
@@ -2893,6 +2890,45 @@ export interface ReportGovernanceMetricsResponse {
 	error_24h_count: number;
 }
 
+// ── Report Subscriptions ────────────────────────────────────────────
+
+export const REPORT_DELIVERY_CHANNELS = [
+	"email",
+	"webhook",
+	"web_push",
+	"in_app",
+] as const;
+
+export type ReportDeliveryChannel = (typeof REPORT_DELIVERY_CHANNELS)[number];
+
+export interface ReportSubscription {
+	id: string;
+	tenant_id: string;
+	user_id: string;
+	name: string;
+	template_id: string;
+	period_type: string;
+	delivery_channel: string;
+	export_format: string;
+	filters: Record<string, unknown>;
+	is_active: boolean;
+	last_triggered_at: string | null;
+	version: number;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface ReportSubscriptionListResponse {
+	data: ReportSubscription[];
+	total: number;
+}
+
+export interface ReportSubscriptionTriggerResponse {
+	message: string;
+	subscription_id: string;
+	report_id: string;
+}
+
 // ── Tenants ─────────────────────────────────────────────────────────
 
 export interface Tenant {
@@ -3112,6 +3148,61 @@ export function assertReportGovernanceMetricsResponse(
 		getRequired(value, "error_24h_count", path),
 		`${path}.error_24h_count`,
 	);
+}
+
+export function assertReportSubscription(
+	value: unknown,
+	path = "reportSubscription",
+): asserts value is ReportSubscription {
+	assertRecord(value, path);
+	assertString(getRequired(value, "id", path), `${path}.id`);
+	assertString(getRequired(value, "tenant_id", path), `${path}.tenant_id`);
+	assertString(getRequired(value, "user_id", path), `${path}.user_id`);
+	assertString(getRequired(value, "name", path), `${path}.name`);
+	assertString(getRequired(value, "template_id", path), `${path}.template_id`);
+	assertString(getRequired(value, "period_type", path), `${path}.period_type`);
+	assertString(
+		getRequired(value, "delivery_channel", path),
+		`${path}.delivery_channel`,
+	);
+	assertString(
+		getRequired(value, "export_format", path),
+		`${path}.export_format`,
+	);
+	const filters = getRequired(value, "filters", path);
+	assertRecord(filters, `${path}.filters`);
+	assertBoolean(getRequired(value, "is_active", path), `${path}.is_active`);
+	assertNullable(
+		getRequired(value, "last_triggered_at", path),
+		`${path}.last_triggered_at`,
+		assertString,
+	);
+	assertNumber(getRequired(value, "version", path), `${path}.version`);
+	assertString(getRequired(value, "created_at", path), `${path}.created_at`);
+	assertString(getRequired(value, "updated_at", path), `${path}.updated_at`);
+}
+
+export function assertReportSubscriptionListResponse(
+	value: unknown,
+	path = "reportSubscriptionList",
+): asserts value is ReportSubscriptionListResponse {
+	assertRecord(value, path);
+	const data = getRequired(value, "data", path);
+	assertArray(data, `${path}.data`, assertReportSubscription);
+	assertNumber(getRequired(value, "total", path), `${path}.total`);
+}
+
+export function assertReportSubscriptionTriggerResponse(
+	value: unknown,
+	path = "reportSubscriptionTrigger",
+): asserts value is ReportSubscriptionTriggerResponse {
+	assertRecord(value, path);
+	assertString(getRequired(value, "message", path), `${path}.message`);
+	assertString(
+		getRequired(value, "subscription_id", path),
+		`${path}.subscription_id`,
+	);
+	assertString(getRequired(value, "report_id", path), `${path}.report_id`);
 }
 
 // ── Statistics Overview ─────────────────────────────────────────────

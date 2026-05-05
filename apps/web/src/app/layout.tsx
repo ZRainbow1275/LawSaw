@@ -1,7 +1,7 @@
 import { OnboardingTour } from "@/components/onboarding";
-import { AuthProvider } from "@/components/providers/auth-provider";
-import { AppearanceProvider } from "@/components/providers/appearance-provider";
 import { AppShortcutsProvider } from "@/components/providers/app-shortcuts-provider";
+import { AppearanceProvider } from "@/components/providers/appearance-provider";
+import { AuthProvider } from "@/components/providers/auth-provider";
 import { KeyboardViewportAdapter } from "@/components/providers/keyboard-viewport-adapter";
 import { NetworkStatusIndicator } from "@/components/providers/network-status-indicator";
 import { QueryProvider } from "@/components/providers/query-provider";

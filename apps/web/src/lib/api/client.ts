@@ -28,11 +28,15 @@ function isPrivateHostname(hostname: string): boolean {
 	if (LOOPBACK_HOSTS.has(hostname)) return true;
 	if (hostname === "0.0.0.0") return true;
 
-	const ipv4Match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+	const ipv4Match = hostname.match(
+		/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/,
+	);
 	if (!ipv4Match) return false;
 
 	const octets = ipv4Match.slice(1).map((value) => Number.parseInt(value, 10));
-	if (octets.some((value) => !Number.isFinite(value) || value < 0 || value > 255)) {
+	if (
+		octets.some((value) => !Number.isFinite(value) || value < 0 || value > 255)
+	) {
 		return false;
 	}
 

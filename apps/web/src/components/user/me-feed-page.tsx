@@ -1,21 +1,19 @@
 "use client";
 
 import { ArticleCard } from "@/components/article/article-card";
-import { FeedHero } from "@/components/user/feed-hero";
 import { UserShell } from "@/components/layout/user-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import {
-	ArticleCardSkeleton,
-	Skeleton,
-} from "@/components/ui/skeleton";
+import { ArticleCardSkeleton, Skeleton } from "@/components/ui/skeleton";
+import { FeedHero } from "@/components/user/feed-hero";
 import { useCategories } from "@/hooks/use-categories";
 import { useMeFeed } from "@/hooks/use-me-feed";
 import { withLocalePath } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { motion } from "framer-motion";
-import { Megaphone, Pin, TrendingUp } from "lucide-react";
+import { Megaphone, Pin, ShieldAlert, TrendingUp } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 
 const containerVariants = {
@@ -40,11 +38,35 @@ const heroSkeletonStyle = {
 		"linear-gradient(135deg, color-mix(in srgb, var(--color-primary-200) 40%, transparent), color-mix(in srgb, var(--color-primary-100) 30%, transparent))",
 } as const;
 
+const FEED_ARTICLE_SKELETON_IDS = [
+	"lead",
+	"policy",
+	"court",
+	"enforcement",
+	"compliance",
+	"global",
+] as const;
+const CHANNEL_SKELETON_IDS = [
+	"legislation",
+	"regulation",
+	"court",
+	"global",
+] as const;
+const CATEGORY_SKELETON_IDS = [
+	"basic",
+	"verified",
+	"premium",
+	"admin",
+	"global",
+] as const;
+
 export function MeFeedPage() {
 	const t = useT();
 	const locale = useLocale();
+	const searchParams = useSearchParams();
 	const feedQuery = useMeFeed(20, 8);
 	const categoriesQuery = useCategories();
+	const adminDenied = searchParams.get("denied") === "admin";
 
 	const articles = feedQuery.data?.articles ?? [];
 	const visibleChannels = feedQuery.data?.visible_channels ?? [];
@@ -81,6 +103,33 @@ export function MeFeedPage() {
 						/>
 					)}
 				</motion.div>
+
+				{adminDenied ? (
+					<motion.div variants={itemVariants}>
+						<div
+							className="flex items-start gap-3 rounded-2xl border p-4 text-sm"
+							style={{
+								backgroundColor: "color-mix(in srgb, #fef3c7 62%, white)",
+								borderColor: "#f59e0b",
+								color: "#92400e",
+							}}
+							role="alert"
+						>
+							<ShieldAlert
+								aria-hidden="true"
+								className="mt-0.5 h-4 w-4 shrink-0"
+							/>
+							<div>
+								<div className="font-semibold">{t("Access restricted")}</div>
+								<div className="mt-1">
+									{t(
+										"Your account does not have administrator access. You have been redirected to your personal feed.",
+									)}
+								</div>
+							</div>
+						</div>
+					</motion.div>
+				) : null}
 
 				{banners.length > 0 ? (
 					<motion.section
@@ -137,9 +186,7 @@ export function MeFeedPage() {
 									<h3
 										className="relative mt-3 text-base font-semibold"
 										style={{
-											color: isFeatured
-												? "white"
-												: "var(--auth-copy-primary)",
+											color: isFeatured ? "white" : "var(--auth-copy-primary)",
 										}}
 									>
 										{banner.title}
@@ -207,8 +254,7 @@ export function MeFeedPage() {
 												style={{
 													backgroundColor: "var(--surface-accent-bg)",
 													borderColor: "var(--surface-accent-border)",
-													borderLeft:
-														"4px solid var(--color-primary-600)",
+													borderLeft: "4px solid var(--color-primary-600)",
 												}}
 											>
 												<ArticleCard
@@ -242,8 +288,8 @@ export function MeFeedPage() {
 
 						{feedQuery.isLoading ? (
 							<div className="grid gap-4 md:grid-cols-2">
-								{Array.from({ length: 6 }, (_, index) => (
-									<ArticleCardSkeleton key={`feed-skeleton-${index}`} />
+								{FEED_ARTICLE_SKELETON_IDS.map((skeletonId) => (
+									<ArticleCardSkeleton key={`feed-skeleton-${skeletonId}`} />
 								))}
 							</div>
 						) : feedQuery.isError ? (
@@ -318,9 +364,9 @@ export function MeFeedPage() {
 							<CardContent>
 								{feedQuery.isLoading ? (
 									<div className="space-y-2">
-										{Array.from({ length: 4 }, (_, index) => (
+										{CHANNEL_SKELETON_IDS.map((skeletonId) => (
 											<Skeleton
-												key={`channel-skeleton-${index}`}
+												key={`channel-skeleton-${skeletonId}`}
 												variant="text"
 												width="80%"
 												height={18}
@@ -379,9 +425,9 @@ export function MeFeedPage() {
 							<CardContent>
 								{categoriesQuery.isLoading ? (
 									<div className="flex flex-wrap gap-2">
-										{Array.from({ length: 5 }, (_, index) => (
+										{CATEGORY_SKELETON_IDS.map((skeletonId) => (
 											<Skeleton
-												key={`cat-skel-${index}`}
+												key={`cat-skel-${skeletonId}`}
 												variant="rectangular"
 												width={88}
 												height={28}

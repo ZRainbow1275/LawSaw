@@ -24,8 +24,8 @@ import { Button } from "@/components/ui/button";
 import { ConfirmActionModal } from "@/components/ui/confirm-action-modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
-import type { ArticlePinRecord } from "@/hooks/use-pins";
 import type { ChannelRecord } from "@/hooks/use-channels";
+import type { ArticlePinRecord } from "@/hooks/use-pins";
 import { formatDateTime } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
@@ -120,13 +120,11 @@ export function PinList({
 	);
 
 	const surfaceStyle = {
-		borderColor:
-			"color-mix(in srgb, var(--color-border) 78%, transparent)",
+		borderColor: "color-mix(in srgb, var(--color-border) 78%, transparent)",
 		backgroundColor: "var(--color-background)",
 	} as const;
 	const handleStyle = {
-		borderColor:
-			"color-mix(in srgb, var(--color-border) 78%, transparent)",
+		borderColor: "color-mix(in srgb, var(--color-border) 78%, transparent)",
 		backgroundColor:
 			"color-mix(in srgb, var(--surface-muted-bg) 70%, var(--color-background) 30%)",
 		color: "var(--surface-muted-text)",
@@ -173,11 +171,10 @@ export function PinList({
 				{pins.map((pin) => {
 					const channelId = readPinChannelId(pin);
 					const channelName = channelId
-						? channelById.get(channelId) ?? channelId
+						? (channelById.get(channelId) ?? channelId)
 						: null;
 					const isDragging = draggingId === pin.id;
-					const isDropTarget =
-						dropTargetId === pin.id && draggingId !== pin.id;
+					const isDropTarget = dropTargetId === pin.id && draggingId !== pin.id;
 					return (
 						<div
 							key={pin.id}
@@ -293,10 +290,7 @@ export function PinList({
 												event.target.value || "0",
 												10,
 											);
-											if (
-												Number.isFinite(next) &&
-												next !== pin.priority
-											) {
+											if (Number.isFinite(next) && next !== pin.priority) {
 												void onPriorityChange(pin, next);
 											}
 										}}
@@ -316,9 +310,7 @@ export function PinList({
 										type="datetime-local"
 										value={isoToDatetimeLocal(pin.ends_at)}
 										onChange={(event) => {
-											const nextIso = datetimeLocalToIso(
-												event.target.value,
-											);
+											const nextIso = datetimeLocalToIso(event.target.value);
 											if (nextIso !== pin.ends_at) {
 												void onEndsAtChange(pin, nextIso);
 											}

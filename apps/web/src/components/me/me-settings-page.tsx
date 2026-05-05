@@ -1,5 +1,11 @@
 "use client";
 
+import {
+	ApiKeysTab,
+	ProfileTab,
+	SecurityTab,
+	uiMessageFromError,
+} from "@/app/settings/tabs";
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { Header } from "@/components/layout/header";
 import { MainContent } from "@/components/layout/main-content";
@@ -7,6 +13,8 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { SettingsBillingTab } from "@/components/me/settings-billing-tab";
 import { SettingsNotificationsTab } from "@/components/me/settings-notifications-tab";
 import { SettingsPrivacyTab } from "@/components/me/settings-privacy-tab";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
 	Card,
 	CardContent,
@@ -14,14 +22,6 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-	ApiKeysTab,
-	ProfileTab,
-	SecurityTab,
-	uiMessageFromError,
-} from "@/app/settings/tabs";
 import { useAuth } from "@/hooks/use-auth";
 import { ApiClientError, apiClient, ifMatchFromVersion } from "@/lib/api";
 import {
@@ -94,8 +94,7 @@ const TABS: ReadonlyArray<TabDefinition> = [
 	{
 		key: "billing",
 		labelKey: "Billing",
-		descKey:
-			"Review your current plan, plan tiers, and upgrade options.",
+		descKey: "Review your current plan, plan tiers, and upgrade options.",
 		Icon: Receipt,
 	},
 	{
@@ -147,9 +146,7 @@ function base64UrlToUint8Array(value: string): Uint8Array<ArrayBuffer> {
 
 function isPremiumOrStaff(tier: RoleTier): boolean {
 	return (
-		tier === "premium_user" ||
-		tier === "tenant_admin" ||
-		tier === "super_admin"
+		tier === "premium_user" || tier === "tenant_admin" || tier === "super_admin"
 	);
 }
 
@@ -161,11 +158,7 @@ function parseCsv(value: string): string[] {
 }
 
 const AVATAR_MAX_BYTES = 1_048_576;
-const ALLOWED_AVATAR_TYPES = new Set([
-	"image/png",
-	"image/jpeg",
-	"image/webp",
-]);
+const ALLOWED_AVATAR_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 export default function MeSettingsPage() {
 	const t = useT();
@@ -198,10 +191,7 @@ export default function MeSettingsPage() {
 		enabled: Boolean(userId),
 		queryFn: async () => {
 			if (!userId) throw new Error(t("Missing user info"));
-			return apiClient.get(
-				`/api/v1/users/${userId}`,
-				assertUserDetailResponse,
-			);
+			return apiClient.get(`/api/v1/users/${userId}`, assertUserDetailResponse);
 		},
 	});
 
@@ -364,9 +354,7 @@ export default function MeSettingsPage() {
 	const [webPush, setWebPush] = useState<WebPushState>(() => ({
 		supported: false,
 		permission:
-			typeof Notification !== "undefined"
-				? Notification.permission
-				: "default",
+			typeof Notification !== "undefined" ? Notification.permission : "default",
 		enabled: false,
 		busy: false,
 	}));
@@ -621,8 +609,7 @@ export default function MeSettingsPage() {
 			await navigator.clipboard.writeText(rawKey);
 			toastSuccess(t("Copied to clipboard"));
 		} catch (err) {
-			const message =
-				err instanceof Error ? err.message : t("Copy failed");
+			const message = err instanceof Error ? err.message : t("Copy failed");
 			toastError(t("Copy failed"), message);
 		}
 	};
@@ -712,10 +699,7 @@ export default function MeSettingsPage() {
 									</div>
 									<Link href={withLocalePath(locale, "/me/settings")}>
 										<Button>
-											<Sparkles
-												aria-hidden="true"
-												className="mr-2 h-4 w-4"
-											/>
+											<Sparkles aria-hidden="true" className="mr-2 h-4 w-4" />
 											{t("Upgrade to Premium")}
 										</Button>
 									</Link>
@@ -816,10 +800,7 @@ export default function MeSettingsPage() {
 																: "text-neutral-600 hover:bg-neutral-50"
 														}`}
 													>
-														<tab.Icon
-															aria-hidden="true"
-															className="h-4 w-4"
-														/>
+														<tab.Icon aria-hidden="true" className="h-4 w-4" />
 														<span className="flex-1 text-left">
 															{t(tab.labelKey)}
 														</span>

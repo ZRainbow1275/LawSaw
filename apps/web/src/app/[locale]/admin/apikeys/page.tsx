@@ -112,7 +112,10 @@ function AdminApiKeysContent() {
 	return (
 		<div className="space-y-6">
 			<div className="rounded-3xl border p-6" style={surfaceStyle}>
-				<div className="flex items-center gap-2 text-3xl font-bold tracking-tight" style={headingStyle}>
+				<div
+					className="flex items-center gap-2 text-3xl font-bold tracking-tight"
+					style={headingStyle}
+				>
 					<KeyRound
 						aria-hidden="true"
 						className="h-7 w-7"

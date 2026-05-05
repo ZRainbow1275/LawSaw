@@ -69,10 +69,7 @@ describe("isPermissionAuthorized", () => {
 
 	it("denies an empty array (no permission to match)", () => {
 		expect(
-			isPermissionAuthorized(
-				{ isAuthenticated: true, permissions: ["*"] },
-				[],
-			),
+			isPermissionAuthorized({ isAuthenticated: true, permissions: ["*"] }, []),
 		).toBe(false);
 	});
 });

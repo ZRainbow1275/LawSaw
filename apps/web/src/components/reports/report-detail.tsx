@@ -416,7 +416,10 @@ export function ReportDetail({
 				<Card className="mb-6">
 					<div className="p-4">
 						<h3 className="text-sm font-semibold text-neutral-900 mb-3 flex items-center gap-2">
-							<Download aria-hidden="true" className="h-4 w-4 text-primary-500" />
+							<Download
+								aria-hidden="true"
+								className="h-4 w-4 text-primary-500"
+							/>
 							{t("Available Downloads")}
 						</h3>
 						<div className="flex items-center gap-3 flex-wrap">
@@ -467,7 +470,9 @@ export function ReportDetail({
 							)}
 							{!hasAnyExportKey && (
 								<p className="text-xs text-neutral-500">
-									{t("No export file is ready yet. Please trigger export first.")}
+									{t(
+										"No export file is ready yet. Please trigger export first.",
+									)}
 								</p>
 							)}
 						</div>

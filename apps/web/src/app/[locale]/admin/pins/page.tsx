@@ -137,20 +137,24 @@ function AddPinModal({
 	const mutedStyle = { color: "var(--surface-muted-text)" } as const;
 	const fieldStyle = {
 		backgroundColor: "var(--color-background)",
-		borderColor:
-			"color-mix(in srgb, var(--color-border) 80%, transparent)",
+		borderColor: "color-mix(in srgb, var(--color-border) 80%, transparent)",
 		color: "var(--color-foreground)",
 	} as const;
 
 	return (
 		<Modal isOpen={open} onClose={saving ? () => {} : onClose} size="lg">
 			<ModalHeader className="pr-14">
-				<h2 className="flex items-center gap-2 text-lg font-semibold" style={headingStyle}>
+				<h2
+					className="flex items-center gap-2 text-lg font-semibold"
+					style={headingStyle}
+				>
 					<Pin aria-hidden="true" className="h-5 w-5" />
 					{t("Pin article")}
 				</h2>
 				<p className="mt-1 text-sm" style={mutedStyle}>
-					{t("Search a published article, scope the pin to a channel, and choose when it expires.")}
+					{t(
+						"Search a published article, scope the pin to a channel, and choose when it expires.",
+					)}
 				</p>
 			</ModalHeader>
 			<ModalBody className="max-h-[60vh] space-y-4">
@@ -267,7 +271,12 @@ function AddPinModal({
 				) : null}
 			</ModalBody>
 			<ModalFooter>
-				<Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+				<Button
+					type="button"
+					variant="outline"
+					onClick={onClose}
+					disabled={saving}
+				>
 					{t("Cancel")}
 				</Button>
 				<Button
@@ -436,10 +445,7 @@ export default function AdminPinsPage() {
 
 	const handleQuickPin = async (article: Article) => {
 		try {
-			const nextPriority = Math.max(
-				100,
-				(orderedPins[0]?.priority ?? 0) + 100,
-			);
+			const nextPriority = Math.max(100, (orderedPins[0]?.priority ?? 0) + 100);
 			const created = await createPin.mutateAsync({
 				article_id: article.id,
 				priority: nextPriority,
@@ -469,10 +475,7 @@ export default function AdminPinsPage() {
 		channelId: string | null;
 	}) => {
 		try {
-			const nextPriority = Math.max(
-				100,
-				(orderedPins[0]?.priority ?? 0) + 100,
-			);
+			const nextPriority = Math.max(100, (orderedPins[0]?.priority ?? 0) + 100);
 			const metadata = input.channelId
 				? { channel_id: input.channelId }
 				: undefined;

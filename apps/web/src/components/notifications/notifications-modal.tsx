@@ -1,16 +1,16 @@
 "use client";
 
-import { Modal, ModalBody, ModalHeader } from "@/components/ui/modal";
-import { NoDataState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { useLocale, useT } from "@/lib/i18n-client";
+import { NoDataState } from "@/components/ui/empty-state";
+import { Modal, ModalBody, ModalHeader } from "@/components/ui/modal";
 import {
 	useMarkNotificationsSeen,
 	useNotifications,
 } from "@/hooks/use-notifications";
 import type { NotificationEntry } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n-client";
+import { cn } from "@/lib/utils";
 import { useMemo } from "react";
 
 function maxSeq(items: NotificationEntry[]): number {
@@ -42,12 +42,7 @@ export function NotificationsModal(props: {
 	};
 
 	return (
-		<Modal
-			isOpen={isOpen}
-			onClose={onClose}
-			size="lg"
-			className="max-h-[85vh]"
-		>
+		<Modal isOpen={isOpen} onClose={onClose} size="lg" className="max-h-[85vh]">
 			<ModalHeader className="flex items-start justify-between gap-4">
 				<div className="min-w-0">
 					<h2 className="text-lg font-semibold text-neutral-900">
@@ -75,7 +70,9 @@ export function NotificationsModal(props: {
 			</ModalHeader>
 			<ModalBody className="py-0">
 				{query.isLoading ? (
-					<div className="py-10 text-sm text-neutral-500">{t("Loading...")}</div>
+					<div className="py-10 text-sm text-neutral-500">
+						{t("Loading...")}
+					</div>
 				) : query.isError ? (
 					<div className="py-10 text-sm text-neutral-500">
 						{t("Load failed")}
@@ -102,9 +99,7 @@ export function NotificationsModal(props: {
 										<div
 											className={cn(
 												"mt-1 h-2.5 w-2.5 rounded-full",
-												unread
-													? "bg-primary-500"
-													: "bg-neutral-200",
+												unread ? "bg-primary-500" : "bg-neutral-200",
 											)}
 										/>
 										<div className="min-w-0 flex-1">

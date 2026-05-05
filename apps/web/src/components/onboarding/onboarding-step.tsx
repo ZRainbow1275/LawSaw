@@ -1,7 +1,7 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n-client";
+import { cn } from "@/lib/utils";
 import { ArrowRight } from "lucide-react";
 import type { OnboardingStep as OnboardingStepDefinition } from "./tour-steps";
 import { ONBOARDING_FALLBACK_COPY } from "./tour-steps";
@@ -50,7 +50,9 @@ export function OnboardingStepCard({
 	const rawDescription = t(step.descriptionKey);
 	const title = rawTitle === step.titleKey ? fallback.title : rawTitle;
 	const description =
-		rawDescription === step.descriptionKey ? fallback.description : rawDescription;
+		rawDescription === step.descriptionKey
+			? fallback.description
+			: rawDescription;
 
 	return (
 		<dialog

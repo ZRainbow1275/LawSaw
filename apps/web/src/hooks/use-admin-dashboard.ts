@@ -59,7 +59,9 @@ function assertAdminDashboardSummary(
 		typeof status !== "string" ||
 		!AI_GATEWAY_STATUSES.has(status as AiGatewayStatus)
 	) {
-		throw new Error(`${path}.ai_gateway_status: expected healthy|degraded|down`);
+		throw new Error(
+			`${path}.ai_gateway_status: expected healthy|degraded|down`,
+		);
 	}
 
 	const lastUpdated = obj.last_updated_at;

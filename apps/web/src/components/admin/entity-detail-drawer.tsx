@@ -33,13 +33,7 @@ import { useLocale, useT } from "@/lib/i18n-client";
 import { overlayVariants } from "@/lib/motion";
 import { useToast } from "@/stores/toast-store";
 import { AnimatePresence, motion } from "framer-motion";
-import {
-	GitMerge,
-	Loader2,
-	RefreshCw,
-	Sparkles,
-	X,
-} from "lucide-react";
+import { GitMerge, Loader2, RefreshCw, Sparkles, X } from "lucide-react";
 import { useState } from "react";
 
 const PANEL_VARIANTS = {
@@ -152,17 +146,17 @@ export function EntityDetailDrawer({
 						onClick={onClose}
 						aria-hidden="true"
 					/>
-					<motion.aside
+					<motion.dialog
+						open
 						variants={PANEL_VARIANTS}
 						initial="hidden"
 						animate="visible"
 						exit="exit"
-						className="ml-auto flex h-full w-full max-w-2xl flex-col overflow-hidden border-l shadow-2xl"
+						className="m-0 ml-auto flex h-full w-full max-h-none max-w-2xl flex-col overflow-hidden border-0 border-l p-0 shadow-2xl"
 						style={{
 							backgroundColor: "var(--color-background)",
 							borderColor: "var(--surface-muted-border)",
 						}}
-						role="dialog"
 						aria-label={t("Entity detail")}
 					>
 						<header
@@ -240,7 +234,10 @@ export function EntityDetailDrawer({
 										>
 											{t("Lifecycle")}
 										</h3>
-										<div className="grid gap-3 text-sm md:grid-cols-2" style={mutedStyle}>
+										<div
+											className="grid gap-3 text-sm md:grid-cols-2"
+											style={mutedStyle}
+										>
 											<div>
 												<p
 													className="text-xs uppercase tracking-wide"
@@ -275,10 +272,7 @@ export function EntityDetailDrawer({
 									</section>
 
 									<section className="mt-6 space-y-2">
-										<h3
-											className="text-sm font-semibold"
-											style={headingStyle}
-										>
+										<h3 className="text-sm font-semibold" style={headingStyle}>
 											{t("Source articles")}
 										</h3>
 										{articlesQuery.isLoading ? (
@@ -323,10 +317,7 @@ export function EntityDetailDrawer({
 									</section>
 
 									<section className="mt-6 space-y-2">
-										<h3
-											className="text-sm font-semibold"
-											style={headingStyle}
-										>
+										<h3 className="text-sm font-semibold" style={headingStyle}>
 											{t("Related entities")}
 										</h3>
 										{relatedQuery.isLoading ? (
@@ -393,7 +384,8 @@ export function EntityDetailDrawer({
 											placeholder={t("Search entities by name or alias")}
 											style={fieldStyle}
 										/>
-										{mergeQuery.trim().length === 0 ? null : mergeSearchQuery.isLoading ? (
+										{mergeQuery.trim().length ===
+										0 ? null : mergeSearchQuery.isLoading ? (
 											<p className="text-sm" style={mutedStyle}>
 												{t("Searching")}
 											</p>
@@ -439,7 +431,10 @@ export function EntityDetailDrawer({
 																		className="h-4 w-4 animate-spin"
 																	/>
 																) : (
-																	<GitMerge aria-hidden="true" className="h-4 w-4" />
+																	<GitMerge
+																		aria-hidden="true"
+																		className="h-4 w-4"
+																	/>
 																)}
 																{t("Merge")}
 															</Button>
@@ -479,7 +474,10 @@ export function EntityDetailDrawer({
 												disabled={retrigger.isPending}
 											>
 												{retrigger.isPending ? (
-													<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+													<Loader2
+														aria-hidden="true"
+														className="h-4 w-4 animate-spin"
+													/>
 												) : (
 													<RefreshCw aria-hidden="true" className="h-4 w-4" />
 												)}
@@ -490,7 +488,7 @@ export function EntityDetailDrawer({
 								</>
 							) : null}
 						</div>
-					</motion.aside>
+					</motion.dialog>
 				</div>
 			) : null}
 		</AnimatePresence>

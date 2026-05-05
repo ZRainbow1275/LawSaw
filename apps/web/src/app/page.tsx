@@ -1,6 +1,6 @@
-import { redirect } from "next/navigation";
-import { cookies, headers } from "next/headers";
 import { LOCALE_COOKIE_NAME, detectLocale } from "@/lib/i18n";
+import { cookies, headers } from "next/headers";
+import { redirect } from "next/navigation";
 
 /**
  * Non-localized root entry point.

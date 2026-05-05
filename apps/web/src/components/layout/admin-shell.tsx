@@ -1,9 +1,17 @@
 "use client";
 
 import { RoleTierGuard } from "@/components/auth/role-tier-guard";
+import { resolveBreadcrumbSegment } from "@/components/layout/breadcrumbs";
 import { NotificationBell } from "@/components/layout/notification-bell";
+import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { useAuth } from "@/hooks/use-auth";
-import { ADMIN_TIERS, normalizeRoleTier, type RoleTier } from "@/lib/authz";
+import { ADMIN_NAV_GROUPS } from "@/lib/admin-nav";
+import {
+	ADMIN_TIERS,
+	type RoleTier,
+	normalizeRoleTier,
+	roleTierLabelKey,
+} from "@/lib/authz";
 import { stripLocalePrefix, withLocalePath } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
@@ -11,117 +19,21 @@ import { useAuthStore } from "@/stores/auth-store";
 import { useSidebarStore } from "@/stores/sidebar-store";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
-	BarChart3,
-	Bell,
-	BookOpen,
-	BrainCircuit,
-	Building2,
 	ChevronRight,
-	Database,
-	FileSearch,
-	Globe,
-	Globe as GlobeIcon,
-	Key,
-	LayoutDashboard,
 	LogOut,
 	Menu,
-	MessageSquareText,
-	Network,
-	Pin,
 	Settings as SettingsIcon,
 	Shield,
-	ShieldCheck,
-	Sparkles,
-	User,
 	X,
-	type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 interface AdminShellProps {
 	children: ReactNode;
 	className?: string;
 }
-
-interface AdminNavItem {
-	href: string;
-	labelKey: string;
-	icon: LucideIcon;
-}
-
-/**
- * Admin workspace navigation order mirrors SPEC-02-DUAL-PANEL §2.1.
- * The grouping is rendered visually so admins can scan governance
- * surfaces by domain instead of one flat list.
- */
-const ADMIN_NAV_GROUPS: ReadonlyArray<{
-	titleKey: string;
-	items: ReadonlyArray<AdminNavItem>;
-}> = [
-	{
-		titleKey: "Overview",
-		items: [
-			{ href: "/admin", labelKey: "Admin workspace", icon: LayoutDashboard },
-		],
-	},
-	{
-		titleKey: "Tenant operations",
-		items: [
-			{ href: "/admin/users", labelKey: "User directory", icon: User },
-			{
-				href: "/admin/relations",
-				labelKey: "Authorization relations",
-				icon: Network,
-			},
-			{
-				href: "/admin/permissions",
-				labelKey: "Permission matrix",
-				icon: ShieldCheck,
-			},
-			{ href: "/admin/tenants", labelKey: "Tenants", icon: Building2 },
-			{ href: "/admin/apikeys", labelKey: "API keys", icon: Key },
-		],
-	},
-	{
-		titleKey: "Content control",
-		items: [
-			{ href: "/admin/channels", labelKey: "Channel management", icon: Globe },
-			{ href: "/admin/categories", labelKey: "Categories", icon: BookOpen },
-			{ href: "/admin/banners", labelKey: "Banner management", icon: Bell },
-			{ href: "/admin/pins", labelKey: "Pinned articles", icon: Pin },
-			{
-				href: "/admin/sources",
-				labelKey: "Source registry",
-				icon: GlobeIcon,
-			},
-		],
-	},
-	{
-		titleKey: "Operations & telemetry",
-		items: [
-			{
-				href: "/admin/feedbacks",
-				labelKey: "Feedback desk",
-				icon: MessageSquareText,
-			},
-			{ href: "/admin/audit", labelKey: "Audit trail", icon: FileSearch },
-			{ href: "/admin/ai-usage", labelKey: "AI usage", icon: BrainCircuit },
-			{
-				href: "/admin/ai-governance",
-				labelKey: "AI governance",
-				icon: Sparkles,
-			},
-			{ href: "/admin/reports", labelKey: "Reports", icon: Database },
-			{
-				href: "/admin/knowledge",
-				labelKey: "Knowledge graph",
-				icon: BarChart3,
-			},
-		],
-	},
-];
 
 function isAdminItemActive(activePath: string, href: string): boolean {
 	if (href === "/admin") {
@@ -150,17 +62,6 @@ function roleTierBadgeStyle(tier: RoleTier): React.CSSProperties {
 				borderColor: "var(--surface-muted-border)",
 				color: "var(--surface-muted-text)",
 			};
-	}
-}
-
-function roleTierLabel(tier: RoleTier): string {
-	switch (tier) {
-		case "super_admin":
-			return "Super admin";
-		case "tenant_admin":
-			return "Tenant admin";
-		default:
-			return "Admin";
 	}
 }
 
@@ -195,8 +96,6 @@ function AdminSidebarPanel({
 	const avatarText = (displayName.charAt(0) || "A").toUpperCase();
 
 	const headerStyle = {
-		background:
-			"linear-gradient(135deg, var(--color-primary-600), var(--color-primary-500))",
 		boxShadow:
 			"0 6px 18px color-mix(in srgb, var(--color-primary-600) 28%, transparent)",
 		color: "color-mix(in srgb, white 96%, transparent)",
@@ -217,7 +116,7 @@ function AdminSidebarPanel({
 				style={{ borderColor: "var(--surface-muted-border)" }}
 			>
 				<div
-					className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+					className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-cta"
 					style={headerStyle}
 				>
 					<Shield aria-hidden="true" className="h-5 w-5" />
@@ -259,9 +158,11 @@ function AdminSidebarPanel({
 						className="flex-1 overflow-y-auto p-4 text-sm"
 						style={mutedTextStyle}
 					>
-						{collapsed ? null : t(
-							"Sign in with an administrative role to access governance navigation.",
-						)}
+						{collapsed
+							? null
+							: t(
+									"Sign in with an administrative role to access governance navigation.",
+								)}
 					</nav>
 				}
 			>
@@ -381,7 +282,7 @@ function AdminSidebarPanel({
 					}}
 				>
 					<div
-						className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
+						className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-cta text-sm font-semibold"
 						style={headerStyle}
 					>
 						{avatarText}
@@ -400,7 +301,7 @@ function AdminSidebarPanel({
 								className="mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold"
 								style={roleTierBadgeStyle(roleTier)}
 							>
-								{t(roleTierLabel(roleTier))}
+								{t(roleTierLabelKey(roleTier))}
 							</span>
 						</div>
 					) : null}
@@ -444,9 +345,6 @@ function AdminTopBar() {
 		};
 	}, [menuOpen]);
 
-	const handleSwitchToUserPanel = () => {
-		router.push(withLocalePath(locale, "/me/feed"));
-	};
 
 	const handleLogout = async () => {
 		await logout();
@@ -457,7 +355,8 @@ function AdminTopBar() {
 		background:
 			"linear-gradient(135deg, color-mix(in srgb, var(--color-primary-600) 92%, black) 0%, color-mix(in srgb, var(--color-primary-500) 88%, black) 100%)",
 		color: "color-mix(in srgb, white 95%, transparent)",
-		borderColor: "color-mix(in srgb, var(--color-primary-700) 60%, transparent)",
+		borderColor:
+			"color-mix(in srgb, var(--color-primary-700) 60%, transparent)",
 	} as const;
 
 	return (
@@ -483,8 +382,7 @@ function AdminTopBar() {
 					<div
 						className="flex h-9 w-9 items-center justify-center rounded-lg"
 						style={{
-							backgroundColor:
-								"color-mix(in srgb, white 18%, transparent)",
+							backgroundColor: "color-mix(in srgb, white 18%, transparent)",
 						}}
 					>
 						<Shield aria-hidden="true" className="h-4 w-4" />
@@ -503,21 +401,7 @@ function AdminTopBar() {
 				</div>
 
 				<div className="ml-auto flex items-center gap-2">
-					<button
-						type="button"
-						onClick={handleSwitchToUserPanel}
-						className="hidden items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium md:inline-flex"
-						style={{
-							backgroundColor:
-								"color-mix(in srgb, white 12%, transparent)",
-							borderColor:
-								"color-mix(in srgb, white 32%, transparent)",
-							color: "color-mix(in srgb, white 95%, transparent)",
-						}}
-					>
-						<User aria-hidden="true" className="h-3.5 w-3.5" />
-						{t("User panel")}
-					</button>
+					<WorkspaceSwitcher className="hidden md:block" />
 
 					<NotificationBell />
 
@@ -528,8 +412,7 @@ function AdminTopBar() {
 							onClick={() => setMenuOpen((prev) => !prev)}
 							className="inline-flex h-9 w-9 items-center justify-center rounded-full"
 							style={{
-								backgroundColor:
-									"color-mix(in srgb, white 18%, transparent)",
+								backgroundColor: "color-mix(in srgb, white 18%, transparent)",
 								color: "color-mix(in srgb, white 92%, transparent)",
 							}}
 							aria-haspopup="menu"
@@ -594,6 +477,9 @@ function AdminBreadcrumb({ pathname }: AdminBreadcrumbProps) {
 	if (adminIndex === -1) return null;
 	const trail = segments.slice(adminIndex);
 
+	// Admin-specific phrasing for the static segments. Dynamic segments
+	// (UUIDs / report numbers / unknown ids) fall back to the shared resolver
+	// in `breadcrumbs.tsx` so they never leak into i18n as missing keys.
 	const labelMap: Record<string, string> = {
 		admin: "Admin Console",
 		users: "User directory",
@@ -627,16 +513,21 @@ function AdminBreadcrumb({ pathname }: AdminBreadcrumbProps) {
 				backgroundColor: "var(--surface-muted-bg)",
 			}}
 		>
-			<ol className="flex items-center gap-1.5">
+			<ol className="flex items-center gap-2">
 				{trail.map((segment, idx) => {
 					const isLast = idx === trail.length - 1;
 					const path = `/${segments.slice(0, adminIndex + idx + 1).join("/")}`;
-					const label = labelMap[segment] ?? segment;
+					const adminMapped = labelMap[segment];
+					const label = adminMapped
+						? t(adminMapped)
+						: (() => {
+								const resolved = resolveBreadcrumbSegment(segment, isLast);
+								return resolved.kind === "translate"
+									? t(resolved.key)
+									: resolved.text;
+							})();
 					return (
-						<li
-							key={path}
-							className="inline-flex items-center gap-1.5"
-						>
+						<li key={path} className="inline-flex items-center gap-2">
 							{idx > 0 ? (
 								<ChevronRight
 									aria-hidden="true"
@@ -649,14 +540,14 @@ function AdminBreadcrumb({ pathname }: AdminBreadcrumbProps) {
 									className="font-medium"
 									style={{ color: "var(--color-foreground)" }}
 								>
-									{t(label)}
+									{label}
 								</span>
 							) : (
 								<Link
 									href={withLocalePath(locale, path)}
 									className="hover:underline"
 								>
-									{t(label)}
+									{label}
 								</Link>
 							)}
 						</li>
@@ -670,7 +561,9 @@ function AdminBreadcrumb({ pathname }: AdminBreadcrumbProps) {
 export function AdminShell({ children, className }: AdminShellProps) {
 	const pathname = usePathname() ?? "";
 	const activePath = stripLocalePrefix(pathname);
+	const { refreshSession } = useAuth();
 	const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+	const isAuthLoading = useAuthStore((state) => state.isLoading);
 	const roleTier = normalizeRoleTier(useAuthStore((state) => state.roleTier));
 	const collapsed = useSidebarStore((state) => state.collapsed);
 	const toggle = useSidebarStore((state) => state.toggle);
@@ -678,9 +571,20 @@ export function AdminShell({ children, className }: AdminShellProps) {
 	const closeMobile = useSidebarStore((state) => state.closeMobile);
 	const reducedMotion = useReducedMotion() ?? false;
 	const t = useT();
+	const authBootstrapRequestedRef = useRef(false);
 	const previousFocusedElementRef = useRef<HTMLElement | null>(null);
 	const previousPathnameRef = useRef<string | null>(null);
 	const mobileDrawerRef = useRef<HTMLDialogElement | null>(null);
+
+	useEffect(() => {
+		if (isAuthenticated) {
+			authBootstrapRequestedRef.current = false;
+			return;
+		}
+		if (authBootstrapRequestedRef.current) return;
+		authBootstrapRequestedRef.current = true;
+		void refreshSession();
+	}, [isAuthenticated, refreshSession]);
 
 	useEffect(() => {
 		const previous = previousPathnameRef.current;
@@ -694,7 +598,8 @@ export function AdminShell({ children, className }: AdminShellProps) {
 		if (!mobileOpen) return;
 		const previousOverflow = document.body.style.overflow;
 		document.body.style.overflow = "hidden";
-		previousFocusedElementRef.current = document.activeElement as HTMLElement | null;
+		previousFocusedElementRef.current =
+			document.activeElement as HTMLElement | null;
 
 		const handleKeyDown = (event: KeyboardEvent) => {
 			if (event.key === "Escape") closeMobile();
@@ -713,6 +618,14 @@ export function AdminShell({ children, className }: AdminShellProps) {
 
 	const isAdmin = isAuthenticated && ADMIN_TIERS.includes(roleTier);
 
+	if (!isAdmin && isAuthLoading) {
+		return (
+			<div className="flex min-h-screen items-center justify-center">
+				<div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent" />
+			</div>
+		);
+	}
+
 	if (!isAdmin) {
 		return (
 			<div className="flex min-h-screen items-center justify-center px-6 text-center">
@@ -728,10 +641,7 @@ export function AdminShell({ children, className }: AdminShellProps) {
 					>
 						{t("Access restricted")}
 					</h1>
-					<p
-						className="text-sm"
-						style={{ color: "var(--surface-muted-text)" }}
-					>
+					<p className="text-sm" style={{ color: "var(--surface-muted-text)" }}>
 						{t(
 							"You need an administrative role tier to access the admin console.",
 						)}
@@ -749,8 +659,7 @@ export function AdminShell({ children, className }: AdminShellProps) {
 	const baseAsideStyle = {
 		backgroundColor: "var(--surface-muted-bg)",
 		borderColor: "var(--surface-muted-border)",
-		boxShadow:
-			"0 24px 56px color-mix(in srgb, black 32%, transparent)",
+		boxShadow: "0 24px 56px color-mix(in srgb, black 32%, transparent)",
 	} as const;
 
 	return (

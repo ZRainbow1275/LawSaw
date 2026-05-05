@@ -3,8 +3,8 @@
 import * as React from "react";
 
 import { renderArticleBodyHtml } from "@/lib/article-reader";
-import { sanitizeRenderedHtml } from "@/lib/safe-html";
 import { useT } from "@/lib/i18n-client";
+import { sanitizeRenderedHtml } from "@/lib/safe-html";
 import { cn } from "@/lib/utils";
 
 interface MarkdownReaderProps {

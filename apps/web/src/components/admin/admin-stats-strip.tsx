@@ -3,8 +3,8 @@
 import { AnimatedNumber } from "@/components/ui/animated-number";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-	type AiGatewayStatus,
 	type AdminDashboardSummary,
+	type AiGatewayStatus,
 	useAdminDashboardSummary,
 } from "@/hooks/use-admin-dashboard";
 import { useT } from "@/lib/i18n-client";
@@ -303,10 +303,7 @@ export function AdminStatsStrip() {
 
 	return (
 		<div
-			className={cn(
-				"grid gap-3",
-				"grid-cols-2 md:grid-cols-3 xl:grid-cols-5",
-			)}
+			className={cn("grid gap-3", "grid-cols-2 md:grid-cols-3 xl:grid-cols-5")}
 		>
 			<KpiTile
 				label={t("Active users 24h")}

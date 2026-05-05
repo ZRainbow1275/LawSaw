@@ -23,7 +23,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmActionModal } from "@/components/ui/confirm-action-modal";
 import { Input } from "@/components/ui/input";
-import { Modal, ModalBody, ModalFooter, ModalHeader } from "@/components/ui/modal";
+import {
+	Modal,
+	ModalBody,
+	ModalFooter,
+	ModalHeader,
+} from "@/components/ui/modal";
 import {
 	type ResetAdminPasswordResponse,
 	type TenantExportRow,
@@ -232,9 +237,7 @@ export function TenantDetailDrawer({
 		if (!tenant) return;
 		const trimmedReason = suspendReason.trim();
 		const trimmedUntil = suspendUntil.trim();
-		const untilIso = trimmedUntil
-			? new Date(trimmedUntil).toISOString()
-			: null;
+		const untilIso = trimmedUntil ? new Date(trimmedUntil).toISOString() : null;
 		suspendTenant.mutate(
 			{
 				tenantId: tenant.id,
@@ -320,17 +323,17 @@ export function TenantDetailDrawer({
 						onClick={onClose}
 						aria-hidden="true"
 					/>
-					<motion.aside
+					<motion.dialog
+						open
 						variants={PANEL_VARIANTS}
 						initial="hidden"
 						animate="visible"
 						exit="exit"
-						className="ml-auto flex h-full w-full max-w-2xl flex-col overflow-hidden border-l shadow-2xl"
+						className="m-0 ml-auto flex h-full w-full max-h-none max-w-2xl flex-col overflow-hidden border-0 border-l p-0 shadow-2xl"
 						style={{
 							backgroundColor: "var(--color-background)",
 							borderColor: "var(--surface-muted-border)",
 						}}
-						role="dialog"
 						aria-label={t("Tenant detail")}
 					>
 						<header
@@ -597,7 +600,7 @@ export function TenantDetailDrawer({
 								/>
 							) : null}
 						</div>
-					</motion.aside>
+					</motion.dialog>
 
 					<ConfirmActionModal
 						isOpen={confirmDeleteOpen}
@@ -840,10 +843,7 @@ function OverviewTab({
 							disabled={!dirty || pendingRename}
 						>
 							{pendingRename ? (
-								<Loader2
-									aria-hidden="true"
-									className="h-4 w-4 animate-spin"
-								/>
+								<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
 							) : (
 								<Save aria-hidden="true" className="h-4 w-4" />
 							)}
@@ -860,10 +860,7 @@ function OverviewTab({
 			>
 				<div className="flex items-start justify-between gap-3">
 					<div>
-						<h3
-							className="text-xs uppercase tracking-wide"
-							style={mutedStyle}
-						>
+						<h3 className="text-xs uppercase tracking-wide" style={mutedStyle}>
 							{t("Current usage")}
 						</h3>
 						<p className="mt-1 text-xs" style={mutedStyle}>
@@ -1098,10 +1095,7 @@ function QuotaTab({
 					>
 						<header className="flex flex-wrap items-end justify-between gap-3">
 							<div>
-								<h3
-									className="text-sm font-semibold"
-									style={headingStyle}
-								>
+								<h3 className="text-sm font-semibold" style={headingStyle}>
 									{t(field.labelKey)}
 								</h3>
 								<p className="mt-1 text-xs" style={mutedStyle}>
@@ -1160,11 +1154,7 @@ function QuotaTab({
 			</section>
 
 			<div className="flex justify-end">
-				<Button
-					type="button"
-					onClick={submit}
-					disabled={!dirty || pending}
-				>
+				<Button type="button" onClick={submit} disabled={!dirty || pending}>
 					{pending ? (
 						<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
 					) : (
@@ -1249,7 +1239,11 @@ function FeaturesTab({
 	t,
 }: FeaturesTabProps) {
 	const [flags, setFlags] = useState<Record<string, boolean>>(() => ({
-		feature_ai_enabled: readFlag(tenant.feature_flags, "feature_ai_enabled", true),
+		feature_ai_enabled: readFlag(
+			tenant.feature_flags,
+			"feature_ai_enabled",
+			true,
+		),
 		feature_knowledge_graph: readFlag(
 			tenant.feature_flags,
 			"feature_knowledge_graph",
@@ -1286,16 +1280,8 @@ function FeaturesTab({
 				"feature_report_generation",
 				false,
 			),
-			feature_webhook: readFlag(
-				tenant.feature_flags,
-				"feature_webhook",
-				false,
-			),
-			feature_banners: readFlag(
-				tenant.feature_flags,
-				"feature_banners",
-				false,
-			),
+			feature_webhook: readFlag(tenant.feature_flags, "feature_webhook", false),
+			feature_banners: readFlag(tenant.feature_flags, "feature_banners", false),
 			feature_mfa_required: readFlag(
 				tenant.feature_flags,
 				"feature_mfa_required",
@@ -1307,8 +1293,11 @@ function FeaturesTab({
 	const dirty = useMemo(() => {
 		for (const flag of FEATURE_KEYS) {
 			if (
-				readFlag(tenant.feature_flags, flag.key, flag.key === "feature_ai_enabled") !==
-				flags[flag.key]
+				readFlag(
+					tenant.feature_flags,
+					flag.key,
+					flag.key === "feature_ai_enabled",
+				) !== flags[flag.key]
 			) {
 				return true;
 			}
@@ -1372,11 +1361,7 @@ function FeaturesTab({
 			))}
 
 			<div className="flex justify-end">
-				<Button
-					type="button"
-					onClick={submit}
-					disabled={!dirty || pending}
-				>
+				<Button type="button" onClick={submit} disabled={!dirty || pending}>
 					{pending ? (
 						<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
 					) : (
@@ -1425,7 +1410,6 @@ function roleTierLabelKey(tier: string): string {
 			return "Premium";
 		case "verified_user":
 			return "Verified";
-		case "basic_user":
 		default:
 			return "Basic";
 	}
@@ -1521,14 +1505,14 @@ function UsersTab({
 						{errorMessage}
 					</div>
 				) : users.length === 0 ? (
-					<div
-						className="px-4 py-6 text-center text-sm"
-						style={mutedStyle}
-					>
+					<div className="px-4 py-6 text-center text-sm" style={mutedStyle}>
 						{t("No users match the current filters.")}
 					</div>
 				) : (
-					<ul className="divide-y" style={{ borderColor: "var(--field-border)" }}>
+					<ul
+						className="divide-y"
+						style={{ borderColor: "var(--field-border)" }}
+					>
 						<li
 							className="grid grid-cols-12 gap-2 px-4 py-2 text-xs uppercase tracking-wide"
 							style={mutedStyle}
@@ -1545,17 +1529,11 @@ function UsersTab({
 								className="grid grid-cols-12 items-center gap-2 px-4 py-3 text-sm"
 							>
 								<div className="col-span-5 min-w-0">
-									<p
-										className="truncate font-medium"
-										style={headingStyle}
-									>
+									<p className="truncate font-medium" style={headingStyle}>
 										{user.email}
 									</p>
 									{user.display_name ? (
-										<p
-											className="truncate text-xs"
-											style={mutedStyle}
-										>
+										<p className="truncate text-xs" style={mutedStyle}>
 											{user.display_name}
 										</p>
 									) : null}
@@ -1657,7 +1635,6 @@ function ExportStatusIcon({ status }: { status: string }) {
 					style={{ color: "var(--color-destructive, #b91c1c)" }}
 				/>
 			);
-		case "queued":
 		default:
 			return (
 				<Archive
@@ -1699,10 +1676,7 @@ function ExportsTab({
 				</div>
 				{pollingActive ? (
 					<Badge variant="secondary" className="flex items-center gap-1">
-						<Loader2
-							aria-hidden="true"
-							className="h-3 w-3 animate-spin"
-						/>
+						<Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" />
 						{t("Polling")}
 					</Badge>
 				) : null}
@@ -1717,18 +1691,12 @@ function ExportsTab({
 					{t("Loading exports")}
 				</div>
 			) : errorMessage ? (
-				<div
-					className="flex items-start gap-2 py-6 text-sm"
-					style={mutedStyle}
-				>
+				<div className="flex items-start gap-2 py-6 text-sm" style={mutedStyle}>
 					<AlertCircle aria-hidden="true" className="h-4 w-4 shrink-0" />
 					{errorMessage}
 				</div>
 			) : exports.length === 0 ? (
-				<div
-					className="py-6 text-center text-sm"
-					style={mutedStyle}
-				>
+				<div className="py-6 text-center text-sm" style={mutedStyle}>
 					{t("No exports yet. Trigger one from the Actions tab.")}
 				</div>
 			) : (
@@ -1737,10 +1705,7 @@ function ExportsTab({
 					style={{ borderColor: "var(--field-border)" }}
 				>
 					{exports.map((row) => (
-						<li
-							key={row.id}
-							className="flex items-start gap-3 py-3 text-sm"
-						>
+						<li key={row.id} className="flex items-start gap-3 py-3 text-sm">
 							<div className="mt-0.5">
 								<ExportStatusIcon status={row.status} />
 							</div>
@@ -1749,10 +1714,7 @@ function ExportsTab({
 									<Badge variant={exportStatusBadgeVariant(row.status)}>
 										{row.status}
 									</Badge>
-									<span
-										className="text-xs tabular-nums"
-										style={mutedStyle}
-									>
+									<span className="text-xs tabular-nums" style={mutedStyle}>
 										{formatDateTime(locale, row.created_at, {
 											year: "numeric",
 											month: "2-digit",
@@ -1762,10 +1724,7 @@ function ExportsTab({
 										})}
 									</span>
 									{row.size_bytes != null ? (
-										<span
-											className="text-xs tabular-nums"
-											style={mutedStyle}
-										>
+										<span className="text-xs tabular-nums" style={mutedStyle}>
 											{(row.size_bytes / 1024 / 1024).toFixed(1)} MB
 										</span>
 									) : null}

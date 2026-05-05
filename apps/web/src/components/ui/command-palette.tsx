@@ -3,13 +3,13 @@
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import {
-	builtinCommands,
-	filterAndRankCommands,
-	appendRecentCommandId,
-	readRecentCommandIds,
-	writeRecentCommandIds,
 	type Command,
 	type CommandContext,
+	appendRecentCommandId,
+	builtinCommands,
+	filterAndRankCommands,
+	readRecentCommandIds,
+	writeRecentCommandIds,
 } from "@/lib/commands";
 import { stripLocalePrefix, withLocalePath } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
@@ -18,15 +18,20 @@ import { cn } from "@/lib/utils";
 import { useAppearanceStore } from "@/stores/appearance-store";
 import { useSidebarStore } from "@/stores/sidebar-store";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ArrowRight, CornerDownLeft, Search as SearchIcon, X } from "lucide-react";
+import {
+	ArrowRight,
+	CornerDownLeft,
+	Search as SearchIcon,
+	X,
+} from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
+	type KeyboardEvent as ReactKeyboardEvent,
 	useCallback,
 	useEffect,
 	useMemo,
 	useRef,
 	useState,
-	type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
 interface CommandPaletteProps {
@@ -115,9 +120,7 @@ export function CommandPalette({
 		const nextLocale = locale === "zh" ? "en" : "zh";
 		const qs = searchParams?.toString() ?? "";
 		const bare = stripLocalePrefix(pathname || "/");
-		router.push(
-			withLocalePath(nextLocale, qs ? `${bare}?${qs}` : bare),
-		);
+		router.push(withLocalePath(nextLocale, qs ? `${bare}?${qs}` : bare));
 	}, [locale, pathname, router, searchParams]);
 
 	const paletteRouter = useMemo(
@@ -312,9 +315,7 @@ export function CommandPalette({
 									ref={inputRef}
 									type="search"
 									aria-label={t("Command palette")}
-									placeholder={t(
-										"Type a command or navigation, Enter to run",
-									)}
+									placeholder={t("Type a command or navigation, Enter to run")}
 									className="h-8 w-full border-0 bg-transparent text-sm focus:outline-none"
 									style={headingTextStyle}
 									value={query}
@@ -338,9 +339,7 @@ export function CommandPalette({
 								style={mutedTextStyle}
 							>
 								<span>
-									{t(
-										"Use arrow keys to navigate, Enter to open, Esc to close",
-									)}
+									{t("Use arrow keys to navigate, Enter to open, Esc to close")}
 								</span>
 								<span className="flex items-center gap-1">
 									<kbd
@@ -396,9 +395,7 @@ export function CommandPalette({
 												className={cn(
 													"flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors",
 												)}
-												style={
-													isSelected ? selectedStyle : nestedSurfaceStyle
-												}
+												style={isSelected ? selectedStyle : nestedSurfaceStyle}
 												onMouseEnter={() => setSelectedIndex(index)}
 												onClick={() => void runCommand(command)}
 											>
@@ -418,9 +415,7 @@ export function CommandPalette({
 												<div className="min-w-0 flex-1">
 													<p
 														className="truncate text-sm font-medium"
-														style={
-															isSelected ? undefined : headingTextStyle
-														}
+														style={isSelected ? undefined : headingTextStyle}
 													>
 														{locale === "en" && command.titleEn
 															? command.titleEn
@@ -428,14 +423,10 @@ export function CommandPalette({
 													</p>
 													<p
 														className="truncate text-[11px]"
-														style={
-															isSelected ? undefined : mutedTextStyle
-														}
+														style={isSelected ? undefined : mutedTextStyle}
 													>
 														{t(categoryLabelKey(command.category))}
-														{command.shortcut
-															? ` · ${command.shortcut}`
-															: ""}
+														{command.shortcut ? ` · ${command.shortcut}` : ""}
 													</p>
 												</div>
 												{isSelected ? (
@@ -465,9 +456,7 @@ export function CommandPalette({
 										})
 									: t("Recent and all commands")}
 							</span>
-							<span>
-								{t("Press Ctrl+/ to view all shortcuts")}
-							</span>
+							<span>{t("Press Ctrl+/ to view all shortcuts")}</span>
 						</div>
 					</motion.dialog>
 				</motion.div>

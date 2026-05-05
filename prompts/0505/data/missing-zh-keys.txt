@@ -1,0 +1,503 @@
+@
+A draft copy is now in the banner list.
+AI categorization accuracy
+AI gateway
+AI governance data unavailable
+AI report generation has been queued.
+AI service check failed: {message}.
+AI tokens / mo
+AI tokens 24h
+AI usage dashboard
+API key management
+API keys are a Premium feature
+API rate limit
+Above SLA
+Access policies
+Account deletion requested
+Across all models and operations
+Active users 24h
+Activity
+Actor
+Add child
+Add child category
+Add child of {parent}
+Add root category
+Admin
+Admin display name
+Admin email
+Admin email is required to bootstrap the tenant admin user.
+Admin email must be a valid email address.
+Admin reply:
+Admin user id
+All features available at this tier are unlocked.
+All tenants visible to super-admin.
+Allow users to dismiss this banner
+Always on
+Application version
+Archive channel
+Article preview
+Articles 24h
+Articles fetched
+Articles in branch
+Ask an administrator to publish a report template first.
+Audience tiers
+Average across visible sources.
+Avg fetch duration
+Awaiting B.6b telemetry
+Back to feed
+Back to reports
+Banner content (Markdown)
+Banner duplicated
+Banner end time must be after the start time.
+Basic
+Billing history
+Browser push notifications
+Budget alerts
+Built-in templates are read-only.
+Bulk import CSV
+Bulk import categories
+CSV did not contain any data rows
+CSV downloaded
+CTA label is required when a CTA URL is provided.
+Cadence
+Calls
+Calls 24h
+Cannot merge an entity into itself.
+Categories taxonomy
+Categories tree
+Category created
+Category deleted
+Category saved
+Channel archived
+Channel is again visible to its target audience.
+Channel is hidden from active visibility scopes.
+Channel name is required.
+Channel restored
+Channel scope
+Channel slug is required.
+Channel tabs
+Choose 'Save as PDF' from the print dialog.
+Choose a hero gradient.
+Choose which categories of email notifications you receive.
+Clipboard access was denied by the browser.
+Collapse
+Collapse all
+Color (hex)
+Config
+Configured experiments
+Confirm
+Consecutive failures
+Contact email
+Content flags
+Continue
+Copy the password reset token to deliver it to the admin.
+Copy token
+Crawler requires list/title/link selectors.
+Create category
+Create source
+Created: {date}
+Creating
+Cron expression, e.g., 0 */15 * * * *
+Cumulative across visible sources.
+Current
+Current plan
+Current tier
+Daily
+Data export requested
+Default model
+Delete account
+Delete category
+Delete tenant?
+Delete this category?
+Deleted
+Detail tabs
+Disable MFA
+Dismiss banner preview
+Down
+Download archive
+Downloaded {n} rows
+Drag to reorder
+Duplicate
+Duplicate failed
+Edit
+Edit banner
+Edit category
+Edit channel
+Edit report template
+Edit template
+Effective permissions
+Email notification preferences
+Email or display name
+Email verified
+Enable MFA
+Enable two-factor for stronger protection
+Encoding
+Ends at
+Entity detail
+Error: {message}
+Estimated cost 24h
+Estimated read
+Executive summary
+Expand
+Expand all
+Expires
+Expires at
+Export CSV
+Export history
+Export my data
+Export ready
+Export tenant data
+Export tenant data?
+Exports
+Extraction enqueued
+Extraction failed
+Failed to create subscription
+Failed to load
+Failed to load article
+Failed to load relations
+Failed to load sources
+Failed to load tenants
+Failed to read file
+Failure rate
+Feature flags
+Features
+Features saved
+Feed channel
+Feed experiments
+Feedback reply
+Fetch failed
+Final confirmation
+First seen
+Forces a one-off ingest run outside the normal schedule.
+Functional roles
+Generate now
+Generation enqueued
+Generation history
+Hide
+High importance
+Highlights
+Historical archive
+Icon (lucide name)
+Import queued
+Import unavailable
+Importance
+Importing...
+Ingestion source
+Initial status
+Initial tier
+Interface language
+Invitation delivery is pending backend support
+Invite user
+Issue reset token
+Key name
+LLM gateway partially degraded
+LLM gateway responding normally
+LLM gateway unreachable
+Last error
+Last fetch
+Last fetch returned an error.
+Last seen
+Last sync
+Last updated
+Last {n} events
+Lifecycle
+Linked banners
+Loading
+Loading audit history
+Loading editor
+Loading entity
+Loading exports
+Loading related entities
+Loading relations
+Loading sources
+Loading tenants
+Loading usage
+Logging in and ingesting on schedule.
+Lowercase, 3-32 chars, [a-z0-9-]. Used in routing keys.
+Manage how your activity is processed for personalization.
+Manual fetch
+Mark all as read
+Merge
+Merge into another entity
+Metadata
+Metadata for the highlighted node.
+Model distribution
+Monthly (projected)
+Move or delete child categories first
+Multi-factor authentication (MFA)
+Never expires
+Never fetched
+Never logged in
+New channel
+New pin
+New relation
+New root category
+New source
+New tenant
+No AI traffic recorded yet
+No API keys yet
+No archived reports yet
+No banners target this channel
+No categories yet
+No channels available.
+No channels match your filters
+No content flags yet
+No email
+No explicit policies
+No exports yet. Trigger one from the Actions tab.
+No generation runs yet for this template.
+No highlighted articles in this report.
+No invoices to display yet.
+No matches
+No matching published articles.
+No metadata stored on this channel.
+No notifications
+No pending changes.
+No permission changes recorded
+No permissions resolved for this user.
+No prompt versions yet
+No recommended reports right now
+No related entities found.
+No relations recorded
+No relations to display
+No report template available
+No risk items flagged in this report.
+No roles assigned.
+No roles selected.
+No selection
+No source articles linked yet.
+No sources match your filters
+No structured config recorded.
+No subscribed reports yet
+No templates available
+No tenants match your filters
+No users match the current filters.
+No users match your filters
+Not configured
+Not verified
+Open
+Open article
+Open rich editor
+Open ticket
+Operational banner
+Optional CTA label
+Optional summary shown in tenant feed picker
+Optional summary used in UI tooltips.
+Optional — defaults to the email local part
+Original message
+P95 latency
+PDF export is available on the Premium plan.
+Page
+Pagination
+Parent id
+Parse and queue import
+Password reset token
+Password updated
+Pause failed
+Pause source
+Pending feedback
+Pending roles after save
+Per-user session listing
+Period end
+Period start
+Permanently delete
+Permanently delete tenant
+Permissions (comma separated)
+Permissions: {value}
+Pick an article first.
+Pin expiration is now reflected in the live feed.
+Pin removed from the live feed.
+Pin window updated
+Please enter at least {count} characters
+Please fill in title and details
+Polled by the worker on schedule.
+Polling
+Popup blocked. Allow popups to export PDF.
+Preferences saved locally
+Premium-only PDF export
+Print dialog opened
+Print or save as PDF
+Priority (0-100)
+Privacy controls
+Processed 24h
+Queue export
+Quota
+Quota AI tokens must be a non-negative integer.
+Quota saved
+Quota storage MB must be a positive integer.
+Quota users must be a positive integer.
+Quota: AI tokens / month
+Quota: storage MB
+Quota: users
+Quotas not saved
+Rate limit per minute
+Rate limit: {n}/min
+Re-extract
+Re-extract entities
+Read
+Reader stats
+Reason (optional)
+Recommended reports
+Recompute budget alerts
+Relevance
+Remove
+Removing...
+Render mode
+Reorder unavailable
+Reply to the user with Markdown formatting.
+Report regeneration has been queued.
+Report title
+Request account deletion
+Request export
+Required
+Reset error and re-fetch
+Reset failed
+Reset tenant admin password
+Reset tenant admin password?
+Reset token
+Reset token issued
+Restore channel
+Resume failed
+Resume source
+Resume tenant
+Risk register
+Role management
+Roles
+Roles updated
+Run history
+Save
+Save and mark reviewing
+Save features
+Save preferences
+Save quotas
+Save roles
+Scan the QR code
+Scan with your TOTP app
+Schedule
+Search articles
+Search by title
+Search email or display name
+Search entities by name or alias
+Search name or URL
+Search name or slug
+Search slug or name
+Searching
+Select a node from the tree to inspect.
+Select at least one audience tier.
+Send and resolve
+Send invite
+Sessions
+Sessions revoked: {count}
+Setup failed
+Share of calls by model name.
+Show
+Showing
+Slug already exists. Choose a unique value.
+Sort order
+Source URL is required.
+Source URL must be a valid http(s) URL.
+Source articles
+Source articles are a verified perk
+Source entity has been merged into the target.
+Source management
+Source meta
+Source name is required.
+Source paused
+Source paused. Worker will skip it on next tick.
+Source resumed
+Source resumed. Worker will pick it up on next tick.
+Source tabs
+Source: {name}
+Staff access
+Start writing markdown — slash for blocks
+Started
+Starts at
+Storage MB
+Subject
+Subject id
+Subject relation (optional)
+Submit failed
+Submitted at
+Subscribed reports
+Subscription created
+Suggested source
+Summary
+Suspend
+Suspend failed
+Suspend tenant
+Suspend tenant?
+Suspended
+Template body (Markdown)
+Template body cannot be empty.
+Template body saved.
+Tenant created — copy admin reset token
+Tenant detail
+Tenant display name saved.
+Tenant id
+Tenant name is required.
+Tenant resumed
+Tenant roster
+Tenant slug is required.
+Tenant suspended
+Tenant tabs
+Tenant updated
+Tenant user
+Tenant users
+Tenants currently in trial period.
+Tenants temporarily blocked from sign-in.
+Test fetch
+The banner is now reflected in the live banner list.
+The categories service is temporarily unavailable.
+The channel is now reflected in the live channel list.
+The new source is now available in the source list.
+The requested category was not found.
+The source will be polled on the next worker tick.
+The worker has queued a fresh ingest run.
+The worker will skip this source until you resume it.
+Tier
+Title and period range are required.
+Token budget
+Token expires
+Tokens
+Tokens & calls — last 24h
+Tokens 24h
+Top usage scopes
+Total tenants
+Total tokens
+Tree
+Trial
+Trigger fetch
+Unable to load operational metrics. Please retry shortly.
+Until
+Until (optional)
+Untitled banner
+Update password
+Update password failed
+Updated
+Updating...
+Upgrade account
+Upgrade plan
+Upgrade to Premium
+Upgrade to Premium to unlock the full report archive.
+Upgrade to read the full article
+Upgrade to read the full report
+Upgrade to view AI deep-dive insights
+Upgrade to {plan}
+Use a TOTP app, then enter the 6-digit code to confirm
+User management
+User role
+User role membership has been saved.
+Vector-ready entities
+Version conflict
+View mode
+Visibility tier
+Weight
+What's included
+Within SLA
+Word count
+Worker default
+Write the template body using Markdown.
+You do not have permission to manage categories.
+You have unsaved role changes.
+Your account is protected by TOTP
+disabled

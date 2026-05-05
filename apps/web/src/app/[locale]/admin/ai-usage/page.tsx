@@ -33,13 +33,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function assertAiUsageList(value: unknown): asserts value is AiUsageListResponse {
-	if (!isRecord(value) || !Array.isArray(value.data) || typeof value.total !== "number") {
+function assertAiUsageList(
+	value: unknown,
+): asserts value is AiUsageListResponse {
+	if (
+		!isRecord(value) ||
+		!Array.isArray(value.data) ||
+		typeof value.total !== "number"
+	) {
 		throw new Error("Invalid AI usage list response");
 	}
 }
 
-function formatAiUsageTimestamp(locale: ReturnType<typeof useLocale>, value: string): string {
+function formatAiUsageTimestamp(
+	locale: ReturnType<typeof useLocale>,
+	value: string,
+): string {
 	const parsed = new Date(value);
 	if (Number.isNaN(parsed.getTime())) return value;
 	return formatDateTime(locale, parsed, {
@@ -74,9 +83,12 @@ function formatAiUsageErrorMessage(
 	if (value.includes("AI_CIRCUIT_OPEN")) {
 		return {
 			summary: retryAfterMatch
-				? t("The upstream AI service circuit is open. Retry after about {seconds} seconds.", {
-						seconds: retryAfterMatch[1],
-					})
+				? t(
+						"The upstream AI service circuit is open. Retry after about {seconds} seconds.",
+						{
+							seconds: retryAfterMatch[1],
+						},
+					)
 				: t("The upstream AI service circuit is open. Please try again later."),
 			raw: value,
 		};
@@ -108,10 +120,7 @@ function formatAiUsageOperation(
 	}
 }
 
-function formatAiUsageScope(
-	t: ReturnType<typeof useT>,
-	value: string,
-): string {
+function formatAiUsageScope(t: ReturnType<typeof useT>, value: string): string {
 	switch (value) {
 		case "worker.process_ai_task":
 			return t("AI task processing");
@@ -135,7 +144,11 @@ function AdminAiUsageContent() {
 	const query = useQuery({
 		queryKey: ["admin-ai-usage", 50],
 		enabled: isAdmin,
-		queryFn: () => apiClient.get<AiUsageListResponse>("/api/v1/admin/ai-usage?limit=50", assertAiUsageList),
+		queryFn: () =>
+			apiClient.get<AiUsageListResponse>(
+				"/api/v1/admin/ai-usage?limit=50",
+				assertAiUsageList,
+			),
 	});
 
 	const rows = query.data?.data ?? [];
@@ -143,73 +156,155 @@ function AdminAiUsageContent() {
 	return (
 		<div className="space-y-6">
 			<Card>
-						<CardHeader>
-							<CardTitle className="flex items-center gap-2 text-3xl font-bold tracking-tight" style={headingStyle}>
-								<BrainCircuit
-									aria-hidden="true"
-									className="h-7 w-7"
-									style={{ color: "var(--color-primary-500)" }}
-								/>
-								{t("AI usage")}
-							</CardTitle>
-							<p className="text-sm" style={mutedTextStyle}>{t("Inspect model usage, rerank activity, latency, and failure categories from real tenant traffic.")}</p>
-						</CardHeader>
-					</Card>
-					{!isAdmin ? (
-						<EmptyState title={t("Access restricted")} description={t("You need an administrative role to access this workspace.")} />
-					) : query.isLoading ? (
-						<Card><CardContent className="py-10 text-sm" style={mutedTextStyle}>{t("Loading AI usage")}</CardContent></Card>
-					) : query.isError ? (
-						<EmptyState variant="error" title={t("Failed to load AI usage")} description={query.error instanceof Error ? query.error.message : t("Unknown error")} action={{ label: t("Retry"), onClick: () => query.refetch() }} />
-					) : rows.length === 0 ? (
-						<EmptyState title={t("No AI usage yet")} description={t("AI telemetry will appear after real model calls are recorded for this tenant.")} />
-					) : (
-					<div className="grid gap-4">
-						{rows.map((row) => {
-							const formattedError = formatAiUsageErrorMessage(t, row.error_message);
-							const formattedCreatedAt = formatAiUsageTimestamp(locale, row.created_at);
-							const formattedCreatedAtRelative = formatTimeAgo(locale, row.created_at);
-							const formattedOperation = formatAiUsageOperation(t, row.operation);
-							const formattedScope = formatAiUsageScope(t, row.request_scope);
+				<CardHeader>
+					<CardTitle
+						className="flex items-center gap-2 text-3xl font-bold tracking-tight"
+						style={headingStyle}
+					>
+						<BrainCircuit
+							aria-hidden="true"
+							className="h-7 w-7"
+							style={{ color: "var(--color-primary-500)" }}
+						/>
+						{t("AI usage")}
+					</CardTitle>
+					<p className="text-sm" style={mutedTextStyle}>
+						{t(
+							"Inspect model usage, rerank activity, latency, and failure categories from real tenant traffic.",
+						)}
+					</p>
+				</CardHeader>
+			</Card>
+			{!isAdmin ? (
+				<EmptyState
+					title={t("Access restricted")}
+					description={t(
+						"You need an administrative role to access this workspace.",
+					)}
+				/>
+			) : query.isLoading ? (
+				<Card>
+					<CardContent className="py-10 text-sm" style={mutedTextStyle}>
+						{t("Loading AI usage")}
+					</CardContent>
+				</Card>
+			) : query.isError ? (
+				<EmptyState
+					variant="error"
+					title={t("Failed to load AI usage")}
+					description={
+						query.error instanceof Error
+							? query.error.message
+							: t("Unknown error")
+					}
+					action={{ label: t("Retry"), onClick: () => query.refetch() }}
+				/>
+			) : rows.length === 0 ? (
+				<EmptyState
+					title={t("No AI usage yet")}
+					description={t(
+						"AI telemetry will appear after real model calls are recorded for this tenant.",
+					)}
+				/>
+			) : (
+				<div className="grid gap-4">
+					{rows.map((row) => {
+						const formattedError = formatAiUsageErrorMessage(
+							t,
+							row.error_message,
+						);
+						const formattedCreatedAt = formatAiUsageTimestamp(
+							locale,
+							row.created_at,
+						);
+						const formattedCreatedAtRelative = formatTimeAgo(
+							locale,
+							row.created_at,
+						);
+						const formattedOperation = formatAiUsageOperation(t, row.operation);
+						const formattedScope = formatAiUsageScope(t, row.request_scope);
 
-							return (
-								<Card key={row.id}>
-									<CardContent className="space-y-3 p-5">
-										<div className="flex flex-wrap items-center gap-2">
-											<Badge variant={row.success ? "success" : "destructive"}>{row.success ? t("Success") : t("Failure")}</Badge>
-											<Badge variant="outline">{formattedOperation}</Badge>
-											<Badge variant="secondary">{formattedScope}</Badge>
+						return (
+							<Card key={row.id}>
+								<CardContent className="space-y-3 p-5">
+									<div className="flex flex-wrap items-center gap-2">
+										<Badge variant={row.success ? "success" : "destructive"}>
+											{row.success ? t("Success") : t("Failure")}
+										</Badge>
+										<Badge variant="outline">{formattedOperation}</Badge>
+										<Badge variant="secondary">{formattedScope}</Badge>
+									</div>
+									<div
+										className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4"
+										style={mutedTextStyle}
+									>
+										<div>
+											<span className="font-medium" style={headingStyle}>
+												{t("Provider")}:{" "}
+											</span>
+											{row.provider}
 										</div>
-											<div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4" style={mutedTextStyle}>
-												<div><span className="font-medium" style={headingStyle}>{t("Provider")}: </span>{row.provider}</div>
-												<div><span className="font-medium" style={headingStyle}>{t("Model")}: </span>{row.model ?? "-"}</div>
-												<div><span className="font-medium" style={headingStyle}>{t("Latency")}: </span>{row.latency_ms} ms</div>
-												<div>
-													<span className="font-medium" style={headingStyle}>{t("Created at")}: </span>
-													<span title={row.created_at}>{formattedCreatedAt}</span>
-													{formattedCreatedAtRelative ? (
-														<div className="mt-1 text-xs" style={mutedTextStyle}>{formattedCreatedAtRelative}</div>
-													) : null}
-												</div>
-											</div>
-											{row.error_category || row.error_message ? (
-												<div className="rounded-xl p-3 text-sm" style={{ backgroundColor: "color-mix(in srgb, var(--surface-muted-bg) 70%, transparent)", color: "var(--surface-muted-text)" }}>
-													<div><span className="font-medium" style={headingStyle}>{t("Error category")}: </span>{formatAiUsageErrorCategory(t, row.error_category)}</div>
-													<div className="mt-1"><span className="font-medium" style={headingStyle}>{t("Error summary")}: </span>{formattedError.summary}</div>
-													{formattedError.raw ? (
-														<div className="mt-1 break-all text-xs">
-															<span className="font-medium" style={headingStyle}>{t("Raw backend message")}: </span>
-															{formattedError.raw}
-														</div>
-													) : null}
+										<div>
+											<span className="font-medium" style={headingStyle}>
+												{t("Model")}:{" "}
+											</span>
+											{row.model ?? "-"}
+										</div>
+										<div>
+											<span className="font-medium" style={headingStyle}>
+												{t("Latency")}:{" "}
+											</span>
+											{row.latency_ms} ms
+										</div>
+										<div>
+											<span className="font-medium" style={headingStyle}>
+												{t("Created at")}:{" "}
+											</span>
+											<span title={row.created_at}>{formattedCreatedAt}</span>
+											{formattedCreatedAtRelative ? (
+												<div className="mt-1 text-xs" style={mutedTextStyle}>
+													{formattedCreatedAtRelative}
 												</div>
 											) : null}
-										</CardContent>
-									</Card>
-								);
-							})}
-						</div>
-					)}
+										</div>
+									</div>
+									{row.error_category || row.error_message ? (
+										<div
+											className="rounded-xl p-3 text-sm"
+											style={{
+												backgroundColor:
+													"color-mix(in srgb, var(--surface-muted-bg) 70%, transparent)",
+												color: "var(--surface-muted-text)",
+											}}
+										>
+											<div>
+												<span className="font-medium" style={headingStyle}>
+													{t("Error category")}:{" "}
+												</span>
+												{formatAiUsageErrorCategory(t, row.error_category)}
+											</div>
+											<div className="mt-1">
+												<span className="font-medium" style={headingStyle}>
+													{t("Error summary")}:{" "}
+												</span>
+												{formattedError.summary}
+											</div>
+											{formattedError.raw ? (
+												<div className="mt-1 break-all text-xs">
+													<span className="font-medium" style={headingStyle}>
+														{t("Raw backend message")}:{" "}
+													</span>
+													{formattedError.raw}
+												</div>
+											) : null}
+										</div>
+									) : null}
+								</CardContent>
+							</Card>
+						);
+					})}
+				</div>
+			)}
 		</div>
 	);
 }

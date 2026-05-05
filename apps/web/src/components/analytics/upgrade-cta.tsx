@@ -57,8 +57,7 @@ export function UpgradeCta({
 		requiredTier === "premium_user"
 			? "color-mix(in srgb, #b45309 14%, transparent)"
 			: "color-mix(in srgb, #0f766e 14%, transparent)";
-	const accentColor =
-		requiredTier === "premium_user" ? "#b45309" : "#0f766e";
+	const accentColor = requiredTier === "premium_user" ? "#b45309" : "#0f766e";
 
 	return (
 		<motion.div

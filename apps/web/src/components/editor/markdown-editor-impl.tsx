@@ -2,12 +2,12 @@
 
 import "./editor.css";
 
-import { Crepe } from "@milkdown/crepe";
-import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
-import { listener, listenerCtx } from "@milkdown/plugin-listener";
-import { clipboard } from "@milkdown/plugin-clipboard";
 import { useT } from "@/lib/i18n-client";
 import { cn } from "@/lib/utils";
+import { Crepe } from "@milkdown/crepe";
+import { clipboard } from "@milkdown/plugin-clipboard";
+import { listener, listenerCtx } from "@milkdown/plugin-listener";
+import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 import * as React from "react";
 
 import type { MarkdownEditorProps } from "./markdown-editor-types";
@@ -55,8 +55,8 @@ function CrepeMount(props: InnerProps) {
 					},
 					"image-block": uploadHandler
 						? {
-							onUpload: async (file: File) => uploadHandler(file),
-						}
+								onUpload: async (file: File) => uploadHandler(file),
+							}
 						: undefined,
 				},
 				features: {

@@ -30,7 +30,7 @@ import { useLocale, useT } from "@/lib/i18n-client";
 import { motion } from "framer-motion";
 import { Bell, CheckCheck, Inbox, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, type CSSProperties } from "react";
+import { type CSSProperties, useMemo, useState } from "react";
 
 const PAGE_SIZE = 20;
 
@@ -151,8 +151,7 @@ function NotificationCenterContent() {
 	const headingStyle: CSSProperties = { color: "var(--color-foreground)" };
 	const mutedStyle: CSSProperties = { color: "var(--surface-muted-text)" };
 	const itemSurface: CSSProperties = {
-		borderColor:
-			"color-mix(in srgb, var(--color-border) 78%, transparent)",
+		borderColor: "color-mix(in srgb, var(--color-border) 78%, transparent)",
 		backgroundColor: "var(--color-background)",
 	};
 	const itemUnreadSurface: CSSProperties = {
@@ -231,8 +230,7 @@ function NotificationCenterContent() {
 											style={
 												active
 													? {
-															backgroundColor:
-																"var(--surface-accent-strong)",
+															backgroundColor: "var(--surface-accent-strong)",
 															borderColor: "var(--color-primary-500)",
 															color: "var(--color-foreground)",
 														}
@@ -292,10 +290,7 @@ function NotificationCenterContent() {
 									>
 										<Inbox aria-hidden="true" className="h-6 w-6" />
 									</div>
-									<p
-										className="text-sm font-medium"
-										style={headingStyle}
-									>
+									<p className="text-sm font-medium" style={headingStyle}>
 										{tab === "unread"
 											? t("All caught up")
 											: t("No notifications yet")}
@@ -329,10 +324,7 @@ function NotificationCenterContent() {
 														const Icon = notificationIcon(entry.resource);
 														const unread = entry.seq > lastSeen;
 														return (
-															<motion.li
-																key={entry.id}
-																variants={itemVariants}
-															>
+															<motion.li key={entry.id} variants={itemVariants}>
 																<button
 																	type="button"
 																	onClick={() => handleClick(entry)}

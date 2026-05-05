@@ -99,6 +99,20 @@ const nextConfig = {
       { source: "/metrics", destination: `${apiProxyTarget}/metrics` },
     ];
   },
+  async redirects() {
+    return [
+      {
+        source: "/:locale(zh|en)/settings/admin/:path*",
+        destination: "/:locale/admin/:path*",
+        permanent: true,
+      },
+      {
+        source: "/:locale(zh|en)/settings/admin",
+        destination: "/:locale/admin",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       {

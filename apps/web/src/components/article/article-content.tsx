@@ -2,8 +2,8 @@
 
 import { MarkdownSourceView } from "@/components/article/markdown-source-view";
 import type { ArticleViewMode } from "@/components/article/source-view-toggle";
-import { useT } from "@/lib/i18n-client";
 import { renderArticleBodyHtml } from "@/lib/article-reader";
+import { useT } from "@/lib/i18n-client";
 import { sanitizeRenderedHtml } from "@/lib/safe-html";
 import { cn } from "@/lib/utils";
 import { useMemo } from "react";

@@ -13,14 +13,14 @@
  * an update endpoint ships.
  */
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
 	Modal,
 	ModalBody,
 	ModalFooter,
 	ModalHeader,
 } from "@/components/ui/modal";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useCreateSource } from "@/hooks/use-sources";
 import { ApiClientError } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
@@ -105,7 +105,11 @@ export function SourceFormModal({
 			return t("Source URL must be a valid http(s) URL.");
 		}
 		if (sourceType === "spider") {
-			if (!spider.list_selector.trim() || !spider.title_selector.trim() || !spider.link_selector.trim()) {
+			if (
+				!spider.list_selector.trim() ||
+				!spider.title_selector.trim() ||
+				!spider.link_selector.trim()
+			) {
 				return t("Crawler requires list/title/link selectors.");
 			}
 		}
@@ -424,9 +428,7 @@ export function SourceFormModal({
 					</section>
 				) : null}
 
-				{validation ? (
-					<p className="text-xs text-error">{validation}</p>
-				) : null}
+				{validation ? <p className="text-xs text-error">{validation}</p> : null}
 			</ModalBody>
 
 			<ModalFooter>
@@ -439,10 +441,7 @@ export function SourceFormModal({
 					disabled={createSource.isPending || Boolean(validation)}
 				>
 					{createSource.isPending ? (
-						<Loader2
-							aria-hidden="true"
-							className="h-4 w-4 animate-spin"
-						/>
+						<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
 					) : (
 						<Save aria-hidden="true" className="h-4 w-4" />
 					)}

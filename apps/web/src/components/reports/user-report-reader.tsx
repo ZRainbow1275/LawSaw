@@ -307,7 +307,10 @@ export function UserReportReader({ reportId }: UserReportReaderProps) {
 				animate={{ opacity: 1, y: 0 }}
 				transition={{ duration: 0.25 }}
 			>
-				<div className="flex flex-wrap items-center gap-2 text-xs" style={mutedStyle}>
+				<div
+					className="flex flex-wrap items-center gap-2 text-xs"
+					style={mutedStyle}
+				>
 					<Badge variant="outline">
 						{t(periodLabelKey(report.period_type))}
 					</Badge>
@@ -345,7 +348,10 @@ export function UserReportReader({ reportId }: UserReportReaderProps) {
 						<dt className="text-xs uppercase tracking-wide" style={mutedStyle}>
 							{t("Articles")}
 						</dt>
-						<dd className="mt-1 font-semibold tabular-nums" style={headingStyle}>
+						<dd
+							className="mt-1 font-semibold tabular-nums"
+							style={headingStyle}
+						>
 							{extract.totalArticles ?? report.article_count}
 						</dd>
 					</div>
@@ -353,7 +359,10 @@ export function UserReportReader({ reportId }: UserReportReaderProps) {
 						<dt className="text-xs uppercase tracking-wide" style={mutedStyle}>
 							{t("High importance")}
 						</dt>
-						<dd className="mt-1 font-semibold tabular-nums" style={headingStyle}>
+						<dd
+							className="mt-1 font-semibold tabular-nums"
+							style={headingStyle}
+						>
 							{extract.highImportanceCount ?? "—"}
 						</dd>
 					</div>
@@ -361,7 +370,10 @@ export function UserReportReader({ reportId }: UserReportReaderProps) {
 						<dt className="text-xs uppercase tracking-wide" style={mutedStyle}>
 							{t("High risk")}
 						</dt>
-						<dd className="mt-1 font-semibold tabular-nums" style={headingStyle}>
+						<dd
+							className="mt-1 font-semibold tabular-nums"
+							style={headingStyle}
+						>
 							{extract.highRiskCount ?? "—"}
 						</dd>
 					</div>
@@ -403,7 +415,10 @@ export function UserReportReader({ reportId }: UserReportReaderProps) {
 				{extract.aiSummary ? (
 					<MarkdownReader markdown={extract.aiSummary} />
 				) : (
-					<p className="text-sm" style={{ color: "var(--surface-accent-copy)" }}>
+					<p
+						className="text-sm"
+						style={{ color: "var(--surface-accent-copy)" }}
+					>
 						{t(
 							"The executive summary will appear here once the report is published.",
 						)}

@@ -1,7 +1,7 @@
-import { redirect } from "next/navigation";
-import { ADMIN_TIERS, normalizeRoleTier } from "@/lib/authz";
 import { getServerSession } from "@/lib/auth/server-session";
+import { ADMIN_TIERS, normalizeRoleTier } from "@/lib/authz";
 import { DEFAULT_LOCALE, isLocale, withLocalePath } from "@/lib/i18n";
+import { redirect } from "next/navigation";
 
 export default async function LocaleRoot({
 	params,

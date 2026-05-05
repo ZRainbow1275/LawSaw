@@ -15,6 +15,7 @@
     "coverage": "vitest run --coverage",
     "test": "pnpm typecheck && pnpm lint && pnpm test:unit",
     "audit": "pnpm audit --audit-level high",
+    "check:i18n": "node scripts/check-i18n-coverage.mjs",
     "e2e": "pnpm exec playwright test",
     "e2e:install": "pnpm exec playwright install chromium"
   },

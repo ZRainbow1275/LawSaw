@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-	extractTableOfContentsItems,
-	type TOCItem,
-} from "./table-of-contents";
+import { type TOCItem, extractTableOfContentsItems } from "./table-of-contents";
 
 function createHeading(tagName: string, textContent: string, id = "") {
 	return {

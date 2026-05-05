@@ -101,7 +101,8 @@ export function ChinaMap({
 					},
 					data: data.map((item) => ({
 						...item,
-						selected: selectedRegionName != null && item.name === selectedRegionName,
+						selected:
+							selectedRegionName != null && item.name === selectedRegionName,
 					})),
 					emphasis: {
 						label: {
@@ -138,7 +139,10 @@ export function ChinaMap({
 		};
 	}, [mapReady, data, t, onRegionSelect, selectedRegionName]);
 
-	const containerHeightStyle = { height: `${height}px`, width: "100%" } as const;
+	const containerHeightStyle = {
+		height: `${height}px`,
+		width: "100%",
+	} as const;
 
 	if (loadError) {
 		return (

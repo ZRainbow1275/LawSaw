@@ -124,12 +124,15 @@ export function useAdminTenants(options: UseAdminTenantsOptions = {}) {
 	const { enabled = true, q, status, includeDeleted, limit, offset } = options;
 	const queryString = new URLSearchParams();
 	if (q && q.trim().length > 0) queryString.set("q", q.trim());
-	if (status && status.trim().length > 0) queryString.set("status", status.trim());
+	if (status && status.trim().length > 0)
+		queryString.set("status", status.trim());
 	if (includeDeleted) queryString.set("include_deleted", "true");
 	if (typeof limit === "number") queryString.set("limit", String(limit));
 	if (typeof offset === "number") queryString.set("offset", String(offset));
 	const search = queryString.toString();
-	const url = search ? `/api/v1/super/tenants?${search}` : "/api/v1/super/tenants";
+	const url = search
+		? `/api/v1/super/tenants?${search}`
+		: "/api/v1/super/tenants";
 	return useQuery({
 		queryKey: [
 			"adminTenants",

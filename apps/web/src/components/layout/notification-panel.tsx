@@ -20,13 +20,16 @@ interface NotificationPanelProps {
 export function NotificationPanel({ actions }: NotificationPanelProps) {
 	const t = useT();
 	const panelStyle = {
-		backgroundColor: "color-mix(in srgb, var(--surface-popover-bg) 95%, transparent)",
-		borderColor: "color-mix(in srgb, var(--surface-muted-border) 60%, transparent)",
+		backgroundColor:
+			"color-mix(in srgb, var(--surface-popover-bg) 95%, transparent)",
+		borderColor:
+			"color-mix(in srgb, var(--surface-muted-border) 60%, transparent)",
 	} satisfies CSSProperties;
 	const titleStyle = { color: "var(--field-foreground)" } as const;
 	const mutedTextStyle = { color: "var(--surface-muted-text)" } as const;
 	const emptyStateStyle = {
-		backgroundColor: "color-mix(in srgb, var(--surface-muted-bg) 70%, transparent)",
+		backgroundColor:
+			"color-mix(in srgb, var(--surface-muted-bg) 70%, transparent)",
 		borderColor: "var(--surface-muted-border)",
 	} satisfies CSSProperties;
 	const emptyIconShellStyle = {
@@ -35,10 +38,12 @@ export function NotificationPanel({ actions }: NotificationPanelProps) {
 	} satisfies CSSProperties;
 	const actionCardStyle = {
 		backgroundColor: "var(--surface-popover-bg)",
-		borderColor: "color-mix(in srgb, var(--surface-muted-border) 70%, transparent)",
+		borderColor:
+			"color-mix(in srgb, var(--surface-muted-border) 70%, transparent)",
 	} satisfies CSSProperties;
 	const actionCardHoverStyle = {
-		borderColor: "color-mix(in srgb, var(--color-primary-500) 24%, transparent)",
+		borderColor:
+			"color-mix(in srgb, var(--color-primary-500) 24%, transparent)",
 		backgroundColor:
 			"color-mix(in srgb, var(--color-primary-50) 60%, var(--surface-popover-bg) 40%)",
 	} satisfies CSSProperties;
@@ -79,7 +84,9 @@ export function NotificationPanel({ actions }: NotificationPanelProps) {
 							{t("No notifications yet")}
 						</p>
 						<p className="mt-1 text-xs leading-5" style={mutedTextStyle}>
-							{t("When new delivery events, report exports, or feedback updates arrive, they will be listed here.")}
+							{t(
+								"When new delivery events, report exports, or feedback updates arrive, they will be listed here.",
+							)}
 						</p>
 					</div>
 				</div>
@@ -96,10 +103,7 @@ export function NotificationPanel({ actions }: NotificationPanelProps) {
 							className="flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition-colors"
 							style={actionCardStyle}
 							onMouseEnter={(event) => {
-								Object.assign(
-									event.currentTarget.style,
-									actionCardHoverStyle,
-								);
+								Object.assign(event.currentTarget.style, actionCardHoverStyle);
 							}}
 							onMouseLeave={(event) => {
 								Object.assign(event.currentTarget.style, actionCardStyle);
@@ -125,7 +129,12 @@ export function NotificationPanel({ actions }: NotificationPanelProps) {
 			</div>
 
 			<div className="mt-3 flex justify-end">
-				<Button type="button" variant="ghost" size="sm" onClick={actions[0]?.onSelect}>
+				<Button
+					type="button"
+					variant="ghost"
+					size="sm"
+					onClick={actions[0]?.onSelect}
+				>
 					{t("Notification settings")}
 				</Button>
 			</div>

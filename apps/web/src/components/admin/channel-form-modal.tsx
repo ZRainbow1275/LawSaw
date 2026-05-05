@@ -9,9 +9,14 @@
  * permalink stability.
  */
 
-import { Modal, ModalBody, ModalFooter, ModalHeader } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+	Modal,
+	ModalBody,
+	ModalFooter,
+	ModalHeader,
+} from "@/components/ui/modal";
 import { useCategories } from "@/hooks/use-categories";
 import {
 	type ChannelRecord,
@@ -203,9 +208,7 @@ export function ChannelFormModal({
 					/>
 					<div>
 						<h2 className="text-lg font-semibold" style={headingStyle}>
-							{mode === "create"
-								? t("Create channel")
-								: t("Edit channel")}
+							{mode === "create" ? t("Create channel") : t("Edit channel")}
 						</h2>
 						<p className="text-sm" style={mutedStyle}>
 							{mode === "create"
@@ -301,8 +304,7 @@ export function ChannelFormModal({
 							onChange={(event) =>
 								setForm((prev) => ({
 									...prev,
-									visibility: event.target
-										.value as ChannelRecord["visibility"],
+									visibility: event.target.value as ChannelRecord["visibility"],
 								}))
 							}
 							className="h-10 w-full rounded-lg border px-3 text-sm"
@@ -345,10 +347,7 @@ export function ChannelFormModal({
 					</div>
 				</div>
 
-				<label
-					className="flex items-center gap-2 text-sm"
-					style={mutedStyle}
-				>
+				<label className="flex items-center gap-2 text-sm" style={mutedStyle}>
 					<input
 						type="checkbox"
 						checked={form.is_active}
@@ -362,9 +361,7 @@ export function ChannelFormModal({
 					{t("Active")}
 				</label>
 
-				{validation ? (
-					<p className="text-xs text-error">{validation}</p>
-				) : null}
+				{validation ? <p className="text-xs text-error">{validation}</p> : null}
 			</ModalBody>
 
 			<ModalFooter>
@@ -377,10 +374,7 @@ export function ChannelFormModal({
 					disabled={saving || Boolean(validation)}
 				>
 					{saving ? (
-						<Loader2
-							aria-hidden="true"
-							className="h-4 w-4 animate-spin"
-						/>
+						<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
 					) : (
 						<Save aria-hidden="true" className="h-4 w-4" />
 					)}

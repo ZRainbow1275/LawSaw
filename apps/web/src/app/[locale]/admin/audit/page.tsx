@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VirtualList } from "@/components/ui/virtual-list";
 import { apiClient } from "@/lib/api";
-import { useT } from "@/lib/i18n-client";
+import { localizeAuditEvent } from "@/lib/audit-event-labels";
+import { useLocale, useT } from "@/lib/i18n-client";
 import { useQuery } from "@tanstack/react-query";
 import { FileSearch } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -95,17 +96,9 @@ function statusCopy(key: string, t: (k: string) => string): string {
 	}
 }
 
-function auditStatusFallback(
-	t: (k: string) => string,
-	key: string,
-	fallback: string,
-): string {
-	const translated = t(key);
-	return translated === key ? fallback : translated;
-}
-
 function AdminAuditContent() {
 	const t = useT();
+	const locale = useLocale();
 	// Server-side admin guard at [locale]/admin/layout.tsx — see users/page.tsx.
 	const isAdmin = true;
 	const [resource, setResource] = useState("");
@@ -150,87 +143,28 @@ function AdminAuditContent() {
 		);
 	}, [actorQuery, query.data]);
 
-	const titleText = auditStatusFallback(t, "audit.title", "审计日志");
-	const subtitleText = auditStatusFallback(
-		t,
-		"audit.subtitle",
-		"检查租户内发生的审计事件与状态变更",
-	);
-	const filterActorLabel = auditStatusFallback(
-		t,
-		"audit.filters.actor",
-		"操作者 ID 包含",
-	);
-	const filterActionLabel = auditStatusFallback(
-		t,
-		"audit.filters.action",
-		"操作类型 (精确匹配)",
-	);
-	const filterResourceLabel = auditStatusFallback(
-		t,
-		"audit.filters.resource",
-		"资源 (精确匹配)",
-	);
-	const emptyTitle = auditStatusFallback(
-		t,
-		"audit.empty.title",
-		"暂无审计记录",
-	);
-	const emptyDescription = auditStatusFallback(
-		t,
-		"audit.empty.description",
-		"当前筛选条件下没有审计事件",
-	);
-	const restrictedTitle = auditStatusFallback(
-		t,
-		"audit.restricted.title",
-		"访问受限",
-	);
-	const restrictedDescription = auditStatusFallback(
-		t,
-		"audit.restricted.description",
-		"仅管理员角色可以查看审计日志",
-	);
-	const errorTitle = auditStatusFallback(
-		t,
-		"audit.error.title",
-		"审计日志加载失败",
-	);
-	const retryLabel = auditStatusFallback(t, "audit.retry", "重试");
-	const breadcrumbText = auditStatusFallback(
-		t,
-		"audit.breadcrumb",
-		"设置 / 管理 / 审计",
-	);
-	const rowCountLabel = auditStatusFallback(
-		t,
-		"audit.rowCount",
-		"当前显示 {count} 条",
-	).replace("{count}", String(rows.length));
+	const titleText = t("audit.title");
+	const subtitleText = t("audit.subtitle");
+	const filterActorLabel = t("audit.filters.actor");
+	const filterActionLabel = t("audit.filters.action");
+	const filterResourceLabel = t("audit.filters.resource");
+	const emptyTitle = t("audit.empty.title");
+	const emptyDescription = t("audit.empty.description");
+	const restrictedTitle = t("audit.restricted.title");
+	const restrictedDescription = t("audit.restricted.description");
+	const errorTitle = t("audit.error.title");
+	const retryLabel = t("audit.retry");
+	const breadcrumbText = t("audit.breadcrumb");
+	const rowCountLabel = t("audit.rowCount", { count: rows.length });
 
-	const columnTimestamp = auditStatusFallback(
-		t,
-		"audit.column.timestamp",
-		"时间",
-	);
-	const columnActor = auditStatusFallback(t, "audit.column.actor", "操作者");
-	const columnAction = auditStatusFallback(t, "audit.column.action", "操作");
-	const columnTarget = auditStatusFallback(
-		t,
-		"audit.column.target",
-		"目标资源",
-	);
-	const columnStatus = auditStatusFallback(t, "audit.column.status", "状态");
-	const columnCorrelation = auditStatusFallback(
-		t,
-		"audit.column.correlation",
-		"关联 ID",
-	);
+	const columnTimestamp = t("audit.column.timestamp");
+	const columnActor = t("audit.column.actor");
+	const columnAction = t("audit.column.action");
+	const columnTarget = t("audit.column.target");
+	const columnStatus = t("audit.column.status");
+	const columnCorrelation = t("audit.column.correlation");
 
-	const actorPlaceholder =
-		t("audit.filters.actor.placeholder") === "audit.filters.actor.placeholder"
-			? "user_id 前缀"
-			: t("audit.filters.actor.placeholder");
+	const actorPlaceholder = t("audit.filters.actor.placeholder");
 
 	const tableBody = (() => {
 		if (query.isLoading) {
@@ -299,7 +233,9 @@ function AdminAuditContent() {
 								{shortenId(item.user_id)}
 							</span>
 							<span className="truncate">
-								<Badge variant="outline">{item.action}</Badge>
+								<Badge variant="outline" title={item.action}>
+									{localizeAuditEvent(locale, item.action)}
+								</Badge>
 							</span>
 							<span
 								className="truncate"
@@ -330,118 +266,116 @@ function AdminAuditContent() {
 	return (
 		<div className="space-y-6">
 			<Card>
-						<CardHeader>
-							<p
-								className="mb-2 text-xs uppercase tracking-[0.12em]"
+				<CardHeader>
+					<p
+						className="mb-2 text-xs uppercase tracking-[0.12em]"
+						style={mutedTextStyle}
+					>
+						{breadcrumbText}
+					</p>
+					<CardTitle
+						className="flex items-center gap-2 text-3xl font-bold tracking-tight"
+						style={headingStyle}
+					>
+						<FileSearch
+							aria-hidden="true"
+							className="h-7 w-7"
+							style={{ color: "var(--color-primary-500)" }}
+						/>
+						{titleText}
+					</CardTitle>
+					<p className="text-sm" style={mutedTextStyle}>
+						{subtitleText}
+					</p>
+				</CardHeader>
+			</Card>
+
+			{!isAdmin ? (
+				<EmptyState
+					variant="error"
+					title={restrictedTitle}
+					description={restrictedDescription}
+				/>
+			) : (
+				<>
+					<Card>
+						<CardContent className="grid gap-3 p-4 md:grid-cols-3">
+							<label
+								htmlFor="audit-filter-actor"
+								className="flex flex-col gap-1 text-xs"
 								style={mutedTextStyle}
 							>
-								{breadcrumbText}
-							</p>
-							<CardTitle
-								className="flex items-center gap-2 text-3xl font-bold tracking-tight"
-								style={headingStyle}
-							>
-								<FileSearch
-									aria-hidden="true"
-									className="h-7 w-7"
-									style={{ color: "var(--color-primary-500)" }}
+								<span>{filterActorLabel}</span>
+								<Input
+									id="audit-filter-actor"
+									value={actorQuery}
+									onChange={(event) => setActorQuery(event.target.value)}
+									placeholder={actorPlaceholder}
 								/>
-								{titleText}
-							</CardTitle>
-							<p className="text-sm" style={mutedTextStyle}>
-								{subtitleText}
-							</p>
-						</CardHeader>
+							</label>
+							<label
+								htmlFor="audit-filter-action"
+								className="flex flex-col gap-1 text-xs"
+								style={mutedTextStyle}
+							>
+								<span>{filterActionLabel}</span>
+								<Input
+									id="audit-filter-action"
+									value={action}
+									onChange={(event) => setAction(event.target.value)}
+									placeholder="create / update / delete"
+								/>
+							</label>
+							<label
+								htmlFor="audit-filter-resource"
+								className="flex flex-col gap-1 text-xs"
+								style={mutedTextStyle}
+							>
+								<span>{filterResourceLabel}</span>
+								<Input
+									id="audit-filter-resource"
+									value={resource}
+									onChange={(event) => setResource(event.target.value)}
+									placeholder="users / banners / channels"
+								/>
+							</label>
+						</CardContent>
 					</Card>
 
-					{!isAdmin ? (
-						<EmptyState
-							variant="error"
-							title={restrictedTitle}
-							description={restrictedDescription}
-						/>
-					) : (
-						<>
-							<Card>
-								<CardContent className="grid gap-3 p-4 md:grid-cols-3">
-									<label
-										htmlFor="audit-filter-actor"
-										className="flex flex-col gap-1 text-xs"
-										style={mutedTextStyle}
-									>
-										<span>{filterActorLabel}</span>
-										<Input
-											id="audit-filter-actor"
-											value={actorQuery}
-											onChange={(event) => setActorQuery(event.target.value)}
-											placeholder={actorPlaceholder}
-										/>
-									</label>
-									<label
-										htmlFor="audit-filter-action"
-										className="flex flex-col gap-1 text-xs"
-										style={mutedTextStyle}
-									>
-										<span>{filterActionLabel}</span>
-										<Input
-											id="audit-filter-action"
-											value={action}
-											onChange={(event) => setAction(event.target.value)}
-											placeholder="create / update / delete"
-										/>
-									</label>
-									<label
-										htmlFor="audit-filter-resource"
-										className="flex flex-col gap-1 text-xs"
-										style={mutedTextStyle}
-									>
-										<span>{filterResourceLabel}</span>
-										<Input
-											id="audit-filter-resource"
-											value={resource}
-											onChange={(event) => setResource(event.target.value)}
-											placeholder="users / banners / channels"
-										/>
-									</label>
-								</CardContent>
-							</Card>
-
-							<Card>
-								<CardContent className="p-0">
-									<div
-										className="flex items-center justify-between gap-3 px-4 py-2 text-xs"
-										style={mutedTextStyle}
-									>
-										<span>{rowCountLabel}</span>
-										{query.isFetching ? (
-											<span aria-live="polite">
-												{auditStatusFallback(t, "audit.fetching", "正在刷新…")}
-											</span>
-										) : null}
-									</div>
-									<div
-										className="grid grid-cols-[1.5fr_1fr_1fr_1.5fr_0.8fr_1fr] items-center border-t border-b px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.08em]"
-										style={headerRowStyle}
-									>
-										<span>{columnTimestamp}</span>
-										<span>{columnActor}</span>
-										<span>{columnAction}</span>
-										<span>{columnTarget}</span>
-										<span>{columnStatus}</span>
-										<span>{columnCorrelation}</span>
-									</div>
-									<div
-										className="rounded-b-xl"
-										style={tableWrapperStyle}
-										data-testid="audit-virtual-body"
-									>
-										{tableBody}
-									</div>
-								</CardContent>
-							</Card>
-						</>
-					)}
-				</div>
+					<Card>
+						<CardContent className="p-0">
+							<div
+								className="flex items-center justify-between gap-3 px-4 py-2 text-xs"
+								style={mutedTextStyle}
+							>
+								<span>{rowCountLabel}</span>
+								{query.isFetching ? (
+									<span aria-live="polite">{t("audit.fetching")}</span>
+								) : null}
+							</div>
+							<div
+								className="grid grid-cols-[1.5fr_1fr_1fr_1.5fr_0.8fr_1fr] items-center border-t border-b px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.08em]"
+								style={headerRowStyle}
+							>
+								<span>{columnTimestamp}</span>
+								<span>{columnActor}</span>
+								<span>{columnAction}</span>
+								<span>{columnTarget}</span>
+								<span>{columnStatus}</span>
+								<span>{columnCorrelation}</span>
+							</div>
+							<div
+								className="rounded-b-xl"
+								style={tableWrapperStyle}
+								data-testid="audit-virtual-body"
+							>
+								{tableBody}
+							</div>
+						</CardContent>
+					</Card>
+				</>
+			)}
+		</div>
 	);
 }
 

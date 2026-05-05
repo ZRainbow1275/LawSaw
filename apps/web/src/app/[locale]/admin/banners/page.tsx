@@ -21,6 +21,7 @@ import {
 	BannerPreview,
 } from "@/components/admin/banner-preview";
 import { Badge } from "@/components/ui/badge";
+import { useAdminDeepLink } from "@/hooks/use-admin-deep-link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -37,15 +38,8 @@ import { ApiClientError } from "@/lib/api";
 import { formatDateTime } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { useToast } from "@/stores/toast-store";
-import {
-	Archive,
-	Copy,
-	Flag,
-	Megaphone,
-	Plus,
-	RotateCcw,
-} from "lucide-react";
-import { useMemo, useState } from "react";
+import { Archive, Copy, Flag, Megaphone, Plus, RotateCcw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 const VALID_GRADIENT_KEYS: BannerGradientKey[] = [
 	"primary",
@@ -73,14 +67,19 @@ function formatBannerAdminErrorMessage(
 			return t("You do not have permission to manage banners.");
 		default:
 			return cause.status >= 500
-				? t("The banner service is temporarily unavailable. Please try again later.")
+				? t(
+						"The banner service is temporarily unavailable. Please try again later.",
+					)
 				: cause.message;
 	}
 }
 
 function gradientKeyOf(banner: BannerRecord): BannerGradientKey {
 	const key = banner.metadata?.gradient_key;
-	if (typeof key === "string" && (VALID_GRADIENT_KEYS as string[]).includes(key)) {
+	if (
+		typeof key === "string" &&
+		(VALID_GRADIENT_KEYS as string[]).includes(key)
+	) {
 		return key as BannerGradientKey;
 	}
 	return "primary";
@@ -138,6 +137,7 @@ export default function AdminBannersPage() {
 	const t = useT();
 	const locale = useLocale();
 	const { success, error } = useToast();
+	const { searchParams, clearSearchParams } = useAdminDeepLink();
 	// Server-side admin guard at [locale]/admin/layout.tsx — see users/page.tsx.
 	const isAdmin = true;
 	const bannersQuery = useAdminBanners(true);
@@ -147,6 +147,7 @@ export default function AdminBannersPage() {
 
 	const [drawerMode, setDrawerMode] = useState<"create" | "edit" | null>(null);
 	const [editingBanner, setEditingBanner] = useState<BannerRecord | null>(null);
+	const createParam = searchParams.get("create");
 
 	const channels = channelsQuery.data ?? [];
 	const channelNameById = useMemo(
@@ -162,6 +163,12 @@ export default function AdminBannersPage() {
 		backgroundColor: "var(--color-background)",
 	} as const;
 
+	useEffect(() => {
+		if (createParam !== "1") return;
+		setEditingBanner(null);
+		setDrawerMode("create");
+	}, [createParam]);
+
 	const openCreateDrawer = () => {
 		setEditingBanner(null);
 		setDrawerMode("create");
@@ -175,6 +182,7 @@ export default function AdminBannersPage() {
 	const closeDrawer = () => {
 		setDrawerMode(null);
 		setEditingBanner(null);
+		clearSearchParams(["create"]);
 	};
 
 	const handleSubmitForm = async (payload: CreateBannerInput) => {
@@ -226,7 +234,8 @@ export default function AdminBannersPage() {
 			{
 				id: banner.id,
 				status: nextStatus,
-				archived_at: nextStatus === "archived" ? new Date().toISOString() : null,
+				archived_at:
+					nextStatus === "archived" ? new Date().toISOString() : null,
 			},
 			{
 				onSuccess: () => {
@@ -253,7 +262,9 @@ export default function AdminBannersPage() {
 				onSuccess: () => {
 					success(
 						t("Saved successfully"),
-						t("The banner archive state is now reflected in the live banner list."),
+						t(
+							"The banner archive state is now reflected in the live banner list.",
+						),
 					);
 				},
 				onError: (cause) => {
@@ -296,212 +307,208 @@ export default function AdminBannersPage() {
 	return (
 		<div className="space-y-6">
 			<Card>
-							<CardHeader>
-								<div className="flex flex-wrap items-start justify-between gap-3">
-									<div>
-										<CardTitle
-											className="flex items-center gap-2 text-3xl font-bold tracking-tight"
-											style={headingStyle}
-										>
-											<Flag
-												aria-hidden="true"
-												className="h-7 w-7"
-												style={{ color: "var(--color-primary-500)" }}
-											/>
-											{t("Banner management")}
-										</CardTitle>
-										<p className="mt-1 text-sm" style={mutedTextStyle}>
-											{t(
-												"Create operational banners and control their targeting scope.",
-											)}
-										</p>
-									</div>
-									{isAdmin ? (
-										<Button type="button" onClick={openCreateDrawer}>
-											<Plus aria-hidden="true" className="h-4 w-4" />
-											{t("New banner")}
-										</Button>
-									) : null}
-								</div>
-							</CardHeader>
-						</Card>
+				<CardHeader>
+					<div className="flex flex-wrap items-start justify-between gap-3">
+						<div>
+							<CardTitle
+								className="flex items-center gap-2 text-3xl font-bold tracking-tight"
+								style={headingStyle}
+							>
+								<Flag
+									aria-hidden="true"
+									className="h-7 w-7"
+									style={{ color: "var(--color-primary-500)" }}
+								/>
+								{t("Banner management")}
+							</CardTitle>
+							<p className="mt-1 text-sm" style={mutedTextStyle}>
+								{t(
+									"Create operational banners and control their targeting scope.",
+								)}
+							</p>
+						</div>
+						{isAdmin ? (
+							<Button type="button" onClick={openCreateDrawer}>
+								<Plus aria-hidden="true" className="h-4 w-4" />
+								{t("New banner")}
+							</Button>
+						) : null}
+					</div>
+				</CardHeader>
+			</Card>
 
-						{!isAdmin ? (
+			{!isAdmin ? (
+				<EmptyState
+					title={t("Access restricted")}
+					description={t(
+						"You need an administrative role to access this workspace.",
+					)}
+				/>
+			) : (
+				<Card>
+					<CardHeader>
+						<CardTitle className="flex items-center gap-2">
+							<Megaphone aria-hidden="true" className="h-5 w-5" />
+							{t("Banners")}
+						</CardTitle>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						{bannersQuery.isLoading ? (
+							<p className="text-sm" style={mutedTextStyle}>
+								{t("Loading banners")}
+							</p>
+						) : bannersQuery.isError ? (
 							<EmptyState
-								title={t("Access restricted")}
+								variant="error"
+								title={t("Failed to load banners")}
+								description={
+									bannersQuery.error instanceof Error
+										? bannersQuery.error.message
+										: t("Unknown error")
+								}
+								action={{
+									label: t("Retry"),
+									onClick: () => bannersQuery.refetch(),
+								}}
+							/>
+						) : banners.length === 0 ? (
+							<EmptyState
+								title={t("No banners yet")}
 								description={t(
-									"You need an administrative role to access this workspace.",
+									"Create your first operational banner to surface announcements and actions.",
 								)}
 							/>
 						) : (
-							<Card>
-								<CardHeader>
-									<CardTitle className="flex items-center gap-2">
-										<Megaphone aria-hidden="true" className="h-5 w-5" />
-										{t("Banners")}
-									</CardTitle>
-								</CardHeader>
-								<CardContent className="space-y-4">
-									{bannersQuery.isLoading ? (
-										<p className="text-sm" style={mutedTextStyle}>
-											{t("Loading banners")}
-										</p>
-									) : bannersQuery.isError ? (
-										<EmptyState
-											variant="error"
-											title={t("Failed to load banners")}
-											description={
-												bannersQuery.error instanceof Error
-													? bannersQuery.error.message
-													: t("Unknown error")
-											}
-											action={{
-												label: t("Retry"),
-												onClick: () => bannersQuery.refetch(),
-											}}
+							banners.map((banner) => {
+								const audienceTiers = audienceTiersOf(banner);
+								const gradientKey = gradientKeyOf(banner);
+								const dismissable = dismissableOf(banner);
+								const channelLabels = banner.targets.map((target) =>
+									target.target_type === "global"
+										? t("Global")
+										: target.target_channel_id
+											? (channelNameById.get(target.target_channel_id) ??
+												target.target_channel_id)
+											: t("Unknown channel"),
+								);
+								return (
+									<div
+										key={banner.id}
+										className="space-y-3 rounded-2xl border p-4"
+										style={surfaceStyle}
+									>
+										<BannerPreview
+											title={banner.title}
+											body={banner.body ?? undefined}
+											ctaLabel={banner.cta_label ?? undefined}
+											ctaUrl={banner.cta_url ?? undefined}
+											gradientKey={gradientKey}
+											dismissable={dismissable}
+											audienceTiers={audienceTiers}
 										/>
-									) : banners.length === 0 ? (
-										<EmptyState
-											title={t("No banners yet")}
-											description={t(
-												"Create your first operational banner to surface announcements and actions.",
-											)}
-										/>
-									) : (
-										banners.map((banner) => {
-											const audienceTiers = audienceTiersOf(banner);
-											const gradientKey = gradientKeyOf(banner);
-											const dismissable = dismissableOf(banner);
-											const channelLabels = banner.targets
-												.map((target) =>
-													target.target_type === "global"
-														? t("Global")
-														: target.target_channel_id
-															? channelNameById.get(target.target_channel_id) ??
-																target.target_channel_id
-															: t("Unknown channel"),
-												);
-											return (
-												<div
-													key={banner.id}
-													className="space-y-3 rounded-2xl border p-4"
-													style={surfaceStyle}
-												>
-													<BannerPreview
-														title={banner.title}
-														body={banner.body ?? undefined}
-														ctaLabel={banner.cta_label ?? undefined}
-														ctaUrl={banner.cta_url ?? undefined}
-														gradientKey={gradientKey}
-														dismissable={dismissable}
-														audienceTiers={audienceTiers}
-													/>
-													<div className="flex flex-wrap items-center gap-2 text-xs" style={mutedTextStyle}>
-														<Badge variant={statusVariant(banner.status)}>
-															{t(
-																banner.status === "draft"
-																	? "Draft"
-																	: banner.status === "scheduled"
-																		? "Scheduled"
-																		: banner.status === "active"
-																			? "Active"
-																			: banner.status === "expired"
-																				? "Expired"
-																				: "Archived",
-															)}
-														</Badge>
-														<span>
-															{t("Priority")}: {banner.priority}
-														</span>
-														<span>
-															{formatScheduleWindow(
-																t,
-																locale,
-																banner.starts_at,
-																banner.ends_at,
-															)}
-														</span>
-														{channelLabels.length > 0 ? (
-															<span>
-																{t("Targets")}: {channelLabels.join(", ")}
-															</span>
-														) : null}
-													</div>
-													<div className="flex flex-wrap items-center gap-2">
-														<Button
-															type="button"
-															variant="outline"
-															size="sm"
-															onClick={() => openEditDrawer(banner)}
-														>
-															{t("Edit banner")}
-														</Button>
-														<select
-															aria-label={t("Status")}
-															value={banner.status}
-															onChange={(event) =>
-																handleStatusChange(
-																	banner,
-																	event.target.value as BannerRecord["status"],
-																)
-															}
-															className="h-9 rounded-lg border px-3 text-sm outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary-300)]"
-															style={{
-																borderColor:
-																	"color-mix(in srgb, var(--color-border) 80%, transparent)",
-																backgroundColor: "var(--color-background)",
-																color: "var(--color-foreground)",
-															}}
-														>
-															<option value="draft">{t("Draft")}</option>
-															<option value="scheduled">{t("Scheduled")}</option>
-															<option value="active">{t("Active")}</option>
-															<option value="expired">{t("Expired")}</option>
-															<option value="archived">{t("Archived")}</option>
-														</select>
-														<Button
-															type="button"
-															variant="outline"
-															size="sm"
-															onClick={() => void handleDuplicate(banner)}
-															disabled={createBanner.isPending}
-														>
-															<Copy aria-hidden="true" className="h-4 w-4" />
-															{t("Duplicate")}
-														</Button>
-														<Button
-															type="button"
-															variant="outline"
-															size="sm"
-															onClick={() => handleArchiveToggle(banner)}
-															disabled={updateBanner.isPending}
-														>
-															{banner.archived_at ? (
-																<>
-																	<RotateCcw
-																		aria-hidden="true"
-																		className="h-4 w-4"
-																	/>
-																	{t("Restore banner")}
-																</>
-															) : (
-																<>
-																	<Archive
-																		aria-hidden="true"
-																		className="h-4 w-4"
-																	/>
-																	{t("Archive banner")}
-																</>
-															)}
-														</Button>
-													</div>
-												</div>
-											);
-										})
-									)}
-								</CardContent>
-							</Card>
+										<div
+											className="flex flex-wrap items-center gap-2 text-xs"
+											style={mutedTextStyle}
+										>
+											<Badge variant={statusVariant(banner.status)}>
+												{t(
+													banner.status === "draft"
+														? "Draft"
+														: banner.status === "scheduled"
+															? "Scheduled"
+															: banner.status === "active"
+																? "Active"
+																: banner.status === "expired"
+																	? "Expired"
+																	: "Archived",
+												)}
+											</Badge>
+											<span>
+												{t("Priority")}: {banner.priority}
+											</span>
+											<span>
+												{formatScheduleWindow(
+													t,
+													locale,
+													banner.starts_at,
+													banner.ends_at,
+												)}
+											</span>
+											{channelLabels.length > 0 ? (
+												<span>
+													{t("Targets")}: {channelLabels.join(", ")}
+												</span>
+											) : null}
+										</div>
+										<div className="flex flex-wrap items-center gap-2">
+											<Button
+												type="button"
+												variant="outline"
+												size="sm"
+												onClick={() => openEditDrawer(banner)}
+											>
+												{t("Edit banner")}
+											</Button>
+											<select
+												aria-label={t("Status")}
+												value={banner.status}
+												onChange={(event) =>
+													handleStatusChange(
+														banner,
+														event.target.value as BannerRecord["status"],
+													)
+												}
+												className="h-9 rounded-lg border px-3 text-sm outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary-300)]"
+												style={{
+													borderColor:
+														"color-mix(in srgb, var(--color-border) 80%, transparent)",
+													backgroundColor: "var(--color-background)",
+													color: "var(--color-foreground)",
+												}}
+											>
+												<option value="draft">{t("Draft")}</option>
+												<option value="scheduled">{t("Scheduled")}</option>
+												<option value="active">{t("Active")}</option>
+												<option value="expired">{t("Expired")}</option>
+												<option value="archived">{t("Archived")}</option>
+											</select>
+											<Button
+												type="button"
+												variant="outline"
+												size="sm"
+												onClick={() => void handleDuplicate(banner)}
+												disabled={createBanner.isPending}
+											>
+												<Copy aria-hidden="true" className="h-4 w-4" />
+												{t("Duplicate")}
+											</Button>
+											<Button
+												type="button"
+												variant="outline"
+												size="sm"
+												onClick={() => handleArchiveToggle(banner)}
+												disabled={updateBanner.isPending}
+											>
+												{banner.archived_at ? (
+													<>
+														<RotateCcw aria-hidden="true" className="h-4 w-4" />
+														{t("Restore banner")}
+													</>
+												) : (
+													<>
+														<Archive aria-hidden="true" className="h-4 w-4" />
+														{t("Archive banner")}
+													</>
+												)}
+											</Button>
+										</div>
+									</div>
+								);
+							})
 						)}
+					</CardContent>
+				</Card>
+			)}
 
 			<BannerForm
 				open={drawerMode !== null}

@@ -25,13 +25,10 @@ import {
 	useUserPermissionAudits,
 } from "@/hooks/use-admin-users";
 import { ApiClientError } from "@/lib/api";
+import { type RoleTier, roleTierLabelKey } from "@/lib/authz";
 import { type Locale, formatDateTime } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { overlayVariants } from "@/lib/motion";
-import {
-	type RoleTier,
-	roleTierLabelKey,
-} from "@/lib/authz";
 import { useToast } from "@/stores/toast-store";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -226,17 +223,17 @@ export function UserDetailDrawer({
 						onClick={onClose}
 						aria-hidden="true"
 					/>
-					<motion.aside
+					<motion.dialog
+						open
 						variants={PANEL_VARIANTS}
 						initial="hidden"
 						animate="visible"
 						exit="exit"
-						className="ml-auto flex h-full w-full max-w-2xl flex-col overflow-hidden border-l shadow-2xl"
+						className="m-0 ml-auto flex h-full w-full max-h-none max-w-2xl flex-col overflow-hidden border-0 border-l p-0 shadow-2xl"
 						style={{
 							backgroundColor: "var(--color-background)",
 							borderColor: "var(--surface-muted-border)",
 						}}
-						role="dialog"
 						aria-label={t("User detail")}
 					>
 						<header
@@ -258,9 +255,7 @@ export function UserDetailDrawer({
 								</h2>
 								<div className="mt-2 flex flex-wrap gap-2">
 									<Badge variant="outline">{user.email}</Badge>
-									<Badge
-										variant={user.is_active ? "success" : "secondary"}
-									>
+									<Badge variant={user.is_active ? "success" : "secondary"}>
 										{user.is_active ? t("Active") : t("Disabled")}
 									</Badge>
 									<Badge variant="secondary">
@@ -294,9 +289,7 @@ export function UserDetailDrawer({
 								active={activeTab === "roles"}
 								onClick={() => setActiveTab("roles")}
 								label={t("Role management")}
-								icon={
-									<ShieldCheck aria-hidden="true" className="h-4 w-4" />
-								}
+								icon={<ShieldCheck aria-hidden="true" className="h-4 w-4" />}
 							/>
 							<TabButton
 								active={activeTab === "session"}
@@ -396,17 +389,14 @@ export function UserDetailDrawer({
 												className="h-4 w-4 animate-spin"
 											/>
 										) : (
-											<ShieldCheck
-												aria-hidden="true"
-												className="h-4 w-4"
-											/>
+											<ShieldCheck aria-hidden="true" className="h-4 w-4" />
 										)}
 										{t("Save roles")}
 									</Button>
 								</div>
 							</footer>
 						) : null}
-					</motion.aside>
+					</motion.dialog>
 				</div>
 			) : null}
 		</AnimatePresence>
@@ -475,10 +465,7 @@ function OverviewTab({
 				style={surfaceStyle}
 				data-testid="user-overview-profile"
 			>
-				<h3
-					className="text-xs uppercase tracking-wide"
-					style={mutedStyle}
-				>
+				<h3 className="text-xs uppercase tracking-wide" style={mutedStyle}>
 					{t("Profile")}
 				</h3>
 				<dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
@@ -546,10 +533,7 @@ function OverviewTab({
 				style={surfaceStyle}
 				data-testid="user-overview-roles"
 			>
-				<h3
-					className="text-xs uppercase tracking-wide"
-					style={mutedStyle}
-				>
+				<h3 className="text-xs uppercase tracking-wide" style={mutedStyle}>
 					{t("Roles")}
 				</h3>
 				{loading ? (
@@ -576,10 +560,7 @@ function OverviewTab({
 				style={surfaceStyle}
 				data-testid="user-overview-permissions"
 			>
-				<h3
-					className="text-xs uppercase tracking-wide"
-					style={mutedStyle}
-				>
+				<h3 className="text-xs uppercase tracking-wide" style={mutedStyle}>
 					{t("Effective permissions")}
 				</h3>
 				{loading ? (
@@ -617,10 +598,7 @@ function OverviewField({
 }) {
 	return (
 		<div>
-			<p
-				className="text-xs uppercase tracking-wide"
-				style={mutedStyle}
-			>
+			<p className="text-xs uppercase tracking-wide" style={mutedStyle}>
 				{label}
 			</p>
 			<p className="mt-1 truncate text-sm" style={headingStyle}>
@@ -660,10 +638,7 @@ function RolesTab({
 			>
 				<div className="flex items-start justify-between gap-3">
 					<div>
-						<h3
-							className="text-sm font-semibold"
-							style={headingStyle}
-						>
+						<h3 className="text-sm font-semibold" style={headingStyle}>
 							{t("Tier")}
 						</h3>
 						<p className="mt-1 text-xs" style={mutedStyle}>
@@ -672,9 +647,7 @@ function RolesTab({
 							)}
 						</p>
 					</div>
-					<Badge variant="secondary">
-						{t(roleTierLabelKey(currentTier))}
-					</Badge>
+					<Badge variant="secondary">{t(roleTierLabelKey(currentTier))}</Badge>
 				</div>
 				<div className="mt-3 grid gap-2 md:grid-cols-3">
 					{TIER_ROLES.map((tier) => {
@@ -700,9 +673,7 @@ function RolesTab({
 								}
 								aria-pressed={active}
 							>
-								<span className="font-medium">
-									{t(roleTierLabelKey(tier))}
-								</span>
+								<span className="font-medium">{t(roleTierLabelKey(tier))}</span>
 							</button>
 						);
 					})}
@@ -714,10 +685,7 @@ function RolesTab({
 				style={surfaceStyle}
 				data-testid="user-functional-roles"
 			>
-				<h3
-					className="text-sm font-semibold"
-					style={headingStyle}
-				>
+				<h3 className="text-sm font-semibold" style={headingStyle}>
 					{t("Functional roles")}
 				</h3>
 				<p className="mt-1 text-xs" style={mutedStyle}>
@@ -761,10 +729,7 @@ function RolesTab({
 				style={surfaceStyle}
 				data-testid="user-pending-roles"
 			>
-				<h3
-					className="text-xs uppercase tracking-wide"
-					style={mutedStyle}
-				>
+				<h3 className="text-xs uppercase tracking-wide" style={mutedStyle}>
 					{t("Pending roles after save")}
 				</h3>
 				<div className="mt-2 flex flex-wrap gap-2">
@@ -814,10 +779,7 @@ function SessionTab({
 						style={{ color: "var(--surface-muted-text)" }}
 					/>
 					<div>
-						<h3
-							className="text-sm font-semibold"
-							style={headingStyle}
-						>
+						<h3 className="text-sm font-semibold" style={headingStyle}>
 							{t("Per-user session listing")}
 						</h3>
 						<p className="mt-1 text-sm" style={mutedStyle}>
@@ -881,10 +843,7 @@ function ActivityTab({
 						style={{ color: "var(--surface-muted-text)" }}
 					/>
 					<div>
-						<h3
-							className="text-sm font-semibold"
-							style={headingStyle}
-						>
+						<h3 className="text-sm font-semibold" style={headingStyle}>
 							{t("No permission changes recorded")}
 						</h3>
 						<p className="mt-1 text-sm" style={mutedStyle}>

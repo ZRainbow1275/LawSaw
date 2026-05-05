@@ -28,18 +28,10 @@ import { TenantDetailDrawer } from "@/components/admin/tenant-detail-drawer";
 import { TenantFormModal } from "@/components/admin/tenant-form-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
-import {
-	type TenantRow,
-	useAdminTenants,
-} from "@/hooks/use-admin-tenants";
+import { type TenantRow, useAdminTenants } from "@/hooks/use-admin-tenants";
 import { formatDateTime } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { useAuthStore } from "@/stores/auth-store";
@@ -172,256 +164,253 @@ function AdminTenantsContent() {
 		<>
 			<div className="space-y-6">
 				<Card>
-						<CardHeader>
-							<div className="flex flex-wrap items-start justify-between gap-3">
-								<div>
-									<CardTitle
-										className="flex items-center gap-2 text-3xl font-bold tracking-tight"
-										style={headingStyle}
-									>
-										<ShieldCheck
-											aria-hidden="true"
-											className="h-7 w-7"
-											style={{ color: "var(--color-primary-500)" }}
-										/>
-										{t("Tenants")}
-									</CardTitle>
-									<p className="mt-1 text-sm" style={mutedTextStyle}>
-										{t(
-											"Super-admin only. Manage SaaS tenants, configure quotas, and toggle feature flags across the platform.",
-										)}
-									</p>
-								</div>
-								{isSuperAdmin ? (
-									<Button type="button" onClick={() => setFormOpen(true)}>
-										<Plus aria-hidden="true" className="h-4 w-4" />
-										{t("New tenant")}
-									</Button>
-								) : null}
+					<CardHeader>
+						<div className="flex flex-wrap items-start justify-between gap-3">
+							<div>
+								<CardTitle
+									className="flex items-center gap-2 text-3xl font-bold tracking-tight"
+									style={headingStyle}
+								>
+									<ShieldCheck
+										aria-hidden="true"
+										className="h-7 w-7"
+										style={{ color: "var(--color-primary-500)" }}
+									/>
+									{t("Tenants")}
+								</CardTitle>
+								<p className="mt-1 text-sm" style={mutedTextStyle}>
+									{t(
+										"Super-admin only. Manage SaaS tenants, configure quotas, and toggle feature flags across the platform.",
+									)}
+								</p>
 							</div>
-						</CardHeader>
-					</Card>
+							{isSuperAdmin ? (
+								<Button type="button" onClick={() => setFormOpen(true)}>
+									<Plus aria-hidden="true" className="h-4 w-4" />
+									{t("New tenant")}
+								</Button>
+							) : null}
+						</div>
+					</CardHeader>
+				</Card>
 
-					{!isSuperAdmin ? (
-						<EmptyState
-							title={t("Access restricted")}
-							description={t(
-								"Tenants management is restricted to super_admin. Switch to a super-admin account to continue.",
-							)}
+				{!isSuperAdmin ? (
+					<EmptyState
+						title={t("Access restricted")}
+						description={t(
+							"Tenants management is restricted to super_admin. Switch to a super-admin account to continue.",
+						)}
+					/>
+				) : (
+					<>
+						<KpiStrip
+							totalCount={counts.total}
+							activeCount={counts.active}
+							trialCount={counts.trial}
+							suspendedCount={counts.suspended}
+							pending={tenantsQuery.isLoading}
+							t={t}
 						/>
-					) : (
-						<>
-							<KpiStrip
-								totalCount={counts.total}
-								activeCount={counts.active}
-								trialCount={counts.trial}
-								suspendedCount={counts.suspended}
-								pending={tenantsQuery.isLoading}
-								t={t}
-							/>
 
-							<Card>
-								<CardHeader>
-									<div className="flex flex-wrap items-center justify-between gap-3">
-										<CardTitle className="flex items-center gap-2">
-											<Building2 aria-hidden="true" className="h-5 w-5" />
-											{t("Tenant roster")}
-											<Badge variant="secondary">{counts.total}</Badge>
-										</CardTitle>
-										<div className="flex flex-wrap items-center gap-2">
-											<div className="relative">
-												<Search
-													aria-hidden="true"
-													className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2"
-													style={mutedTextStyle}
-												/>
-												<Input
-													value={searchQuery}
-													onChange={(event) =>
-														setSearchQuery(event.target.value)
+						<Card>
+							<CardHeader>
+								<div className="flex flex-wrap items-center justify-between gap-3">
+									<CardTitle className="flex items-center gap-2">
+										<Building2 aria-hidden="true" className="h-5 w-5" />
+										{t("Tenant roster")}
+										<Badge variant="secondary">{counts.total}</Badge>
+									</CardTitle>
+									<div className="flex flex-wrap items-center gap-2">
+										<div className="relative">
+											<Search
+												aria-hidden="true"
+												className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2"
+												style={mutedTextStyle}
+											/>
+											<Input
+												value={searchQuery}
+												onChange={(event) => setSearchQuery(event.target.value)}
+												placeholder={t("Search name or slug")}
+												className="pl-9"
+												data-testid="admin-tenants-search"
+											/>
+										</div>
+										<div className="flex flex-wrap items-center gap-1">
+											<Filter
+												aria-hidden="true"
+												className="h-4 w-4"
+												style={mutedTextStyle}
+											/>
+											{STATUS_FILTERS.map((option) => (
+												<button
+													key={option.value}
+													type="button"
+													onClick={() => setStatusFilter(option.value)}
+													className="rounded-full border px-3 py-1 text-xs font-medium transition-colors"
+													style={
+														statusFilter === option.value
+															? {
+																	backgroundColor:
+																		"var(--surface-accent-strong)",
+																	borderColor: "var(--color-primary-500)",
+																	color: "var(--color-foreground)",
+																}
+															: {
+																	backgroundColor: "var(--field-surface)",
+																	borderColor: "var(--field-border)",
+																	color: "var(--surface-muted-text)",
+																}
 													}
-													placeholder={t("Search name or slug")}
-													className="pl-9"
-													data-testid="admin-tenants-search"
-												/>
-											</div>
-											<div className="flex flex-wrap items-center gap-1">
-												<Filter
-													aria-hidden="true"
-													className="h-4 w-4"
-													style={mutedTextStyle}
-												/>
-												{STATUS_FILTERS.map((option) => (
-													<button
-														key={option.value}
-														type="button"
-														onClick={() => setStatusFilter(option.value)}
-														className="rounded-full border px-3 py-1 text-xs font-medium transition-colors"
-														style={
-															statusFilter === option.value
-																? {
-																		backgroundColor:
-																			"var(--surface-accent-strong)",
-																		borderColor:
-																			"var(--color-primary-500)",
-																		color: "var(--color-foreground)",
-																	}
-																: {
-																		backgroundColor: "var(--field-surface)",
-																		borderColor: "var(--field-border)",
-																		color: "var(--surface-muted-text)",
-																	}
-														}
-														aria-pressed={statusFilter === option.value}
-													>
-														{t(option.labelKey)}
-													</button>
-												))}
-											</div>
+													aria-pressed={statusFilter === option.value}
+												>
+													{t(option.labelKey)}
+												</button>
+											))}
 										</div>
 									</div>
-								</CardHeader>
-								<CardContent className="space-y-3">
-									{tenantsQuery.isLoading ? (
-										<div
-											className="flex items-center gap-2 text-sm"
+								</div>
+							</CardHeader>
+							<CardContent className="space-y-3">
+								{tenantsQuery.isLoading ? (
+									<div
+										className="flex items-center gap-2 text-sm"
+										style={mutedTextStyle}
+									>
+										<Loader2
+											aria-hidden="true"
+											className="h-4 w-4 animate-spin"
+										/>
+										{t("Loading tenants")}
+									</div>
+								) : tenantsQuery.isError ? (
+									<EmptyState
+										variant="error"
+										title={t("Failed to load tenants")}
+										description={
+											tenantsQuery.error instanceof Error
+												? tenantsQuery.error.message
+												: t("Unknown error")
+										}
+										action={{
+											label: t("Retry"),
+											onClick: () => tenantsQuery.refetch(),
+										}}
+									/>
+								) : filteredRows.length === 0 ? (
+									<EmptyState
+										variant="search"
+										title={t("No tenants match your filters")}
+										description={t(
+											"Try clearing the search box or selecting a different status.",
+										)}
+									/>
+								) : (
+									<motion.ul
+										className="space-y-2"
+										variants={listVariants}
+										initial="hidden"
+										animate="visible"
+										data-testid="admin-tenants-list"
+									>
+										<li
+											className="grid grid-cols-12 gap-2 px-3 text-xs uppercase tracking-wide"
 											style={mutedTextStyle}
+											aria-hidden="true"
 										>
-											<Loader2
-												aria-hidden="true"
-												className="h-4 w-4 animate-spin"
-											/>
-											{t("Loading tenants")}
-										</div>
-									) : tenantsQuery.isError ? (
-										<EmptyState
-											variant="error"
-											title={t("Failed to load tenants")}
-											description={
-												tenantsQuery.error instanceof Error
-													? tenantsQuery.error.message
-													: t("Unknown error")
-											}
-											action={{
-												label: t("Retry"),
-												onClick: () => tenantsQuery.refetch(),
-											}}
-										/>
-									) : filteredRows.length === 0 ? (
-										<EmptyState
-											variant="search"
-											title={t("No tenants match your filters")}
-											description={t(
-												"Try clearing the search box or selecting a different status.",
-											)}
-										/>
-									) : (
-										<motion.ul
-											className="space-y-2"
-											variants={listVariants}
-											initial="hidden"
-											animate="visible"
-											data-testid="admin-tenants-list"
-										>
-											<li
-												className="grid grid-cols-12 gap-2 px-3 text-xs uppercase tracking-wide"
-												style={mutedTextStyle}
-												aria-hidden="true"
-											>
-												<span className="col-span-3">{t("Name")}</span>
-												<span className="col-span-2">{t("Slug")}</span>
-												<span className="col-span-1 text-right">
-													{t("Users")}
-												</span>
-												<span className="col-span-1 text-right">
-													{t("Articles")}
-												</span>
-												<span className="col-span-2 text-right">
-													{t("AI tokens / mo")}
-												</span>
-												<span className="col-span-1 text-center">
-													{t("Status")}
-												</span>
-												<span className="col-span-2 text-right">
-													{t("Created")}
-												</span>
-											</li>
-											{filteredRows.map((row) => {
-												const status = statusOf(row);
-												return (
-													<motion.li key={row.id} variants={rowVariants}>
-														<button
-															type="button"
-															onClick={() => setDrawerTenant(row)}
-															className="grid w-full grid-cols-12 items-center gap-2 rounded-2xl border px-3 py-2 text-left text-sm transition-colors hover:[border-color:color-mix(in_srgb,var(--color-primary-500)_35%,var(--color-border)_65%)]"
-															style={surfaceStyle}
-															data-testid="admin-tenants-row"
+											<span className="col-span-3">{t("Name")}</span>
+											<span className="col-span-2">{t("Slug")}</span>
+											<span className="col-span-1 text-right">
+												{t("Users")}
+											</span>
+											<span className="col-span-1 text-right">
+												{t("Articles")}
+											</span>
+											<span className="col-span-2 text-right">
+												{t("AI tokens / mo")}
+											</span>
+											<span className="col-span-1 text-center">
+												{t("Status")}
+											</span>
+											<span className="col-span-2 text-right">
+												{t("Created")}
+											</span>
+										</li>
+										{filteredRows.map((row) => {
+											const status = statusOf(row);
+											return (
+												<motion.li key={row.id} variants={rowVariants}>
+													<button
+														type="button"
+														onClick={() => setDrawerTenant(row)}
+														className="grid w-full grid-cols-12 items-center gap-2 rounded-2xl border px-3 py-2 text-left text-sm transition-colors hover:[border-color:color-mix(in_srgb,var(--color-primary-500)_35%,var(--color-border)_65%)]"
+														style={surfaceStyle}
+														data-testid="admin-tenants-row"
+													>
+														<div className="col-span-3 min-w-0">
+															<p
+																className="truncate font-semibold"
+																style={headingStyle}
+															>
+																{row.name}
+															</p>
+														</div>
+														<div className="col-span-2 min-w-0">
+															<p
+																className="truncate text-xs"
+																style={mutedTextStyle}
+															>
+																/{row.slug}
+															</p>
+														</div>
+														<div
+															className="col-span-1 text-right tabular-nums"
+															style={mutedTextStyle}
 														>
-															<div className="col-span-3 min-w-0">
-																<p
-																	className="truncate font-semibold"
-																	style={headingStyle}
-																>
-																	{row.name}
-																</p>
-															</div>
-															<div className="col-span-2 min-w-0">
-																<p
-																	className="truncate text-xs"
-																	style={mutedTextStyle}
-																>
-																	/{row.slug}
-																</p>
-															</div>
-															<div
-																className="col-span-1 text-right tabular-nums"
-																style={mutedTextStyle}
-															>
-																—
-															</div>
-															<div
-																className="col-span-1 text-right tabular-nums"
-																style={mutedTextStyle}
-															>
-																—
-															</div>
-															<div
-																className="col-span-2 text-right tabular-nums"
-																style={mutedTextStyle}
-															>
-																—
-															</div>
-															<div className="col-span-1 text-center">
-																<Badge variant={statusVariant(status)}>
-																	{t(statusLabelKey(status))}
-																</Badge>
-															</div>
-															<div
-																className="col-span-2 text-right text-xs"
-																style={mutedTextStyle}
-															>
-																{formatDateTime(locale, row.created_at, {
-																	year: "numeric",
-																	month: "2-digit",
-																	day: "2-digit",
-																})}
-															</div>
-														</button>
-													</motion.li>
-												);
-											})}
-										</motion.ul>
-									)}
-								</CardContent>
-							</Card>
-
-							<p className="text-xs" style={mutedTextStyle}>
-								{t(
-									"Per-tenant user counts, article totals, and AI token meters appear once the tenant_usage rollup endpoint exposes them in the list response. Open a row to read the live usage panel.",
+															—
+														</div>
+														<div
+															className="col-span-1 text-right tabular-nums"
+															style={mutedTextStyle}
+														>
+															—
+														</div>
+														<div
+															className="col-span-2 text-right tabular-nums"
+															style={mutedTextStyle}
+														>
+															—
+														</div>
+														<div className="col-span-1 text-center">
+															<Badge variant={statusVariant(status)}>
+																{t(statusLabelKey(status))}
+															</Badge>
+														</div>
+														<div
+															className="col-span-2 text-right text-xs"
+															style={mutedTextStyle}
+														>
+															{formatDateTime(locale, row.created_at, {
+																year: "numeric",
+																month: "2-digit",
+																day: "2-digit",
+															})}
+														</div>
+													</button>
+												</motion.li>
+											);
+										})}
+									</motion.ul>
 								)}
-							</p>
-						</>
-					)}
+							</CardContent>
+						</Card>
+
+						<p className="text-xs" style={mutedTextStyle}>
+							{t(
+								"Per-tenant user counts, article totals, and AI token meters appear once the tenant_usage rollup endpoint exposes them in the list response. Open a row to read the live usage panel.",
+							)}
+						</p>
+					</>
+				)}
 			</div>
 
 			<TenantDetailDrawer
@@ -430,10 +419,7 @@ function AdminTenantsContent() {
 				onClose={() => setDrawerTenant(null)}
 			/>
 
-			<TenantFormModal
-				isOpen={formOpen}
-				onClose={() => setFormOpen(false)}
-			/>
+			<TenantFormModal isOpen={formOpen} onClose={() => setFormOpen(false)} />
 		</>
 	);
 }

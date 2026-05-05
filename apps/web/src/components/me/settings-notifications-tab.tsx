@@ -32,11 +32,7 @@ const itemVariants = {
 };
 
 interface NotificationToggle {
-	key:
-		| "email_alerts"
-		| "risk_alerts"
-		| "weekly_digest"
-		| "new_articles";
+	key: "email_alerts" | "risk_alerts" | "weekly_digest" | "new_articles";
 	labelKey: string;
 	descKey: string;
 }
@@ -55,7 +51,8 @@ const TOGGLES: ReadonlyArray<NotificationToggle> = [
 	{
 		key: "weekly_digest",
 		labelKey: "Weekly digest",
-		descKey: "A weekly digest summarizing what changed across your followed entities.",
+		descKey:
+			"A weekly digest summarizing what changed across your followed entities.",
 	},
 	{
 		key: "new_articles",
@@ -73,9 +70,7 @@ interface SettingsNotificationsTabProps {
 	onEnableWebPush: () => void;
 	onDisableWebPush: () => void;
 	onSendTestWebPush: () => void;
-	onSavePreferences: (
-		next: Record<NotificationToggle["key"], boolean>,
-	) => void;
+	onSavePreferences: (next: Record<NotificationToggle["key"], boolean>) => void;
 	saving: boolean;
 }
 

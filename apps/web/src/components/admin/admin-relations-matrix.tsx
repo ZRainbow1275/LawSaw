@@ -23,15 +23,8 @@ import { useAuthStore } from "@/stores/auth-store";
 import { useToast } from "@/stores/toast-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import {
-	Filter,
-	Plus,
-	Search,
-	ShieldCheck,
-	Trash2,
-	X,
-} from "lucide-react";
-import { useMemo, useState } from "react";
+import { Filter, Plus, Search, ShieldCheck, Trash2, X } from "lucide-react";
+import { useId, useMemo, useState } from "react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -107,9 +100,7 @@ function relationsApiMessage(
 		case 401:
 			return t("Your session has expired. Please sign in again.");
 		case 403:
-			return t(
-				"You do not have permission to manage authorization relations.",
-			);
+			return t("You do not have permission to manage authorization relations.");
 		case 404:
 			return t("The requested relation record was not found.");
 		default:
@@ -171,10 +162,10 @@ function RelationDrawer({
 						onClick={onClose}
 						variants={overlayVariants}
 					/>
-					<motion.aside
-						role="dialog"
+					<motion.dialog
+						open
 						aria-modal="true"
-						className="relative z-10 flex h-full w-full max-w-xl flex-col overflow-hidden border-l shadow-2xl"
+						className="relative z-10 m-0 flex h-full w-full max-w-xl flex-col overflow-hidden border-0 border-l p-0 shadow-2xl"
 						style={{
 							borderColor: "var(--surface-muted-border)",
 							backgroundColor: "var(--color-background)",
@@ -268,16 +259,14 @@ function RelationDrawer({
 													aria-hidden="true"
 													className="mr-1 h-3.5 w-3.5"
 												/>
-												{deletingId === rel.id
-													? t("Removing...")
-													: t("Remove")}
+												{deletingId === rel.id ? t("Removing...") : t("Remove")}
 											</Button>
 										</li>
 									))}
 								</ul>
 							)}
 						</div>
-					</motion.aside>
+					</motion.dialog>
 				</motion.div>
 			) : null}
 		</AnimatePresence>
@@ -345,10 +334,7 @@ function CreateRelationModal({
 					>
 						{t("New relation")}
 					</h3>
-					<p
-						className="text-xs"
-						style={{ color: "var(--surface-muted-text)" }}
-					>
+					<p className="text-xs" style={{ color: "var(--surface-muted-text)" }}>
 						{t(
 							"Compose a tuple in the form (subject_type:subject_id) -[relation]-> (resource_type:resource_id).",
 						)}
@@ -425,8 +411,10 @@ function LabeledInput({
 	placeholder,
 	error,
 }: LabeledInputProps) {
+	const inputId = useId();
+
 	return (
-		<label className="block text-xs">
+		<label htmlFor={inputId} className="block text-xs">
 			<span
 				className="mb-1 block font-medium"
 				style={{ color: "var(--color-foreground)" }}
@@ -434,6 +422,7 @@ function LabeledInput({
 				{label}
 			</span>
 			<Input
+				id={inputId}
 				value={value}
 				onChange={(e) => onChange(e.target.value)}
 				placeholder={placeholder}
@@ -498,7 +487,9 @@ function AdminRelationsMatrixContent() {
 		onSuccess: () => {
 			toastSuccess(t("Relation created successfully."));
 			setCreateOpen(false);
-			void queryClient.invalidateQueries({ queryKey: ["admin-authz-relations"] });
+			void queryClient.invalidateQueries({
+				queryKey: ["admin-authz-relations"],
+			});
 		},
 		onError: (err) => {
 			toastError(t("Create failed"), relationsApiMessage(t, err));
@@ -516,7 +507,9 @@ function AdminRelationsMatrixContent() {
 		},
 		onSuccess: () => {
 			toastSuccess(t("Relation deleted successfully."));
-			void queryClient.invalidateQueries({ queryKey: ["admin-authz-relations"] });
+			void queryClient.invalidateQueries({
+				queryKey: ["admin-authz-relations"],
+			});
 		},
 		onError: (err) => {
 			toastError(t("Delete failed"), relationsApiMessage(t, err));
@@ -752,8 +745,15 @@ function AdminRelationsMatrixContent() {
 										{matrix.subjects.map(([subjectId, subject]) => (
 											<tr
 												key={subjectId}
+												tabIndex={0}
 												className="cursor-pointer hover:bg-neutral-50"
 												onClick={() => setDrawerSubject(subjectId)}
+												onKeyDown={(event) => {
+													if (event.key === "Enter" || event.key === " ") {
+														event.preventDefault();
+														setDrawerSubject(subjectId);
+													}
+												}}
 											>
 												<td
 													className="sticky left-0 z-10 border-b border-r px-4 py-2 text-left text-xs"
@@ -852,8 +852,10 @@ function FilterField({
 	onChange,
 	placeholder,
 }: FilterFieldProps) {
+	const inputId = useId();
+
 	return (
-		<label className="block text-xs">
+		<label htmlFor={inputId} className="block text-xs">
 			<span
 				className="mb-1 flex items-center gap-1.5 font-medium"
 				style={{ color: "var(--color-foreground)" }}
@@ -866,6 +868,7 @@ function FilterField({
 				{label}
 			</span>
 			<Input
+				id={inputId}
 				value={value}
 				onChange={(e) => onChange(e.target.value)}
 				placeholder={placeholder}

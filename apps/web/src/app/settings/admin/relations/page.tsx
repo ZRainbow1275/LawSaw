@@ -6,8 +6,8 @@ import { MainContent } from "@/components/layout/main-content";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Input } from "@/components/ui/input";
 import { ApiClientError, apiClient } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
 import { useAuthStore } from "@/stores/auth-store";
@@ -67,7 +67,9 @@ function formatDecisionPathStep(
 	step: string,
 ): string {
 	const tenantResolvedMatch =
-		/^tenant:allow:resource resolved inside tenant (?<tenantId>.+)$/u.exec(step);
+		/^tenant:allow:resource resolved inside tenant (?<tenantId>.+)$/u.exec(
+			step,
+		);
 	if (tenantResolvedMatch?.groups?.tenantId) {
 		return t("Resource was resolved inside tenant {tenantId}.", {
 			tenantId: tenantResolvedMatch.groups.tenantId,
@@ -75,7 +77,9 @@ function formatDecisionPathStep(
 	}
 
 	const relationSkipMatch =
-		/^relation:skip:no matching relation found for (?<permission>.+)$/u.exec(step);
+		/^relation:skip:no matching relation found for (?<permission>.+)$/u.exec(
+			step,
+		);
 	if (relationSkipMatch?.groups?.permission) {
 		return t("No explicit relation matched permission {permission}.", {
 			permission: relationSkipMatch.groups.permission,
@@ -143,20 +147,34 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function assertDecisionResponse(value: unknown): asserts value is DecisionResponse {
+function assertDecisionResponse(
+	value: unknown,
+): asserts value is DecisionResponse {
 	if (!isRecord(value) || typeof value.allow !== "boolean") {
 		throw new Error("Invalid authz decision response");
 	}
 }
 
-function assertRelationResponse(value: unknown): asserts value is RelationResponse {
-	if (!isRecord(value) || typeof value.success !== "boolean" || !isRecord(value.relation)) {
+function assertRelationResponse(
+	value: unknown,
+): asserts value is RelationResponse {
+	if (
+		!isRecord(value) ||
+		typeof value.success !== "boolean" ||
+		!isRecord(value.relation)
+	) {
 		throw new Error("Invalid relation mutation response");
 	}
 }
 
-function assertDeleteRelationResponse(value: unknown): asserts value is DeleteResponse {
-	if (!isRecord(value) || typeof value.success !== "boolean" || typeof value.message !== "string") {
+function assertDeleteRelationResponse(
+	value: unknown,
+): asserts value is DeleteResponse {
+	if (
+		!isRecord(value) ||
+		typeof value.success !== "boolean" ||
+		typeof value.message !== "string"
+	) {
 		throw new Error("Invalid delete relation response");
 	}
 }
@@ -186,7 +204,9 @@ function formatRelationsErrorMessage(
 			return t("The requested relation record was not found.");
 		default:
 			return cause.status >= 500
-				? t("The authorization service is temporarily unavailable. Please try again later.")
+				? t(
+						"The authorization service is temporarily unavailable. Please try again later.",
+					)
 				: cause.message;
 	}
 }
@@ -199,7 +219,8 @@ function AdminRelationsContent() {
 		["super_admin", "tenant_admin", "admin"].includes(role),
 	);
 	const pageStyle = {
-		backgroundColor: "color-mix(in srgb, var(--surface-muted-bg) 55%, transparent)",
+		backgroundColor:
+			"color-mix(in srgb, var(--surface-muted-bg) 55%, transparent)",
 	} as const;
 	const headingStyle = { color: "var(--color-foreground)" } as const;
 	const mutedTextStyle = { color: "var(--surface-muted-text)" } as const;
@@ -235,7 +256,9 @@ function AdminRelationsContent() {
 	const [subjectKey, setSubjectKey] = useState("tenant_admin");
 	const [subjectRelation, setSubjectRelation] = useState("");
 	const [propertiesJson, setPropertiesJson] = useState("{}");
-	const [createdRelationId, setCreatedRelationId] = useState<string | null>(null);
+	const [createdRelationId, setCreatedRelationId] = useState<string | null>(
+		null,
+	);
 	const [createAttempted, setCreateAttempted] = useState(false);
 
 	const [deleteRelationId, setDeleteRelationId] = useState("");
@@ -255,7 +278,9 @@ function AdminRelationsContent() {
 	const trimmedCheckPermission = checkPermission.trim();
 	const checkValidationMessage =
 		checkAttempted &&
-		(!trimmedCheckResourceType || !trimmedCheckResourceId || !trimmedCheckPermission)
+		(!trimmedCheckResourceType ||
+			!trimmedCheckResourceId ||
+			!trimmedCheckPermission)
 			? t("Resource type, resource id, and permission are required.")
 			: null;
 
@@ -280,8 +305,12 @@ function AdminRelationsContent() {
 
 	const trimmedDeleteRelationId = deleteRelationId.trim();
 	const deleteValidationMessage =
-		deleteAttempted && !trimmedDeleteRelationId ? t("Relation id is required.") : null;
-	const decisionRoleTierLabel = decision ? roleTierLabel(t, decision.role_tier) : null;
+		deleteAttempted && !trimmedDeleteRelationId
+			? t("Relation id is required.")
+			: null;
+	const decisionRoleTierLabel = decision
+		? roleTierLabel(t, decision.role_tier)
+		: null;
 	const decisionSteps = useMemo(
 		() =>
 			decision?.decision_path.map((step, index) => ({
@@ -332,7 +361,8 @@ function AdminRelationsContent() {
 			setCreateAttempted(false);
 			success(t("Relation created successfully."));
 		},
-		onError: (err) => error(t("Create failed"), formatRelationsErrorMessage(t, err)),
+		onError: (err) =>
+			error(t("Create failed"), formatRelationsErrorMessage(t, err)),
 	});
 
 	const deleteMutation = useMutation({
@@ -346,12 +376,17 @@ function AdminRelationsContent() {
 			setDeleteRelationId("");
 			setDeleteAttempted(false);
 		},
-		onError: (err) => error(t("Delete failed"), formatRelationsErrorMessage(t, err)),
+		onError: (err) =>
+			error(t("Delete failed"), formatRelationsErrorMessage(t, err)),
 	});
 
 	const handleRunCheck = () => {
 		setCheckAttempted(true);
-		if (!trimmedCheckResourceType || !trimmedCheckResourceId || !trimmedCheckPermission) {
+		if (
+			!trimmedCheckResourceType ||
+			!trimmedCheckResourceId ||
+			!trimmedCheckPermission
+		) {
 			setDecision(null);
 			error(
 				t("Validation failed"),
@@ -407,8 +442,15 @@ function AdminRelationsContent() {
 				<div className="space-y-6 p-4 md:p-6">
 					<Card>
 						<CardHeader>
-							<CardTitle className="flex items-center gap-2 text-3xl font-bold tracking-tight" style={headingStyle}>
-								<ShieldCheck aria-hidden="true" className="h-7 w-7" style={{ color: "var(--color-primary-500)" }} />
+							<CardTitle
+								className="flex items-center gap-2 text-3xl font-bold tracking-tight"
+								style={headingStyle}
+							>
+								<ShieldCheck
+									aria-hidden="true"
+									className="h-7 w-7"
+									style={{ color: "var(--color-primary-500)" }}
+								/>
 								{t("Authorization relations")}
 							</CardTitle>
 							<p className="text-sm" style={mutedTextStyle}>
@@ -420,7 +462,9 @@ function AdminRelationsContent() {
 					{!isAdmin ? (
 						<EmptyState
 							title={t("Access restricted")}
-							description={t("You need an administrative role to access this workspace.")}
+							description={t(
+								"You need an administrative role to access this workspace.",
+							)}
 						/>
 					) : (
 						<div className="grid gap-4 xl:grid-cols-2">
@@ -429,31 +473,59 @@ function AdminRelationsContent() {
 									<CardTitle>{t("Authorization check")}</CardTitle>
 								</CardHeader>
 								<CardContent className="space-y-3">
-									<Input value={checkResourceType} onChange={(e) => setCheckResourceType(e.target.value)} placeholder={t("Resource type")} />
-									<Input value={checkResourceId} onChange={(e) => setCheckResourceId(e.target.value)} placeholder={t("Resource id")} />
-									<Input value={checkPermission} onChange={(e) => setCheckPermission(e.target.value)} placeholder={t("Permission")} />
+									<Input
+										value={checkResourceType}
+										onChange={(e) => setCheckResourceType(e.target.value)}
+										placeholder={t("Resource type")}
+									/>
+									<Input
+										value={checkResourceId}
+										onChange={(e) => setCheckResourceId(e.target.value)}
+										placeholder={t("Resource id")}
+									/>
+									<Input
+										value={checkPermission}
+										onChange={(e) => setCheckPermission(e.target.value)}
+										placeholder={t("Permission")}
+									/>
 									<p className="text-xs" style={subtleTextStyle}>
-										{t("Fill all fields to execute a real authorization decision.")}
+										{t(
+											"Fill all fields to execute a real authorization decision.",
+										)}
 									</p>
 									{checkValidationMessage ? (
 										<p className="text-xs text-red-600 dark:text-red-300">
 											{checkValidationMessage}
 										</p>
 									) : null}
-									<Button type="button" onClick={handleRunCheck} disabled={checkMutation.isPending}>
+									<Button
+										type="button"
+										onClick={handleRunCheck}
+										disabled={checkMutation.isPending}
+									>
 										{t("Run check")}
 									</Button>
 									{decision ? (
-										<div className="rounded-2xl border p-4" style={softPanelStyle}>
+										<div
+											className="rounded-2xl border p-4"
+											style={softPanelStyle}
+										>
 											<p className="text-sm font-semibold" style={headingStyle}>
 												{decision.allow ? t("Allow") : t("Deny")}
 											</p>
 											<p className="mt-1 text-xs" style={subtleTextStyle}>
 												{t("Role tier")}: {decisionRoleTierLabel}
 											</p>
-											<div className="mt-3 space-y-2 text-sm" style={mutedTextStyle}>
+											<div
+												className="mt-3 space-y-2 text-sm"
+												style={mutedTextStyle}
+											>
 												{decisionSteps.map((step) => (
-													<div key={step.key} className="rounded-xl border px-3 py-2" style={stepPanelStyle}>
+													<div
+														key={step.key}
+														className="rounded-xl border px-3 py-2"
+														style={stepPanelStyle}
+													>
 														<p style={headingStyle}>{step.label}</p>
 													</div>
 												))}
@@ -468,12 +540,36 @@ function AdminRelationsContent() {
 									<CardTitle>{t("Create relation")}</CardTitle>
 								</CardHeader>
 								<CardContent className="space-y-3">
-									<Input value={createResourceType} onChange={(e) => setCreateResourceType(e.target.value)} placeholder={t("Resource type")} />
-									<Input value={createResourceId} onChange={(e) => setCreateResourceId(e.target.value)} placeholder={t("Resource id")} />
-									<Input value={relationName} onChange={(e) => setRelationName(e.target.value)} placeholder={t("Relation")} />
-									<Input value={subjectType} onChange={(e) => setSubjectType(e.target.value)} placeholder={t("Subject type")} />
-									<Input value={subjectKey} onChange={(e) => setSubjectKey(e.target.value)} placeholder={t("Subject key")} />
-									<Input value={subjectRelation} onChange={(e) => setSubjectRelation(e.target.value)} placeholder={t("Subject relation")} />
+									<Input
+										value={createResourceType}
+										onChange={(e) => setCreateResourceType(e.target.value)}
+										placeholder={t("Resource type")}
+									/>
+									<Input
+										value={createResourceId}
+										onChange={(e) => setCreateResourceId(e.target.value)}
+										placeholder={t("Resource id")}
+									/>
+									<Input
+										value={relationName}
+										onChange={(e) => setRelationName(e.target.value)}
+										placeholder={t("Relation")}
+									/>
+									<Input
+										value={subjectType}
+										onChange={(e) => setSubjectType(e.target.value)}
+										placeholder={t("Subject type")}
+									/>
+									<Input
+										value={subjectKey}
+										onChange={(e) => setSubjectKey(e.target.value)}
+										placeholder={t("Subject key")}
+									/>
+									<Input
+										value={subjectRelation}
+										onChange={(e) => setSubjectRelation(e.target.value)}
+										placeholder={t("Subject relation")}
+									/>
 									<textarea
 										value={propertiesJson}
 										onChange={(e) => setPropertiesJson(e.target.value)}
@@ -489,11 +585,17 @@ function AdminRelationsContent() {
 											{createValidationMessage}
 										</p>
 									) : null}
-									<Button type="button" onClick={handleCreateRelation} disabled={createMutation.isPending}>
+									<Button
+										type="button"
+										onClick={handleCreateRelation}
+										disabled={createMutation.isPending}
+									>
 										{t("Create relation")}
 									</Button>
 									{createdRelationId ? (
-										<p className="text-xs" style={subtleTextStyle}>{t("Latest relation id")}: {createdRelationId}</p>
+										<p className="text-xs" style={subtleTextStyle}>
+											{t("Latest relation id")}: {createdRelationId}
+										</p>
 									) : null}
 								</CardContent>
 							</Card>
@@ -503,14 +605,25 @@ function AdminRelationsContent() {
 									<CardTitle>{t("Delete relation")}</CardTitle>
 								</CardHeader>
 								<CardContent className="flex flex-col gap-3 md:flex-row">
-									<Input value={deleteRelationId} onChange={(e) => setDeleteRelationId(e.target.value)} placeholder={t("Relation id")} />
-									<Button type="button" variant="outline" onClick={handleDeleteRelation} disabled={deleteMutation.isPending}>
+									<Input
+										value={deleteRelationId}
+										onChange={(e) => setDeleteRelationId(e.target.value)}
+										placeholder={t("Relation id")}
+									/>
+									<Button
+										type="button"
+										variant="outline"
+										onClick={handleDeleteRelation}
+										disabled={deleteMutation.isPending}
+									>
 										{t("Delete relation")}
 									</Button>
 								</CardContent>
 								<CardContent className="pt-0">
 									<p className="text-xs" style={subtleTextStyle}>
-										{t("Use the latest relation id or an existing tuple id to remove a relation.")}
+										{t(
+											"Use the latest relation id or an existing tuple id to remove a relation.",
+										)}
 									</p>
 									{deleteValidationMessage ? (
 										<p className="mt-2 text-xs text-red-600 dark:text-red-300">

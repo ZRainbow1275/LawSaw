@@ -10,12 +10,17 @@
  * to the calling site.
  */
 
-import { Modal, ModalBody, ModalFooter, ModalHeader } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useT } from "@/lib/i18n-client";
+import {
+	Modal,
+	ModalBody,
+	ModalFooter,
+	ModalHeader,
+} from "@/components/ui/modal";
 import { type RoleTier, roleTierLabelKey } from "@/lib/authz";
+import { useT } from "@/lib/i18n-client";
 import { Info, Send, UserPlus } from "lucide-react";
 import { useState } from "react";
 
@@ -101,7 +106,7 @@ export function InviteUserModal({ isOpen, onClose }: InviteUserModalProps) {
 						type="email"
 						value={email}
 						onChange={(event) => setEmail(event.target.value)}
-						placeholder={t("user@example.com")}
+						placeholder="user@example.com"
 					/>
 				</div>
 
@@ -122,10 +127,7 @@ export function InviteUserModal({ isOpen, onClose }: InviteUserModalProps) {
 				</div>
 
 				<div className="space-y-2">
-					<p
-						className="text-xs uppercase tracking-wide"
-						style={mutedStyle}
-					>
+					<p className="text-xs uppercase tracking-wide" style={mutedStyle}>
 						{t("Initial tier")}
 					</p>
 					<div className="flex flex-wrap gap-2">
@@ -164,10 +166,7 @@ export function InviteUserModal({ isOpen, onClose }: InviteUserModalProps) {
 					style={surfaceStyle}
 					data-testid="invite-user-summary"
 				>
-					<p
-						className="text-xs uppercase tracking-wide"
-						style={mutedStyle}
-					>
+					<p className="text-xs uppercase tracking-wide" style={mutedStyle}>
 						{t("Summary")}
 					</p>
 					<div className="mt-2 flex flex-wrap items-center gap-2">

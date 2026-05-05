@@ -1,8 +1,8 @@
 "use client";
 
+import { DOMAIN_LABELS } from "@/components/statistics/constants";
 import { DomainBarChart } from "@/components/statistics/industry/domain-bar-chart";
 import { DomainPieChart } from "@/components/statistics/industry/domain-pie-chart";
-import { DOMAIN_LABELS } from "@/components/statistics/constants";
 import { ChinaMap } from "@/components/statistics/regional/china-map";
 import { AnimatedNumber } from "@/components/ui/animated-number";
 import { Badge } from "@/components/ui/badge";
@@ -102,8 +102,7 @@ const dashboardHeroPrimaryIconStyle = {
 } as const;
 
 const dashboardHeroSuccessIconStyle = {
-	backgroundColor:
-		"color-mix(in srgb, var(--color-success) 16%, transparent)",
+	backgroundColor: "color-mix(in srgb, var(--color-success) 16%, transparent)",
 	color:
 		"color-mix(in srgb, var(--color-success-light) 96%, var(--field-foreground) 4%)",
 } as const;
@@ -121,8 +120,7 @@ const dashboardHeroIndustryBarStyle = {
 } as const;
 
 const dashboardHeroWarningBannerStyle = {
-	backgroundColor:
-		"color-mix(in srgb, var(--color-warning) 12%, transparent)",
+	backgroundColor: "color-mix(in srgb, var(--color-warning) 12%, transparent)",
 	borderColor: "color-mix(in srgb, var(--color-warning) 18%, transparent)",
 	color:
 		"color-mix(in srgb, var(--color-warning-light) 96%, var(--field-foreground) 4%)",
@@ -184,7 +182,8 @@ function getRegionArticleSample(
 export function DashboardHero() {
 	const locale = useLocale() as Locale;
 	const t = useT();
-	const [timeWindow, setTimeWindow] = useState<(typeof TIME_WINDOWS)[number]>(30);
+	const [timeWindow, setTimeWindow] =
+		useState<(typeof TIME_WINDOWS)[number]>(30);
 	const [visualMode, setVisualMode] = useState<HeroVisualMode>("map");
 	const [industryChartMode, setIndustryChartMode] =
 		useState<IndustryChartMode>("ring");
@@ -233,8 +232,9 @@ export function DashboardHero() {
 		regionalAllItems.find((item) => item.region_code === UNKNOWN_REGION_CODE) ??
 		null;
 	const selectedRegion =
-		knownRegionalItems.find((item) => item.region_code === selectedRegionCode) ??
-		null;
+		knownRegionalItems.find(
+			(item) => item.region_code === selectedRegionCode,
+		) ?? null;
 	const selectedRegionArticles = useMemo(
 		() =>
 			getRegionArticleSample(
@@ -386,7 +386,11 @@ export function DashboardHero() {
 													layoutId="dashboard-time-window-indicator"
 													className="absolute inset-0 rounded-full"
 													style={dashboardHeroSelectedPillStyle}
-													transition={{ type: "spring", stiffness: 320, damping: 28 }}
+													transition={{
+														type: "spring",
+														stiffness: 320,
+														damping: 28,
+													}}
 												/>
 											) : null}
 											<span
@@ -466,10 +470,7 @@ export function DashboardHero() {
 										>
 											{t("Trend window")}
 										</p>
-										<div
-											className="mt-1"
-											style={dashboardHeroStrongTextStyle}
-										>
+										<div className="mt-1" style={dashboardHeroStrongTextStyle}>
 											<AnimatedNumber
 												value={timeWindow}
 												duration={800}
@@ -480,7 +481,9 @@ export function DashboardHero() {
 									</div>
 								</div>
 								<p className="mt-4 text-sm" style={dashboardHeroMutedTextStyle}>
-									{t("The mini trend chart and regional snapshot are aligned to this time filter.")}
+									{t(
+										"The mini trend chart and regional snapshot are aligned to this time filter.",
+									)}
 								</p>
 							</div>
 						</div>
@@ -497,8 +500,13 @@ export function DashboardHero() {
 									>
 										{t("Signal coverage")}
 									</p>
-									<p className="mt-1 text-xs" style={dashboardHeroMutedTextStyle}>
-										{t("How much of the corpus is enriched by each analytics dimension.")}
+									<p
+										className="mt-1 text-xs"
+										style={dashboardHeroMutedTextStyle}
+									>
+										{t(
+											"How much of the corpus is enriched by each analytics dimension.",
+										)}
 									</p>
 								</div>
 								<Badge
@@ -518,7 +526,9 @@ export function DashboardHero() {
 									return (
 										<div key={item.label} className="space-y-2">
 											<div className="flex items-center justify-between gap-3 text-sm">
-												<span style={dashboardHeroHeadingTextStyle}>{item.label}</span>
+												<span style={dashboardHeroHeadingTextStyle}>
+													{item.label}
+												</span>
 												<span
 													className="font-medium"
 													style={dashboardHeroStrongTextStyle}
@@ -528,15 +538,17 @@ export function DashboardHero() {
 														: `${item.count} · ${formatCoverage(item.count, coverageTotal)}`}
 												</span>
 											</div>
-									<div
-										className="h-2 rounded-full"
-										style={dashboardHeroCoverageTrackStyle}
-									>
-										<motion.div
-											className="h-2 rounded-full"
-											style={item.barStyle}
-											initial={{ width: 0 }}
-													animate={{ width: `${Math.max(percentage * 100, 4)}%` }}
+											<div
+												className="h-2 rounded-full"
+												style={dashboardHeroCoverageTrackStyle}
+											>
+												<motion.div
+													className="h-2 rounded-full"
+													style={item.barStyle}
+													initial={{ width: 0 }}
+													animate={{
+														width: `${Math.max(percentage * 100, 4)}%`,
+													}}
 													transition={{ duration: 0.5, ease: "easeOut" }}
 												/>
 											</div>
@@ -608,7 +620,11 @@ export function DashboardHero() {
 													layoutId="dashboard-visual-tab"
 													className="absolute inset-0 rounded-full"
 													style={dashboardHeroSelectedPillStyle}
-													transition={{ type: "spring", stiffness: 320, damping: 28 }}
+													transition={{
+														type: "spring",
+														stiffness: 320,
+														damping: 28,
+													}}
 												/>
 											) : null}
 											<span
@@ -642,7 +658,9 @@ export function DashboardHero() {
 											className="flex h-[360px] items-center justify-center px-6 text-center text-sm"
 											style={dashboardHeroMutedTextStyle}
 										>
-											{t("No regional analytics yet. The map will render once live region signals are available.")}
+											{t(
+												"No regional analytics yet. The map will render once live region signals are available.",
+											)}
 										</div>
 									) : (
 										<div data-testid="dashboard-map-panel">
@@ -686,29 +704,31 @@ export function DashboardHero() {
 															data-testid={tab.testId}
 															aria-pressed={isActive}
 														>
-													{isActive ? (
-														<motion.span
-															layoutId="dashboard-industry-chart-tab"
-															className="absolute inset-0 rounded-full"
-															style={dashboardHeroSelectedPillStyle}
-															transition={{
-																type: "spring",
+															{isActive ? (
+																<motion.span
+																	layoutId="dashboard-industry-chart-tab"
+																	className="absolute inset-0 rounded-full"
+																	style={dashboardHeroSelectedPillStyle}
+																	transition={{
+																		type: "spring",
 																		stiffness: 320,
 																		damping: 28,
 																	}}
 																/>
 															) : null}
-													<span
-														className={cn(
-															"relative z-10 flex items-center gap-2 transition-opacity",
-															isActive ? "" : "opacity-90 hover:opacity-100",
-														)}
-														style={
-																isActive
-																	? dashboardHeroInverseTextStyle
-																	: dashboardHeroSoftTextStyle
-															}
-														>
+															<span
+																className={cn(
+																	"relative z-10 flex items-center gap-2 transition-opacity",
+																	isActive
+																		? ""
+																		: "opacity-90 hover:opacity-100",
+																)}
+																style={
+																	isActive
+																		? dashboardHeroInverseTextStyle
+																		: dashboardHeroSoftTextStyle
+																}
+															>
 																<Icon aria-hidden="true" className="h-4 w-4" />
 																{tab.label}
 															</span>
@@ -722,7 +742,9 @@ export function DashboardHero() {
 												className="flex h-[320px] items-center justify-center px-6 text-center text-sm"
 												style={dashboardHeroMutedTextStyle}
 											>
-												{t("No industry analytics yet. Domain distribution appears here after classification completes.")}
+												{t(
+													"No industry analytics yet. Domain distribution appears here after classification completes.",
+												)}
 											</div>
 										) : industryChartMode === "ring" ? (
 											<DomainPieChart items={industryQuery.data?.items ?? []} />
@@ -762,62 +784,77 @@ export function DashboardHero() {
 									<div className="mt-4 space-y-3">
 										{visualMode === "map" ? (
 											regionalQuery.isLoading ? (
-												Array.from({ length: 5 }, (_, index) => `region-skeleton-${index}`).map((key) => (
+												Array.from(
+													{ length: 5 },
+													(_, index) => `region-skeleton-${index}`,
+												).map((key) => (
 													<div
 														key={key}
 														className="h-9 animate-pulse rounded-2xl"
-														style={{ backgroundColor: "var(--control-hover-bg)" }}
+														style={{
+															backgroundColor: "var(--control-hover-bg)",
+														}}
 													/>
 												))
-										) : regionalItems.length === 0 ? (
-											<p className="text-sm" style={dashboardHeroMutedTextStyle}>
-												{t("No regional analytics yet.")}
-											</p>
-										) : (
-											regionalItems.map((item) => (
-												<button
-													key={item.region_code}
-													type="button"
-													data-testid={`dashboard-region-hotspot-${item.region_code}`}
-													aria-pressed={selectedRegionCode === item.region_code}
-													onClick={() => setSelectedRegionCode(item.region_code)}
-											className={cn(
-												"flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition-[transform,filter] hover:brightness-110",
-											)}
-											style={
-												selectedRegionCode === item.region_code
-													? dashboardHeroSelectedSurfaceStyle
-													: dashboardHeroNestedSurfaceStyle
-											}
-										>
-													<div className="min-w-0">
-													<p
-														className="truncate text-sm font-medium"
-														style={dashboardHeroStrongTextStyle}
+											) : regionalItems.length === 0 ? (
+												<p
+													className="text-sm"
+													style={dashboardHeroMutedTextStyle}
+												>
+													{t("No regional analytics yet.")}
+												</p>
+											) : (
+												regionalItems.map((item) => (
+													<button
+														key={item.region_code}
+														type="button"
+														data-testid={`dashboard-region-hotspot-${item.region_code}`}
+														aria-pressed={
+															selectedRegionCode === item.region_code
+														}
+														onClick={() =>
+															setSelectedRegionCode(item.region_code)
+														}
+														className={cn(
+															"flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition-[transform,filter] hover:brightness-110",
+														)}
+														style={
+															selectedRegionCode === item.region_code
+																? dashboardHeroSelectedSurfaceStyle
+																: dashboardHeroNestedSurfaceStyle
+														}
 													>
-														{item.region_name}
-													</p>
-														<p
-															className="mt-1 text-xs"
-															style={dashboardHeroMutedTextStyle}
+														<div className="min-w-0">
+															<p
+																className="truncate text-sm font-medium"
+																style={dashboardHeroStrongTextStyle}
+															>
+																{item.region_name}
+															</p>
+															<p
+																className="mt-1 text-xs"
+																style={dashboardHeroMutedTextStyle}
+															>
+																{formatPercent(item.percentage)}
+															</p>
+														</div>
+														<Badge
+															variant="outline"
+															style={{
+																...dashboardHeroNestedSurfaceStyle,
+																...dashboardHeroStrongTextStyle,
+															}}
 														>
-															{formatPercent(item.percentage)}
-														</p>
-													</div>
-													<Badge
-														variant="outline"
-														style={{
-															...dashboardHeroNestedSurfaceStyle,
-															...dashboardHeroStrongTextStyle,
-														}}
-													>
-														{item.count}
-													</Badge>
-												</button>
-											))
-										)
-									) : industryQuery.isLoading ? (
-											Array.from({ length: 5 }, (_, index) => `industry-skeleton-${index}`).map((key) => (
+															{item.count}
+														</Badge>
+													</button>
+												))
+											)
+										) : industryQuery.isLoading ? (
+											Array.from(
+												{ length: 5 },
+												(_, index) => `industry-skeleton-${index}`,
+											).map((key) => (
 												<div
 													key={key}
 													className="h-9 animate-pulse rounded-2xl"
@@ -825,7 +862,10 @@ export function DashboardHero() {
 												/>
 											))
 										) : industryItems.length === 0 ? (
-											<p className="text-sm" style={dashboardHeroMutedTextStyle}>
+											<p
+												className="text-sm"
+												style={dashboardHeroMutedTextStyle}
+											>
 												{t("No industry analytics yet.")}
 											</p>
 										) : (
@@ -836,34 +876,36 @@ export function DashboardHero() {
 													style={dashboardHeroNestedSurfaceStyle}
 												>
 													<div className="flex items-center justify-between gap-3">
-												<p
-													className="truncate text-sm font-medium"
-													style={dashboardHeroStrongTextStyle}
-												>
-													{item.label}
-												</p>
-													<Badge
-														variant="outline"
-														style={{
-															...dashboardHeroNestedSurfaceStyle,
-															...dashboardHeroStrongTextStyle,
-														}}
-													>
-														{item.count}
-													</Badge>
+														<p
+															className="truncate text-sm font-medium"
+															style={dashboardHeroStrongTextStyle}
+														>
+															{item.label}
+														</p>
+														<Badge
+															variant="outline"
+															style={{
+																...dashboardHeroNestedSurfaceStyle,
+																...dashboardHeroStrongTextStyle,
+															}}
+														>
+															{item.count}
+														</Badge>
 													</div>
-												<div
-													className="h-1.5 rounded-full"
-													style={{ backgroundColor: "var(--control-hover-bg)" }}
-												>
 													<div
 														className="h-1.5 rounded-full"
 														style={{
-															...dashboardHeroIndustryBarStyle,
-															width: `${Math.max(item.percentage * 100, 6)}%`,
+															backgroundColor: "var(--control-hover-bg)",
 														}}
-													/>
-												</div>
+													>
+														<div
+															className="h-1.5 rounded-full"
+															style={{
+																...dashboardHeroIndustryBarStyle,
+																width: `${Math.max(item.percentage * 100, 6)}%`,
+															}}
+														/>
+													</div>
 												</div>
 											))
 										)}
@@ -881,7 +923,10 @@ export function DashboardHero() {
 													>
 														{t("Unknown region backlog")}
 													</p>
-													<p className="mt-1 text-sm" style={dashboardHeroMutedTextStyle}>
+													<p
+														className="mt-1 text-sm"
+														style={dashboardHeroMutedTextStyle}
+													>
 														{t("Records still waiting for region tagging.")}
 													</p>
 												</div>
@@ -912,24 +957,31 @@ export function DashboardHero() {
 											: t("Sub-domain highlights")}
 									</p>
 									{visualMode === "map" ? (
-										<div className="mt-4 space-y-4" data-testid="dashboard-region-detail-panel">
+										<div
+											className="mt-4 space-y-4"
+											data-testid="dashboard-region-detail-panel"
+										>
 											<div className="flex items-start justify-between gap-3">
 												<div>
-							<p
-								className="text-lg font-semibold"
-								style={dashboardHeroStrongTextStyle}
-							>
-								{selectedRegion
-									? selectedRegion.region_name
-									: t("Select a hotspot")}
+													<p
+														className="text-lg font-semibold"
+														style={dashboardHeroStrongTextStyle}
+													>
+														{selectedRegion
+															? selectedRegion.region_name
+															: t("Select a hotspot")}
 													</p>
 													<p
 														className="mt-1 text-xs leading-5"
 														style={dashboardHeroMutedTextStyle}
 													>
 														{selectedRegion
-															? t("Latest published articles tagged to this region.")
-															: t("Select a hotspot to inspect region-tagged article detail.")}
+															? t(
+																	"Latest published articles tagged to this region.",
+																)
+															: t(
+																	"Select a hotspot to inspect region-tagged article detail.",
+																)}
 													</p>
 												</div>
 												{selectedRegion ? (
@@ -939,12 +991,12 @@ export function DashboardHero() {
 														size="sm"
 														data-testid="dashboard-region-reset"
 														onClick={() => setSelectedRegionCode(null)}
-												className="rounded-full border px-3 hover:brightness-110"
-												style={{
-													...dashboardHeroNestedSurfaceStyle,
-													...dashboardHeroSoftTextStyle,
-												}}
-											>
+														className="rounded-full border px-3 hover:brightness-110"
+														style={{
+															...dashboardHeroNestedSurfaceStyle,
+															...dashboardHeroSoftTextStyle,
+														}}
+													>
 														{t("Clear focus")}
 													</Button>
 												) : null}
@@ -961,15 +1013,18 @@ export function DashboardHero() {
 													>
 														{t("Tagged article share")}
 													</p>
-							<p
-								className="mt-2 text-2xl font-semibold"
-								style={dashboardHeroStrongTextStyle}
-							>
-								{selectedRegion
-									? selectedRegion.count
-									: regionalQuery.data?.total ?? 0}
+													<p
+														className="mt-2 text-2xl font-semibold"
+														style={dashboardHeroStrongTextStyle}
+													>
+														{selectedRegion
+															? selectedRegion.count
+															: (regionalQuery.data?.total ?? 0)}
 													</p>
-													<p className="mt-1 text-xs" style={dashboardHeroMutedTextStyle}>
+													<p
+														className="mt-1 text-xs"
+														style={dashboardHeroMutedTextStyle}
+													>
 														{selectedRegion
 															? formatPercent(selectedRegion.percentage)
 															: t("Articles with region data")}
@@ -985,14 +1040,19 @@ export function DashboardHero() {
 													>
 														{t("Live time window")}
 													</p>
-							<p
-								className="mt-2 text-sm font-semibold"
-								style={dashboardHeroStrongTextStyle}
-							>
-								{t("Last {count} days", { count: timeWindow })}
-							</p>
-													<p className="mt-1 text-xs" style={dashboardHeroMutedTextStyle}>
-														{t("Counts are aligned to the current analytics slice.")}
+													<p
+														className="mt-2 text-sm font-semibold"
+														style={dashboardHeroStrongTextStyle}
+													>
+														{t("Last {count} days", { count: timeWindow })}
+													</p>
+													<p
+														className="mt-1 text-xs"
+														style={dashboardHeroMutedTextStyle}
+													>
+														{t(
+															"Counts are aligned to the current analytics slice.",
+														)}
 													</p>
 												</div>
 											</div>
@@ -1006,33 +1066,40 @@ export function DashboardHero() {
 													}}
 												>
 													<div className="flex items-start gap-3">
-													<LocateFixed
-														aria-hidden="true"
-														className="mt-0.5 h-4 w-4 shrink-0"
-														style={dashboardHeroAccentIconStyle}
-													/>
+														<LocateFixed
+															aria-hidden="true"
+															className="mt-0.5 h-4 w-4 shrink-0"
+															style={dashboardHeroAccentIconStyle}
+														/>
 														<div>
-											<p
-												className="font-medium"
-												style={dashboardHeroStrongTextStyle}
-											>
-												{t("Select a hotspot")}
-											</p>
+															<p
+																className="font-medium"
+																style={dashboardHeroStrongTextStyle}
+															>
+																{t("Select a hotspot")}
+															</p>
 															<p
 																className="mt-1 leading-6"
 																style={dashboardHeroMutedTextStyle}
 															>
-																{t("Choose a province from the hotspot list or click the map to inspect tagged article detail.")}
+																{t(
+																	"Choose a province from the hotspot list or click the map to inspect tagged article detail.",
+																)}
 															</p>
 														</div>
 													</div>
 												</div>
 											) : regionArticlesQuery.isLoading ? (
-												Array.from({ length: 3 }, (_, index) => `region-article-skeleton-${index}`).map((key) => (
+												Array.from(
+													{ length: 3 },
+													(_, index) => `region-article-skeleton-${index}`,
+												).map((key) => (
 													<div
 														key={key}
 														className="h-20 animate-pulse rounded-2xl"
-														style={{ backgroundColor: "var(--control-hover-bg)" }}
+														style={{
+															backgroundColor: "var(--control-hover-bg)",
+														}}
 													/>
 												))
 											) : selectedRegionArticles.length === 0 ? (
@@ -1043,71 +1110,90 @@ export function DashboardHero() {
 														...dashboardHeroMutedTextStyle,
 													}}
 												>
-							<p
-								className="font-medium"
-								style={dashboardHeroStrongTextStyle}
-							>
-								{t("No recent tagged articles were returned in the current sample window.")}
-							</p>
+													<p
+														className="font-medium"
+														style={dashboardHeroStrongTextStyle}
+													>
+														{t(
+															"No recent tagged articles were returned in the current sample window.",
+														)}
+													</p>
 													<p
 														className="mt-1 leading-6"
 														style={dashboardHeroMutedTextStyle}
 													>
-														{t("Counts still come from the live regional analytics API for the selected time slice.")}
+														{t(
+															"Counts still come from the live regional analytics API for the selected time slice.",
+														)}
 													</p>
 												</div>
 											) : (
 												selectedRegionArticles.map((article) => (
 													<Link
 														key={article.id}
-														href={withLocalePath(locale, `/articles/${article.id}`)}
-												className="group block rounded-2xl border px-4 py-4 transition-[transform,filter] hover:brightness-110"
-												style={dashboardHeroNestedSurfaceStyle}
-											>
+														href={withLocalePath(
+															locale,
+															`/articles/${article.id}`,
+														)}
+														className="group block rounded-2xl border px-4 py-4 transition-[transform,filter] hover:brightness-110"
+														style={dashboardHeroNestedSurfaceStyle}
+													>
 														<div className="flex items-start justify-between gap-3">
 															<div className="min-w-0">
-											<p
-												className="line-clamp-2 text-sm font-medium transition-opacity opacity-95 group-hover:opacity-100"
-												style={dashboardHeroStrongTextStyle}
-											>
-												{article.title}
-											</p>
+																<p
+																	className="line-clamp-2 text-sm font-medium transition-opacity opacity-95 group-hover:opacity-100"
+																	style={dashboardHeroStrongTextStyle}
+																>
+																	{article.title}
+																</p>
 																<div
 																	className="mt-3 flex flex-wrap items-center gap-2 text-xs"
 																	style={dashboardHeroMutedTextStyle}
 																>
 																	{article.domain_root ? (
 																		<span
-																	className="rounded-full border px-2.5 py-1"
-																	style={{
-																		...dashboardHeroNestedSurfaceStyle,
-																		...dashboardHeroSoftTextStyle,
-																	}}
-																>
-													{DOMAIN_LABELS[article.domain_root] ?? article.domain_root}
+																			className="rounded-full border px-2.5 py-1"
+																			style={{
+																				...dashboardHeroNestedSurfaceStyle,
+																				...dashboardHeroSoftTextStyle,
+																			}}
+																		>
+																			{DOMAIN_LABELS[article.domain_root] ??
+																				article.domain_root}
 																		</span>
 																	) : null}
 																	{article.published_at ? (
 																		<span className="inline-flex items-center gap-1.5">
-																			<Clock3 aria-hidden="true" className="h-3.5 w-3.5" />
-																			{formatTimeAgo(locale, article.published_at)}
+																			<Clock3
+																				aria-hidden="true"
+																				className="h-3.5 w-3.5"
+																			/>
+																			{formatTimeAgo(
+																				locale,
+																				article.published_at,
+																			)}
 																		</span>
 																	) : null}
 																</div>
 															</div>
 															<ArrowRight
 																aria-hidden="true"
-										className="mt-0.5 h-4 w-4 shrink-0 transition-opacity opacity-90 group-hover:opacity-100"
-										style={dashboardHeroMutedTextStyle}
-									/>
+																className="mt-0.5 h-4 w-4 shrink-0 transition-opacity opacity-90 group-hover:opacity-100"
+																style={dashboardHeroMutedTextStyle}
+															/>
 														</div>
 													</Link>
 												))
 											)}
 										</div>
 									) : industryWithSubs.length === 0 ? (
-										<p className="mt-4 text-sm" style={dashboardHeroMutedTextStyle}>
-											{t("No sub-domain breakdown is available yet for the current dataset.")}
+										<p
+											className="mt-4 text-sm"
+											style={dashboardHeroMutedTextStyle}
+										>
+											{t(
+												"No sub-domain breakdown is available yet for the current dataset.",
+											)}
 										</p>
 									) : (
 										<div className="mt-4 space-y-3">
@@ -1118,13 +1204,16 @@ export function DashboardHero() {
 													style={dashboardHeroNestedSurfaceStyle}
 												>
 													<div className="flex items-center justify-between gap-3">
-								<p
-									className="text-sm font-medium"
-									style={dashboardHeroStrongTextStyle}
-								>
-									{item.label}
-								</p>
-														<span className="text-xs" style={dashboardHeroMutedTextStyle}>
+														<p
+															className="text-sm font-medium"
+															style={dashboardHeroStrongTextStyle}
+														>
+															{item.label}
+														</p>
+														<span
+															className="text-xs"
+															style={dashboardHeroMutedTextStyle}
+														>
 															{item.sub_domains?.length ?? 0} {t("sub-domains")}
 														</span>
 													</div>
@@ -1163,7 +1252,10 @@ export function DashboardHero() {
 					</p>
 					{trendsQuery.isLoading ? (
 						<div className="grid h-28 grid-cols-7 gap-2">
-							{Array.from({ length: 7 }, (_, index) => `trend-skeleton-${index}`).map((key) => (
+							{Array.from(
+								{ length: 7 },
+								(_, index) => `trend-skeleton-${index}`,
+							).map((key) => (
 								<div
 									key={key}
 									className="animate-pulse rounded-t-2xl"
@@ -1178,7 +1270,10 @@ export function DashboardHero() {
 					) : (
 						<div className="grid grid-cols-7 gap-2 sm:grid-cols-10">
 							{trendPoints.map((point) => (
-								<div key={point.date} className="flex flex-col items-center gap-2">
+								<div
+									key={point.date}
+									className="flex flex-col items-center gap-2"
+								>
 									<div
 										className="flex h-28 w-full items-end rounded-2xl p-1"
 										style={{ backgroundColor: "var(--control-hover-bg)" }}
@@ -1198,7 +1293,10 @@ export function DashboardHero() {
 										>
 											{point.count}
 										</p>
-										<p className="text-[11px]" style={dashboardHeroMutedTextStyle}>
+										<p
+											className="text-[11px]"
+											style={dashboardHeroMutedTextStyle}
+										>
 											{point.date.slice(5)}
 										</p>
 									</div>
@@ -1212,7 +1310,9 @@ export function DashboardHero() {
 						className="border-t px-6 py-3 text-sm"
 						style={dashboardHeroWarningBannerStyle}
 					>
-						{t("Some dashboard hero signals are degraded. Existing cards still use live API fallbacks.")}
+						{t(
+							"Some dashboard hero signals are degraded. Existing cards still use live API fallbacks.",
+						)}
 					</div>
 				) : null}
 			</Card>

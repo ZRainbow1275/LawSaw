@@ -67,11 +67,7 @@ const PANEL_VARIANTS = {
 
 export type AudienceTier = "basic" | "verified" | "premium";
 const AUDIENCE_TIERS: AudienceTier[] = ["basic", "verified", "premium"];
-const DEFAULT_AUDIENCE_TIERS: AudienceTier[] = [
-	"basic",
-	"verified",
-	"premium",
-];
+const DEFAULT_AUDIENCE_TIERS: AudienceTier[] = ["basic", "verified", "premium"];
 
 export interface BannerFormPayload extends CreateBannerInput {}
 
@@ -167,9 +163,7 @@ function readMetadataDismissable(
 	return typeof raw === "boolean" ? raw : true;
 }
 
-function bannerToFormState(
-	banner: BannerRecord | null,
-): FormState {
+function bannerToFormState(banner: BannerRecord | null): FormState {
 	if (!banner) {
 		return {
 			title: "",
@@ -189,7 +183,9 @@ function bannerToFormState(
 	const metadata = (banner as unknown as { metadata?: Record<string, unknown> })
 		.metadata;
 	const channelIds = banner.targets
-		.filter((target) => target.target_type === "channel" && target.target_channel_id)
+		.filter(
+			(target) => target.target_type === "channel" && target.target_channel_id,
+		)
 		.map((target) => target.target_channel_id as string);
 	return {
 		title: banner.title,
@@ -250,7 +246,11 @@ export function BannerForm({
 		if (form.startsAt && form.endsAt) {
 			const startMs = new Date(form.startsAt).getTime();
 			const endMs = new Date(form.endsAt).getTime();
-			if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs < startMs) {
+			if (
+				Number.isFinite(startMs) &&
+				Number.isFinite(endMs) &&
+				endMs < startMs
+			) {
 				return t("Banner end time must be after the start time.");
 			}
 		}
@@ -348,18 +348,18 @@ export function BannerForm({
 						onClick={onClose}
 						aria-hidden="true"
 					/>
-					<motion.aside
+					<motion.dialog
+						open
 						variants={PANEL_VARIANTS}
 						initial="hidden"
 						animate="visible"
 						exit="exit"
-						className="ml-auto flex h-full w-full max-w-3xl flex-col overflow-hidden border-l shadow-2xl"
+						className="m-0 ml-auto flex h-full w-full max-h-none max-w-3xl flex-col overflow-hidden border-0 border-l p-0 shadow-2xl"
 						style={{
 							backgroundColor: "var(--color-background)",
 							borderColor:
 								"color-mix(in srgb, var(--color-border) 70%, transparent)",
 						}}
-						role="dialog"
 						aria-label={
 							mode === "create" ? t("Create banner") : t("Edit banner")
 						}
@@ -372,7 +372,10 @@ export function BannerForm({
 							}}
 						>
 							<div className="min-w-0">
-								<p className="text-xs uppercase tracking-wide" style={mutedStyle}>
+								<p
+									className="text-xs uppercase tracking-wide"
+									style={mutedStyle}
+								>
 									{t("Operational banner")}
 								</p>
 								<h2
@@ -380,9 +383,7 @@ export function BannerForm({
 									style={headingStyle}
 								>
 									<Megaphone aria-hidden="true" className="h-5 w-5" />
-									{mode === "create"
-										? t("Create banner")
-										: t("Edit banner")}
+									{mode === "create" ? t("Create banner") : t("Edit banner")}
 								</h2>
 							</div>
 							<button
@@ -410,7 +411,10 @@ export function BannerForm({
 										id="banner-title"
 										value={form.title}
 										onChange={(event) =>
-											setForm((prev) => ({ ...prev, title: event.target.value }))
+											setForm((prev) => ({
+												...prev,
+												title: event.target.value,
+											}))
 										}
 										placeholder={t("Banner title")}
 									/>
@@ -432,7 +436,9 @@ export function BannerForm({
 											}
 											toolbar="full"
 											minHeight={240}
-											placeholder={t("Write the banner content using Markdown.")}
+											placeholder={t(
+												"Write the banner content using Markdown.",
+											)}
 										/>
 									</div>
 								</div>
@@ -492,7 +498,9 @@ export function BannerForm({
 									</h3>
 								</div>
 								<p className="text-xs" style={mutedStyle}>
-									{t("Choose which user tiers see this banner. Defaults to all tiers.")}
+									{t(
+										"Choose which user tiers see this banner. Defaults to all tiers.",
+									)}
 								</p>
 								<div className="flex flex-wrap gap-2">
 									{AUDIENCE_TIERS.map((tier) => {
@@ -518,11 +526,13 @@ export function BannerForm({
 															}
 												}
 											>
-												{t(tier === "basic"
-													? "Basic"
-													: tier === "verified"
-														? "Verified"
-														: "Premium")}
+												{t(
+													tier === "basic"
+														? "Basic"
+														: tier === "verified"
+															? "Verified"
+															: "Premium",
+												)}
 											</button>
 										);
 									})}
@@ -537,7 +547,9 @@ export function BannerForm({
 									{t("Channel scope")}
 								</h3>
 								<p className="text-xs" style={mutedStyle}>
-									{t("Leave empty for a global banner, or select one or more channels.")}
+									{t(
+										"Leave empty for a global banner, or select one or more channels.",
+									)}
 								</p>
 								{channels.length === 0 ? (
 									<p className="text-xs" style={mutedStyle}>
@@ -726,7 +738,9 @@ export function BannerForm({
 													}
 													className={cn(
 														"flex h-12 items-center justify-center rounded-2xl border-2 text-[11px] font-medium uppercase tracking-wide text-white shadow-sm transition",
-														active ? "ring-2 ring-offset-2" : "border-transparent",
+														active
+															? "ring-2 ring-offset-2"
+															: "border-transparent",
 													)}
 													style={{
 														backgroundImage: gradientCssVar(key),
@@ -740,7 +754,10 @@ export function BannerForm({
 										})}
 									</div>
 								</div>
-								<label className="flex items-center gap-2 text-sm" style={headingStyle}>
+								<label
+									className="flex items-center gap-2 text-sm"
+									style={headingStyle}
+								>
 									<input
 										type="checkbox"
 										checked={form.dismissable}
@@ -802,17 +819,22 @@ export function BannerForm({
 							<Button
 								type="button"
 								onClick={() => void handleSubmit()}
-								disabled={saving || (submitAttempted && Boolean(validationMessage))}
+								disabled={
+									saving || (submitAttempted && Boolean(validationMessage))
+								}
 							>
 								{saving ? (
-									<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+									<Loader2
+										aria-hidden="true"
+										className="h-4 w-4 animate-spin"
+									/>
 								) : (
 									<Save aria-hidden="true" className="h-4 w-4" />
 								)}
 								{mode === "create" ? t("Create banner") : t("Save changes")}
 							</Button>
 						</footer>
-					</motion.aside>
+					</motion.dialog>
 				</div>
 			) : null}
 		</AnimatePresence>

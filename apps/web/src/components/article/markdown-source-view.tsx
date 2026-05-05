@@ -43,7 +43,9 @@ export function MarkdownSourceView({
 	const t = useT();
 	const { success: toastSuccess, error: toastError } = useToast();
 	const [copied, setCopied] = React.useState(false);
-	const resetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+	const resetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+		null,
+	);
 
 	const source = React.useMemo<ArticleMarkdownSource>(
 		() => extractMarkdownSource(content),
@@ -134,10 +136,7 @@ export function MarkdownSourceView({
 
 	return (
 		<section
-			className={cn(
-				"rounded-2xl border shadow-sm",
-				className,
-			)}
+			className={cn("rounded-2xl border shadow-sm", className)}
 			style={{
 				borderColor: "var(--surface-muted-border)",
 				backgroundColor: "var(--surface-muted-bg)",
@@ -162,7 +161,9 @@ export function MarkdownSourceView({
 					>
 						{t("Markdown source")}
 					</span>
-					<span style={{ color: "var(--surface-muted-text)" }}>{formatLabel}</span>
+					<span style={{ color: "var(--surface-muted-text)" }}>
+						{formatLabel}
+					</span>
 					<span
 						className="hidden h-3 w-px sm:inline-block"
 						style={{ backgroundColor: "var(--surface-muted-border)" }}
@@ -181,7 +182,10 @@ export function MarkdownSourceView({
 						>
 							{formatCount(source.lineCount)}
 						</span>
-						<span aria-hidden="true" style={{ color: "var(--surface-muted-text)" }}>
+						<span
+							aria-hidden="true"
+							style={{ color: "var(--surface-muted-text)" }}
+						>
 							·
 						</span>
 						<span style={{ color: "var(--surface-muted-text)" }}>

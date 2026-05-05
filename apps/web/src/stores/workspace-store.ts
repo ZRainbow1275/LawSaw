@@ -4,22 +4,33 @@ import { createJSONStorage, persist } from "zustand/middleware";
 export type Workspace = "user" | "admin";
 
 interface WorkspaceState {
+	panel: Workspace;
 	lastAdminPath: string;
 	lastUserPath: string;
 	switcherSeen: boolean;
+	setPanel: (panel: Workspace) => void;
+	togglePanel: () => void;
 	setLastPath: (workspace: Workspace, path: string) => void;
 	markSwitcherSeen: () => void;
 }
 
-const DEFAULT_ADMIN_PATH = "/settings/admin";
+const DEFAULT_ADMIN_PATH = "/admin";
 const DEFAULT_USER_PATH = "/me/feed";
 
 export const useWorkspaceStore = create<WorkspaceState>()(
 	persist(
 		(set) => ({
+			panel: "user",
 			lastAdminPath: DEFAULT_ADMIN_PATH,
 			lastUserPath: DEFAULT_USER_PATH,
 			switcherSeen: false,
+			setPanel: (panel) =>
+				set((state) => (state.panel === panel ? state : { ...state, panel })),
+			togglePanel: () =>
+				set((state) => ({
+					...state,
+					panel: state.panel === "admin" ? "user" : "admin",
+				})),
 			setLastPath: (workspace, path) =>
 				set((state) =>
 					workspace === "admin"
@@ -36,6 +47,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 			name: "lawsaw-workspace",
 			storage: createJSONStorage(() => localStorage),
 			partialize: (state) => ({
+				panel: state.panel,
 				lastAdminPath: state.lastAdminPath,
 				lastUserPath: state.lastUserPath,
 				switcherSeen: state.switcherSeen,

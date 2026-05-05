@@ -11,6 +11,13 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
+	useChangePassword,
+	useLoginActivity,
+	useMfaTotpConfirm,
+	useMfaTotpDisable,
+	useMfaTotpSetup,
+} from "@/hooks/use-security";
+import {
 	useCreateTenant,
 	useDeleteTenant,
 	useRefreshTenantUsage,
@@ -28,13 +35,6 @@ import {
 	useUpdateWebhook,
 	useWebhooks,
 } from "@/hooks/use-webhooks";
-import {
-	useChangePassword,
-	useLoginActivity,
-	useMfaTotpConfirm,
-	useMfaTotpDisable,
-	useMfaTotpSetup,
-} from "@/hooks/use-security";
 import { ApiClientError } from "@/lib/api";
 import type { ApiKey, LoginActivityEntry } from "@/lib/api/types";
 import { useT } from "@/lib/i18n-client";
@@ -230,12 +230,10 @@ export type ProfileTabProps = {
 	t: TranslateFn;
 	profile: { displayName: string; email: string };
 	setProfile: (
-		updater: (
-			prev: {
-				displayName: string;
-				email: string;
-			},
-		) => {
+		updater: (prev: {
+			displayName: string;
+			email: string;
+		}) => {
 			displayName: string;
 			email: string;
 		},
@@ -273,11 +271,16 @@ export function ProfileTab({
 		<Card>
 			<CardHeader>
 				<CardTitle>{t("Profile")}</CardTitle>
-				<CardDescription>{t("Manage your account information")}</CardDescription>
+				<CardDescription>
+					{t("Manage your account information")}
+				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
 				<div>
-					<label htmlFor="profile-avatar" className="mb-1 block text-sm font-medium">
+					<label
+						htmlFor="profile-avatar"
+						className="mb-1 block text-sm font-medium"
+					>
 						{t("Avatar")}
 					</label>
 					<div className="flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -367,7 +370,10 @@ export function ProfileTab({
 				</div>
 
 				<div>
-					<label htmlFor="profile-email" className="mb-1 block text-sm font-medium">
+					<label
+						htmlFor="profile-email"
+						className="mb-1 block text-sm font-medium"
+					>
 						{t("Email address")}
 					</label>
 					<Input
@@ -378,14 +384,19 @@ export function ProfileTab({
 						readOnly
 					/>
 					<p className="mt-1 text-xs text-neutral-500">
-						{t("Email is used as the login account and cannot be changed online yet.")}
+						{t(
+							"Email is used as the login account and cannot be changed online yet.",
+						)}
 					</p>
 				</div>
 
 				<div className="flex justify-end">
 					<Button onClick={() => void onSave()} disabled={saving}>
 						{saving ? (
-							<RefreshCw aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
+							<RefreshCw
+								aria-hidden="true"
+								className="mr-2 h-4 w-4 animate-spin"
+							/>
 						) : (
 							<Save aria-hidden="true" className="mr-2 h-4 w-4" />
 						)}
@@ -532,7 +543,10 @@ export function ApiKeysTab({
 					<div className="mt-3 flex justify-end">
 						<Button onClick={onCreate} disabled={createPending}>
 							{createPending ? (
-								<RefreshCw aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
+								<RefreshCw
+									aria-hidden="true"
+									className="mr-2 h-4 w-4 animate-spin"
+								/>
 							) : (
 								<Key aria-hidden="true" className="mr-2 h-4 w-4" />
 							)}
@@ -574,7 +588,10 @@ export function ApiKeysTab({
 					)}
 
 					{keys.map((k) => (
-						<div key={k.id} className="rounded-lg border border-neutral-100 p-4">
+						<div
+							key={k.id}
+							className="rounded-lg border border-neutral-100 p-4"
+						>
 							<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 								<div className="min-w-0">
 									<div className="flex items-center gap-2">
@@ -690,7 +707,11 @@ export function TenantManagementTab() {
 	});
 
 	useEffect(() => {
-		if (!selectedTenantId && tenantsQuery.data && tenantsQuery.data.length > 0) {
+		if (
+			!selectedTenantId &&
+			tenantsQuery.data &&
+			tenantsQuery.data.length > 0
+		) {
 			setSelectedTenantId(tenantsQuery.data[0].id);
 		}
 	}, [selectedTenantId, tenantsQuery.data]);
@@ -817,9 +838,15 @@ export function TenantManagementTab() {
 
 	const handleDeleteTenant = async () => {
 		if (!selectedTenantId) return;
-		const selected = tenantsQuery.data?.find((item) => item.id === selectedTenantId);
+		const selected = tenantsQuery.data?.find(
+			(item) => item.id === selectedTenantId,
+		);
 		if (!selected) return;
-		if (!window.confirm(t("Delete tenant {name} permanently?", { name: selected.name })))
+		if (
+			!window.confirm(
+				t("Delete tenant {name} permanently?", { name: selected.name }),
+			)
+		)
 			return;
 
 		try {
@@ -910,7 +937,9 @@ export function TenantManagementTab() {
 								onClick={handleCreateTenant}
 								disabled={createTenantMutation.isPending}
 							>
-								{createTenantMutation.isPending ? t("Creating...") : t("Create")}
+								{createTenantMutation.isPending
+									? t("Creating...")
+									: t("Create")}
 							</Button>
 						</div>
 					</div>
@@ -966,7 +995,9 @@ export function TenantManagementTab() {
 												: "border-neutral-100 hover:border-neutral-200"
 										}`}
 									>
-										<p className="font-medium text-neutral-900">{tenant.name}</p>
+										<p className="font-medium text-neutral-900">
+											{tenant.name}
+										</p>
 										<p className="text-xs text-neutral-500">{tenant.slug}</p>
 									</button>
 								);
@@ -1098,16 +1129,32 @@ export function TenantManagementTab() {
 										onClick={handleRefreshUsage}
 										disabled={refreshUsageMutation.isPending}
 									>
-										{refreshUsageMutation.isPending ? t("Refreshing...") : t("Refresh usage")}
+										{refreshUsageMutation.isPending
+											? t("Refreshing...")
+											: t("Refresh usage")}
 									</Button>
 								</div>
 								<div className="grid grid-cols-2 gap-2 text-xs text-neutral-600 sm:grid-cols-3">
-									<div>{t("Users")}: {usage.current_users}</div>
-									<div>{t("Articles")}: {usage.current_articles}</div>
-									<div>{t("Sources")}: {usage.current_sources}</div>
-									<div>{t("Storage (MB)")}: {usage.current_storage_mb}</div>
-									<div>{t("Reports this month")}: {usage.current_reports_this_month}</div>
-									<div>{t("Updated at")}: {relativeTime(usage.last_refreshed_at, t)}</div>
+									<div>
+										{t("Users")}: {usage.current_users}
+									</div>
+									<div>
+										{t("Articles")}: {usage.current_articles}
+									</div>
+									<div>
+										{t("Sources")}: {usage.current_sources}
+									</div>
+									<div>
+										{t("Storage (MB)")}: {usage.current_storage_mb}
+									</div>
+									<div>
+										{t("Reports this month")}:{" "}
+										{usage.current_reports_this_month}
+									</div>
+									<div>
+										{t("Updated at")}:{" "}
+										{relativeTime(usage.last_refreshed_at, t)}
+									</div>
 								</div>
 							</div>
 						)}
@@ -1118,7 +1165,9 @@ export function TenantManagementTab() {
 								onClick={handleUpdateTenant}
 								disabled={updateTenantMutation.isPending}
 							>
-								{updateTenantMutation.isPending ? t("Saving...") : t("Save tenant")}
+								{updateTenantMutation.isPending
+									? t("Saving...")
+									: t("Save tenant")}
 							</Button>
 							<Button
 								onClick={handleUpdateConfig}
@@ -1133,7 +1182,9 @@ export function TenantManagementTab() {
 								onClick={handleDeleteTenant}
 								disabled={deleteTenantMutation.isPending}
 							>
-								{deleteTenantMutation.isPending ? t("Deleting...") : t("Delete tenant")}
+								{deleteTenantMutation.isPending
+									? t("Deleting...")
+									: t("Delete tenant")}
 							</Button>
 						</div>
 					</CardContent>
@@ -1163,7 +1214,8 @@ export function WebhookManagementTab() {
 	const [maxRetries, setMaxRetries] = useState("5");
 	const [enabled, setEnabled] = useState(true);
 	const [webhookSearch, setWebhookSearch] = useState("");
-	const [enabledFilter, setEnabledFilter] = useState<WebhookEnabledFilter>("all");
+	const [enabledFilter, setEnabledFilter] =
+		useState<WebhookEnabledFilter>("all");
 	const [deliveryFilter, setDeliveryFilter] =
 		useState<WebhookDeliveryFilter>("all");
 	const webhooksQuery = useWebhooks({
@@ -1181,8 +1233,16 @@ export function WebhookManagementTab() {
 		const webhookSecret = signingSecret.trim();
 		const webhookEvents = parseCsv(events);
 
-		if (!webhookName || !webhookUrl || !webhookSecret || webhookEvents.length === 0) {
-			toastError(t("Create failed"), t("Name, URL, signing secret and events are required"));
+		if (
+			!webhookName ||
+			!webhookUrl ||
+			!webhookSecret ||
+			webhookEvents.length === 0
+		) {
+			toastError(
+				t("Create failed"),
+				t("Name, URL, signing secret and events are required"),
+			);
 			return;
 		}
 
@@ -1234,7 +1294,10 @@ export function WebhookManagementTab() {
 	const handleTestWebhook = async (id: string) => {
 		try {
 			const result = await testWebhookMutation.mutateAsync({ id });
-			toastSuccess(t("Test event queued"), `${result.event_type} · ${result.event_id}`);
+			toastSuccess(
+				t("Test event queued"),
+				`${result.event_type} · ${result.event_id}`,
+			);
 		} catch (err) {
 			const message = uiMessageFromError(err, t);
 			toastError(t("Test failed"), message);
@@ -1242,7 +1305,11 @@ export function WebhookManagementTab() {
 	};
 
 	const handleDeleteWebhook = async (id: string, webhookName: string) => {
-		if (!window.confirm(t("Delete webhook {name} permanently?", { name: webhookName })))
+		if (
+			!window.confirm(
+				t("Delete webhook {name} permanently?", { name: webhookName }),
+			)
+		)
 			return;
 
 		try {
@@ -1373,7 +1440,9 @@ export function WebhookManagementTab() {
 							onClick={handleCreateWebhook}
 							disabled={createWebhookMutation.isPending}
 						>
-							{createWebhookMutation.isPending ? t("Creating...") : t("Create webhook")}
+							{createWebhookMutation.isPending
+								? t("Creating...")
+								: t("Create webhook")}
 						</Button>
 					</div>
 				</CardContent>
@@ -1511,7 +1580,10 @@ export function WebhookManagementTab() {
 					)}
 
 					{webhooksQuery.data?.items.map((item) => (
-						<div key={item.id} className="rounded-lg border border-neutral-100 p-4">
+						<div
+							key={item.id}
+							className="rounded-lg border border-neutral-100 p-4"
+						>
 							<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 								<div className="min-w-0 space-y-1">
 									<div className="flex items-center gap-2">
@@ -1537,8 +1609,7 @@ export function WebhookManagementTab() {
 										{t("Events")}: {item.events.join(", ")}
 									</p>
 									<p className="text-xs text-neutral-500">
-										{t("Timeout (ms)")}: {item.timeout_ms} · {t("Max retries")}:
-										{" "}
+										{t("Timeout (ms)")}: {item.timeout_ms} · {t("Max retries")}:{" "}
 										{item.max_retries}
 									</p>
 									{item.last_error && (

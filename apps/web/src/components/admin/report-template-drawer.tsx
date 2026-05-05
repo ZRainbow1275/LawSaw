@@ -21,10 +21,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useComposeAndGenerateReport } from "@/hooks/use-report-generate";
 import { useReports } from "@/hooks/use-reports";
-import {
-	type ReportPeriodType,
-	type ReportStatus,
-	type ReportTemplate,
+import type {
+	ReportPeriodType,
+	ReportStatus,
+	ReportTemplate,
 } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
@@ -135,7 +135,9 @@ export function ReportTemplateDrawer({
 	const recentForTemplate = useMemo(() => {
 		const all = recentReportsQuery.data?.data ?? [];
 		if (!template) return [];
-		return all.filter((report) => report.template_id === template.id).slice(0, 10);
+		return all
+			.filter((report) => report.template_id === template.id)
+			.slice(0, 10);
 	}, [recentReportsQuery.data, template]);
 
 	if (!template) {
@@ -161,10 +163,7 @@ export function ReportTemplateDrawer({
 	const handleGenerate = () => {
 		if (!template) return;
 		if (!generateTitle.trim() || !periodStart || !periodEnd) {
-			error(
-				t("Validation failed"),
-				t("Title and period range are required."),
-			);
+			error(t("Validation failed"), t("Title and period range are required."));
 			return;
 		}
 		compose.mutate(
@@ -218,17 +217,17 @@ export function ReportTemplateDrawer({
 						onClick={onClose}
 						aria-hidden="true"
 					/>
-					<motion.aside
+					<motion.dialog
+						open
 						variants={PANEL_VARIANTS}
 						initial="hidden"
 						animate="visible"
 						exit="exit"
-						className="ml-auto flex h-full w-full max-w-3xl flex-col overflow-hidden border-l shadow-2xl"
+						className="m-0 ml-auto flex h-full w-full max-h-none max-w-3xl flex-col overflow-hidden border-0 border-l p-0 shadow-2xl"
 						style={{
 							backgroundColor: "var(--color-background)",
 							borderColor: "var(--surface-muted-border)",
 						}}
-						role="dialog"
 						aria-label={t("Edit report template")}
 					>
 						<header
@@ -236,10 +235,16 @@ export function ReportTemplateDrawer({
 							style={{ borderColor: "var(--surface-muted-border)" }}
 						>
 							<div className="min-w-0">
-								<p className="text-xs uppercase tracking-wide" style={mutedStyle}>
+								<p
+									className="text-xs uppercase tracking-wide"
+									style={mutedStyle}
+								>
 									{t("Report template")}
 								</p>
-								<h2 className="mt-1 truncate text-lg font-semibold" style={headingStyle}>
+								<h2
+									className="mt-1 truncate text-lg font-semibold"
+									style={headingStyle}
+								>
 									{template.name}
 								</h2>
 								{template.description ? (
@@ -276,7 +281,10 @@ export function ReportTemplateDrawer({
 										disabled={saving || template.is_builtin}
 									>
 										{saving ? (
-											<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+											<Loader2
+												aria-hidden="true"
+												className="h-4 w-4 animate-spin"
+											/>
 										) : (
 											<Save aria-hidden="true" className="h-4 w-4" />
 										)}
@@ -374,7 +382,10 @@ export function ReportTemplateDrawer({
 										disabled={compose.isPending}
 									>
 										{compose.isPending ? (
-											<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+											<Loader2
+												aria-hidden="true"
+												className="h-4 w-4 animate-spin"
+											/>
 										) : (
 											<Play aria-hidden="true" className="h-4 w-4" />
 										)}
@@ -448,7 +459,7 @@ export function ReportTemplateDrawer({
 								)}
 							</section>
 						</div>
-					</motion.aside>
+					</motion.dialog>
 				</div>
 			) : null}
 		</AnimatePresence>

@@ -9,10 +9,10 @@ import {
 	useTableOfContents,
 } from "@/components/article/table-of-contents";
 import { UserShell } from "@/components/layout/user-shell";
-import { ReaderProgressBar } from "@/components/user/reader-progress-bar";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ArticleContentSkeleton } from "@/components/ui/skeleton";
+import { ReaderProgressBar } from "@/components/user/reader-progress-bar";
 import { useArticle } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
 import { useReadingTracker } from "@/hooks/use-reading-tracker";
@@ -30,10 +30,7 @@ import { isRoleTierAtLeast } from "@/lib/authz";
 import { withLocalePath } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { useAuthStore } from "@/stores/auth-store";
-import {
-	useReadingStore,
-	useReadingStyles,
-} from "@/stores/reading-store";
+import { useReadingStore, useReadingStyles } from "@/stores/reading-store";
 import {
 	ArrowLeft,
 	BookmarkCheck,
@@ -73,9 +70,7 @@ export function ReaderPage({ articleId }: ReaderPageProps) {
 	const articleQuery = useArticle(articleId);
 	const categoriesQuery = useCategories();
 	const readingStyles = useReadingStyles();
-	const isBookmarked = useReadingStore((s) =>
-		s.bookmarks.includes(articleId),
-	);
+	const isBookmarked = useReadingStore((s) => s.bookmarks.includes(articleId));
 	const toggleBookmark = useReadingStore((s) => s.toggleBookmark);
 
 	const [settingsOpen, setSettingsOpen] = useState(false);
@@ -181,9 +176,7 @@ export function ReaderPage({ articleId }: ReaderPageProps) {
 							aria-label={t("Reading settings")}
 						>
 							<Settings2 aria-hidden="true" className="h-4 w-4" />
-							<span className="hidden sm:inline">
-								{t("Reading settings")}
-							</span>
+							<span className="hidden sm:inline">{t("Reading settings")}</span>
 						</Button>
 					</div>
 				</div>
@@ -259,7 +252,10 @@ export function ReaderPage({ articleId }: ReaderPageProps) {
 											className="inline-flex items-center gap-1.5 text-sm font-medium"
 											style={{ color: "var(--color-primary-600)" }}
 										>
-											<ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+											<ExternalLink
+												aria-hidden="true"
+												className="h-3.5 w-3.5"
+											/>
 											{t("View original")}
 										</a>
 									) : null}
@@ -365,7 +361,9 @@ export function ReaderPage({ articleId }: ReaderPageProps) {
 													className="mt-1 text-sm leading-relaxed"
 													style={{ color: "var(--surface-accent-copy)" }}
 												>
-													{t("Basic readers see a 200-character preview. Verified and Premium tiers unlock the full body, source URL, and AI insights.")}
+													{t(
+														"Basic readers see a 200-character preview. Verified and Premium tiers unlock the full body, source URL, and AI insights.",
+													)}
 												</p>
 												<div className="mt-3">
 													<Link
@@ -421,8 +419,12 @@ export function ReaderPage({ articleId }: ReaderPageProps) {
 										style={{ color: "var(--surface-muted-text)" }}
 									>
 										{showAiUpgradeHint
-											? t("Premium readers see structured summaries, key entities, risk dimensions, and recommended next steps.")
-											: t("AI summary, sentiment, and risk insights will appear here when ready.")}
+											? t(
+													"Premium readers see structured summaries, key entities, risk dimensions, and recommended next steps.",
+												)
+											: t(
+													"AI summary, sentiment, and risk insights will appear here when ready.",
+												)}
 									</p>
 									{showAiUpgradeHint ? (
 										<div className="mt-3">

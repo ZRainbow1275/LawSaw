@@ -1,5 +1,7 @@
 "use client";
 
+import { localeFromPathname, withLocalePath } from "@/lib/i18n";
+import { useT } from "@/lib/i18n-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { useOnboardingStore } from "@/stores/onboarding-store";
 import { AnimatePresence, motion } from "framer-motion";
@@ -7,8 +9,6 @@ import { ChevronLeft, ChevronRight, Sparkles, X } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo } from "react";
 import { Button } from "../ui/button";
-import { useT } from "@/lib/i18n-client";
-import { localeFromPathname, withLocalePath } from "@/lib/i18n";
 import { OnboardingStepCard } from "./onboarding-step";
 import { ONBOARDING_STEPS } from "./tour-steps";
 
@@ -40,6 +40,7 @@ export function OnboardingTour() {
 		step,
 		isOpen,
 		hasCompleted,
+		dismissed,
 		isHydrated,
 		open,
 		close,
@@ -50,13 +51,73 @@ export function OnboardingTour() {
 	} = useOnboardingStore();
 
 	useEffect(() => {
-		hydrate();
-	}, [hydrate]);
+		// Hydration gate. Three concrete paths must all flip `isHydrated`:
+		//
+		//   1. Returning user with persisted state (`hasCompleted` /
+		//      `dismissed` already true). zustand persist reads localStorage,
+		//      merges, fires `onFinishHydration` — we flip isHydrated then
+		//      so the auto-open effect sees the persisted flags and stays
+		//      suppressed.
+		//   2. First-time user (storage key does not exist). zustand persist
+		//      still runs the hydrate flow and fires `onFinishHydration`
+		//      with default state — we flip isHydrated and the auto-open
+		//      effect proceeds with hasCompleted=false dismissed=false,
+		//      which is exactly what we want (open the tour after 1.2s).
+		//   3. Storage unavailable (Safari private mode, SSR module reuse,
+		//      cookies blocked). zustand persist short-circuits during
+		//      module init and `useOnboardingStore.persist` may be absent
+		//      or never fire its listener. The fallback timer flips
+		//      isHydrated manually so the user is not stuck forever on a
+		//      blank gate.
+		//
+		// This effect runs once per mount; subsequent isHydrated changes
+		// are observed by the dependent auto-open effect below.
+		if (isHydrated) return;
+
+		const persistApi = (
+			useOnboardingStore as typeof useOnboardingStore & {
+				persist?: {
+					hasHydrated: () => boolean;
+					onFinishHydration: (cb: () => void) => () => void;
+				};
+			}
+		).persist;
+
+		// Path 1+2: subscribe to onFinishHydration. If persist already
+		// finished hydrating before this effect ran (race), flip immediately.
+		const unsubscribe = persistApi?.onFinishHydration(() => {
+			useOnboardingStore.setState({ isHydrated: true });
+		});
+		if (persistApi?.hasHydrated()) {
+			useOnboardingStore.setState({ isHydrated: true });
+		}
+
+		// Path 3: storage-unavailable / SSR-short-circuit fallback. If
+		// persist never wires up its listener, this 200ms timer ensures
+		// the gate eventually unblocks with the default flags.
+		const fallback = window.setTimeout(() => {
+			if (!useOnboardingStore.getState().isHydrated) {
+				hydrate();
+			}
+		}, 200);
+
+		return () => {
+			unsubscribe?.();
+			window.clearTimeout(fallback);
+		};
+	}, [hydrate, isHydrated]);
 
 	useEffect(() => {
+		// `isHydrated` flips inside the persist `onRehydrateStorage` callback
+		// after localStorage has been merged into the store. The effect above
+		// adds a 200ms fallback so that storage-disabled / SSR-short-circuit
+		// paths still unblock the gate — but the canonical path is persist.
 		if (!isHydrated) return;
 		if (!isAuthenticated || !user) return;
-		if (hasCompleted) return;
+		// `dismissed` flips when the user closes the tour (Esc / X / overlay
+		// click). `hasCompleted` flips when the user finishes it. Either
+		// signal suppresses the auto-open effect on subsequent reloads.
+		if (hasCompleted || dismissed) return;
 		if (isOpen) return;
 
 		const normalizedPath = pathname ?? "/";
@@ -71,6 +132,7 @@ export function OnboardingTour() {
 		return () => window.clearTimeout(timer);
 	}, [
 		hasCompleted,
+		dismissed,
 		isAuthenticated,
 		isHydrated,
 		isOpen,
@@ -206,7 +268,11 @@ export function OnboardingTour() {
 										variant="outline"
 										onClick={previous}
 										disabled={isFirst}
-										aria-label={translateOr(t, "onboarding.action.previous", "上一步")}
+										aria-label={translateOr(
+											t,
+											"onboarding.action.previous",
+											"上一步",
+										)}
 									>
 										<ChevronLeft aria-hidden="true" className="h-4 w-4" />
 									</Button>
@@ -218,7 +284,10 @@ export function OnboardingTour() {
 									) : (
 										<Button onClick={next}>
 											{translateOr(t, "onboarding.action.next", "下一步")}
-											<ChevronRight aria-hidden="true" className="ml-1 h-4 w-4" />
+											<ChevronRight
+												aria-hidden="true"
+												className="ml-1 h-4 w-4"
+											/>
 										</Button>
 									)}
 								</div>

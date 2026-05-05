@@ -19,12 +19,7 @@
 
 import { useArticleAi } from "@/hooks/use-article-ai";
 
-export type KgEntityType =
-	| "law"
-	| "regulator"
-	| "company"
-	| "region"
-	| "event";
+export type KgEntityType = "law" | "regulator" | "company" | "region" | "event";
 
 export interface KgExtractedEntity {
 	id?: string;
@@ -83,9 +78,7 @@ function coerceEntities(raw: unknown): KgExtractedEntity[] {
 			aliases,
 			confidence,
 			needs_review:
-				typeof item.needs_review === "boolean"
-					? item.needs_review
-					: undefined,
+				typeof item.needs_review === "boolean" ? item.needs_review : undefined,
 		});
 	}
 	return out;

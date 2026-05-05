@@ -32,7 +32,7 @@
 	--color-neutral-950: #0b0f17;
 
 	/* Dashboard 暗面板 - viz card / hero visual */
-	--color-dash-bg: #0B1120;
+	--color-dash-bg: #0b1120;
 	--color-dash-bg-2: #111827;
 
 	/* 功能色 */
@@ -91,7 +91,7 @@
 	--shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.1);
 	--shadow-brand: 0 4px 14px -2px rgba(255, 107, 53, 0.25);
 	--shadow-brand-lg: 0 8px 32px rgba(255, 107, 53, 0.25);
-	--shadow-feed-hover: 0 8px 30px rgba(255, 107, 53, 0.10);
+	--shadow-feed-hover: 0 8px 30px rgba(255, 107, 53, 0.1);
 	--shadow-popup-deep: 0 16px 48px rgba(0, 0, 0, 0.15);
 	--shadow-popup-card: 0 12px 40px rgba(0, 0, 0, 0.12);
 	--shadow-back-to-top: 0 4px 16px rgba(255, 107, 53, 0.35);
@@ -189,18 +189,14 @@
 		#c7d2fe 60%,
 		#6366f1 100%
 	);
-	--surface-success-gradient: linear-gradient(
-		135deg,
-		#ecfdf5 0%,
-		#d1fae5 100%
-	);
+	--surface-success-gradient: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
 
 	/* Banner / CTA 渐变 - 强渐变，按原型 banner card 配方 */
 	--gradient-banner: linear-gradient(
 		155deg,
-		#FF7B59 0%,
-		#FF5A36 50%,
-		#E04520 100%
+		#ff7b59 0%,
+		#ff5a36 50%,
+		#e04520 100%
 	);
 	--gradient-cta: linear-gradient(
 		135deg,
@@ -912,6 +908,13 @@ body {
 }
 .stagger-5 {
 	animation-delay: 0.25s;
+}
+
+/* Knowledge graph 3-col layout — Tailwind v4 arbitrary value 在某些情况下未编译，回退手写 */
+@media (min-width: 1024px) {
+	.kg-layout-3col {
+		grid-template-columns: 260px minmax(0, 1fr) 280px;
+	}
 }
 
 /* 减少动画偏好 */

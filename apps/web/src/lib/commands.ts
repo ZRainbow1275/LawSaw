@@ -1,4 +1,4 @@
-import { withLocalePath, type Locale } from "@/lib/i18n";
+import { type Locale, withLocalePath } from "@/lib/i18n";
 import type {
 	AppearancePreferences,
 	AppearanceTheme,
@@ -16,6 +16,7 @@ import {
 	LayoutDashboard,
 	LifeBuoy,
 	LogOut,
+	type LucideIcon,
 	MessageSquarePlus,
 	Newspaper,
 	PanelLeft,
@@ -27,7 +28,6 @@ import {
 	Sparkles,
 	Sun,
 	TableProperties,
-	type LucideIcon,
 } from "lucide-react";
 
 export type CommandCategory = "navigate" | "action" | "settings" | "help";
@@ -340,7 +340,16 @@ export function builtinCommands(): Command[] {
 		title: "重新查看新手引导",
 		titleEn: "Re-run onboarding tour",
 		category: "help",
-		keywords: ["onboarding", "tour", "guide", "tutorial", "intro", "引导", "教程", "新手"],
+		keywords: [
+			"onboarding",
+			"tour",
+			"guide",
+			"tutorial",
+			"intro",
+			"引导",
+			"教程",
+			"新手",
+		],
 		icon: Sparkles,
 		run: (ctx) => {
 			const store = useOnboardingStore.getState();
@@ -483,12 +492,7 @@ export interface ShortcutDescriptor {
 	titleEn: string;
 	groupZh: string;
 	groupEn: string;
-	groupKey:
-		| "navigation"
-		| "search"
-		| "reader"
-		| "system"
-		| "platform";
+	groupKey: "navigation" | "search" | "reader" | "system" | "platform";
 }
 
 export const REGISTERED_SHORTCUTS: ShortcutDescriptor[] = [
@@ -597,7 +601,10 @@ export function shortcutGroupTitle(
 	group: ShortcutDescriptor["groupKey"],
 	locale: Locale,
 ): string {
-	const map: Record<ShortcutDescriptor["groupKey"], { zh: string; en: string }> = {
+	const map: Record<
+		ShortcutDescriptor["groupKey"],
+		{ zh: string; en: string }
+	> = {
 		navigation: { zh: "导航", en: "Navigation" },
 		search: { zh: "搜索", en: "Search" },
 		reader: { zh: "阅读器", en: "Reader" },
@@ -607,9 +614,7 @@ export function shortcutGroupTitle(
 	return locale === "zh" ? map[group].zh : map[group].en;
 }
 
-export function groupedShortcuts(
-	locale: Locale,
-): Array<{
+export function groupedShortcuts(locale: Locale): Array<{
 	key: ShortcutDescriptor["groupKey"];
 	title: string;
 	items: ShortcutDescriptor[];

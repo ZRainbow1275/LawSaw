@@ -1,18 +1,22 @@
 "use client";
 
 import { FeedbackReplyDrawer } from "@/components/admin/feedback-reply-drawer";
+import { useAdminDeepLink } from "@/hooks/use-admin-deep-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useFeedbacks } from "@/hooks/use-feedback";
+import { useFeedback, useFeedbacks } from "@/hooks/use-feedback";
 import type { Feedback } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { MessageSquareText } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-const statusOptions: Array<{ value: Feedback["status"] | "all"; label: string }> = [
+const statusOptions: Array<{
+	value: Feedback["status"] | "all";
+	label: string;
+}> = [
 	{ value: "all", label: "All statuses" },
 	{ value: "pending", label: "Pending" },
 	{ value: "reviewing", label: "Reviewing" },
@@ -33,12 +37,14 @@ const statusVariant: Record<
 function AdminFeedbacksContent() {
 	const locale = useLocale();
 	const t = useT();
+	const { searchParams, clearSearchParams } = useAdminDeepLink();
 	// Server-side admin guard at [locale]/admin/layout.tsx — see users/page.tsx.
 	const isAdmin = true;
 	const [statusFilter, setStatusFilter] = useState<Feedback["status"] | "all">(
 		"all",
 	);
 	const [activeId, setActiveId] = useState<string | null>(null);
+	const feedbackIdParam = searchParams.get("feedbackId");
 	const headingStyle = { color: "var(--color-foreground)" } as const;
 	const mutedTextStyle = { color: "var(--surface-muted-text)" } as const;
 	const subtleTextStyle = {
@@ -46,6 +52,7 @@ function AdminFeedbacksContent() {
 	} as const;
 
 	const feedbacksQuery = useFeedbacks({ limit: 100, offset: 0 });
+	const deepLinkedFeedbackQuery = useFeedback(feedbackIdParam ?? "");
 
 	const items = useMemo(() => {
 		const rows = feedbacksQuery.data?.data ?? [];
@@ -53,10 +60,24 @@ function AdminFeedbacksContent() {
 		return rows.filter((item) => item.status === statusFilter);
 	}, [feedbacksQuery.data, statusFilter]);
 
+	useEffect(() => {
+		if (!feedbackIdParam) return;
+		setStatusFilter("all");
+		setActiveId(feedbackIdParam);
+	}, [feedbackIdParam]);
+
 	const activeFeedback = useMemo(
-		() => feedbacksQuery.data?.data.find((item) => item.id === activeId) ?? null,
-		[feedbacksQuery.data, activeId],
+		() =>
+			feedbacksQuery.data?.data.find((item) => item.id === activeId) ??
+			deepLinkedFeedbackQuery.data ??
+			null,
+		[feedbacksQuery.data, activeId, deepLinkedFeedbackQuery.data],
 	);
+
+	const closeFeedbackDrawer = () => {
+		setActiveId(null);
+		clearSearchParams(["feedbackId"]);
+	};
 
 	const feedbackTypeLabel = (type: Feedback["type"]) => {
 		switch (type) {
@@ -179,10 +200,7 @@ function AdminFeedbacksContent() {
 													)}
 												</Badge>
 											</div>
-											<p
-												className="text-sm leading-6"
-												style={mutedTextStyle}
-											>
+											<p className="text-sm leading-6" style={mutedTextStyle}>
 												{item.content}
 											</p>
 											<div
@@ -213,9 +231,7 @@ function AdminFeedbacksContent() {
 													>
 														{t("Feedback type")}
 													</p>
-													<p className="mt-1">
-														{feedbackTypeLabel(item.type)}
-													</p>
+													<p className="mt-1">{feedbackTypeLabel(item.type)}</p>
 												</div>
 											</div>
 											<div className="flex flex-wrap gap-2">
@@ -238,7 +254,7 @@ function AdminFeedbacksContent() {
 			<FeedbackReplyDrawer
 				open={activeId !== null}
 				feedback={activeFeedback}
-				onClose={() => setActiveId(null)}
+				onClose={closeFeedbackDrawer}
 			/>
 		</>
 	);

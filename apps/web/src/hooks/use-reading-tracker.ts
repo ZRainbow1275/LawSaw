@@ -65,9 +65,7 @@ export function useReadingTracker({
 
 		const accruedDwell = (): number => {
 			if (inViewSinceRef.current === null) return dwellAccumRef.current;
-			return (
-				dwellAccumRef.current + (Date.now() - inViewSinceRef.current)
-			);
+			return dwellAccumRef.current + (Date.now() - inViewSinceRef.current);
 		};
 
 		const onIntersect: IntersectionObserverCallback = (entries) => {
@@ -120,10 +118,7 @@ export function useReadingTracker({
 			if (next > peakPctRef.current) {
 				peakPctRef.current = next;
 			}
-			if (
-				!sentHalfwayRef.current &&
-				peakPctRef.current >= HALFWAY_PCT
-			) {
+			if (!sentHalfwayRef.current && peakPctRef.current >= HALFWAY_PCT) {
 				sentHalfwayRef.current = true;
 				record({
 					dwell_ms: accruedDwell(),
@@ -132,10 +127,7 @@ export function useReadingTracker({
 					milestone: "halfway",
 				});
 			}
-			if (
-				!sentCompleteRef.current &&
-				peakPctRef.current >= COMPLETE_PCT
-			) {
+			if (!sentCompleteRef.current && peakPctRef.current >= COMPLETE_PCT) {
 				sentCompleteRef.current = true;
 				record({
 					dwell_ms: accruedDwell(),

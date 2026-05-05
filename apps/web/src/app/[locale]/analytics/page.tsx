@@ -1,3 +1,7 @@
 "use client";
 
-export { default } from "../../analytics/page";
+import { AnalyticsPagePrototype } from "@/components/analytics/prototype/analytics-page";
+
+export default function AnalyticsPage() {
+	return <AnalyticsPagePrototype />;
+}

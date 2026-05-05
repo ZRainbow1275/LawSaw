@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { groupedShortcuts, type ShortcutDescriptor } from "@/lib/commands";
+import { type ShortcutDescriptor, groupedShortcuts } from "@/lib/commands";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { overlayVariants, scaleVariants } from "@/lib/motion";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -58,7 +58,10 @@ function ShortcutRow({
 			</p>
 			<div className="flex items-center gap-1">
 				{descriptor.combo.map((key, index) => (
-					<span key={`${descriptor.id}-${index}`} className="flex items-center gap-1">
+					<span
+						key={`${descriptor.id}-${index}`}
+						className="flex items-center gap-1"
+					>
 						<kbd
 							className="rounded border px-2 py-1 font-sans text-[11px] font-medium"
 							style={{ ...surfaceStyle, ...headingTextStyle }}
@@ -154,9 +157,7 @@ export function ShortcutsHelp({ isOpen, onClose }: ShortcutsHelpProps) {
 										{t("Keyboard shortcuts")}
 									</h2>
 									<p className="text-xs" style={mutedTextStyle}>
-										{t(
-											"Browse all registered shortcuts. Press Esc to close.",
-										)}
+										{t("Browse all registered shortcuts. Press Esc to close.")}
 									</p>
 								</div>
 							</div>

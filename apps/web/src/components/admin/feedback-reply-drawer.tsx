@@ -138,17 +138,17 @@ export function FeedbackReplyDrawer({
 						onClick={onClose}
 						aria-hidden="true"
 					/>
-					<motion.aside
+					<motion.dialog
+						open
 						variants={PANEL_VARIANTS}
 						initial="hidden"
 						animate="visible"
 						exit="exit"
-						className="ml-auto flex h-full w-full max-w-2xl flex-col overflow-hidden border-l shadow-2xl"
+						className="m-0 ml-auto flex h-full w-full max-h-none max-w-2xl flex-col overflow-hidden border-0 border-l p-0 shadow-2xl"
 						style={{
 							backgroundColor: "var(--color-background)",
 							borderColor: "var(--surface-muted-border)",
 						}}
-						role="dialog"
 						aria-label={t("Feedback reply")}
 					>
 						<header
@@ -256,10 +256,7 @@ export function FeedbackReplyDrawer({
 							</section>
 
 							<section className="mt-6 space-y-2">
-								<h3
-									className="text-sm font-semibold"
-									style={headingStyle}
-								>
+								<h3 className="text-sm font-semibold" style={headingStyle}>
 									{t("Admin response")}
 								</h3>
 								<MarkdownEditor
@@ -317,7 +314,7 @@ export function FeedbackReplyDrawer({
 								{t("Reject")}
 							</Button>
 						</footer>
-					</motion.aside>
+					</motion.dialog>
 				</div>
 			) : null}
 		</AnimatePresence>

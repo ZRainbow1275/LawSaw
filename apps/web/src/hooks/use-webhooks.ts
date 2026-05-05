@@ -69,8 +69,12 @@ export interface TestWebhookInput {
 function deliveryState(
 	item: WebhookEndpoint,
 ): Exclude<WebhookDeliveryFilter, "all"> {
-	const successTs = item.last_success_at ? Date.parse(item.last_success_at) : Number.NaN;
-	const failureTs = item.last_failure_at ? Date.parse(item.last_failure_at) : Number.NaN;
+	const successTs = item.last_success_at
+		? Date.parse(item.last_success_at)
+		: Number.NaN;
+	const failureTs = item.last_failure_at
+		? Date.parse(item.last_failure_at)
+		: Number.NaN;
 	const hasSuccess = Number.isFinite(successTs);
 	const hasFailure = Number.isFinite(failureTs);
 
@@ -129,7 +133,8 @@ export function useWebhooks(params: ListWebhookParams = {}) {
 			if (delivery !== "all" && deliveryState(item) !== delivery) return false;
 			if (!normalizedSearch) return true;
 
-			const haystack = `${item.name} ${item.url} ${item.events.join(" ")}`.toLowerCase();
+			const haystack =
+				`${item.name} ${item.url} ${item.events.join(" ")}`.toLowerCase();
 			return haystack.includes(normalizedSearch);
 		});
 

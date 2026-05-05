@@ -142,10 +142,7 @@ export function AppShortcutsProvider({
 					setIsHelpOpen(true);
 				}}
 			/>
-			<ShortcutsHelp
-				isOpen={isHelpOpen}
-				onClose={() => setIsHelpOpen(false)}
-			/>
+			<ShortcutsHelp isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
 		</OverlayContext.Provider>
 	);
 }

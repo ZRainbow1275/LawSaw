@@ -39,7 +39,8 @@ const PLANS: ReadonlyArray<PlanCardData> = [
 	{
 		tier: "basic_user",
 		highlightKey: "Basic",
-		descKey: "Read public regulatory updates and explore the public knowledge graph.",
+		descKey:
+			"Read public regulatory updates and explore the public knowledge graph.",
 		bulletKeys: [
 			"Read public articles",
 			"Browse top knowledge entities",
@@ -191,11 +192,7 @@ export function SettingsBillingTab({ tier }: BillingTabProps) {
 					return (
 						<Card
 							key={plan.tier}
-							className={
-								isCurrent
-									? "border-2"
-									: "border"
-							}
+							className={isCurrent ? "border-2" : "border"}
 							style={{
 								borderColor: isCurrent
 									? "var(--surface-accent-border)"
@@ -217,9 +214,7 @@ export function SettingsBillingTab({ tier }: BillingTabProps) {
 										)}
 										{t(plan.highlightKey)}
 									</CardTitle>
-									{isCurrent && (
-										<Badge variant="outline">{t("Current")}</Badge>
-									)}
+									{isCurrent && <Badge variant="outline">{t("Current")}</Badge>}
 								</div>
 								<CardDescription>{t(plan.descKey)}</CardDescription>
 							</CardHeader>

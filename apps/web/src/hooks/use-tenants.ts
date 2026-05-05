@@ -91,7 +91,10 @@ export function useTenantUsage(id: string | null) {
 	return useQuery({
 		queryKey: ["tenantUsage", id],
 		queryFn: () =>
-			apiClient.get<TenantUsage>(`/api/v1/tenants/${id}/usage`, assertTenantUsage),
+			apiClient.get<TenantUsage>(
+				`/api/v1/tenants/${id}/usage`,
+				assertTenantUsage,
+			),
 		enabled: Boolean(id),
 		staleTime: 30_000,
 	});
@@ -154,7 +157,9 @@ export function useUpdateTenantConfig() {
 			),
 		onSuccess: (_data, variables) => {
 			queryClient.invalidateQueries({ queryKey: ["tenant", variables.id] });
-			queryClient.invalidateQueries({ queryKey: ["tenantConfig", variables.id] });
+			queryClient.invalidateQueries({
+				queryKey: ["tenantConfig", variables.id],
+			});
 		},
 	});
 }

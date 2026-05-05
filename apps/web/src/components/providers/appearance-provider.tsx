@@ -9,7 +9,7 @@ import {
 } from "@/stores/appearance-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, type ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 
 interface AppearanceProviderProps {
 	children: ReactNode;

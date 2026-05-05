@@ -2,13 +2,13 @@
 
 import { useAuth } from "@/hooks/use-auth";
 import { ApiClientError, apiClient } from "@/lib/api";
+import { assertAuthResponse } from "@/lib/api/types";
 import {
 	localeFromPathname,
 	stripLocalePrefix,
 	t,
 	withLocalePath,
 } from "@/lib/i18n";
-import { assertAuthResponse } from "@/lib/api/types";
 import { isIgnoredClientNoise, reportClientError } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 import { useToastStore } from "@/stores/toast-store";

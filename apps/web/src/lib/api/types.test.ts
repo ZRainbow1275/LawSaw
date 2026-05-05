@@ -5,7 +5,10 @@ import { normalizeArticleAiInsights } from "./types";
 
 describe("normalizeArticleAiInsights", () => {
 	it("normalizes backend ai_metadata into reader insights", () => {
-		const article: Pick<Article, "ai_metadata" | "keywords" | "risk_score" | "tags"> = {
+		const article: Pick<
+			Article,
+			"ai_metadata" | "keywords" | "risk_score" | "tags"
+		> = {
 			ai_metadata: {
 				abstract: "DSA 全面执行将平台合规义务推进到系统性治理层。",
 				key_points: ["建立 notice-and-action 流程", "披露推荐系统主要参数"],
@@ -68,7 +71,10 @@ describe("normalizeArticleAiInsights", () => {
 	});
 
 	it("falls back to article risk_score when ai_metadata omits risk_level", () => {
-		const article: Pick<Article, "ai_metadata" | "keywords" | "risk_score" | "tags"> = {
+		const article: Pick<
+			Article,
+			"ai_metadata" | "keywords" | "risk_score" | "tags"
+		> = {
 			ai_metadata: {
 				abstract: "回退到 article.risk_score 也能推导风险等级。",
 				key_points: ["保留摘要"],
@@ -85,7 +91,10 @@ describe("normalizeArticleAiInsights", () => {
 	});
 
 	it("returns null when ai_metadata has summary content but no derivable risk signal", () => {
-		const article: Pick<Article, "ai_metadata" | "keywords" | "risk_score" | "tags"> = {
+		const article: Pick<
+			Article,
+			"ai_metadata" | "keywords" | "risk_score" | "tags"
+		> = {
 			ai_metadata: {
 				abstract: "只有摘要，没有风险等级也没有风险分。",
 				key_points: ["这条数据不应该被 reader AI 卡片直接渲染。"],
@@ -99,7 +108,10 @@ describe("normalizeArticleAiInsights", () => {
 	});
 
 	it("returns null when ai_metadata does not contain usable reader content", () => {
-		const article: Pick<Article, "ai_metadata" | "keywords" | "risk_score" | "tags"> = {
+		const article: Pick<
+			Article,
+			"ai_metadata" | "keywords" | "risk_score" | "tags"
+		> = {
 			ai_metadata: {
 				random: "value",
 			},

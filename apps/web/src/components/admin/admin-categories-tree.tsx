@@ -38,7 +38,7 @@ import {
 	Trash2,
 	Upload,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 
 // ─── Visibility tier ────────────────────────────────────────────────────────
 
@@ -72,7 +72,8 @@ const SEED_TAXONOMY: ReadonlyArray<SeedNode> = [
 	{
 		slug: "legislation",
 		name: "立法",
-		description: "Statutes, regulations, departmental rules and judicial interpretations.",
+		description:
+			"Statutes, regulations, departmental rules and judicial interpretations.",
 		visibility: "basic",
 		children: [
 			{ slug: "legislation-laws", name: "法律", visibility: "basic" },
@@ -93,22 +94,44 @@ const SEED_TAXONOMY: ReadonlyArray<SeedNode> = [
 	{
 		slug: "regulation",
 		name: "监管",
-		description: "Sectoral regulator activity across finance, data and competition.",
+		description:
+			"Sectoral regulator activity across finance, data and competition.",
 		visibility: "basic",
 		children: [
 			{ slug: "regulation-finance", name: "金融监管", visibility: "basic" },
-			{ slug: "regulation-securities", name: "证券监管", visibility: "verified" },
-			{ slug: "regulation-banking", name: "银行业监管", visibility: "verified" },
-			{ slug: "regulation-insurance", name: "保险监管", visibility: "verified" },
+			{
+				slug: "regulation-securities",
+				name: "证券监管",
+				visibility: "verified",
+			},
+			{
+				slug: "regulation-banking",
+				name: "银行业监管",
+				visibility: "verified",
+			},
+			{
+				slug: "regulation-insurance",
+				name: "保险监管",
+				visibility: "verified",
+			},
 			{ slug: "regulation-antitrust", name: "反垄断", visibility: "premium" },
-			{ slug: "regulation-data-compliance", name: "数据合规", visibility: "premium" },
-			{ slug: "regulation-cybersecurity", name: "网络安全", visibility: "premium" },
+			{
+				slug: "regulation-data-compliance",
+				name: "数据合规",
+				visibility: "premium",
+			},
+			{
+				slug: "regulation-cybersecurity",
+				name: "网络安全",
+				visibility: "premium",
+			},
 		],
 	},
 	{
 		slug: "enforcement",
 		name: "执法",
-		description: "Administrative penalties, criminal cases, civil judgments and mediation.",
+		description:
+			"Administrative penalties, criminal cases, civil judgments and mediation.",
 		visibility: "basic",
 		children: [
 			{
@@ -194,13 +217,15 @@ function buildTree(categories: ReadonlyArray<Category>): CategoryNode[] {
 	const roots: CategoryNode[] = [];
 	for (const node of byId.values()) {
 		if (node.parent_id && byId.has(node.parent_id)) {
-			byId.get(node.parent_id)!.children.push(node);
+			byId.get(node.parent_id)?.children.push(node);
 		} else {
 			roots.push(node);
 		}
 	}
 	const sortRecursive = (nodes: CategoryNode[]) => {
-		nodes.sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
+		nodes.sort(
+			(a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name),
+		);
 		for (const n of nodes) sortRecursive(n.children);
 	};
 	sortRecursive(roots);
@@ -273,9 +298,7 @@ interface CsvRow {
 function parseCsv(text: string): CsvRow[] {
 	const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
 	if (lines.length === 0) return [];
-	const header = lines[0]
-		.split(",")
-		.map((s) => s.trim().toLowerCase());
+	const header = lines[0].split(",").map((s) => s.trim().toLowerCase());
 	const slugIdx = header.indexOf("slug");
 	const nameIdx = header.indexOf("name");
 	const parentIdx = header.indexOf("parent_slug");
@@ -362,11 +385,7 @@ function categoriesApiMessage(
 function VisibilityBadge({ tier }: { tier: VisibilityTier }) {
 	const t = useT();
 	const labelKey =
-		tier === "basic"
-			? "Basic"
-			: tier === "verified"
-				? "Verified"
-				: "Premium";
+		tier === "basic" ? "Basic" : tier === "verified" ? "Verified" : "Premium";
 	const Icon =
 		tier === "basic" ? Folder : tier === "verified" ? FolderOpen : Sparkles;
 	const colorBg =
@@ -416,9 +435,7 @@ interface CategoryEditModalProps {
 	initial?: EditCategoryPayload;
 	parentName?: string | null;
 	onClose: () => void;
-	onSubmit: (
-		payload: EditCategoryPayload | CreateCategoryPayload,
-	) => void;
+	onSubmit: (payload: EditCategoryPayload | CreateCategoryPayload) => void;
 	saving: boolean;
 }
 
@@ -494,10 +511,7 @@ function CategoryEditModal({
 								? t("Add child of {parent}", { parent: parentName })
 								: t("Add root category")}
 					</h3>
-					<p
-						className="text-xs"
-						style={{ color: "var(--surface-muted-text)" }}
-					>
+					<p className="text-xs" style={{ color: "var(--surface-muted-text)" }}>
 						{t(
 							"Slug must be unique across the tenant. Visibility tier controls which user tier can see this branch.",
 						)}
@@ -550,9 +564,7 @@ function CategoryEditModal({
 						</span>
 						<select
 							value={visibility}
-							onChange={(e) =>
-								setVisibility(e.target.value as VisibilityTier)
-							}
+							onChange={(e) => setVisibility(e.target.value as VisibilityTier)}
 							className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary-300)]"
 							style={{
 								borderColor:
@@ -615,8 +627,10 @@ function LabeledInput({
 	placeholder,
 	error,
 }: LabeledInputProps) {
+	const inputId = useId();
+
 	return (
-		<label className="block text-xs">
+		<label htmlFor={inputId} className="block text-xs">
 			<span
 				className="mb-1 block font-medium"
 				style={{ color: "var(--color-foreground)" }}
@@ -624,6 +638,7 @@ function LabeledInput({
 				{label}
 			</span>
 			<Input
+				id={inputId}
 				value={value}
 				onChange={(e) => onChange(e.target.value)}
 				placeholder={placeholder}
@@ -699,10 +714,7 @@ function CsvImportModal({
 					>
 						{t("Bulk import categories")}
 					</h3>
-					<p
-						className="text-xs"
-						style={{ color: "var(--surface-muted-text)" }}
-					>
+					<p className="text-xs" style={{ color: "var(--surface-muted-text)" }}>
 						{t(
 							"Header columns: slug,name,parent_slug,visibility. Visibility accepts basic|verified|premium (defaults to verified).",
 						)}
@@ -731,9 +743,7 @@ function CsvImportModal({
 					placeholder="slug,name,parent_slug,visibility"
 				/>
 				{parseError ? (
-					<p className="text-xs text-red-600 dark:text-red-300">
-						{parseError}
-					</p>
+					<p className="text-xs text-red-600 dark:text-red-300">{parseError}</p>
 				) : null}
 				<div className="flex justify-end gap-2">
 					<Button variant="outline" onClick={onClose}>
@@ -822,13 +832,10 @@ function TreeRow({
 					onDrop(node.id);
 				}}
 				onDragEnd={onDragEnd}
-				onClick={() => onSelect(node.id)}
 				className={cn(
 					"group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm transition-colors",
 					isDragging && "opacity-60",
-					isSelected
-						? "bg-primary-50 text-primary-700"
-						: "hover:bg-neutral-50",
+					isSelected ? "bg-primary-50 text-primary-700" : "hover:bg-neutral-50",
 				)}
 				style={{
 					paddingLeft: `${depth * 16 + 8}px`,
@@ -853,11 +860,7 @@ function TreeRow({
 						if (hasChildren) onToggle(node.id);
 					}}
 					aria-label={
-						hasChildren
-							? isExpanded
-								? t("Collapse")
-								: t("Expand")
-							: undefined
+						hasChildren ? (isExpanded ? t("Collapse") : t("Expand")) : undefined
 					}
 					className={cn(
 						"flex h-5 w-5 shrink-0 items-center justify-center rounded",
@@ -885,7 +888,11 @@ function TreeRow({
 					className="h-4 w-4 shrink-0"
 					style={{ color: node.color ?? "var(--color-primary-500)" }}
 				/>
-				<span className="flex-1 truncate">
+				<button
+					type="button"
+					onClick={() => onSelect(node.id)}
+					className="flex-1 truncate text-left"
+				>
 					<span
 						className="font-medium"
 						style={{ color: "var(--color-foreground)" }}
@@ -898,7 +905,7 @@ function TreeRow({
 					>
 						{node.slug}
 					</span>
-				</span>
+				</button>
 				<VisibilityBadge tier={node.visibility} />
 				{node.__seed ? (
 					<Badge variant="outline" className="text-[10px]">
@@ -1018,7 +1025,9 @@ function AdminCategoriesContent() {
 	// here so the surface is wired but never fire requests today.
 	const placeholder = async () => {
 		throw new Error(
-			t("Categories admin endpoints are reserved for B.6b. UI is preview-only."),
+			t(
+				"Categories admin endpoints are reserved for B.6b. UI is preview-only.",
+			),
 		);
 	};
 
@@ -1116,9 +1125,9 @@ function AdminCategoriesContent() {
 	const [editMode, setEditMode] = useState<"create" | "edit">("create");
 	const [editParentName, setEditParentName] = useState<string | null>(null);
 	const [editParentId, setEditParentId] = useState<string | null>(null);
-	const [editInitial, setEditInitial] = useState<EditCategoryPayload | undefined>(
-		undefined,
-	);
+	const [editInitial, setEditInitial] = useState<
+		EditCategoryPayload | undefined
+	>(undefined);
 	const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 	const [csvOpen, setCsvOpen] = useState(false);
 
@@ -1202,7 +1211,10 @@ function AdminCategoriesContent() {
 	const handleCsvImport = (rows: CsvRow[]) => {
 		importMutation.mutate(rows, {
 			onSuccess: () => {
-				toastSuccess(t("Import queued"), t("{n} rows accepted", { n: rows.length }));
+				toastSuccess(
+					t("Import queued"),
+					t("{n} rows accepted", { n: rows.length }),
+				);
 				setCsvOpen(false);
 				void queryClient.invalidateQueries({ queryKey: ["admin-categories"] });
 			},
@@ -1340,10 +1352,7 @@ function AdminCategoriesContent() {
 								aria-label={t("Categories tree")}
 							>
 								{categoriesQuery.isLoading ? (
-									<p
-										className="px-3 py-6 text-sm"
-										style={mutedTextStyle}
-									>
+									<p className="px-3 py-6 text-sm" style={mutedTextStyle}>
 										{t("Loading categories")}
 									</p>
 								) : categoriesQuery.isError && !usingSeed ? (
@@ -1512,17 +1521,30 @@ function DetailPanel({
 			<DetailRow label={t("Description")} value={node.description ?? "-"} />
 			<DetailRow label={t("Parent id")} value={node.parent_id ?? "-"} mono />
 			<DetailRow label={t("Sort order")} value={String(node.sort_order)} />
-			<DetailRow label={t("Articles in branch")} value={t("Awaiting B.6b telemetry")} />
+			<DetailRow
+				label={t("Articles in branch")}
+				value={t("Awaiting B.6b telemetry")}
+			/>
 			<DetailRow
 				label={t("AI categorization accuracy")}
 				value={t("Awaiting B.6b telemetry")}
 			/>
 			<div className="flex flex-wrap gap-2 pt-2">
-				<Button size="sm" variant="outline" onClick={onAddChild} disabled={!canMutate}>
+				<Button
+					size="sm"
+					variant="outline"
+					onClick={onAddChild}
+					disabled={!canMutate}
+				>
 					<Plus aria-hidden="true" className="mr-2 h-3.5 w-3.5" />
 					{t("Add child")}
 				</Button>
-				<Button size="sm" variant="outline" onClick={onEdit} disabled={!canMutate}>
+				<Button
+					size="sm"
+					variant="outline"
+					onClick={onEdit}
+					disabled={!canMutate}
+				>
 					<Pencil aria-hidden="true" className="mr-2 h-3.5 w-3.5" />
 					{t("Edit")}
 				</Button>
@@ -1531,7 +1553,9 @@ function DetailPanel({
 					variant="outline"
 					onClick={onDelete}
 					disabled={!canMutate || hasChildren}
-					title={hasChildren ? t("Move or delete child categories first") : undefined}
+					title={
+						hasChildren ? t("Move or delete child categories first") : undefined
+					}
 				>
 					<Trash2 aria-hidden="true" className="mr-2 h-3.5 w-3.5" />
 					{t("Delete")}

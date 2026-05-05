@@ -151,6 +151,9 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: i18n coverage (zh-strict)
+        run: pnpm check:i18n
+
       - name: Lint + format check (Biome)
         run: pnpm exec biome check src
 

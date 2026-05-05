@@ -1,15 +1,8 @@
-import { AdminPlaceholderPage } from "@/components/admin/admin-placeholder-page";
+import { DEFAULT_LOCALE, isLocale, withLocalePath } from "@/lib/i18n";
+import { redirect } from "next/navigation";
 
-/**
- * /<locale>/admin/reports/runs — placeholder per SPEC-02 §4 / P1.3.
- * Generation history with retry/inspect controls ships in a follow-up
- * wave. Today the reports page surfaces a recent delivery queue.
- */
-export default function AdminReportRunsPage() {
-	return (
-		<AdminPlaceholderPage
-			titleKey="Report runs"
-			descriptionKey="Inspect the report generation pipeline, retry failures, and audit historical outputs."
-		/>
-	);
+export default async function AdminReportRunsPage({ params }: { params: Promise<{ locale: string }> }): Promise<never> {
+	const resolved = await params;
+	const locale = isLocale(resolved.locale) ? resolved.locale : DEFAULT_LOCALE;
+	redirect(withLocalePath(locale, "/admin/reports?tab=runs"));
 }

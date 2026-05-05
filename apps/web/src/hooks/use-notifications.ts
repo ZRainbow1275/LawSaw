@@ -30,12 +30,12 @@
 
 import { apiClient } from "@/lib/api";
 import {
-	assertMarkSeenResponse,
-	assertNotificationsResponse,
 	type MarkNotificationsSeenRequest,
 	type MarkSeenResponse,
 	type NotificationEntry,
 	type NotificationsResponse,
+	assertMarkSeenResponse,
+	assertNotificationsResponse,
 } from "@/lib/api/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {

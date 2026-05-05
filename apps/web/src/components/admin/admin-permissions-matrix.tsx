@@ -18,14 +18,7 @@ import { useT } from "@/lib/i18n-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { useToast } from "@/stores/toast-store";
 import { useQuery } from "@tanstack/react-query";
-import {
-	Check,
-	Download,
-	FileText,
-	Lock,
-	ShieldCheck,
-	X,
-} from "lucide-react";
+import { Check, Download, FileText, Lock, ShieldCheck, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -136,7 +129,8 @@ function defaultMatrix(): Record<RoleTier, Record<string, boolean>> {
 	const premium: Record<string, boolean> = { ...allFalse };
 	for (const p of DEFAULT_PERMISSIONS) {
 		if (p.groupKey === "Articles") premium[p.key] = true;
-		if (p.groupKey === "Sources" && p.key === "sources:read") premium[p.key] = true;
+		if (p.groupKey === "Sources" && p.key === "sources:read")
+			premium[p.key] = true;
 		if (p.groupKey === "Knowledge") premium[p.key] = true;
 		if (p.groupKey === "Reports") premium[p.key] = true;
 		if (p.groupKey === "Analytics") premium[p.key] = true;
@@ -355,8 +349,7 @@ function AdminPermissionsMatrixContent() {
 			downloadBlob(`permissions-${stamp}.csv`, csv, "text/csv");
 			toastSuccess(t("Export ready"), t("CSV downloaded"));
 		} catch (err) {
-			const message =
-				err instanceof Error ? err.message : t("Unknown error");
+			const message = err instanceof Error ? err.message : t("Unknown error");
 			toastError(t("Export failed"), message);
 		}
 	};
@@ -376,8 +369,7 @@ function AdminPermissionsMatrixContent() {
 				t("Choose 'Save as PDF' from the print dialog."),
 			);
 		} catch (err) {
-			const message =
-				err instanceof Error ? err.message : t("Unknown error");
+			const message = err instanceof Error ? err.message : t("Unknown error");
 			toastError(t("Export failed"), message);
 		}
 	};
@@ -443,10 +435,7 @@ function AdminPermissionsMatrixContent() {
 									onClick={handleExportPdf}
 									disabled={dataPending}
 								>
-									<FileText
-										aria-hidden="true"
-										className="mr-2 h-4 w-4"
-									/>
+									<FileText aria-hidden="true" className="mr-2 h-4 w-4" />
 									{t("Export PDF")}
 								</Button>
 								<Button
@@ -455,10 +444,7 @@ function AdminPermissionsMatrixContent() {
 									onClick={handleExportCsv}
 									disabled={dataPending}
 								>
-									<Download
-										aria-hidden="true"
-										className="mr-2 h-4 w-4"
-									/>
+									<Download aria-hidden="true" className="mr-2 h-4 w-4" />
 									{t("Export CSV")}
 								</Button>
 							</div>
@@ -501,10 +487,7 @@ function AdminPermissionsMatrixContent() {
 															className="inline-flex items-center gap-0.5 text-[10px]"
 															style={{ color: "var(--surface-muted-text)" }}
 														>
-															<Lock
-																aria-hidden="true"
-																className="h-3 w-3"
-															/>
+															<Lock aria-hidden="true" className="h-3 w-3" />
 															{t("read-only")}
 														</span>
 													) : null}
@@ -535,10 +518,7 @@ function AdminPermissionsMatrixContent() {
 												</td>
 											</tr>
 											{perms.map((p) => (
-												<tr
-													key={p.key}
-													className="hover:bg-neutral-50"
-												>
+												<tr key={p.key} className="hover:bg-neutral-50">
 													<td
 														className="sticky left-0 z-10 border-b border-r px-4 py-2"
 														style={{
@@ -574,9 +554,7 @@ function AdminPermissionsMatrixContent() {
 																<button
 																	type="button"
 																	disabled={!editable}
-																	onClick={() =>
-																		toggleCell(role.tier, p.key)
-																	}
+																	onClick={() => toggleCell(role.tier, p.key)}
 																	aria-pressed={checked}
 																	aria-label={`${t(p.labelKey)} — ${t(role.labelKey)}`}
 																	className={
@@ -596,10 +574,7 @@ function AdminPermissionsMatrixContent() {
 																			className="h-4 w-4"
 																		/>
 																	) : (
-																		<X
-																			aria-hidden="true"
-																			className="h-4 w-4"
-																		/>
+																		<X aria-hidden="true" className="h-4 w-4" />
 																	)}
 																</button>
 															</td>

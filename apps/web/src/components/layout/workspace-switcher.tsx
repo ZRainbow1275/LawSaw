@@ -147,7 +147,11 @@ export function WorkspaceSwitcher({ className }: { className?: string }) {
 				aria-expanded={open}
 				aria-label={t("Switch workspace")}
 				disabled={!isAdmin}
-				title={isAdmin ? t("Switch workspace") : t("Admin workspace requires elevated role")}
+				title={
+					isAdmin
+						? t("Switch workspace")
+						: t("Admin workspace requires elevated role")
+				}
 			>
 				<ActiveIcon
 					aria-hidden="true"
@@ -222,8 +226,7 @@ export function WorkspaceSwitcher({ className }: { className?: string }) {
 										<span
 											className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
 											style={{
-												backgroundColor:
-													"color-mix(in srgb, " + accent + " 14%, transparent)",
+												backgroundColor: `color-mix(in srgb, ${accent} 14%, transparent)`,
 												color: accent,
 											}}
 										>
@@ -260,8 +263,8 @@ export function WorkspaceSwitcher({ className }: { className?: string }) {
 
 			<AnimatePresence>
 				{showHint ? (
-					<motion.div
-						role="status"
+					<motion.output
+						aria-live="polite"
 						initial={{ opacity: 0, y: -8 }}
 						animate={{ opacity: 1, y: 0 }}
 						exit={{ opacity: 0, y: -4 }}
@@ -286,7 +289,7 @@ export function WorkspaceSwitcher({ className }: { className?: string }) {
 						>
 							{t("Got it")}
 						</button>
-					</motion.div>
+					</motion.output>
 				) : null}
 			</AnimatePresence>
 		</div>

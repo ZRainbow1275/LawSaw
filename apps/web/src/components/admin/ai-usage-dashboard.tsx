@@ -192,10 +192,7 @@ function KpiTile({
 					{value}
 				</p>
 				{caption ? (
-					<p
-						className="text-xs"
-						style={{ color: NEUTRAL_TILE.captionColor }}
-					>
+					<p className="text-xs" style={{ color: NEUTRAL_TILE.captionColor }}>
 						{caption}
 					</p>
 				) : null}
@@ -287,16 +284,11 @@ function topActorsByScope(
 function computeP95Latency(events: ReadonlyArray<AiUsageEventRecord>): number {
 	if (events.length === 0) return 0;
 	const sorted = events.map((e) => e.latency_ms).sort((a, b) => a - b);
-	const idx = Math.min(
-		sorted.length - 1,
-		Math.floor(sorted.length * 0.95),
-	);
+	const idx = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95));
 	return sorted[idx];
 }
 
-function computeFailureRate(
-	events: ReadonlyArray<AiUsageEventRecord>,
-): number {
+function computeFailureRate(events: ReadonlyArray<AiUsageEventRecord>): number {
 	if (events.length === 0) return 0;
 	const failed = events.filter((e) => !e.success).length;
 	return (failed / events.length) * 100;
@@ -304,8 +296,7 @@ function computeFailureRate(
 
 function compactNumber(value: number): string {
 	if (!Number.isFinite(value)) return "-";
-	if (value >= 1_000_000)
-		return `${(value / 1_000_000).toFixed(1)}M`;
+	if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
 	if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
 	return value.toLocaleString();
 }
@@ -407,10 +398,7 @@ function AdminAiUsageDashboardContent() {
 	const tokens24h = summary?.ai_tokens_24h ?? 0;
 	const calls24h = summary?.ai_calls_24h ?? 0;
 	const cost24hUsd = (tokens24h / 1000) * COST_PER_1K_TOKENS_USD;
-	const dailyUsedPct = Math.min(
-		100,
-		(tokens24h / DAILY_TOKEN_BUDGET) * 100,
-	);
+	const dailyUsedPct = Math.min(100, (tokens24h / DAILY_TOKEN_BUDGET) * 100);
 	const monthlyApprox = tokens24h * 30;
 	const monthlyUsedPct = Math.min(
 		100,
@@ -435,8 +423,7 @@ function AdminAiUsageDashboardContent() {
 				t("Downloaded {n} rows", { n: events.length }),
 			);
 		} catch (err) {
-			const message =
-				err instanceof Error ? err.message : t("Unknown error");
+			const message = err instanceof Error ? err.message : t("Unknown error");
 			toastError(t("Export failed"), message);
 		}
 	};
@@ -502,10 +489,7 @@ function AdminAiUsageDashboardContent() {
 								onClick={handleExportCsv}
 								disabled={events.length === 0}
 							>
-								<Download
-									aria-hidden="true"
-									className="mr-2 h-4 w-4"
-								/>
+								<Download aria-hidden="true" className="mr-2 h-4 w-4" />
 								{t("Export CSV")}
 							</Button>
 						</CardHeader>
@@ -565,7 +549,7 @@ function AdminAiUsageDashboardContent() {
 								<KpiTile
 									label={t("Estimated cost 24h")}
 									value={`$${cost24hUsd.toFixed(2)}`}
-									caption={t("@ ${rate}/1K tokens", {
+									caption={t("@ {rate}/1K tokens", {
 										rate: COST_PER_1K_TOKENS_USD.toFixed(4),
 									})}
 									icon={DollarSign}
@@ -615,22 +599,13 @@ function AdminAiUsageDashboardContent() {
 											}}
 										>
 											{p95Latency >= P95_WARNING_MS ? (
-												<AlertTriangle
-													aria-hidden="true"
-													className="h-5 w-5"
-												/>
+												<AlertTriangle aria-hidden="true" className="h-5 w-5" />
 											) : (
-												<CheckCircle2
-													aria-hidden="true"
-													className="h-5 w-5"
-												/>
+												<CheckCircle2 aria-hidden="true" className="h-5 w-5" />
 											)}
 										</span>
 										<div>
-											<p
-												className="text-sm font-semibold"
-												style={headingStyle}
-											>
+											<p className="text-sm font-semibold" style={headingStyle}>
 												{t("P95 latency")}: {p95Latency} ms
 											</p>
 											<p className="text-xs" style={mutedTextStyle}>
@@ -747,9 +722,7 @@ function AdminAiUsageDashboardContent() {
 															fontSize: "12px",
 														}}
 													/>
-													<Legend
-														wrapperStyle={{ fontSize: "12px" }}
-													/>
+													<Legend wrapperStyle={{ fontSize: "12px" }} />
 													<Line
 														yAxisId="left"
 														type="monotone"
@@ -812,10 +785,7 @@ function AdminAiUsageDashboardContent() {
 														))}
 													</Pie>
 													<Tooltip
-														formatter={(value: number) => [
-															value,
-															t("Calls"),
-														]}
+														formatter={(value: number) => [value, t("Calls")]}
 														contentStyle={{
 															borderRadius: "8px",
 															border: "1px solid #e5e5e5",
@@ -927,8 +897,7 @@ interface BudgetBarProps {
 }
 
 function BudgetBar({ label, used, total, usedPct }: BudgetBarProps) {
-	const tone =
-		usedPct >= 90 ? "danger" : usedPct >= 70 ? "warn" : "ok";
+	const tone = usedPct >= 90 ? "danger" : usedPct >= 70 ? "warn" : "ok";
 	const fillColor =
 		tone === "danger"
 			? "var(--color-error)"

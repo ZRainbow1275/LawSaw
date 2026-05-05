@@ -1,12 +1,13 @@
 "use client";
 
 import { useCategories } from "@/hooks/use-categories";
+import { ADMIN_SHORTCUTS } from "@/lib/admin-nav";
 import {
+	type RoleTier,
 	isAdminTier,
 	normalizeRoleTier,
 	roleTierLabelKey,
 	splitDisplayNameRoleTier,
-	type RoleTier,
 } from "@/lib/authz";
 import { stripLocalePrefix, withLocalePath } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
@@ -16,29 +17,21 @@ import { useSidebarStore } from "@/stores/sidebar-store";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
 	BarChart3,
-	Bell,
-	BrainCircuit,
 	Briefcase,
 	Building2,
 	ChevronDown,
 	ChevronRight,
 	ClipboardList,
-	Database,
 	Eye,
-	FileSearch,
 	FileText,
 	Flame,
-	Globe,
 	Globe2,
 	GraduationCap,
 	History,
-	Key,
 	LayoutDashboard,
+	type LucideIcon,
 	MessageSquarePlus,
-	MessageSquareText,
-	Network,
 	Newspaper,
-	Pin,
 	Scale,
 	ScrollText,
 	Settings,
@@ -46,9 +39,7 @@ import {
 	Shield,
 	ShieldCheck,
 	TrendingUp,
-	User,
 	X,
-	type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -90,40 +81,46 @@ const navigation: Array<{
 	icon: LucideIcon;
 	tourId?: string;
 }> = [
-	{ name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, tourId: "dashboard" },
+	{
+		name: "Dashboard",
+		href: "/dashboard",
+		icon: LayoutDashboard,
+		tourId: "dashboard",
+	},
 	{ name: "My feed", href: "/me/feed", icon: Newspaper },
-	{ name: "All articles", href: "/articles", icon: FileText, tourId: "articles" },
+	{
+		name: "All articles",
+		href: "/articles",
+		icon: FileText,
+		tourId: "articles",
+	},
 	{ name: "Reading history", href: "/me/reading-history", icon: History },
 	{ name: "Reports", href: "/reports", icon: ClipboardList, tourId: "reports" },
 	{ name: "Analytics", href: "/analytics", icon: TrendingUp },
 	{ name: "Knowledge Graph", href: "/knowledge", icon: Share2 },
-	{ name: "Feedback", href: "/feedback", icon: MessageSquarePlus, tourId: "feedback" },
+	{
+		name: "Feedback",
+		href: "/feedback",
+		icon: MessageSquarePlus,
+		tourId: "feedback",
+	},
 	{ name: "Settings", href: "/settings", icon: Settings, tourId: "settings" },
 ];
 
 /**
- * Admin workspace shortcuts surfaced to tenant_admin / super_admin tiers.
- * Anchors mirror SPEC-02-DUAL-PANEL §2.1 and link to the new
- * `/<locale>/admin/*` workspace introduced in B.4.
+ * Admin shortcuts surfaced to tenant_admin / super_admin tiers.
+ * Sourced from `lib/admin-nav.ts` so this list, the admin shell sidebar,
+ * and the workspace tile grid all stay in lockstep.
  */
 const adminNavigation: Array<{
 	name: string;
 	href: string;
 	icon: LucideIcon;
-}> = [
-	{ name: "Admin workspace", href: "/admin", icon: Shield },
-	{ name: "User directory", href: "/admin/users", icon: User },
-	{ name: "Authorization relations", href: "/admin/relations", icon: Network },
-	{ name: "Channel management", href: "/admin/channels", icon: Globe },
-	{ name: "Banner management", href: "/admin/banners", icon: Bell },
-	{ name: "Pinned articles", href: "/admin/pins", icon: Pin },
-	{ name: "Feedback desk", href: "/admin/feedbacks", icon: MessageSquareText },
-	{ name: "Audit trail", href: "/admin/audit", icon: FileSearch },
-	{ name: "AI usage", href: "/admin/ai-usage", icon: BrainCircuit },
-	{ name: "API keys", href: "/admin/apikeys", icon: Key },
-	{ name: "Reports", href: "/admin/reports", icon: Database },
-	{ name: "Knowledge graph", href: "/admin/knowledge", icon: BarChart3 },
-];
+}> = ADMIN_SHORTCUTS.map((item) => ({
+	name: item.labelKey,
+	href: item.href,
+	icon: item.icon,
+}));
 
 function isAdminNavigationItemActive(pathname: string, href: string): boolean {
 	if (href === "/admin") {
@@ -234,16 +231,12 @@ const sidebarFocusRingClassName =
 	"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--surface-accent-border)]";
 
 const sidebarBrandMarkStyle = {
-	background:
-		"linear-gradient(135deg, var(--color-primary-500), var(--color-primary-600))",
 	boxShadow:
 		"0 4px 12px color-mix(in srgb, var(--color-primary-500) 15%, transparent)",
 	color: "color-mix(in srgb, white 96%, transparent)",
 } as const;
 
 const sidebarBrandAvatarStyle = {
-	background:
-		"linear-gradient(135deg, var(--color-primary-500), var(--color-primary-600))",
 	color: "color-mix(in srgb, white 96%, transparent)",
 } as const;
 
@@ -300,20 +293,20 @@ function SidebarPanel({
 		user?.display_name,
 	);
 	const displayName = parsedDisplayName || fallbackDisplayName;
-	const avatarText = (displayName.charAt(0) || fallbackDisplayName.charAt(0) || "U")
-		.toUpperCase();
+	const avatarText = (
+		displayName.charAt(0) ||
+		fallbackDisplayName.charAt(0) ||
+		"U"
+	).toUpperCase();
 	const roleOptions = useMemo(() => {
-		const base: RoleTier[] = [
-			"basic_user",
-			"verified_user",
-			"premium_user",
-		];
+		const base: RoleTier[] = ["basic_user", "verified_user", "premium_user"];
 		if (actualRoleTier === "tenant_admin" || actualRoleTier === "super_admin") {
 			return [actualRoleTier, ...base];
 		}
 		return base;
 	}, [actualRoleTier]);
-	const isPreviewing = previewRoleTier !== null && previewRoleTier !== actualRoleTier;
+	const isPreviewing =
+		previewRoleTier !== null && previewRoleTier !== actualRoleTier;
 
 	useEffect(() => {
 		if (!showRolePopup) return;
@@ -349,7 +342,7 @@ function SidebarPanel({
 				style={{ borderColor: "var(--surface-muted-border)" }}
 			>
 				<div
-					className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+					className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-cta"
 					style={sidebarBrandMarkStyle}
 				>
 					<Eye aria-hidden="true" className="h-5 w-5" />
@@ -406,18 +399,20 @@ function SidebarPanel({
 									href={withLocalePath(locale, item.href)}
 									onClick={onNavigate}
 									data-tour={item.tourId ? `sidebar-${item.tourId}` : undefined}
-								className={cn(
-									"group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium",
-									"transition-colors duration-150",
-									isActive ? "text-[var(--nav-active-text)]" : sidebarSurfaceHoverClassName,
-									collapsed && "justify-center",
-								)}
-								style={
-									isActive
-										? { color: "var(--nav-active-text)" }
-										: sidebarMutedTextStyle
-								}
-							>
+									className={cn(
+										"group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium",
+										"transition-colors duration-150",
+										isActive
+											? "text-[var(--nav-active-text)]"
+											: sidebarSurfaceHoverClassName,
+										collapsed && "justify-center",
+									)}
+									style={
+										isActive
+											? { color: "var(--nav-active-text)" }
+											: sidebarMutedTextStyle
+									}
+								>
 									{/* Active state background */}
 									{isActive && (
 										<div
@@ -427,16 +422,14 @@ function SidebarPanel({
 									)}
 
 									<div className="relative z-10">
-									<item.icon
-										className={cn(
-											"h-5 w-5 shrink-0",
-										)}
-										style={
-											isActive
-												? { color: "var(--nav-active-text)" }
-												: sidebarMutedTextStyle
-										}
-									/>
+										<item.icon
+											className={cn("h-5 w-5 shrink-0")}
+											style={
+												isActive
+													? { color: "var(--nav-active-text)" }
+													: sidebarMutedTextStyle
+											}
+										/>
 									</div>
 
 									{!collapsed ? (
@@ -465,10 +458,7 @@ function SidebarPanel({
 							</p>
 						) : null}
 						{adminNavigation.map((item) => {
-							const isActive = isAdminNavigationItemActive(
-								pathname,
-								item.href,
-							);
+							const isActive = isAdminNavigationItemActive(pathname, item.href);
 							return (
 								<div key={item.name}>
 									<Link
@@ -528,86 +518,85 @@ function SidebarPanel({
 							className="mb-2 px-3 text-xs font-medium uppercase tracking-wider"
 							style={sidebarMutedTextStyle}
 						>
-								{categoriesQuery.isLoading
-									? t("Loading categories")
-									: categoriesQuery.isError
-										? t("Failed to load categories")
-										: t("{count} categories", { count: categoryCount })}
+							{categoriesQuery.isLoading
+								? t("Loading categories")
+								: categoriesQuery.isError
+									? t("Failed to load categories")
+									: t("{count} categories", { count: categoryCount })}
 						</p>
-							{categoriesQuery.isLoading ? (
-								<div className="space-y-1 px-3">
-									{Array.from({ length: 8 }, (_, idx) => `cat-skel-${idx}`).map(
-										(key) => (
-											<div
-												key={key}
-												className="h-9 animate-pulse rounded-xl"
-												style={{ backgroundColor: "var(--control-hover-bg)" }}
-											/>
-										),
+						{categoriesQuery.isLoading ? (
+							<div className="space-y-1 px-3">
+								{Array.from({ length: 8 }, (_, idx) => `cat-skel-${idx}`).map(
+									(key) => (
+										<div
+											key={key}
+											className="h-9 animate-pulse rounded-xl"
+											style={{ backgroundColor: "var(--control-hover-bg)" }}
+										/>
+									),
+								)}
+							</div>
+						) : categoriesQuery.isError ? (
+							<div className="px-3 py-2 text-xs" style={sidebarMutedTextStyle}>
+								<p>
+									{t("Unable to load categories (check API / login status).")}
+								</p>
+								<button
+									type="button"
+									onClick={() => categoriesQuery.refetch()}
+									className={cn(
+										"mt-2 inline-flex items-center justify-center rounded-lg border px-2.5 py-1 text-xs font-medium",
+										sidebarAccentHoverClassName,
 									)}
-								</div>
-							) : categoriesQuery.isError ? (
-								<div
-									className="px-3 py-2 text-xs"
-									style={sidebarMutedTextStyle}
+									style={{
+										...sidebarNestedSurfaceStyle,
+										...sidebarHeadingTextStyle,
+									}}
 								>
-									<p>
-										{t("Unable to load categories (check API / login status).")}
-									</p>
-									<button
-										type="button"
-										onClick={() => categoriesQuery.refetch()}
-										className={cn(
-											"mt-2 inline-flex items-center justify-center rounded-lg border px-2.5 py-1 text-xs font-medium",
-											sidebarAccentHoverClassName,
-										)}
-										style={{
-											...sidebarNestedSurfaceStyle,
-											...sidebarHeadingTextStyle,
-										}}
-									>
-										{t("Retry")}
-									</button>
-								</div>
-							) : (
-								<div className="space-y-0.5">
-									{categories.map((category) => {
-										const isActive = pathname === `/category/${category.slug}`;
-										const CategoryIcon = categoryIconMap[category.slug];
-										const badgeStyle = getCategoryBadgeStyle(category.color);
+									{t("Retry")}
+								</button>
+							</div>
+						) : (
+							<div className="space-y-0.5">
+								{categories.map((category) => {
+									const isActive = pathname === `/category/${category.slug}`;
+									const CategoryIcon = categoryIconMap[category.slug];
+									const badgeStyle = getCategoryBadgeStyle(category.color);
 
-										return (
-											<div key={category.id}>
-												<Link
-													href={withLocalePath(
-														locale,
-														`/category/${category.slug}`,
-													)}
-													onClick={onNavigate}
-										className={cn(
-											"group flex items-center gap-3 rounded-xl px-3 py-2 text-sm",
-											"transition-colors duration-150",
-											isActive ? "font-medium" : sidebarSurfaceHoverClassName,
-										)}
-										style={
-												isActive
-													? {
-															backgroundColor: "var(--nav-active-surface)",
-															color: "var(--nav-active-text)",
-													  }
-													: sidebarMutedTextStyle
-											}
-										>
-											<div
-												className={cn(
-													"flex h-7 w-7 items-center justify-center rounded-lg text-xs font-semibold",
+									return (
+										<div key={category.id}>
+											<Link
+												href={withLocalePath(
+													locale,
+													`/category/${category.slug}`,
 												)}
-											style={
-												badgeStyle ?? {
-													backgroundColor: "var(--control-hover-bg)",
-													color: "var(--surface-muted-text)",
+												onClick={onNavigate}
+												className={cn(
+													"group flex items-center gap-3 rounded-xl px-3 py-2 text-sm",
+													"transition-colors duration-150",
+													isActive
+														? "font-medium"
+														: sidebarSurfaceHoverClassName,
+												)}
+												style={
+													isActive
+														? {
+																backgroundColor: "var(--nav-active-surface)",
+																color: "var(--nav-active-text)",
+															}
+														: sidebarMutedTextStyle
 												}
-											}
+											>
+												<div
+													className={cn(
+														"flex h-7 w-7 items-center justify-center rounded-lg text-xs font-semibold",
+													)}
+													style={
+														badgeStyle ?? {
+															backgroundColor: "var(--control-hover-bg)",
+															color: "var(--surface-muted-text)",
+														}
+													}
 													aria-hidden="true"
 												>
 													{CategoryIcon ? (
@@ -616,13 +605,13 @@ function SidebarPanel({
 														<FileText className="h-3.5 w-3.5" />
 													)}
 												</div>
-													<span>{category.name}</span>
-												</Link>
-											</div>
-										);
-									})}
-								</div>
-							)}
+												<span>{category.name}</span>
+											</Link>
+										</div>
+									);
+								})}
+							</div>
+						)}
 					</div>
 				)}
 			</nav>
@@ -698,39 +687,41 @@ function SidebarPanel({
 										<button
 											key={option}
 											type="button"
-										className={cn(
-											"flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors",
-											selected ? "" : sidebarSurfaceHoverClassName,
-										)}
-										style={
-											selected
-												? sidebarSelectedControlStyle
-												: sidebarHeadingTextStyle
-										}
-										onClick={() => {
+											className={cn(
+												"flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors",
+												selected ? "" : sidebarSurfaceHoverClassName,
+											)}
+											style={
+												selected
+													? sidebarSelectedControlStyle
+													: sidebarHeadingTextStyle
+											}
+											onClick={() => {
 												setPreviewRoleTier(
 													option === actualRoleTier ? null : option,
 												);
 												setShowRolePopup(false);
 											}}
 										>
-										<span
-											className="h-2.5 w-2.5 shrink-0 rounded-full"
-											style={roleTierDotStyle(option)}
-											aria-hidden="true"
-										/>
+											<span
+												className="h-2.5 w-2.5 shrink-0 rounded-full"
+												style={roleTierDotStyle(option)}
+												aria-hidden="true"
+											/>
 											<span className="flex-1">
 												{t(roleTierLabelKey(option))}
 											</span>
 										</button>
 									);
 								})}
-								</div>
+							</div>
 							<p
 								className="mt-2 px-2 pb-1 text-xs leading-5"
 								style={sidebarMutedTextStyle}
 							>
-								{t("This only changes the prototype preview and does not modify backend permissions.")}
+								{t(
+									"This only changes the prototype preview and does not modify backend permissions.",
+								)}
 							</p>
 						</motion.div>
 					) : null}
@@ -743,7 +734,7 @@ function SidebarPanel({
 						"flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left shadow-sm",
 						"transition-colors",
 						sidebarAccentHoverClassName,
-						(showCollapseToggle && onToggleCollapsed) && "mt-3",
+						showCollapseToggle && onToggleCollapsed && "mt-3",
 						collapsed && "justify-center px-0",
 					)}
 					style={{
@@ -759,7 +750,7 @@ function SidebarPanel({
 					aria-label={t("Switch preview role")}
 				>
 					<div
-						className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
+						className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-cta text-sm font-semibold"
 						style={sidebarBrandAvatarStyle}
 					>
 						{avatarText}
@@ -862,7 +853,8 @@ export function Sidebar() {
 
 		const previousOverflow = document.body.style.overflow;
 		document.body.style.overflow = "hidden";
-		previousFocusedElementRef.current = document.activeElement as HTMLElement | null;
+		previousFocusedElementRef.current =
+			document.activeElement as HTMLElement | null;
 
 		const handleKeyDown = (event: KeyboardEvent) => {
 			if (event.key === "Escape") closeMobile();
@@ -918,13 +910,13 @@ export function Sidebar() {
 				style={baseAsideStyle}
 				aria-label={t("Primary navigation")}
 			>
-					<SidebarPanel
-						collapsed={collapsed}
-						pathname={activePathname}
-						canReadCategories={canReadCategories}
-						categoriesQuery={categoriesQuery}
-						categories={categories}
-						categoryCount={categoryCount}
+				<SidebarPanel
+					collapsed={collapsed}
+					pathname={activePathname}
+					canReadCategories={canReadCategories}
+					categoriesQuery={categoriesQuery}
+					categories={categories}
+					categoryCount={categoryCount}
 					layoutIdPrefix="desktop"
 					reducedMotion={reducedMotion}
 					showCollapseToggle
@@ -957,12 +949,12 @@ export function Sidebar() {
 									? { duration: 0 }
 									: { duration: 0.25, ease: [0.4, 0, 0.2, 1] }
 							}
-						className={cn(
-							baseAsideClassName,
-							"z-50 m-0 w-[280px] max-w-none p-0 md:hidden",
-						)}
-						style={baseAsideStyle}
-						aria-modal="true"
+							className={cn(
+								baseAsideClassName,
+								"z-50 m-0 w-[280px] max-w-none p-0 md:hidden",
+							)}
+							style={baseAsideStyle}
+							aria-modal="true"
 							aria-label={t("Primary navigation")}
 							tabIndex={-1}
 						>

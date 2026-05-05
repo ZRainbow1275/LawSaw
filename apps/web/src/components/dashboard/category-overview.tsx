@@ -22,11 +22,11 @@ import {
 	Flame,
 	Globe2,
 	GraduationCap,
+	type LucideIcon,
 	Scale,
 	ScrollText,
 	Shield,
 	ShieldCheck,
-	type LucideIcon,
 } from "lucide-react";
 
 const categoryIconMap: Record<string, LucideIcon> = {
@@ -225,9 +225,7 @@ export function CategoryOverview() {
 					{categories?.map((category) => {
 						const CategoryIcon = categoryIconMap[category.slug];
 						const iconText =
-							category.icon?.trim() ||
-							category.name.trim().slice(0, 1) ||
-							"#";
+							category.icon?.trim() || category.name.trim().slice(0, 1) || "#";
 						const badgeStyle = getCategoryBadgeStyle(category.color);
 						const count = countByCategoryId.get(category.id) ?? 0;
 						return (
@@ -239,9 +237,7 @@ export function CategoryOverview() {
 									<div
 										className={cn(
 											"flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold",
-											badgeStyle
-												? ""
-												: "text-neutral-500 bg-neutral-50",
+											badgeStyle ? "" : "text-neutral-500 bg-neutral-50",
 										)}
 										style={badgeStyle}
 									>

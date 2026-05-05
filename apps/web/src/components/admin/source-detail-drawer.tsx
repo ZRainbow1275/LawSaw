@@ -27,10 +27,10 @@ import {
 	useSourceRuns,
 	useTriggerFetch,
 } from "@/hooks/use-sources";
+import type { Source } from "@/lib/api/types";
 import { type Locale, formatDateTime } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { overlayVariants } from "@/lib/motion";
-import type { Source } from "@/lib/api/types";
 import { useToast } from "@/stores/toast-store";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -81,7 +81,6 @@ function healthVariant(
 			return "warning";
 		case "unhealthy":
 			return "destructive";
-		case "unknown":
 		default:
 			return "outline";
 	}
@@ -95,7 +94,6 @@ function healthLabelKey(status: Source["health_status"]): string {
 			return "Degraded";
 		case "unhealthy":
 			return "Unhealthy";
-		case "unknown":
 		default:
 			return "Unknown";
 	}
@@ -161,9 +159,7 @@ export function SourceDetailDrawer({
 				onSuccess: () => {
 					success(
 						t("Source paused"),
-						t(
-							"The worker will skip this source until you resume it.",
-						),
+						t("The worker will skip this source until you resume it."),
 					);
 				},
 				onError: (cause) => {
@@ -208,17 +204,17 @@ export function SourceDetailDrawer({
 						onClick={onClose}
 						aria-hidden="true"
 					/>
-					<motion.aside
+					<motion.dialog
+						open
 						variants={PANEL_VARIANTS}
 						initial="hidden"
 						animate="visible"
 						exit="exit"
-						className="ml-auto flex h-full w-full max-w-2xl flex-col overflow-hidden border-l shadow-2xl"
+						className="m-0 ml-auto flex h-full w-full max-h-none max-w-2xl flex-col overflow-hidden border-0 border-l p-0 shadow-2xl"
 						style={{
 							backgroundColor: "var(--color-background)",
 							borderColor: "var(--surface-muted-border)",
 						}}
-						role="dialog"
 						aria-label={t("Source detail")}
 					>
 						<header
@@ -247,9 +243,7 @@ export function SourceDetailDrawer({
 										)}
 										{source.source_type}
 									</Badge>
-									<Badge
-										variant={source.is_active ? "success" : "secondary"}
-									>
+									<Badge variant={source.is_active ? "success" : "secondary"}>
 										{source.is_active ? t("Active") : t("Paused")}
 									</Badge>
 									<Badge variant={healthVariant(source.health_status)}>
@@ -295,12 +289,7 @@ export function SourceDetailDrawer({
 								active={activeTab === "actions"}
 								onClick={() => setActiveTab("actions")}
 								label={t("Actions")}
-								icon={
-									<ClipboardList
-										aria-hidden="true"
-										className="h-4 w-4"
-									/>
-								}
+								icon={<ClipboardList aria-hidden="true" className="h-4 w-4" />}
 							/>
 						</nav>
 
@@ -359,7 +348,7 @@ export function SourceDetailDrawer({
 								/>
 							) : null}
 						</div>
-					</motion.aside>
+					</motion.dialog>
 				</div>
 			) : null}
 		</AnimatePresence>
@@ -427,10 +416,7 @@ function OverviewTab({
 				style={surfaceStyle}
 				data-testid="source-overview-profile"
 			>
-				<h3
-					className="text-xs uppercase tracking-wide"
-					style={mutedStyle}
-				>
+				<h3 className="text-xs uppercase tracking-wide" style={mutedStyle}>
 					{t("Profile")}
 				</h3>
 				<dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
@@ -531,10 +517,7 @@ function OverviewTab({
 				style={surfaceStyle}
 				data-testid="source-overview-config"
 			>
-				<h3
-					className="text-xs uppercase tracking-wide"
-					style={mutedStyle}
-				>
+				<h3 className="text-xs uppercase tracking-wide" style={mutedStyle}>
 					{t("Config")}
 				</h3>
 				{configEntries.length === 0 ? (
@@ -552,9 +535,7 @@ function OverviewTab({
 									{key}
 								</dt>
 								<dd className="break-all" style={headingStyle}>
-									{typeof value === "string"
-										? value
-										: JSON.stringify(value)}
+									{typeof value === "string" ? value : JSON.stringify(value)}
 								</dd>
 							</div>
 						))}
@@ -585,10 +566,7 @@ function OverviewTab({
 						disabled={pending}
 					>
 						{pending ? (
-							<Loader2
-								aria-hidden="true"
-								className="h-4 w-4 animate-spin"
-							/>
+							<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
 						) : (
 							<RefreshCw aria-hidden="true" className="h-4 w-4" />
 						)}
@@ -763,9 +741,7 @@ function ActionsTab({
 					)}
 					<div className="flex-1">
 						<h3 className="text-sm font-semibold" style={headingStyle}>
-							{source.is_active
-								? t("Pause source")
-								: t("Resume source")}
+							{source.is_active ? t("Pause source") : t("Resume source")}
 						</h3>
 						<p className="mt-1 text-sm" style={mutedStyle}>
 							{source.is_active
@@ -785,10 +761,7 @@ function ActionsTab({
 						disabled={pendingPause}
 					>
 						{pendingPause ? (
-							<Loader2
-								aria-hidden="true"
-								className="h-4 w-4 animate-spin"
-							/>
+							<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
 						) : source.is_active ? (
 							<PauseCircle aria-hidden="true" className="h-4 w-4" />
 						) : (
@@ -821,9 +794,7 @@ function ActionsTab({
 								? t(
 										"Re-runs the worker fetch. A successful run clears last_error and resets consecutive failure count.",
 									)
-								: t(
-										"Forces a one-off ingest run outside the normal schedule.",
-									)}
+								: t("Forces a one-off ingest run outside the normal schedule.")}
 						</p>
 					</div>
 					<Button
@@ -834,10 +805,7 @@ function ActionsTab({
 						disabled={pendingFetch || !source.is_active}
 					>
 						{pendingFetch ? (
-							<Loader2
-								aria-hidden="true"
-								className="h-4 w-4 animate-spin"
-							/>
+							<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
 						) : (
 							<RefreshCw aria-hidden="true" className="h-4 w-4" />
 						)}

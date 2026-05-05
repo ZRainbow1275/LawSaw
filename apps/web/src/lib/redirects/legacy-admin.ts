@@ -13,7 +13,9 @@ import { DEFAULT_LOCALE, LOCALE_COOKIE_NAME, detectLocale } from "@/lib/i18n";
  * redirect URL aligned with the user's chosen locale even when they hit a
  * stale bookmark from before the dual-panel migration landed.
  */
-export async function redirectLegacyAdminPath(adminSubPath: string): Promise<never> {
+export async function redirectLegacyAdminPath(
+	adminSubPath: string,
+): Promise<never> {
 	const normalized = adminSubPath.startsWith("/")
 		? adminSubPath
 		: `/${adminSubPath}`;

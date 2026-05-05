@@ -340,9 +340,7 @@ export function TenantFormModal({
 						<Input
 							id="tenant-form-admin-name"
 							value={adminDisplayName}
-							onChange={(event) =>
-								setAdminDisplayName(event.target.value)
-							}
+							onChange={(event) => setAdminDisplayName(event.target.value)}
 							placeholder={t("Optional — defaults to the email local part")}
 						/>
 					</div>
@@ -484,9 +482,7 @@ export function TenantFormModal({
 					</p>
 				</div>
 
-				{validation ? (
-					<p className="text-xs text-error">{validation}</p>
-				) : null}
+				{validation ? <p className="text-xs text-error">{validation}</p> : null}
 			</ModalBody>
 
 			<ModalFooter>
@@ -558,25 +554,16 @@ function TokenPanel({
 			<ModalBody className="space-y-4">
 				<dl className="grid grid-cols-2 gap-3 text-sm">
 					<div>
-						<dt
-							className="text-xs uppercase tracking-wide"
-							style={mutedStyle}
-						>
+						<dt className="text-xs uppercase tracking-wide" style={mutedStyle}>
 							{t("Tenant")}
 						</dt>
-						<dd
-							className="mt-1 truncate font-semibold"
-							style={headingStyle}
-						>
+						<dd className="mt-1 truncate font-semibold" style={headingStyle}>
 							{response.tenant.name}{" "}
 							<span style={mutedStyle}>(/{response.tenant.slug})</span>
 						</dd>
 					</div>
 					<div>
-						<dt
-							className="text-xs uppercase tracking-wide"
-							style={mutedStyle}
-						>
+						<dt className="text-xs uppercase tracking-wide" style={mutedStyle}>
 							{t("Admin user id")}
 						</dt>
 						<dd
@@ -587,10 +574,7 @@ function TokenPanel({
 						</dd>
 					</div>
 					<div className="col-span-2">
-						<dt
-							className="text-xs uppercase tracking-wide"
-							style={mutedStyle}
-						>
+						<dt className="text-xs uppercase tracking-wide" style={mutedStyle}>
 							{t("Token expires")}
 						</dt>
 						<dd className="mt-1 text-sm" style={headingStyle}>

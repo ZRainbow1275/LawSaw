@@ -25,7 +25,8 @@
 
 .lawsaw-md-editor:focus-within {
 	border-color: var(--surface-accent-border);
-	box-shadow: 0 0 0 3px color-mix(in srgb, var(--surface-accent-border) 30%, transparent);
+	box-shadow: 0 0 0 3px
+		color-mix(in srgb, var(--surface-accent-border) 30%, transparent);
 }
 
 .lawsaw-md-editor[data-readonly="true"] {

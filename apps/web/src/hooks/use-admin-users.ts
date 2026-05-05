@@ -16,12 +16,10 @@ import {
 	type UserDetailResponse,
 	assertUserDetailResponse,
 } from "@/lib/api/types";
-import {
-	type RoleTier,
-	normalizeRoleTier,
-	splitDisplayNameRoleTier,
-} from "@/lib/authz";
+import { normalizeRoleTier, type RoleTier } from "@/lib/authz";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+export { deriveRoleTierFromRoles } from "@/lib/authz";
 
 export interface AdminUserRow {
 	id: string;
@@ -34,6 +32,8 @@ export interface AdminUserRow {
 	last_login: string | null;
 	version: number;
 	created_at: string;
+	roles: string[];
+	role_tier: RoleTier;
 }
 
 export interface AdminUserListResponse {
@@ -58,6 +58,16 @@ function assertAdminUserRow(
 	if (typeof value.id !== "string" || typeof value.email !== "string") {
 		throw new Error(`${path}: missing id/email`);
 	}
+	const roles = Array.isArray(value.roles) ? value.roles : [];
+	for (const [index, role] of roles.entries()) {
+		if (typeof role !== "string") {
+			throw new Error(`${path}.roles[${index}] must be string`);
+		}
+	}
+	value.roles = roles;
+	value.role_tier = normalizeRoleTier(
+		typeof value.role_tier === "string" ? value.role_tier : null,
+	);
 }
 
 function assertAdminUserList(
@@ -216,33 +226,6 @@ export function useUpdateUserRoles() {
 			});
 		},
 	});
-}
-
-const ROLE_TIER_NAMES: readonly RoleTier[] = [
-	"basic_user",
-	"verified_user",
-	"premium_user",
-	"tenant_admin",
-	"super_admin",
-];
-
-/**
- * Derives the effective role tier from a user's role list. Tier-style roles
- * mirror the values in `lib/authz#RoleTier` — anything else is treated as a
- * functional role and ignored for tier-detection purposes.
- */
-export function deriveRoleTierFromRoles(
-	roles: readonly string[],
-	displayName: string | null = null,
-): RoleTier {
-	for (let i = ROLE_TIER_NAMES.length - 1; i >= 0; i -= 1) {
-		const candidate = ROLE_TIER_NAMES[i];
-		if (roles.includes(candidate)) {
-			return candidate;
-		}
-	}
-	const { roleTier } = splitDisplayNameRoleTier(displayName);
-	return normalizeRoleTier(roleTier ?? "basic_user");
 }
 
 /**

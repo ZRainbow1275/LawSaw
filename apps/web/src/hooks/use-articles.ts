@@ -21,8 +21,13 @@ interface ArticleFilters {
 }
 
 export function useArticles(filters: ArticleFilters = {}) {
-	const { limit = 20, offset = 0, category_id, status, enabled = true } =
-		filters;
+	const {
+		limit = 20,
+		offset = 0,
+		category_id,
+		status,
+		enabled = true,
+	} = filters;
 
 	const queryParams = new URLSearchParams();
 	queryParams.set("limit", limit.toString());

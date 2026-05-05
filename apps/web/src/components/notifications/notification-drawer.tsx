@@ -35,7 +35,7 @@ import { overlayVariants } from "@/lib/motion";
 import { AnimatePresence, motion } from "framer-motion";
 import { Bell, CheckCheck, Inbox, Loader2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { type CSSProperties, useEffect, useMemo, useState } from "react";
 
 type DrawerTab = "all" | "unread";
 
@@ -193,14 +193,12 @@ export function NotificationDrawer({ open, onClose }: NotificationDrawerProps) {
 
 	const drawerStyle: CSSProperties = {
 		backgroundColor: "var(--color-background)",
-		borderColor:
-			"color-mix(in srgb, var(--color-border) 78%, transparent)",
+		borderColor: "color-mix(in srgb, var(--color-border) 78%, transparent)",
 	};
 	const headingStyle: CSSProperties = { color: "var(--color-foreground)" };
 	const mutedStyle: CSSProperties = { color: "var(--surface-muted-text)" };
 	const itemSurface: CSSProperties = {
-		borderColor:
-			"color-mix(in srgb, var(--color-border) 78%, transparent)",
+		borderColor: "color-mix(in srgb, var(--color-border) 78%, transparent)",
 		backgroundColor: "var(--color-background)",
 	};
 	const itemUnreadSurface: CSSProperties = {
@@ -221,9 +219,9 @@ export function NotificationDrawer({ open, onClose }: NotificationDrawerProps) {
 	return (
 		<AnimatePresence>
 			{open ? (
-				<div
-					className="fixed inset-0 z-40"
-					role="dialog"
+				<dialog
+					open
+					className="fixed inset-0 z-40 m-0 h-full w-full max-h-none max-w-none border-0 bg-transparent p-0"
 					aria-modal="true"
 					aria-label={t("Notification center")}
 				>
@@ -316,8 +314,7 @@ export function NotificationDrawer({ open, onClose }: NotificationDrawerProps) {
 										style={
 											active
 												? {
-														backgroundColor:
-															"var(--surface-accent-strong)",
+														backgroundColor: "var(--surface-accent-strong)",
 														borderColor: "var(--color-primary-500)",
 														color: "var(--color-foreground)",
 													}
@@ -340,7 +337,10 @@ export function NotificationDrawer({ open, onClose }: NotificationDrawerProps) {
 									className="flex items-center gap-2 py-10 text-sm"
 									style={mutedStyle}
 								>
-									<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+									<Loader2
+										aria-hidden="true"
+										className="h-4 w-4 animate-spin"
+									/>
 									{t("Loading notifications")}
 								</div>
 							) : query.isError ? (
@@ -400,7 +400,9 @@ export function NotificationDrawer({ open, onClose }: NotificationDrawerProps) {
 																	type="button"
 																	onClick={() => handleItemClick(entry)}
 																	className="flex w-full items-start gap-3 rounded-2xl border p-3 text-left transition-colors hover:[border-color:color-mix(in_srgb,var(--color-primary-500)_45%,var(--color-border)_55%)]"
-																	style={unread ? itemUnreadSurface : itemSurface}
+																	style={
+																		unread ? itemUnreadSurface : itemSurface
+																	}
 																	data-testid="notification-row"
 																>
 																	<div
@@ -494,7 +496,7 @@ export function NotificationDrawer({ open, onClose }: NotificationDrawerProps) {
 							</div>
 						) : null}
 					</motion.aside>
-				</div>
+				</dialog>
 			) : null}
 		</AnimatePresence>
 	);

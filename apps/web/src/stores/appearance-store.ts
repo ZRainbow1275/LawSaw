@@ -20,10 +20,7 @@ function pickBoolean(value: unknown, fallback: boolean): boolean {
 	return typeof value === "boolean" ? value : fallback;
 }
 
-function pickTheme(
-	value: unknown,
-	fallback: AppearanceTheme,
-): AppearanceTheme {
+function pickTheme(value: unknown, fallback: AppearanceTheme): AppearanceTheme {
 	return value === "light" || value === "dark" || value === "system"
 		? value
 		: fallback;
@@ -38,10 +35,7 @@ export function readAppearancePreferences(
 
 	return {
 		theme: pickTheme(value.theme, DEFAULT_APPEARANCE.theme),
-		compactMode: pickBoolean(
-			value.compactMode,
-			DEFAULT_APPEARANCE.compactMode,
-		),
+		compactMode: pickBoolean(value.compactMode, DEFAULT_APPEARANCE.compactMode),
 	};
 }
 

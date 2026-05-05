@@ -1,3 +1,7 @@
 "use client";
 
-export { default } from "../../articles/page";
+import { ArticlesPagePrototype } from "@/components/articles/prototype/articles-page";
+
+export default function ArticlesPage() {
+	return <ArticlesPagePrototype />;
+}
