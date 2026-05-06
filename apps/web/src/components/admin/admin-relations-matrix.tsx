@@ -1,9 +1,6 @@
 "use client";
 
 import { ProtectedRoute } from "@/components/auth/protected-route";
-import { Header } from "@/components/layout/header";
-import { MainContent } from "@/components/layout/main-content";
-import { Sidebar } from "@/components/layout/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -594,29 +591,20 @@ function AdminRelationsMatrixContent() {
 
 	if (!isAdmin) {
 		return (
-			<div className="min-h-screen" style={pageStyle}>
-				<Sidebar />
-				<MainContent>
-					<Header />
-					<div className="p-4 md:p-6">
-						<EmptyState
-							title={t("Access restricted")}
-							description={t(
-								"You need an administrative role to access this workspace.",
-							)}
-						/>
-					</div>
-				</MainContent>
+			<div className="p-4 md:p-6">
+				<EmptyState
+					title={t("Access restricted")}
+					description={t(
+						"You need an administrative role to access this workspace.",
+					)}
+				/>
 			</div>
 		);
 	}
 
 	return (
-		<div className="min-h-screen" style={pageStyle}>
-			<Sidebar />
-			<MainContent>
-				<Header />
-				<div className="space-y-6 p-4 md:p-6">
+		<>
+			<div className="space-y-6 p-4 md:p-6">
 					<Card>
 						<CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 							<div>
@@ -815,8 +803,7 @@ function AdminRelationsMatrixContent() {
 							</CardContent>
 						</Card>
 					)}
-				</div>
-			</MainContent>
+			</div>
 
 			<RelationDrawer
 				open={drawerSubject !== null}
@@ -833,7 +820,7 @@ function AdminRelationsMatrixContent() {
 				onCreate={(payload) => createMutation.mutate(payload)}
 				creating={createMutation.isPending}
 			/>
-		</div>
+		</>
 	);
 }
 

@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { KpiCard, KpiCardGrid } from "@/components/ui/kpi-card";
 import { type TenantRow, useAdminTenants } from "@/hooks/use-admin-tenants";
 import { formatDateTime } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
@@ -203,14 +204,32 @@ function AdminTenantsContent() {
 					/>
 				) : (
 					<>
-						<KpiStrip
-							totalCount={counts.total}
-							activeCount={counts.active}
-							trialCount={counts.trial}
-							suspendedCount={counts.suspended}
-							pending={tenantsQuery.isLoading}
-							t={t}
-						/>
+						<KpiCardGrid columns={4}>
+							<KpiCard
+								tone="info"
+								label={t("Total tenants")}
+								value={tenantsQuery.isLoading ? "—" : counts.total}
+								icon={Building2}
+							/>
+							<KpiCard
+								tone="success"
+								label={t("Active")}
+								value={tenantsQuery.isLoading ? "—" : counts.active}
+								icon={CheckCircle2}
+							/>
+							<KpiCard
+								tone="warning"
+								label={t("Trial")}
+								value={tenantsQuery.isLoading ? "—" : counts.trial}
+								icon={Sparkles}
+							/>
+							<KpiCard
+								tone="error"
+								label={t("Suspended")}
+								value={tenantsQuery.isLoading ? "—" : counts.suspended}
+								icon={Power}
+							/>
+						</KpiCardGrid>
 
 						<Card>
 							<CardHeader>
@@ -421,112 +440,6 @@ function AdminTenantsContent() {
 
 			<TenantFormModal isOpen={formOpen} onClose={() => setFormOpen(false)} />
 		</>
-	);
-}
-
-interface KpiStripProps {
-	totalCount: number;
-	activeCount: number;
-	trialCount: number;
-	suspendedCount: number;
-	pending: boolean;
-	t: ReturnType<typeof useT>;
-}
-
-function KpiStrip({
-	totalCount,
-	activeCount,
-	trialCount,
-	suspendedCount,
-	pending,
-	t,
-}: KpiStripProps) {
-	const tiles: Array<{
-		key: string;
-		label: string;
-		value: string;
-		caption: string;
-		icon: React.ReactNode;
-		gradient: string;
-	}> = [
-		{
-			key: "total",
-			label: t("Total tenants"),
-			value: pending ? "—" : String(totalCount),
-			caption: t("All tenants visible to super-admin."),
-			icon: <Building2 aria-hidden="true" className="h-5 w-5" />,
-			gradient: "var(--surface-hero-primary-gradient)",
-		},
-		{
-			key: "active",
-			label: t("Active"),
-			value: pending ? "—" : String(activeCount),
-			caption: t("Logging in and ingesting on schedule."),
-			icon: <CheckCircle2 aria-hidden="true" className="h-5 w-5" />,
-			gradient: "var(--surface-hero-emerald-gradient)",
-		},
-		{
-			key: "trial",
-			label: t("Trial"),
-			value: pending ? "—" : String(trialCount),
-			caption: t("Tenants currently in trial period."),
-			icon: <Sparkles aria-hidden="true" className="h-5 w-5" />,
-			gradient: "var(--surface-hero-amber-gradient)",
-		},
-		{
-			key: "suspended",
-			label: t("Suspended"),
-			value: pending ? "—" : String(suspendedCount),
-			caption: t("Tenants temporarily blocked from sign-in."),
-			icon: <Power aria-hidden="true" className="h-5 w-5" />,
-			gradient: "var(--surface-hero-rose-gradient)",
-		},
-	];
-	return (
-		<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-			{tiles.map((tile) => (
-				<div
-					key={tile.key}
-					className="rounded-2xl border p-4"
-					style={{
-						background: tile.gradient,
-						borderColor: "var(--surface-muted-border)",
-					}}
-				>
-					<div className="flex items-center gap-3">
-						<div
-							className="flex h-10 w-10 items-center justify-center rounded-xl"
-							style={{
-								backgroundColor: "rgba(255,255,255,0.7)",
-								color: "var(--color-primary-700, #1d4ed8)",
-							}}
-						>
-							{tile.icon}
-						</div>
-						<div className="min-w-0">
-							<p
-								className="text-xs uppercase tracking-wide"
-								style={{ color: "var(--surface-muted-text)" }}
-							>
-								{tile.label}
-							</p>
-							<p
-								className="mt-1 text-2xl font-bold tabular-nums"
-								style={{ color: "var(--color-foreground)" }}
-							>
-								{tile.value}
-							</p>
-							<p
-								className="mt-1 text-xs"
-								style={{ color: "var(--surface-muted-text)" }}
-							>
-								{tile.caption}
-							</p>
-						</div>
-					</div>
-				</div>
-			))}
-		</div>
 	);
 }
 

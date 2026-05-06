@@ -6,7 +6,6 @@ import {
 	CardContent,
 	CardDescription,
 	CardHeader,
-	CardTitle,
 } from "@/components/ui/card";
 import { ADMIN_WORKSPACE_TILES } from "@/lib/admin-nav";
 import { withLocalePath } from "@/lib/i18n";
@@ -23,12 +22,12 @@ function AdminWorkspaceContent() {
 		<div className="space-y-6">
 			<Card>
 				<CardHeader>
-					<CardTitle
-						className="text-3xl font-bold tracking-tight"
+					<h1
+						className="text-3xl font-bold tracking-tight leading-none"
 						style={headingStyle}
 					>
 						{t("Admin workspace")}
-					</CardTitle>
+					</h1>
 					<CardDescription>
 						{t(
 							"Open dedicated governance consoles for tenant operations, content control, AI telemetry, and graph management.",

@@ -85,23 +85,6 @@ coverage/
 **/__pycache__/
 .gitnexus
 
-# 0430 close-out housekeeping — abandoned scaffolding from prior tasks
-# These untracked paths produce 21 typecheck errors in a fresh checkout but
-# are not part of any feature branch. They are scoped here until the owning
-# tasks land or are explicitly retired.
-apps/web/src/components/analytics/prototype/
-apps/web/src/components/articles/prototype/
-apps/web/src/components/dashboard/prototype/
-apps/web/src/components/knowledge/prototype/
-apps/web/src/components/reports/prototype/
-apps/web/src/components/brand/
-apps/web/src/components/feed/
-apps/web/src/components/feedback/
-apps/web/src/components/settings/
-apps/web/src/components/layout/search-overlay.tsx
-apps/web/src/stores/workspace-store.test.ts
-apps/web/run-a5-runtime-check.mjs
-apps/web/src/app/\[locale\]/me/page.tsx
 prototype/*.mp4
 tmp-ai-cookies.txt
 customer-feed-*.png

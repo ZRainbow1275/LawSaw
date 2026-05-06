@@ -1,5 +1,6 @@
 "use client";
 
+import { KpiCard, KpiCardGrid } from "@/components/ui/kpi-card";
 import { apiClient } from "@/lib/api";
 import {
 	assertApiKeyListResponse,
@@ -9,8 +10,8 @@ import {
 import { useT } from "@/lib/i18n-client";
 import { useToast } from "@/stores/toast-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound } from "lucide-react";
-import { useState } from "react";
+import { Activity, CheckCircle2, KeyRound, ShieldOff } from "lucide-react";
+import { useMemo, useState } from "react";
 import { ApiKeysTab, uiMessageFromError } from "../../../settings/tabs";
 
 function parseCsv(value: string): string[] {
@@ -109,6 +110,23 @@ function AdminApiKeysContent() {
 		toastSuccess(t("Copied to clipboard"));
 	};
 
+	const apiKeyStats = useMemo(() => {
+		const all = apiKeysQuery.data?.keys ?? [];
+		const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+		let active = 0;
+		let revoked = 0;
+		let recentlyUsed = 0;
+		for (const key of all) {
+			if (key.is_active) active += 1;
+			else revoked += 1;
+			if (key.last_used) {
+				const ts = Date.parse(key.last_used);
+				if (Number.isFinite(ts) && ts >= sevenDaysAgo) recentlyUsed += 1;
+			}
+		}
+		return { total: all.length, active, revoked, recentlyUsed };
+	}, [apiKeysQuery.data]);
+
 	return (
 		<div className="space-y-6">
 			<div className="rounded-3xl border p-6" style={surfaceStyle}>
@@ -127,6 +145,33 @@ function AdminApiKeysContent() {
 					{t("Manage API keys and secret issuance.")}
 				</p>
 			</div>
+			<KpiCardGrid columns={4}>
+				<KpiCard
+					tone="info"
+					label={t("Total API keys")}
+					value={apiKeyStats.total}
+					icon={KeyRound}
+				/>
+				<KpiCard
+					tone="success"
+					label={t("Active")}
+					value={apiKeyStats.active}
+					icon={CheckCircle2}
+				/>
+				<KpiCard
+					tone="error"
+					label={t("Revoked")}
+					value={apiKeyStats.revoked}
+					icon={ShieldOff}
+				/>
+				<KpiCard
+					tone="warning"
+					label={t("Used in last 7 days")}
+					value={apiKeyStats.recentlyUsed}
+					icon={Activity}
+				/>
+			</KpiCardGrid>
+
 			{!isAdmin ? null : (
 				<ApiKeysTab
 					t={t}

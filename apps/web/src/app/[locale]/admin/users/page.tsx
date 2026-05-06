@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { KpiCard, KpiCardGrid } from "@/components/ui/kpi-card";
 import {
 	type AdminUserRow,
 	deriveRoleTierFromRoles,
@@ -48,6 +49,8 @@ import {
 	Filter,
 	Loader2,
 	Search,
+	ShieldCheck,
+	UserCheck,
 	UserPlus,
 	UsersRound,
 	XCircle,
@@ -183,6 +186,25 @@ export default function AdminUsersPage() {
 
 	const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+	const userStats = useMemo(() => {
+		let active = 0;
+		let admins = 0;
+		let verified = 0;
+		for (const row of allRows) {
+			if (row.is_active) active += 1;
+			const tier = inferTierFromRow(row);
+			if (tier === "tenant_admin" || tier === "super_admin") admins += 1;
+			if (
+				tier === "verified_user" ||
+				tier === "premium_user" ||
+				tier === "tenant_admin" ||
+				tier === "super_admin"
+			)
+				verified += 1;
+		}
+		return { active, admins, verified };
+	}, [allRows]);
+
 	return (
 		<div className="space-y-6">
 			<Card>
@@ -213,6 +235,33 @@ export default function AdminUsersPage() {
 					</div>
 				</CardHeader>
 			</Card>
+
+			<KpiCardGrid columns={4}>
+				<KpiCard
+					tone="info"
+					label={t("Total users")}
+					value={total}
+					icon={UsersRound}
+				/>
+				<KpiCard
+					tone="success"
+					label={t("Active")}
+					value={userStats.active}
+					icon={CheckCircle2}
+				/>
+				<KpiCard
+					tone="warning"
+					label={t("Verified")}
+					value={userStats.verified}
+					icon={UserCheck}
+				/>
+				<KpiCard
+					tone="error"
+					label={t("Admins")}
+					value={userStats.admins}
+					icon={ShieldCheck}
+				/>
+			</KpiCardGrid>
 
 			<Card>
 				<CardHeader>

@@ -22,16 +22,17 @@ import {
 	ChevronDown,
 	ChevronRight,
 	ClipboardList,
+	Database,
 	Eye,
 	FileText,
 	Flame,
 	Globe2,
 	GraduationCap,
-	History,
 	LayoutDashboard,
 	type LucideIcon,
 	MessageSquarePlus,
 	Newspaper,
+	Rss,
 	Scale,
 	ScrollText,
 	Settings,
@@ -94,10 +95,11 @@ const navigation: Array<{
 		icon: FileText,
 		tourId: "articles",
 	},
-	{ name: "Reading history", href: "/me/reading-history", icon: History },
+	{ name: "Sources", href: "/sources", icon: Rss },
 	{ name: "Reports", href: "/reports", icon: ClipboardList, tourId: "reports" },
 	{ name: "Analytics", href: "/analytics", icon: TrendingUp },
 	{ name: "Knowledge Graph", href: "/knowledge", icon: Share2 },
+	{ name: "Data", href: "/data", icon: Database },
 	{
 		name: "Feedback",
 		href: "/feedback",
@@ -403,21 +405,25 @@ function SidebarPanel({
 										"group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium",
 										"transition-colors duration-150",
 										isActive
-											? "text-[var(--nav-active-text)]"
+											? "text-[var(--color-primary-700)]"
 											: sidebarSurfaceHoverClassName,
 										collapsed && "justify-center",
 									)}
 									style={
 										isActive
-											? { color: "var(--nav-active-text)" }
+											? { color: "var(--color-primary-700)" }
 											: sidebarMutedTextStyle
 									}
 								>
-									{/* Active state background */}
-									{isActive && (
-										<div
-											className="absolute inset-0 rounded-xl shadow-sm"
-											style={{ backgroundColor: "var(--nav-active-surface)" }}
+									{/* Active state — 4px left bar (mp4 truth) */}
+									{isActive && !collapsed && (
+										<span
+											aria-hidden
+											className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r"
+											style={{
+												background:
+													"linear-gradient(180deg, var(--color-primary-500), var(--color-primary-600))",
+											}}
 										/>
 									)}
 
@@ -426,7 +432,7 @@ function SidebarPanel({
 											className={cn("h-5 w-5 shrink-0")}
 											style={
 												isActive
-													? { color: "var(--nav-active-text)" }
+													? { color: "var(--color-primary-700)" }
 													: sidebarMutedTextStyle
 											}
 										/>
@@ -468,21 +474,23 @@ function SidebarPanel({
 											"group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium",
 											"transition-colors duration-150",
 											isActive
-												? "text-[var(--nav-active-text)]"
+												? "text-[var(--color-primary-700)]"
 												: sidebarSurfaceHoverClassName,
 											collapsed && "justify-center",
 										)}
 										style={
 											isActive
-												? { color: "var(--nav-active-text)" }
+												? { color: "var(--color-primary-700)" }
 												: sidebarMutedTextStyle
 										}
 									>
-										{isActive && (
-											<div
-												className="absolute inset-0 rounded-xl shadow-sm"
+										{isActive && !collapsed && (
+											<span
+												aria-hidden
+												className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r"
 												style={{
-													backgroundColor: "var(--nav-active-surface)",
+													background:
+														"linear-gradient(180deg, var(--color-primary-500), var(--color-primary-600))",
 												}}
 											/>
 										)}
@@ -491,7 +499,7 @@ function SidebarPanel({
 												className="h-5 w-5 shrink-0"
 												style={
 													isActive
-														? { color: "var(--nav-active-text)" }
+														? { color: "var(--color-primary-700)" }
 														: sidebarMutedTextStyle
 												}
 											/>

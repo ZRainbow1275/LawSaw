@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { KpiCard, KpiCardGrid } from "@/components/ui/kpi-card";
 import {
 	useAiBudgetAlerts,
 	useAiContentFlags,
@@ -116,12 +117,12 @@ export default function AdminAiGovernancePage() {
 								<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> {t("Loading")}
 							</p>
 						) : (
-							<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-								<Stat icon={Bot} label={t("Default model")} value={policy?.model || t("Not configured")} />
-								<Stat icon={BarChart3} label={t("Processed 24h")} value={n(metrics?.processed_24h ?? 0)} />
-								<Stat icon={Coins} label={t("Total tokens")} value={n(usage?.aggregate.total_tokens ?? 0)} />
-								<Stat icon={AlertTriangle} label={t("Budget alerts")} value={n(alerts?.total ?? 0)} />
-							</div>
+							<KpiCardGrid columns={4}>
+								<KpiCard tone="info" label={t("Default model")} value={policy?.model || t("Not configured")} icon={Bot} />
+								<KpiCard tone="success" label={t("Processed 24h")} value={n(metrics?.processed_24h ?? 0)} icon={BarChart3} />
+								<KpiCard tone="warning" label={t("Total tokens")} value={n(usage?.aggregate.total_tokens ?? 0)} icon={Coins} />
+								<KpiCard tone="error" label={t("Budget alerts")} value={n(alerts?.total ?? 0)} icon={AlertTriangle} />
+							</KpiCardGrid>
 						)}
 					</CardContent>
 				</Card>
@@ -133,16 +134,6 @@ export default function AdminAiGovernancePage() {
 				<List title={t("Feed experiments")} rows={experiments.map((e) => [e.experiment_key, e.is_enabled ? `${e.rollout_percent}%` : t("disabled")])} empty={`${t("Configured experiments")}: 0`} icon={FlaskConical} />
 			</div>
 		</motion.div>
-	);
-}
-
-function Stat({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
-	return (
-		<div className="rounded-2xl border p-4">
-			<Icon aria-hidden="true" className="mb-3 h-5 w-5 text-[var(--color-primary-500)]" />
-			<p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--surface-muted-text)]">{label}</p>
-			<p className="mt-2 break-words text-lg font-semibold">{value}</p>
-		</div>
 	);
 }
 

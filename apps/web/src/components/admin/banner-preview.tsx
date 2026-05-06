@@ -69,6 +69,8 @@ export function BannerPreview({
 	const containerStyle = {
 		backgroundImage: gradientCssVar(gradientKey),
 		color: "var(--surface-hero-foreground, #ffffff)",
+		// mp4 真值: text-shadow 防止白字在浅色 gradient 上失对比 (B3 task #22)
+		textShadow: "0 1px 2px rgba(0, 0, 0, 0.35)",
 	} as const;
 
 	return (
@@ -83,11 +85,17 @@ export function BannerPreview({
 			}}
 			data-testid="banner-preview"
 		>
-			<div className="flex items-start gap-3">
+			{/* darken overlay to lift WCAG AA contrast over warm gradients (amber/rose) */}
+			<div
+				aria-hidden
+				className="pointer-events-none absolute inset-0"
+				style={{ backgroundColor: "rgba(0, 0, 0, 0.12)" }}
+			/>
+			<div className="relative flex items-start gap-3">
 				<div
 					className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl"
 					style={{
-						backgroundColor: "rgba(255,255,255,0.18)",
+						backgroundColor: "rgba(255,255,255,0.22)",
 					}}
 				>
 					<Megaphone aria-hidden="true" className="h-5 w-5" />

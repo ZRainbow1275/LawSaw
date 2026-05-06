@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { KpiCard, KpiCardGrid } from "@/components/ui/kpi-card";
 import {
 	useKnowledgeCooccurrenceNetwork,
 	useKnowledgeDegreeCentrality,
@@ -67,14 +68,11 @@ const knowledgeAdminFieldSurfaceStyle = {
 	color: "var(--field-foreground)",
 } as const;
 
+// Hero is intentionally neutral (white surface + subtle border) to align with
+// admin shell topbar; brand orange is only retained on the lucide icon below.
 const knowledgeAdminHeroStyle = {
-	backgroundImage: "var(--surface-hero-primary-gradient)",
-	borderColor: "var(--surface-accent-border)",
-} as const;
-
-const knowledgeAdminAccentIconStyle = {
-	backgroundColor: "var(--surface-accent-icon-bg)",
-	color: "var(--surface-accent-strong)",
+	backgroundColor: "var(--color-card)",
+	borderColor: "var(--surface-muted-border)",
 } as const;
 
 function formatPercent(value: number) {
@@ -184,33 +182,27 @@ function AdminKnowledgeContent() {
 
 	const statsCards = [
 		{
-			title: t("Entities"),
-			value: String(statsQuery.data?.entity_count ?? 0),
-			description: t("Unique graph nodes currently stored for this tenant."),
+			tone: "info" as const,
+			label: t("Entities"),
+			value: statsQuery.data?.entity_count ?? 0,
 			icon: Network,
 		},
 		{
-			title: t("Relations"),
-			value: String(statsQuery.data?.relation_count ?? 0),
-			description: t(
-				"Typed edges available for traversal and governance review.",
-			),
+			tone: "success" as const,
+			label: t("Relations"),
+			value: statsQuery.data?.relation_count ?? 0,
 			icon: GitPullRequestArrow,
 		},
 		{
-			title: t("Entity mentions"),
-			value: String(statsQuery.data?.article_entity_count ?? 0),
-			description: t(
-				"Article to entity links grounded in real ingestion output.",
-			),
+			tone: "warning" as const,
+			label: t("Entity mentions"),
+			value: statsQuery.data?.article_entity_count ?? 0,
 			icon: BrainCircuit,
 		},
 		{
-			title: t("Embedding coverage"),
+			tone: "info" as const,
+			label: t("Embedding coverage"),
 			value: formatPercent(embeddingCoverage),
-			description: t(
-				"Semantic search readiness computed from real embedding availability.",
-			),
 			icon: Sparkles,
 		},
 	];
@@ -268,43 +260,17 @@ function AdminKnowledgeContent() {
 					/>
 				) : (
 					<>
-						<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-							{statsCards.map((item) => {
-								const Icon = item.icon;
-								return (
-									<Card key={item.title}>
-										<CardContent className="flex items-start gap-4 p-6">
-											<div
-												className="rounded-2xl p-3"
-												style={knowledgeAdminAccentIconStyle}
-											>
-												<Icon aria-hidden="true" className="h-5 w-5" />
-											</div>
-											<div className="space-y-1">
-												<p
-													className="text-sm"
-													style={knowledgeAdminMutedTextStyle}
-												>
-													{item.title}
-												</p>
-												<p
-													className="text-3xl font-semibold"
-													style={knowledgeAdminHeadingTextStyle}
-												>
-													{item.value}
-												</p>
-												<p
-													className="text-xs"
-													style={knowledgeAdminMutedTextStyle}
-												>
-													{item.description}
-												</p>
-											</div>
-										</CardContent>
-									</Card>
-								);
-							})}
-						</div>
+						<KpiCardGrid columns={4}>
+							{statsCards.map((item) => (
+								<KpiCard
+									key={item.label}
+									tone={item.tone}
+									label={item.label}
+									value={item.value}
+									icon={item.icon}
+								/>
+							))}
+						</KpiCardGrid>
 
 						<div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
 							<Card>

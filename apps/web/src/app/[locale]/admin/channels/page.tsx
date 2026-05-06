@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { KpiCard, KpiCardGrid } from "@/components/ui/kpi-card";
 import { useCategories } from "@/hooks/use-categories";
 import {
 	type ChannelRecord,
@@ -34,13 +35,17 @@ import { useLocale, useT } from "@/lib/i18n-client";
 import { useToast } from "@/stores/toast-store";
 import { motion } from "framer-motion";
 import {
+	CheckCircle2,
+	Crown,
 	Filter,
+	Globe2,
 	Layers3,
 	Loader2,
 	Pencil,
 	Plus,
 	Power,
 	Search,
+	ShieldCheck,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -125,6 +130,26 @@ export default function AdminChannelsPage() {
 	const channelIdParam = searchParams.get("channelId");
 
 	const allChannels = channelsQuery.data ?? [];
+
+	const channelStats = useMemo(() => {
+		let active = 0;
+		let publicCount = 0;
+		let verified = 0;
+		let premium = 0;
+		for (const channel of allChannels) {
+			if (channel.is_active) active += 1;
+			if (channel.visibility === "public") publicCount += 1;
+			else if (channel.visibility === "verified") verified += 1;
+			else if (channel.visibility === "premium") premium += 1;
+		}
+		return {
+			total: allChannels.length,
+			active,
+			public: publicCount,
+			verified,
+			premium,
+		};
+	}, [allChannels]);
 
 	const categoryNameById = useMemo(
 		() =>
@@ -259,6 +284,33 @@ export default function AdminChannelsPage() {
 						</div>
 					</CardHeader>
 				</Card>
+
+				<KpiCardGrid columns={4}>
+					<KpiCard
+						tone="info"
+						label={t("Total channels")}
+						value={channelStats.total}
+						icon={Layers3}
+					/>
+					<KpiCard
+						tone="success"
+						label={t("Active")}
+						value={channelStats.active}
+						icon={CheckCircle2}
+					/>
+					<KpiCard
+						tone="warning"
+						label={t("Public")}
+						value={channelStats.public}
+						icon={Globe2}
+					/>
+					<KpiCard
+						tone="error"
+						label={t("Premium")}
+						value={channelStats.premium}
+						icon={Crown}
+					/>
+				</KpiCardGrid>
 
 				{!isAdmin ? (
 					<EmptyState

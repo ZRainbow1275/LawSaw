@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { KpiCard, KpiCardGrid } from "@/components/ui/kpi-card";
 import {
 	Modal,
 	ModalBody,
@@ -41,7 +42,15 @@ import {
 import type { Article } from "@/lib/api/types";
 import { useT } from "@/lib/i18n-client";
 import { type ToastInput, useToastStore } from "@/stores/toast-store";
-import { Pin, Plus, Save, Search } from "lucide-react";
+import {
+	CalendarClock,
+	CheckCircle2,
+	Pin,
+	Plus,
+	Save,
+	Search,
+	Timer,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 function sortPinsByPriority(items: ArticlePinRecord[]): ArticlePinRecord[] {
@@ -320,6 +329,29 @@ export default function AdminPinsPage() {
 		updatePin.isPending ||
 		deletePin.isPending;
 
+	const pinStats = useMemo(() => {
+		const now = Date.now();
+		let active = 0;
+		let scheduled = 0;
+		let expired = 0;
+		for (const pin of orderedPins) {
+			const startsAt = pin.starts_at ? Date.parse(pin.starts_at) : null;
+			const endsAt = pin.ends_at ? Date.parse(pin.ends_at) : null;
+			if (endsAt !== null && Number.isFinite(endsAt) && endsAt < now) {
+				expired += 1;
+			} else if (
+				startsAt !== null &&
+				Number.isFinite(startsAt) &&
+				startsAt > now
+			) {
+				scheduled += 1;
+			} else {
+				active += 1;
+			}
+		}
+		return { total: orderedPins.length, active, scheduled, expired };
+	}, [orderedPins]);
+
 	const headingStyle = { color: "var(--color-foreground)" } as const;
 	const mutedTextStyle = { color: "var(--surface-muted-text)" } as const;
 	const surfaceStyle = {
@@ -541,6 +573,33 @@ export default function AdminPinsPage() {
 					</div>
 				</CardHeader>
 			</Card>
+
+			<KpiCardGrid columns={4}>
+				<KpiCard
+					tone="info"
+					label={t("Total pins")}
+					value={pinStats.total}
+					icon={Pin}
+				/>
+				<KpiCard
+					tone="success"
+					label={t("Active")}
+					value={pinStats.active}
+					icon={CheckCircle2}
+				/>
+				<KpiCard
+					tone="warning"
+					label={t("Scheduled")}
+					value={pinStats.scheduled}
+					icon={CalendarClock}
+				/>
+				<KpiCard
+					tone="error"
+					label={t("Expired")}
+					value={pinStats.expired}
+					icon={Timer}
+				/>
+			</KpiCardGrid>
 
 			{!isAdmin ? (
 				<EmptyState

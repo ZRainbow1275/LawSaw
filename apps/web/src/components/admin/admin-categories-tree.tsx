@@ -1,9 +1,6 @@
 "use client";
 
 import { ProtectedRoute } from "@/components/auth/protected-route";
-import { Header } from "@/components/layout/header";
-import { MainContent } from "@/components/layout/main-content";
-import { Sidebar } from "@/components/layout/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -1236,19 +1233,13 @@ function AdminCategoriesContent() {
 
 	if (!isAdmin) {
 		return (
-			<div className="min-h-screen" style={pageStyle}>
-				<Sidebar />
-				<MainContent>
-					<Header />
-					<div className="p-4 md:p-6">
-						<EmptyState
-							title={t("Access restricted")}
-							description={t(
-								"You need an administrative role to access this workspace.",
-							)}
-						/>
-					</div>
-				</MainContent>
+			<div className="p-4 md:p-6">
+				<EmptyState
+					title={t("Access restricted")}
+					description={t(
+						"You need an administrative role to access this workspace.",
+					)}
+				/>
 			</div>
 		);
 	}
@@ -1256,13 +1247,10 @@ function AdminCategoriesContent() {
 	const canMutate = !usingSeed && !reorderMutation.isPending;
 
 	return (
-		<div className="min-h-screen" style={pageStyle}>
-			<Sidebar />
-			<MainContent>
-				<Header />
-				<div className="space-y-6 p-4 md:p-6">
-					<Card>
-						<CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+		<>
+			<div className="space-y-6 p-4 md:p-6">
+				<Card>
+				<CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 							<div>
 								<CardTitle
 									className="flex items-center gap-2 text-3xl font-bold tracking-tight"
@@ -1445,9 +1433,8 @@ function AdminCategoriesContent() {
 								)}
 							</CardContent>
 						</Card>
-					</div>
 				</div>
-			</MainContent>
+			</div>
 
 			<CategoryEditModal
 				open={editOpen}
@@ -1478,7 +1465,7 @@ function AdminCategoriesContent() {
 				cancelLabel={t("Cancel")}
 				busy={deleteMutation.isPending}
 			/>
-		</div>
+		</>
 	);
 }
 

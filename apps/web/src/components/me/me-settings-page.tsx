@@ -6,13 +6,11 @@ import {
 	SecurityTab,
 	uiMessageFromError,
 } from "@/app/settings/tabs";
-import { ProtectedRoute } from "@/components/auth/protected-route";
-import { Header } from "@/components/layout/header";
-import { MainContent } from "@/components/layout/main-content";
-import { Sidebar } from "@/components/layout/sidebar";
+import { SettingsAppearanceTab } from "@/components/me/settings-appearance-tab";
 import { SettingsBillingTab } from "@/components/me/settings-billing-tab";
 import { SettingsNotificationsTab } from "@/components/me/settings-notifications-tab";
 import { SettingsPrivacyTab } from "@/components/me/settings-privacy-tab";
+import { SettingsSystemTab } from "@/components/me/settings-system-tab";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,9 +43,11 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
 	Bell,
 	Crown,
+	Database,
 	FileLock2,
 	Key,
 	type LucideIcon,
+	Palette,
 	Receipt,
 	Shield,
 	Sparkles,
@@ -62,7 +62,9 @@ type MeSettingsTab =
 	| "notifications"
 	| "billing"
 	| "privacy"
-	| "api";
+	| "api"
+	| "appearance"
+	| "system";
 
 interface TabDefinition {
 	key: MeSettingsTab;
@@ -108,6 +110,19 @@ const TABS: ReadonlyArray<TabDefinition> = [
 		labelKey: "API keys",
 		descKey: "Issue programmatic access keys (Premium only).",
 		Icon: Key,
+	},
+	{
+		key: "appearance",
+		labelKey: "Appearance",
+		descKey:
+			"Theme mode, interface language, and compact density preferences.",
+		Icon: Palette,
+	},
+	{
+		key: "system",
+		labelKey: "System",
+		descKey: "Build metadata, API version, and account role information.",
+		Icon: Database,
 	},
 ];
 
@@ -734,44 +749,38 @@ export default function MeSettingsPage() {
 						onDelete={(id) => deleteApiKeyMutation.mutate(id)}
 					/>
 				);
+			case "appearance":
+				return <SettingsAppearanceTab />;
+			case "system":
+				return <SettingsSystemTab />;
 		}
 	};
 
 	const activeDef = TABS.find((tab) => tab.key === activeTab) ?? TABS[0];
 
 	return (
-		<ProtectedRoute>
-			<div
-				className="flex min-h-screen"
-				style={{ backgroundColor: "var(--color-background)" }}
+		<div className="p-6">
+			<div className="mb-6">
+				<h1
+					className="text-2xl font-bold"
+					style={{ color: "var(--field-foreground)" }}
+				>
+					{t("Account settings")}
+				</h1>
+				<p
+					className="text-sm"
+					style={{ color: "var(--surface-muted-text)" }}
+				>
+					{t(activeDef.descKey)}
+				</p>
+			</div>
+
+			<motion.div
+				variants={containerVariants}
+				initial="hidden"
+				animate="visible"
+				className="grid grid-cols-1 gap-6 lg:grid-cols-4"
 			>
-				<Sidebar />
-
-				<MainContent>
-					<Header />
-
-					<div className="p-6">
-						<div className="mb-6">
-							<h1
-								className="text-2xl font-bold"
-								style={{ color: "var(--field-foreground)" }}
-							>
-								{t("Account settings")}
-							</h1>
-							<p
-								className="text-sm"
-								style={{ color: "var(--surface-muted-text)" }}
-							>
-								{t(activeDef.descKey)}
-							</p>
-						</div>
-
-						<motion.div
-							variants={containerVariants}
-							initial="hidden"
-							animate="visible"
-							className="grid grid-cols-1 gap-6 lg:grid-cols-4"
-						>
 							<motion.div variants={itemVariants}>
 								<Card className="h-fit">
 									<CardContent className="p-2">
@@ -834,15 +843,12 @@ export default function MeSettingsPage() {
 										exit={{ opacity: 0, y: -6 }}
 										transition={{ duration: 0.22 }}
 									>
-										{renderTab()}
-									</motion.div>
-								</AnimatePresence>
-							</motion.div>
-						</motion.div>
-					</div>
-				</MainContent>
-			</div>
-		</ProtectedRoute>
+						{renderTab()}
+					</motion.div>
+				</AnimatePresence>
+			</motion.div>
+			</motion.div>
+		</div>
 	);
 }
 

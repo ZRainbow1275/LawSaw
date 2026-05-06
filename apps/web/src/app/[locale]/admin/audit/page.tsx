@@ -4,13 +4,14 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { KpiCard, KpiCardGrid } from "@/components/ui/kpi-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VirtualList } from "@/components/ui/virtual-list";
 import { apiClient } from "@/lib/api";
 import { localizeAuditEvent } from "@/lib/audit-event-labels";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { useQuery } from "@tanstack/react-query";
-import { FileSearch } from "lucide-react";
+import { Activity, FileSearch, Layers, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 
 type AuditLogRecord = {
@@ -142,6 +143,29 @@ function AdminAuditContent() {
 			(entry.user_id ?? "").toLowerCase().includes(needle),
 		);
 	}, [actorQuery, query.data]);
+
+	const auditStats = useMemo(() => {
+		const all = query.data?.data ?? [];
+		const todayMs = (() => {
+			const today = new Date();
+			today.setHours(0, 0, 0, 0);
+			return today.getTime();
+		})();
+		const actors = new Set<string>();
+		const resources = new Set<string>();
+		let todayCount = 0;
+		for (const entry of all) {
+			if (entry.user_id) actors.add(entry.user_id);
+			if (entry.resource) resources.add(entry.resource);
+			const ts = entry.created_at ? new Date(entry.created_at).getTime() : 0;
+			if (ts >= todayMs) todayCount += 1;
+		}
+		return {
+			actors: actors.size,
+			resources: resources.size,
+			today: todayCount,
+		};
+	}, [query.data]);
 
 	const titleText = t("audit.title");
 	const subtitleText = t("audit.subtitle");
@@ -289,6 +313,33 @@ function AdminAuditContent() {
 					</p>
 				</CardHeader>
 			</Card>
+
+			<KpiCardGrid columns={4}>
+				<KpiCard
+					tone="info"
+					label={t("Total events")}
+					value={query.data?.total ?? 0}
+					icon={FileSearch}
+				/>
+				<KpiCard
+					tone="success"
+					label={t("Today's articles")}
+					value={auditStats.today}
+					icon={Activity}
+				/>
+				<KpiCard
+					tone="warning"
+					label={t("Unique actors")}
+					value={auditStats.actors}
+					icon={Users}
+				/>
+				<KpiCard
+					tone="info"
+					label={t("Resources")}
+					value={auditStats.resources}
+					icon={Layers}
+				/>
+			</KpiCardGrid>
 
 			{!isAdmin ? (
 				<EmptyState

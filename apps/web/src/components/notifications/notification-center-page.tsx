@@ -11,10 +11,6 @@
  * a full-page notification feed is a navigation hub, not consumed content.
  */
 
-import { ProtectedRoute } from "@/components/auth/protected-route";
-import { Header } from "@/components/layout/header";
-import { MainContent } from "@/components/layout/main-content";
-import { Sidebar } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -169,11 +165,7 @@ function NotificationCenterContent() {
 	};
 
 	return (
-		<div className="min-h-screen" style={pageStyle}>
-			<Sidebar />
-			<MainContent>
-				<Header />
-				<div className="space-y-6 p-4 md:p-6">
+		<div className="space-y-6 p-4 md:p-6" style={pageStyle}>
 					<Card>
 						<CardHeader>
 							<div className="flex flex-wrap items-start justify-between gap-3">
@@ -416,16 +408,10 @@ function NotificationCenterContent() {
 							) : null}
 						</CardContent>
 					</Card>
-				</div>
-			</MainContent>
 		</div>
 	);
 }
 
 export function NotificationCenterPage() {
-	return (
-		<ProtectedRoute>
-			<NotificationCenterContent />
-		</ProtectedRoute>
-	);
+	return <NotificationCenterContent />;
 }

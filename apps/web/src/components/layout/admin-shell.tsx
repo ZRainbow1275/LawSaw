@@ -352,11 +352,9 @@ function AdminTopBar() {
 	};
 
 	const bannerStyle = {
-		background:
-			"linear-gradient(135deg, color-mix(in srgb, var(--color-primary-600) 92%, black) 0%, color-mix(in srgb, var(--color-primary-500) 88%, black) 100%)",
-		color: "color-mix(in srgb, white 95%, transparent)",
-		borderColor:
-			"color-mix(in srgb, var(--color-primary-700) 60%, transparent)",
+		backgroundColor: "var(--color-card)",
+		color: "var(--color-foreground)",
+		borderColor: "var(--surface-muted-border)",
 	} as const;
 
 	return (
@@ -371,34 +369,12 @@ function AdminTopBar() {
 					onClick={() => toggleMobile()}
 					className="inline-flex h-9 w-9 items-center justify-center rounded-lg md:hidden"
 					style={{
-						color: "color-mix(in srgb, white 90%, transparent)",
+						color: "var(--surface-muted-text)",
 					}}
 					aria-label={t("Open navigation")}
 				>
 					<Menu aria-hidden="true" className="h-5 w-5" />
 				</button>
-
-				<div className="flex items-center gap-3">
-					<div
-						className="flex h-9 w-9 items-center justify-center rounded-lg"
-						style={{
-							backgroundColor: "color-mix(in srgb, white 18%, transparent)",
-						}}
-					>
-						<Shield aria-hidden="true" className="h-4 w-4" />
-					</div>
-					<div className="leading-tight">
-						<p className="text-sm font-semibold">{t("Admin Console")}</p>
-						<p
-							className="text-[11px] uppercase tracking-[0.16em]"
-							style={{
-								color: "color-mix(in srgb, white 75%, transparent)",
-							}}
-						>
-							LawSaw · {t("Governance")}
-						</p>
-					</div>
-				</div>
 
 				<div className="ml-auto flex items-center gap-2">
 					<WorkspaceSwitcher className="hidden md:block" />
@@ -412,8 +388,8 @@ function AdminTopBar() {
 							onClick={() => setMenuOpen((prev) => !prev)}
 							className="inline-flex h-9 w-9 items-center justify-center rounded-full"
 							style={{
-								backgroundColor: "color-mix(in srgb, white 18%, transparent)",
-								color: "color-mix(in srgb, white 92%, transparent)",
+								backgroundColor: "var(--surface-muted-bg)",
+								color: "var(--field-foreground)",
 							}}
 							aria-haspopup="menu"
 							aria-expanded={menuOpen}

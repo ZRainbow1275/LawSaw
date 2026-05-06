@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { KpiCard, KpiCardGrid } from "@/components/ui/kpi-card";
 import {
 	useDeleteSource,
 	useRestoreSource,
@@ -644,91 +645,36 @@ function KpiStrip({
 	pending,
 	t,
 }: KpiStripProps) {
-	const tiles: Array<{
-		key: string;
-		label: string;
-		value: string;
-		caption: string;
-		icon: React.ReactNode;
-		gradient: string;
-	}> = [
-		{
-			key: "active",
-			label: t("Active sources"),
-			value: pending ? "—" : String(activeCount),
-			caption: t("Polled by the worker on schedule."),
-			icon: <CheckCircle2 aria-hidden="true" className="h-5 w-5" />,
-			gradient: "var(--surface-hero-emerald-gradient)",
-		},
-		{
-			key: "errors",
-			label: t("Sources with errors"),
-			value: pending ? "—" : String(errorCount),
-			caption: t("Last fetch returned an error."),
-			icon: <AlertCircle aria-hidden="true" className="h-5 w-5" />,
-			gradient: "var(--surface-hero-rose-gradient)",
-		},
-		{
-			key: "articles",
-			label: t("Articles fetched"),
-			value: pending ? "—" : String(totalArticles),
-			caption: t("Cumulative across visible sources."),
-			icon: <Activity aria-hidden="true" className="h-5 w-5" />,
-			gradient: "var(--surface-hero-primary-gradient)",
-		},
-		{
-			key: "duration",
-			label: t("Avg fetch duration"),
-			value: avgDurationMs == null ? "—" : `${avgDurationMs}ms`,
-			caption: t("Average across visible sources."),
-			icon: <Clock aria-hidden="true" className="h-5 w-5" />,
-			gradient: "var(--surface-hero-amber-gradient)",
-		},
-	];
 	return (
-		<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-			{tiles.map((tile) => (
-				<div
-					key={tile.key}
-					className="rounded-2xl border p-4"
-					style={{
-						background: tile.gradient,
-						borderColor: "var(--surface-muted-border)",
-					}}
-				>
-					<div className="flex items-center gap-3">
-						<div
-							className="flex h-10 w-10 items-center justify-center rounded-xl"
-							style={{
-								backgroundColor: "rgba(255,255,255,0.7)",
-								color: "var(--color-primary-700, #1d4ed8)",
-							}}
-						>
-							{tile.icon}
-						</div>
-						<div className="min-w-0">
-							<p
-								className="text-xs uppercase tracking-wide"
-								style={{ color: "var(--surface-muted-text)" }}
-							>
-								{tile.label}
-							</p>
-							<p
-								className="mt-1 text-2xl font-bold tabular-nums"
-								style={{ color: "var(--color-foreground)" }}
-							>
-								{tile.value}
-							</p>
-							<p
-								className="mt-1 text-xs"
-								style={{ color: "var(--surface-muted-text)" }}
-							>
-								{tile.caption}
-							</p>
-						</div>
-					</div>
-				</div>
-			))}
-		</div>
+		<KpiCardGrid columns={4}>
+			<KpiCard
+				tone="success"
+				icon={CheckCircle2}
+				label={t("Active sources")}
+				value={pending ? "—" : activeCount}
+				subtitle={t("Polled by the worker on schedule.")}
+			/>
+			<KpiCard
+				tone={errorCount > 0 ? "error" : "success"}
+				icon={AlertCircle}
+				label={t("Sources with errors")}
+				value={pending ? "—" : errorCount}
+				subtitle={t("Last fetch returned an error.")}
+			/>
+			<KpiCard
+				tone="info"
+				icon={Activity}
+				label={t("Articles fetched")}
+				value={pending ? "—" : totalArticles}
+				subtitle={t("Cumulative across visible sources.")}
+			/>
+			<KpiCard
+				tone="warning"
+				icon={Clock}
+				label={t("Avg fetch duration")}
+				value={avgDurationMs == null ? "—" : `${avgDurationMs}ms`}
+				subtitle={t("Average across visible sources.")}
+			/>
+		</KpiCardGrid>
 	);
 }

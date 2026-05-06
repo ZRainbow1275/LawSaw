@@ -14,6 +14,7 @@ import {
 import { ConfirmActionModal } from "@/components/ui/confirm-action-modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { KpiCard, KpiCardGrid } from "@/components/ui/kpi-card";
 import {
 	useCreateReportTemplate,
 	useDeleteReportTemplate,
@@ -276,31 +277,27 @@ function AdminReportsContent() {
 
 	const summaryCards = [
 		{
-			title: t("Templates in catalog"),
-			value: String(allTemplates.length),
-			description: t(
-				"Real report template definitions available to this tenant.",
-			),
+			tone: "info" as const,
+			label: t("Templates in catalog"),
+			value: allTemplates.length,
 			icon: FileCode2,
 		},
 		{
-			title: t("Active templates"),
-			value: String(allTemplates.filter((item) => item.is_active).length),
-			description: t("Templates currently eligible for report generation."),
+			tone: "success" as const,
+			label: t("Active templates"),
+			value: allTemplates.filter((item) => item.is_active).length,
 			icon: FileStack,
 		},
 		{
-			title: t("Built-in templates"),
-			value: String(allTemplates.filter((item) => item.is_builtin).length),
-			description: t("Protected baselines kept for tenant-safe operations."),
+			tone: "warning" as const,
+			label: t("Built-in templates"),
+			value: allTemplates.filter((item) => item.is_builtin).length,
 			icon: Workflow,
 		},
 		{
-			title: t("Reports in pipeline"),
-			value: String(overviewReportsQuery.data?.total ?? 0),
-			description: t(
-				"Live report records fetched from the current tenant workspace.",
-			),
+			tone: "info" as const,
+			label: t("Reports in pipeline"),
+			value: overviewReportsQuery.data?.total ?? 0,
 			icon: ClipboardList,
 		},
 	];
@@ -435,41 +432,17 @@ function AdminReportsContent() {
 					/>
 				) : (
 					<>
-						<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-							{summaryCards.map((item) => {
-								const Icon = item.icon;
-								return (
-									<Card key={item.title}>
-										<CardContent className="flex items-start gap-4 p-6">
-											<div
-												className="rounded-2xl p-3"
-												style={{
-													backgroundColor: "var(--control-selected-bg)",
-													border: "1px solid var(--control-selected-border)",
-													color: "var(--color-primary-600)",
-												}}
-											>
-												<Icon aria-hidden="true" className="h-5 w-5" />
-											</div>
-											<div className="space-y-1">
-												<p className="text-sm" style={mutedTextStyle}>
-													{item.title}
-												</p>
-												<p
-													className="text-3xl font-semibold"
-													style={headingStyle}
-												>
-													{item.value}
-												</p>
-												<p className="text-xs" style={mutedTextStyle}>
-													{item.description}
-												</p>
-											</div>
-										</CardContent>
-									</Card>
-								);
-							})}
-						</div>
+						<KpiCardGrid columns={4}>
+							{summaryCards.map((item) => (
+								<KpiCard
+									key={item.label}
+									tone={item.tone}
+									label={item.label}
+									value={item.value}
+									icon={item.icon}
+								/>
+							))}
+						</KpiCardGrid>
 
 						<div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
 							<Card>

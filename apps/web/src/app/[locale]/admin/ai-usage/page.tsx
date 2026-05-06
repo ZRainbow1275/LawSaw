@@ -3,11 +3,19 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { KpiCard, KpiCardGrid } from "@/components/ui/kpi-card";
 import { apiClient } from "@/lib/api";
 import { formatDateTime, formatTimeAgo } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { useQuery } from "@tanstack/react-query";
-import { BrainCircuit } from "lucide-react";
+import {
+	AlertTriangle,
+	BrainCircuit,
+	CheckCircle2,
+	Cpu,
+	Layers,
+} from "lucide-react";
+import { useMemo } from "react";
 
 interface AiUsageEventRecord {
 	id: string;
@@ -152,6 +160,17 @@ function AdminAiUsageContent() {
 	});
 
 	const rows = query.data?.data ?? [];
+	const usageStats = useMemo(() => {
+		let success = 0;
+		let errors = 0;
+		const models = new Set<string>();
+		for (const row of rows) {
+			if (row.success) success += 1;
+			else errors += 1;
+			if (row.model) models.add(row.model);
+		}
+		return { success, errors, models: models.size };
+	}, [rows]);
 
 	return (
 		<div className="space-y-6">
@@ -175,6 +194,34 @@ function AdminAiUsageContent() {
 					</p>
 				</CardHeader>
 			</Card>
+
+			<KpiCardGrid columns={4}>
+				<KpiCard
+					tone="info"
+					label={t("Total events")}
+					value={query.data?.total ?? 0}
+					icon={Layers}
+				/>
+				<KpiCard
+					tone="success"
+					label={t("Successful")}
+					value={usageStats.success}
+					icon={CheckCircle2}
+				/>
+				<KpiCard
+					tone="error"
+					label={t("Errors")}
+					value={usageStats.errors}
+					icon={AlertTriangle}
+				/>
+				<KpiCard
+					tone="warning"
+					label={t("Unique models")}
+					value={usageStats.models}
+					icon={Cpu}
+				/>
+			</KpiCardGrid>
+
 			{!isAdmin ? (
 				<EmptyState
 					title={t("Access restricted")}

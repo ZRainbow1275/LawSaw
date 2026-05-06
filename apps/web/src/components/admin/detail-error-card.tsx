@@ -14,13 +14,19 @@ import { EmptyState } from "@/components/ui/empty-state";
  * not-found from generic server errors so users see the right wording.
  */
 
-type ResourceKind = "user" | "source" | "feedback" | "entity";
+type ResourceKind =
+	| "user"
+	| "source"
+	| "feedback"
+	| "entity"
+	| "reportTemplate";
 
 const RESOURCE_LABEL_KEY: Record<ResourceKind, string> = {
 	user: "User",
 	source: "Source",
 	feedback: "Feedback",
 	entity: "Entity",
+	reportTemplate: "Report template",
 };
 
 interface AdminDetailErrorCardProps {

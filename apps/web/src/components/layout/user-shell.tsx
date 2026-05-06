@@ -102,11 +102,6 @@ function UserShellContent({
 								}}
 							>
 								<WorkspaceSwitcher />
-								<div
-									aria-hidden="true"
-									className="ml-auto h-1 w-24 rounded-full"
-									style={{ background: "var(--gradient-cta)" }}
-								/>
 							</div>
 						) : null}
 						<Header />

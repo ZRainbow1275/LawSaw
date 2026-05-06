@@ -6,11 +6,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { KpiCard, KpiCardGrid } from "@/components/ui/kpi-card";
 import { useFeedback, useFeedbacks } from "@/hooks/use-feedback";
 import type { Feedback } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
-import { MessageSquareText } from "lucide-react";
+import {
+	CheckCircle2,
+	Clock,
+	Inbox,
+	MessageSquareText,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 const statusOptions: Array<{
@@ -59,6 +65,19 @@ function AdminFeedbacksContent() {
 		if (statusFilter === "all") return rows;
 		return rows.filter((item) => item.status === statusFilter);
 	}, [feedbacksQuery.data, statusFilter]);
+
+	const feedbackStats = useMemo(() => {
+		const rows = feedbacksQuery.data?.data ?? [];
+		let pending = 0;
+		let reviewing = 0;
+		let resolved = 0;
+		for (const row of rows) {
+			if (row.status === "pending") pending += 1;
+			else if (row.status === "reviewing") reviewing += 1;
+			else if (row.status === "resolved") resolved += 1;
+		}
+		return { total: rows.length, pending, reviewing, resolved };
+	}, [feedbacksQuery.data]);
 
 	useEffect(() => {
 		if (!feedbackIdParam) return;
@@ -113,6 +132,33 @@ function AdminFeedbacksContent() {
 						</p>
 					</CardHeader>
 				</Card>
+
+				<KpiCardGrid columns={4}>
+					<KpiCard
+						tone="info"
+						label={t("Total feedback")}
+						value={feedbackStats.total}
+						icon={Inbox}
+					/>
+					<KpiCard
+						tone="warning"
+						label={t("Pending")}
+						value={feedbackStats.pending}
+						icon={Clock}
+					/>
+					<KpiCard
+						tone="info"
+						label={t("Reviewing")}
+						value={feedbackStats.reviewing}
+						icon={MessageSquareText}
+					/>
+					<KpiCard
+						tone="success"
+						label={t("Resolved")}
+						value={feedbackStats.resolved}
+						icon={CheckCircle2}
+					/>
+				</KpiCardGrid>
 
 				{!isAdmin ? (
 					<EmptyState

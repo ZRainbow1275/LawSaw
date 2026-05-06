@@ -4,11 +4,18 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { KpiCard, KpiCardGrid } from "@/components/ui/kpi-card";
 import { ApiClientError, apiClient } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
 import { useToast } from "@/stores/toast-store";
 import { useMutation } from "@tanstack/react-query";
-import { ShieldCheck } from "lucide-react";
+import {
+	CheckCircle2,
+	Loader2,
+	ShieldCheck,
+	Trash2,
+	XCircle,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 
 type DecisionResponse = {
@@ -369,6 +376,16 @@ function AdminRelationsContent() {
 			error(t("Delete failed"), formatRelationsErrorMessage(t, err)),
 	});
 
+	const decisionStatus: "allow" | "deny" | "none" = decision
+		? decision.allow
+			? "allow"
+			: "deny"
+		: "none";
+	const pendingCount =
+		(checkMutation.isPending ? 1 : 0) +
+		(createMutation.isPending ? 1 : 0) +
+		(deleteMutation.isPending ? 1 : 0);
+
 	const handleRunCheck = () => {
 		setCheckAttempted(true);
 		if (
@@ -443,6 +460,51 @@ function AdminRelationsContent() {
 					</p>
 				</CardHeader>
 			</Card>
+
+			<KpiCardGrid columns={4}>
+				<KpiCard
+					tone={
+						decisionStatus === "allow"
+							? "success"
+							: decisionStatus === "deny"
+								? "error"
+								: "info"
+					}
+					label={t("Last decision")}
+					value={
+						decisionStatus === "allow"
+							? t("Allow")
+							: decisionStatus === "deny"
+								? t("Deny")
+								: "—"
+					}
+					icon={
+						decisionStatus === "allow"
+							? CheckCircle2
+							: decisionStatus === "deny"
+								? XCircle
+								: ShieldCheck
+					}
+				/>
+				<KpiCard
+					tone="success"
+					label={t("Created relations")}
+					value={createdRelationId ? 1 : 0}
+					icon={CheckCircle2}
+				/>
+				<KpiCard
+					tone="warning"
+					label={t("Deleted relations")}
+					value={deleteMutation.isSuccess ? 1 : 0}
+					icon={Trash2}
+				/>
+				<KpiCard
+					tone="info"
+					label={t("Pending operations")}
+					value={pendingCount}
+					icon={Loader2}
+				/>
+			</KpiCardGrid>
 
 			{!isAdmin ? (
 				<EmptyState

@@ -25,6 +25,7 @@ import { useAdminDeepLink } from "@/hooks/use-admin-deep-link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { KpiCard, KpiCardGrid } from "@/components/ui/kpi-card";
 import {
 	type BannerRecord,
 	type CreateBannerInput,
@@ -38,7 +39,17 @@ import { ApiClientError } from "@/lib/api";
 import { formatDateTime } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { useToast } from "@/stores/toast-store";
-import { Archive, Copy, Flag, Megaphone, Plus, RotateCcw } from "lucide-react";
+import {
+	Archive,
+	CalendarClock,
+	CheckCircle2,
+	Copy,
+	Flag,
+	Layers,
+	Megaphone,
+	Plus,
+	RotateCcw,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 const VALID_GRADIENT_KEYS: BannerGradientKey[] = [
@@ -304,6 +315,20 @@ export default function AdminBannersPage() {
 
 	const drawerSaving = createBanner.isPending || updateBanner.isPending;
 
+	const bannerStats = useMemo(() => {
+		const all = bannersQuery.data ?? [];
+		let active = 0;
+		let scheduled = 0;
+		let archived = 0;
+		for (const banner of all) {
+			if (banner.status === "active") active += 1;
+			else if (banner.status === "scheduled") scheduled += 1;
+			else if (banner.status === "archived" || banner.status === "expired")
+				archived += 1;
+		}
+		return { total: all.length, active, scheduled, archived };
+	}, [bannersQuery.data]);
+
 	return (
 		<div className="space-y-6">
 			<Card>
@@ -336,6 +361,33 @@ export default function AdminBannersPage() {
 					</div>
 				</CardHeader>
 			</Card>
+
+			<KpiCardGrid columns={4}>
+				<KpiCard
+					tone="info"
+					label={t("Total banners")}
+					value={bannerStats.total}
+					icon={Layers}
+				/>
+				<KpiCard
+					tone="success"
+					label={t("Active")}
+					value={bannerStats.active}
+					icon={CheckCircle2}
+				/>
+				<KpiCard
+					tone="warning"
+					label={t("Scheduled")}
+					value={bannerStats.scheduled}
+					icon={CalendarClock}
+				/>
+				<KpiCard
+					tone="error"
+					label={t("Archived")}
+					value={bannerStats.archived}
+					icon={Archive}
+				/>
+			</KpiCardGrid>
 
 			{!isAdmin ? (
 				<EmptyState

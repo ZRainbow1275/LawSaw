@@ -1,9 +1,6 @@
 "use client";
 
 import { ProtectedRoute } from "@/components/auth/protected-route";
-import { Header } from "@/components/layout/header";
-import { MainContent } from "@/components/layout/main-content";
-import { Sidebar } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -14,12 +11,16 @@ import {
 } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { apiClient } from "@/lib/api";
-import { useT } from "@/lib/i18n-client";
+import { useLocale, useT } from "@/lib/i18n-client";
+import {
+	pickPermissionGroupLabel,
+	pickPermissionLabel,
+} from "@/lib/permission-labels";
 import { useAuthStore } from "@/stores/auth-store";
 import { useToast } from "@/stores/toast-store";
 import { useQuery } from "@tanstack/react-query";
 import { Check, Download, FileText, Lock, ShieldCheck, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -228,6 +229,7 @@ function buildHtmlForPdf(
 	matrix: RolePermissionsMatrix,
 	roleLabel: (tier: RoleTier) => string,
 	permissionLabel: (key: string) => string,
+	labels: { title: string; permission: string },
 ): string {
 	const headers = matrix.roles
 		.map((r) => `<th style="padding:6px 10px">${roleLabel(r.tier)}</th>`)
@@ -244,15 +246,15 @@ function buildHtmlForPdf(
 		)
 		.join("");
 	return `<!doctype html>
-<html><head><meta charset="utf-8"><title>Permissions matrix</title>
+<html><head><meta charset="utf-8"><title>${labels.title}</title>
 <style>body{font:13px/1.4 system-ui,sans-serif;color:#111827;padding:24px}
 h1{font-size:18px;margin:0 0 12px}
 table{border-collapse:collapse;width:100%}
 th{background:#f9fafb;padding:6px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:#6b7280;border-bottom:1px solid #d1d5db}
 @media print{body{padding:12px}}
 </style></head>
-<body><h1>Permissions matrix</h1>
-<table><thead><tr><th>Permission</th>${headers}</tr></thead><tbody>${rows}</tbody></table>
+<body><h1>${labels.title}</h1>
+<table><thead><tr><th>${labels.permission}</th>${headers}</tr></thead><tbody>${rows}</tbody></table>
 <script>window.onload=function(){window.print();}</script>
 </body></html>`;
 }
@@ -261,6 +263,7 @@ th{background:#f9fafb;padding:6px 10px;text-align:left;font-size:11px;text-trans
 
 function AdminPermissionsMatrixContent() {
 	const t = useT();
+	const locale = useLocale();
 	const roles = useAuthStore((s) => s.roles);
 	const isAdmin = roles.some((role) =>
 		["super_admin", "tenant_admin", "admin"].includes(role),
@@ -356,7 +359,10 @@ function AdminPermissionsMatrixContent() {
 
 	const handleExportPdf = () => {
 		try {
-			const html = buildHtmlForPdf(matrix, roleLabel, permissionLabel);
+			const html = buildHtmlForPdf(matrix, roleLabel, permissionLabel, {
+				title: t("Permission matrix"),
+				permission: t("Permission"),
+			});
 			const w = window.open("", "_blank", "noopener,noreferrer");
 			if (!w) {
 				throw new Error(t("Popup blocked. Allow popups to export PDF."));
@@ -383,19 +389,13 @@ function AdminPermissionsMatrixContent() {
 
 	if (!isAdmin) {
 		return (
-			<div className="min-h-screen" style={pageStyle}>
-				<Sidebar />
-				<MainContent>
-					<Header />
-					<div className="p-4 md:p-6">
-						<EmptyState
-							title={t("Access restricted")}
-							description={t(
-								"You need an administrative role to access this workspace.",
-							)}
-						/>
-					</div>
-				</MainContent>
+			<div className="p-4 md:p-6">
+				<EmptyState
+					title={t("Access restricted")}
+					description={t(
+						"You need an administrative role to access this workspace.",
+					)}
+				/>
 			</div>
 		);
 	}
@@ -403,16 +403,12 @@ function AdminPermissionsMatrixContent() {
 	const dataPending = rolesQuery.isFetching || permissionsQuery.isFetching;
 
 	return (
-		<div className="min-h-screen" style={pageStyle}>
-			<Sidebar />
-			<MainContent>
-				<Header />
-				<div className="space-y-6 p-4 md:p-6">
-					<Card>
-						<CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-							<div>
-								<CardTitle
-									className="flex items-center gap-2 text-3xl font-bold tracking-tight"
+		<div className="space-y-6 p-4 md:p-6">
+			<Card>
+				<CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+					<div>
+						<CardTitle
+							className="flex items-center gap-2 text-3xl font-bold tracking-tight"
 									style={headingStyle}
 								>
 									<ShieldCheck
@@ -498,9 +494,8 @@ function AdminPermissionsMatrixContent() {
 								</thead>
 								<tbody>
 									{groups.map(([groupKey, perms]) => (
-										<>
+										<Fragment key={`group-${groupKey}`}>
 											<tr
-												key={`group-${groupKey}`}
 												style={{
 													backgroundColor:
 														"color-mix(in srgb, var(--surface-muted-bg) 60%, transparent)",
@@ -514,7 +509,7 @@ function AdminPermissionsMatrixContent() {
 														color: "var(--surface-muted-text)",
 													}}
 												>
-													{t(groupKey)}
+													{pickPermissionGroupLabel(locale, groupKey)}
 												</td>
 											</tr>
 											{perms.map((p) => (
@@ -530,7 +525,7 @@ function AdminPermissionsMatrixContent() {
 															className="text-sm font-medium"
 															style={headingStyle}
 														>
-															{t(p.labelKey)}
+															{pickPermissionLabel(locale, p.labelKey)}
 														</div>
 														<div
 															className="font-mono text-[11px]"
@@ -556,7 +551,7 @@ function AdminPermissionsMatrixContent() {
 																	disabled={!editable}
 																	onClick={() => toggleCell(role.tier, p.key)}
 																	aria-pressed={checked}
-																	aria-label={`${t(p.labelKey)} — ${t(role.labelKey)}`}
+																	aria-label={`${pickPermissionLabel(locale, p.labelKey)} — ${t(role.labelKey)}`}
 																	className={
 																		editable
 																			? "inline-flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-neutral-100"
@@ -582,7 +577,7 @@ function AdminPermissionsMatrixContent() {
 													})}
 												</tr>
 											))}
-										</>
+										</Fragment>
 									))}
 								</tbody>
 							</table>
@@ -594,8 +589,6 @@ function AdminPermissionsMatrixContent() {
 							"Backend endpoints /api/v1/admin/roles and /api/v1/admin/permissions are reserved for B.6a. Edits made here are local previews until the persistence path lands.",
 						)}
 					</p>
-				</div>
-			</MainContent>
 		</div>
 	);
 }

@@ -11,10 +11,6 @@
  * faking rows.
  */
 
-import { ProtectedRoute } from "@/components/auth/protected-route";
-import { Header } from "@/components/layout/header";
-import { MainContent } from "@/components/layout/main-content";
-import { Sidebar } from "@/components/layout/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -117,11 +113,7 @@ function ReadingHistoryContent() {
 	};
 
 	return (
-		<div className="min-h-screen" style={pageStyle}>
-			<Sidebar />
-			<MainContent>
-				<Header />
-				<div className="space-y-6 p-4 md:p-6">
+		<div className="space-y-6 p-4 md:p-6" style={pageStyle}>
 					<Card>
 						<CardHeader>
 							<div className="flex flex-wrap items-start justify-between gap-3">
@@ -353,20 +345,14 @@ function ReadingHistoryContent() {
 										{t("Load more")}
 										<ArrowRight aria-hidden="true" className="h-4 w-4" />
 									</Button>
-								</div>
-							) : null}
-						</CardContent>
-					</Card>
-				</div>
-			</MainContent>
+							</div>
+						) : null}
+					</CardContent>
+				</Card>
 		</div>
 	);
 }
 
 export function ReadingHistoryPage() {
-	return (
-		<ProtectedRoute>
-			<ReadingHistoryContent />
-		</ProtectedRoute>
-	);
+	return <ReadingHistoryContent />;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatedNumber } from "@/components/ui/animated-number";
+import { KpiCard, KpiCardGrid, type KpiTone } from "@/components/ui/kpi-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	type AdminDashboardSummary,
@@ -8,190 +8,32 @@ import {
 	useAdminDashboardSummary,
 } from "@/hooks/use-admin-dashboard";
 import { useT } from "@/lib/i18n-client";
-import { cn } from "@/lib/utils";
 import {
 	AlertTriangle,
 	BrainCircuit,
 	CheckCircle2,
 	FileStack,
-	type LucideIcon,
 	MessageSquareWarning,
 	UserCheck,
 	XCircle,
 } from "lucide-react";
 
-/**
- * Visual styling for one KPI tile. Kept inline rather than reaching for
- * Card component because the strip uses a tighter vertical rhythm than
- * the workspace tile grid below it.
- */
-interface TileStyle {
-	background: string;
-	borderColor: string;
-	iconBackground: string;
-	iconColor: string;
-	labelColor: string;
-	valueColor: string;
-	captionColor: string;
-}
-
-const NEUTRAL_TILE: TileStyle = {
-	background: "var(--surface-elevated-bg)",
-	borderColor: "var(--surface-muted-border)",
-	iconBackground: "var(--control-selected-bg)",
-	iconColor: "var(--color-primary-600)",
-	labelColor: "var(--surface-muted-text)",
-	valueColor: "var(--color-foreground)",
-	captionColor: "var(--surface-muted-text)",
+const GATEWAY_TONE: Record<AiGatewayStatus, KpiTone> = {
+	healthy: "success",
+	degraded: "warning",
+	down: "error",
 };
 
-const GATEWAY_TILE: Record<AiGatewayStatus, TileStyle> = {
-	healthy: {
-		background: "var(--surface-hero-emerald-gradient)",
-		borderColor: "color-mix(in srgb, #10b981 35%, transparent)",
-		iconBackground: "rgba(255, 255, 255, 0.7)",
-		iconColor: "#047857",
-		labelColor: "#065f46",
-		valueColor: "#064e3b",
-		captionColor: "#065f46",
-	},
-	degraded: {
-		background: "var(--surface-hero-amber-gradient)",
-		borderColor: "color-mix(in srgb, #f59e0b 35%, transparent)",
-		iconBackground: "rgba(255, 255, 255, 0.75)",
-		iconColor: "#b45309",
-		labelColor: "#78350f",
-		valueColor: "#78350f",
-		captionColor: "#92400e",
-	},
-	down: {
-		background: "var(--surface-hero-rose-gradient)",
-		borderColor: "color-mix(in srgb, #ef4444 35%, transparent)",
-		iconBackground: "rgba(255, 255, 255, 0.75)",
-		iconColor: "#b91c1c",
-		labelColor: "#7f1d1d",
-		valueColor: "#7f1d1d",
-		captionColor: "#991b1b",
-	},
-};
-
-const GATEWAY_ICON: Record<AiGatewayStatus, LucideIcon> = {
+const GATEWAY_ICON = {
 	healthy: CheckCircle2,
 	degraded: AlertTriangle,
 	down: XCircle,
-};
-
-interface KpiTileProps {
-	label: string;
-	value: number;
-	caption?: string;
-	icon: LucideIcon;
-	style: TileStyle;
-}
-
-function KpiTile({ label, value, caption, icon: Icon, style }: KpiTileProps) {
-	return (
-		<div
-			className="flex h-full flex-col justify-between gap-3 rounded-2xl border p-5 shadow-sm"
-			style={{
-				background: style.background,
-				borderColor: style.borderColor,
-			}}
-		>
-			<div className="flex items-center justify-between">
-				<p
-					className="text-xs font-semibold uppercase tracking-[0.08em]"
-					style={{ color: style.labelColor }}
-				>
-					{label}
-				</p>
-				<span
-					className="flex h-9 w-9 items-center justify-center rounded-xl"
-					style={{
-						backgroundColor: style.iconBackground,
-						color: style.iconColor,
-					}}
-				>
-					<Icon aria-hidden="true" className="h-4 w-4" />
-				</span>
-			</div>
-			<div className="space-y-1">
-				<AnimatedNumber
-					value={value}
-					duration={1000}
-					animateOnView={false}
-					numberClassName="text-3xl font-bold leading-tight"
-					className="block"
-				/>
-				{caption ? (
-					<p className="text-xs" style={{ color: style.captionColor }}>
-						{caption}
-					</p>
-				) : null}
-			</div>
-		</div>
-	);
-}
-
-/**
- * Status tile is special-cased: the value is a label, not a numeral, and
- * the entire surface is colored by the gateway status (traffic light).
- */
-interface StatusTileProps {
-	label: string;
-	statusLabel: string;
-	caption: string;
-	status: AiGatewayStatus;
-}
-
-function StatusTile({ label, statusLabel, caption, status }: StatusTileProps) {
-	const style = GATEWAY_TILE[status];
-	const Icon = GATEWAY_ICON[status];
-
-	return (
-		<div
-			className="flex h-full flex-col justify-between gap-3 rounded-2xl border p-5 shadow-sm"
-			style={{
-				background: style.background,
-				borderColor: style.borderColor,
-			}}
-		>
-			<div className="flex items-center justify-between">
-				<p
-					className="text-xs font-semibold uppercase tracking-[0.08em]"
-					style={{ color: style.labelColor }}
-				>
-					{label}
-				</p>
-				<span
-					className="flex h-9 w-9 items-center justify-center rounded-xl"
-					style={{
-						backgroundColor: style.iconBackground,
-						color: style.iconColor,
-					}}
-				>
-					<Icon aria-hidden="true" className="h-4 w-4" />
-				</span>
-			</div>
-			<div className="space-y-1">
-				<p
-					className="text-3xl font-bold leading-tight"
-					style={{ color: style.valueColor }}
-				>
-					{statusLabel}
-				</p>
-				<p className="text-xs" style={{ color: style.captionColor }}>
-					{caption}
-				</p>
-			</div>
-		</div>
-	);
-}
+} as const;
 
 function StripSkeleton() {
 	const placeholders = [0, 1, 2, 3, 4];
 	return (
-		<div className="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
+		<div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
 			{placeholders.map((idx) => (
 				<div
 					key={`admin-strip-skeleton-${idx}`}
@@ -228,9 +70,6 @@ function resolveStrip(
 	summary: AdminDashboardSummary,
 	t: (key: string, params?: Record<string, string | number>) => string,
 ): ResolvedStrip {
-	const totalArticles = summary.articles_total;
-	const tokensApprox = Math.round(summary.ai_tokens_24h);
-
 	const tokensCaption = t("{count} calls in 24h", {
 		count: summary.ai_calls_24h.toLocaleString(),
 	});
@@ -238,7 +77,7 @@ function resolveStrip(
 		total: summary.feedbacks_total.toLocaleString(),
 	});
 	const totalArticlesCaption = t("{total} articles in library", {
-		total: totalArticles.toLocaleString(),
+		total: summary.articles_total.toLocaleString(),
 	});
 
 	const statusLabel =
@@ -255,7 +94,6 @@ function resolveStrip(
 				? t("LLM gateway partially degraded")
 				: t("LLM gateway unreachable");
 
-	void tokensApprox;
 	return {
 		summary,
 		tokensCaption,
@@ -270,11 +108,11 @@ function resolveStrip(
  * Five-tile KPI strip rendered atop the admin workspace landing page.
  *
  * Tiles:
- * 1. Active users (24h)
- * 2. Articles ingested (24h)
- * 3. AI tokens used (24h)
- * 4. Pending feedback
- * 5. AI gateway status (traffic light)
+ * 1. Active users (24h) — info
+ * 2. Articles ingested (24h) — info
+ * 3. AI tokens used (24h) — info
+ * 4. Pending feedback — warning when pending>0
+ * 5. AI gateway status (traffic light) — success/warning/error
  */
 export function AdminStatsStrip() {
 	const t = useT();
@@ -300,45 +138,46 @@ export function AdminStatsStrip() {
 	}
 
 	const resolved = resolveStrip(data, t);
+	const gatewayTone = GATEWAY_TONE[resolved.summary.ai_gateway_status];
+	const GatewayIcon = GATEWAY_ICON[resolved.summary.ai_gateway_status];
 
 	return (
-		<div
-			className={cn("grid gap-3", "grid-cols-2 md:grid-cols-3 xl:grid-cols-5")}
-		>
-			<KpiTile
+		<KpiCardGrid columns={5}>
+			<KpiCard
+				tone="info"
+				icon={UserCheck}
 				label={t("Active users 24h")}
 				value={resolved.summary.active_users_24h}
-				icon={UserCheck}
-				style={NEUTRAL_TILE}
 			/>
-			<KpiTile
+			<KpiCard
+				tone="info"
+				icon={FileStack}
 				label={t("Articles 24h")}
 				value={resolved.summary.articles_ingested_24h}
-				caption={resolved.totalArticlesCaption}
-				icon={FileStack}
-				style={NEUTRAL_TILE}
+				subtitle={resolved.totalArticlesCaption}
 			/>
-			<KpiTile
+			<KpiCard
+				tone="info"
+				icon={BrainCircuit}
 				label={t("AI tokens 24h")}
 				value={resolved.summary.ai_tokens_24h}
-				caption={resolved.tokensCaption}
-				icon={BrainCircuit}
-				style={NEUTRAL_TILE}
+				subtitle={resolved.tokensCaption}
 			/>
-			<KpiTile
+			<KpiCard
+				tone={resolved.summary.feedbacks_pending > 0 ? "warning" : "info"}
+				icon={MessageSquareWarning}
 				label={t("Pending feedback")}
 				value={resolved.summary.feedbacks_pending}
-				caption={resolved.feedbacksCaption}
-				icon={MessageSquareWarning}
-				style={NEUTRAL_TILE}
+				subtitle={resolved.feedbacksCaption}
 			/>
-			<StatusTile
+			<KpiCard
+				tone={gatewayTone}
+				icon={GatewayIcon}
 				label={t("AI gateway")}
-				statusLabel={resolved.statusLabel}
-				caption={resolved.statusCaption}
-				status={resolved.summary.ai_gateway_status}
+				value={resolved.statusLabel}
+				subtitle={resolved.statusCaption}
 			/>
-		</div>
+		</KpiCardGrid>
 	);
 }
 
