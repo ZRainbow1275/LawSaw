@@ -63,7 +63,7 @@ export function ArticleContent({
 				"prose-h2:text-xl prose-h2:mt-10 prose-h2:mb-4 prose-h2:pb-2 prose-h2:border-b",
 				"prose-h3:text-lg prose-h3:mt-8 prose-h3:mb-3",
 				// Paragraphs
-				"prose-p:leading-[1.85] prose-p:mb-6",
+				"prose-p:leading-[var(--reading-line-height)] prose-p:mb-6",
 				// Links
 				"prose-a:no-underline prose-a:font-medium hover:prose-a:underline",
 				// Emphasis

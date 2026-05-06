@@ -1,7 +1,6 @@
 "use client";
 
 import { RoleTierGuard } from "@/components/auth/role-tier-guard";
-import { resolveBreadcrumbSegment } from "@/components/layout/breadcrumbs";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { useAuth } from "@/hooks/use-auth";
@@ -95,10 +94,13 @@ function AdminSidebarPanel({
 		user?.display_name?.trim() || user?.email?.split("@")[0] || t("Admin");
 	const avatarText = (displayName.charAt(0) || "A").toUpperCase();
 
+	// Logo 圆角块 — 纯白主题下走 primary-500 单色 + 极轻 shadow，
+	// 不再使用 bg-gradient-cta 厚 shadow（task #11）。
 	const headerStyle = {
+		backgroundColor: "var(--color-primary-500)",
 		boxShadow:
-			"0 6px 18px color-mix(in srgb, var(--color-primary-600) 28%, transparent)",
-		color: "color-mix(in srgb, white 96%, transparent)",
+			"0 1px 2px color-mix(in srgb, var(--color-primary-600) 18%, transparent)",
+		color: "white",
 	} as const;
 
 	const mutedTextStyle = {
@@ -113,10 +115,10 @@ function AdminSidebarPanel({
 		<>
 			<div
 				className="flex h-16 items-center gap-3 border-b px-4"
-				style={{ borderColor: "var(--surface-muted-border)" }}
+				style={{ borderColor: "var(--color-neutral-100)" }}
 			>
 				<div
-					className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-cta"
+					className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
 					style={headerStyle}
 				>
 					<Shield aria-hidden="true" className="h-5 w-5" />
@@ -240,7 +242,7 @@ function AdminSidebarPanel({
 
 			<div
 				className="relative border-t p-3"
-				style={{ borderColor: "var(--surface-muted-border)" }}
+				style={{ borderColor: "var(--color-neutral-100)" }}
 			>
 				{showCollapseToggle && onToggleCollapsed ? (
 					<motion.button
@@ -277,12 +279,12 @@ function AdminSidebarPanel({
 						collapsed && "justify-center px-0",
 					)}
 					style={{
-						backgroundColor: "var(--surface-muted-bg)",
-						borderColor: "var(--surface-muted-border)",
+						backgroundColor: "var(--admin-card-bg)",
+						borderColor: "var(--color-neutral-100)",
 					}}
 				>
 					<div
-						className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-cta text-sm font-semibold"
+						className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
 						style={headerStyle}
 					>
 						{avatarText}
@@ -351,15 +353,16 @@ function AdminTopBar() {
 		router.push(withLocalePath(locale, "/login"));
 	};
 
+	// Topbar — minimalist hairline divider, no color blocking (task #11).
 	const bannerStyle = {
-		backgroundColor: "var(--color-card)",
+		backgroundColor: "var(--admin-surface-bg)",
 		color: "var(--color-foreground)",
-		borderColor: "var(--surface-muted-border)",
+		borderColor: "var(--color-neutral-100)",
 	} as const;
 
 	return (
 		<header
-			className="sticky top-0 z-20 border-b backdrop-blur-xl"
+			className="sticky top-0 z-20 border-b"
 			style={bannerStyle}
 			aria-label="admin-topbar"
 		>
@@ -437,100 +440,6 @@ function AdminTopBar() {
 				</div>
 			</div>
 		</header>
-	);
-}
-
-interface AdminBreadcrumbProps {
-	pathname: string;
-}
-
-function AdminBreadcrumb({ pathname }: AdminBreadcrumbProps) {
-	const locale = useLocale();
-	const t = useT();
-	const normalized = stripLocalePrefix(pathname || "/");
-	const segments = normalized.split("/").filter(Boolean);
-	const adminIndex = segments.indexOf("admin");
-	if (adminIndex === -1) return null;
-	const trail = segments.slice(adminIndex);
-
-	// Admin-specific phrasing for the static segments. Dynamic segments
-	// (UUIDs / report numbers / unknown ids) fall back to the shared resolver
-	// in `breadcrumbs.tsx` so they never leak into i18n as missing keys.
-	const labelMap: Record<string, string> = {
-		admin: "Admin Console",
-		users: "User directory",
-		relations: "Authorization relations",
-		permissions: "Permission matrix",
-		tenants: "Tenants",
-		apikeys: "API keys",
-		channels: "Channel management",
-		categories: "Categories",
-		banners: "Banner management",
-		pins: "Pinned articles",
-		sources: "Source registry",
-		feedbacks: "Feedback desk",
-		audit: "Audit trail",
-		"ai-usage": "AI usage",
-		"ai-governance": "AI governance",
-		reports: "Reports",
-		knowledge: "Knowledge graph",
-		new: "New",
-		runs: "Runs",
-		templates: "Templates",
-	};
-
-	return (
-		<nav
-			aria-label={t("Admin breadcrumb")}
-			className="border-b px-4 py-2 text-xs md:px-6"
-			style={{
-				borderColor: "var(--surface-muted-border)",
-				color: "var(--surface-muted-text)",
-				backgroundColor: "var(--surface-muted-bg)",
-			}}
-		>
-			<ol className="flex items-center gap-2">
-				{trail.map((segment, idx) => {
-					const isLast = idx === trail.length - 1;
-					const path = `/${segments.slice(0, adminIndex + idx + 1).join("/")}`;
-					const adminMapped = labelMap[segment];
-					const label = adminMapped
-						? t(adminMapped)
-						: (() => {
-								const resolved = resolveBreadcrumbSegment(segment, isLast);
-								return resolved.kind === "translate"
-									? t(resolved.key)
-									: resolved.text;
-							})();
-					return (
-						<li key={path} className="inline-flex items-center gap-2">
-							{idx > 0 ? (
-								<ChevronRight
-									aria-hidden="true"
-									className="h-3 w-3 opacity-60"
-								/>
-							) : null}
-							{isLast ? (
-								<span
-									aria-current="page"
-									className="font-medium"
-									style={{ color: "var(--color-foreground)" }}
-								>
-									{label}
-								</span>
-							) : (
-								<Link
-									href={withLocalePath(locale, path)}
-									className="hover:underline"
-								>
-									{label}
-								</Link>
-							)}
-						</li>
-					);
-				})}
-			</ol>
-		</nav>
 	);
 }
 
@@ -627,27 +536,25 @@ export function AdminShell({ children, className }: AdminShellProps) {
 		);
 	}
 
+	// Pure-white sidebar (task #11). The legacy build leaned on a dark
+	// translucent surface + heavy black shadow which clashes with the
+	// "background pure white, cards float" admin direction. We now use the
+	// admin surface token + subtle 1px right-side hairline so the sidebar
+	// reads as part of the same canvas as the main column.
 	const baseAsideClassName = cn(
 		"fixed left-0 top-0 flex h-screen flex-col",
-		"backdrop-blur-xl",
 		"border-r",
 	);
 	const baseAsideStyle = {
-		backgroundColor: "var(--surface-muted-bg)",
-		borderColor: "var(--surface-muted-border)",
-		boxShadow: "0 24px 56px color-mix(in srgb, black 32%, transparent)",
+		backgroundColor: "var(--admin-surface-bg)",
+		borderColor: "var(--color-neutral-100)",
 	} as const;
 
 	return (
-		<div className="relative min-h-screen">
-			<div
-				aria-hidden="true"
-				className="pointer-events-none fixed inset-0 -z-10"
-				style={{
-					background:
-						"radial-gradient(circle at 14% 6%, color-mix(in srgb, var(--color-primary-600) 22%, transparent) 0%, transparent 55%), radial-gradient(circle at 90% 4%, color-mix(in srgb, var(--color-info) 18%, transparent) 0%, transparent 55%), var(--surface-muted-bg)",
-				}}
-			/>
+		<div
+			className="relative min-h-screen"
+			style={{ backgroundColor: "var(--admin-surface-bg)" }}
+		>
 
 			<aside
 				className={cn(
@@ -722,7 +629,6 @@ export function AdminShell({ children, className }: AdminShellProps) {
 				)}
 			>
 				<AdminTopBar />
-				<AdminBreadcrumb pathname={pathname} />
 
 				<main
 					className={cn(

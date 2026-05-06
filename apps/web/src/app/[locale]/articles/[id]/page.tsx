@@ -672,8 +672,8 @@ export default function ArticleDetailPage() {
 					/>
 
 					<article
-						className="mx-auto max-w-2xl px-5 pb-24 lg:pb-20"
-						style={readingStyles}
+						className="mx-auto px-5 pb-24 lg:pb-20"
+						style={{ ...readingStyles, maxWidth: "var(--reading-content-width, 42rem)" }}
 					>
 						<header
 							className="border-b border-current/10 pb-8 pt-10"

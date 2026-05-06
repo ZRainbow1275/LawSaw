@@ -2,6 +2,7 @@
 
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { NotificationBell } from "@/components/layout/notification-bell";
+import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
@@ -126,7 +127,13 @@ export function Header() {
 	};
 
 	return (
-		<header className="sticky top-0 z-20 glass border-b border-neutral-100/50">
+		<header
+			className="sticky top-0 z-20 border-b"
+			style={{
+				backgroundColor: "var(--color-card)",
+				borderColor: "var(--surface-muted-border)",
+			}}
+		>
 			<div className="flex h-16 items-center gap-4 px-4 md:px-6">
 				<div className="flex flex-1 items-center gap-3 min-w-0">
 					<Button
@@ -139,6 +146,10 @@ export function Header() {
 					>
 						<Menu aria-hidden="true" className="h-5 w-5" />
 					</Button>
+
+					<div className="hidden md:block">
+						<WorkspaceSwitcher />
+					</div>
 
 					{/* Search */}
 					<form

@@ -219,7 +219,6 @@ export const ADMIN_WORKSPACE_TILES: ReadonlyArray<AdminWorkspaceTile> = [
 		labelKey: "Permission matrix",
 		descriptionKey: "Visualize roles, permissions, and resource scopes.",
 		icon: Shield,
-		disabled: true,
 	},
 	{
 		href: "/admin/sources",
@@ -238,6 +237,5 @@ export const ADMIN_WORKSPACE_TILES: ReadonlyArray<AdminWorkspaceTile> = [
 		labelKey: "Tenant settings",
 		descriptionKey: "Tenant-level webhooks, notifications, and identity.",
 		icon: SettingsIcon,
-		disabled: true,
 	},
 ];

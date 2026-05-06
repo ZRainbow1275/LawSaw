@@ -7,48 +7,21 @@ const zhPath = path.join(repo, "apps/web/src/messages/zh.json");
 const enPath = path.join(repo, "apps/web/src/messages/en.json");
 
 const zhAdds = {
-	"Theme mode": "主题模式",
-	"Choose a light, dark, or system-following theme":
-		"选择浅色、深色或跟随系统的主题",
-	"Follow system": "跟随系统",
-	"Switch the UI between simplified Chinese and English":
-		"在简体中文和英文之间切换界面语言",
-	"Reduce spacing and font sizes to show more content per screen":
-		"减小间距和字号，让屏幕显示更多内容",
-	"Enable compact mode": "启用紧凑模式",
-	"App version": "应用版本",
-	"API version": "API 版本",
-	"Account role": "账户角色",
-	"System information": "系统信息",
-	"Build metadata for support. For service health, see the admin dashboard.":
-		"用于支持的构建元数据。查看服务健康请前往管理控制台。",
-	"Theme mode, interface language, and compact density preferences.":
-		"主题模式、界面语言与紧凑布局偏好。",
-	"Build metadata, API version, and account role information.":
-		"构建元数据、API 版本与账户角色信息。",
+	"Sans serif": "无衬线",
+	Serif: "衬线",
+	Small: "小",
+	Large: "大",
+	"Extra large": "特大",
+	Normal: "常规",
+	Wide: "宽",
+	Narrow: "窄",
+	Relaxed: "宽松",
+	Default: "默认",
 };
 
-const enAdds = {
-	"Theme mode": "Theme mode",
-	"Choose a light, dark, or system-following theme":
-		"Choose a light, dark, or system-following theme",
-	"Follow system": "Follow system",
-	"Switch the UI between simplified Chinese and English":
-		"Switch the UI between simplified Chinese and English",
-	"Reduce spacing and font sizes to show more content per screen":
-		"Reduce spacing and font sizes to show more content per screen",
-	"Enable compact mode": "Enable compact mode",
-	"App version": "App version",
-	"API version": "API version",
-	"Account role": "Account role",
-	"System information": "System information",
-	"Build metadata for support. For service health, see the admin dashboard.":
-		"Build metadata for support. For service health, see the admin dashboard.",
-	"Theme mode, interface language, and compact density preferences.":
-		"Theme mode, interface language, and compact density preferences.",
-	"Build metadata, API version, and account role information.":
-		"Build metadata, API version, and account role information.",
-};
+const enAdds = Object.fromEntries(
+	Object.keys(zhAdds).map((k) => [k, k]),
+);
 
 function insertKeys(filePath, additions) {
 	const original = JSON.parse(fs.readFileSync(filePath, "utf8"));

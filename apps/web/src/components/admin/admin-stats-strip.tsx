@@ -37,10 +37,11 @@ function StripSkeleton() {
 			{placeholders.map((idx) => (
 				<div
 					key={`admin-strip-skeleton-${idx}`}
-					className="rounded-2xl border p-5 shadow-sm"
+					className="rounded-2xl border p-5"
 					style={{
-						backgroundColor: "var(--surface-elevated-bg)",
-						borderColor: "var(--surface-muted-border)",
+						backgroundColor: "var(--admin-card-bg)",
+						borderColor: "var(--admin-card-border)",
+						boxShadow: "var(--admin-shadow-card)",
 					}}
 				>
 					<div className="flex items-center justify-between">
@@ -127,9 +128,10 @@ export function AdminStatsStrip() {
 			<div
 				className="rounded-2xl border p-4 text-sm"
 				style={{
-					backgroundColor: "var(--surface-muted-bg)",
-					borderColor: "var(--surface-muted-border)",
+					backgroundColor: "var(--admin-card-bg)",
+					borderColor: "var(--admin-card-border)",
 					color: "var(--surface-muted-text)",
+					boxShadow: "var(--admin-shadow-card)",
 				}}
 			>
 				{t("Unable to load operational metrics. Please retry shortly.")}

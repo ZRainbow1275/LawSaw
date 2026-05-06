@@ -1,10 +1,8 @@
 "use client";
 
 import { useCategories } from "@/hooks/use-categories";
-import { ADMIN_SHORTCUTS } from "@/lib/admin-nav";
 import {
 	type RoleTier,
-	isAdminTier,
 	normalizeRoleTier,
 	roleTierLabelKey,
 	splitDisplayNameRoleTier,
@@ -108,28 +106,6 @@ const navigation: Array<{
 	},
 	{ name: "Settings", href: "/settings", icon: Settings, tourId: "settings" },
 ];
-
-/**
- * Admin shortcuts surfaced to tenant_admin / super_admin tiers.
- * Sourced from `lib/admin-nav.ts` so this list, the admin shell sidebar,
- * and the workspace tile grid all stay in lockstep.
- */
-const adminNavigation: Array<{
-	name: string;
-	href: string;
-	icon: LucideIcon;
-}> = ADMIN_SHORTCUTS.map((item) => ({
-	name: item.labelKey,
-	href: item.href,
-	icon: item.icon,
-}));
-
-function isAdminNavigationItemActive(pathname: string, href: string): boolean {
-	if (href === "/admin") {
-		return pathname === "/admin";
-	}
-	return pathname === href || pathname.startsWith(`${href}/`);
-}
 
 function roleTierBadgeStyle(tier: RoleTier): React.CSSProperties {
 	switch (tier) {
@@ -448,73 +424,6 @@ function SidebarPanel({
 						);
 					})}
 				</div>
-
-				{/* Admin shortcuts (tenant_admin / super_admin only) */}
-				{isAdminTier(actualRoleTier) && (
-					<div
-						className="mb-4 border-t pt-4"
-						style={{ borderColor: "var(--surface-muted-border)" }}
-					>
-						{!collapsed ? (
-							<p
-								className="mb-2 px-3 text-xs font-medium uppercase tracking-wider"
-								style={sidebarMutedTextStyle}
-							>
-								{t("Admin")}
-							</p>
-						) : null}
-						{adminNavigation.map((item) => {
-							const isActive = isAdminNavigationItemActive(pathname, item.href);
-							return (
-								<div key={item.name}>
-									<Link
-										href={withLocalePath(locale, item.href)}
-										onClick={onNavigate}
-										className={cn(
-											"group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium",
-											"transition-colors duration-150",
-											isActive
-												? "text-[var(--color-primary-700)]"
-												: sidebarSurfaceHoverClassName,
-											collapsed && "justify-center",
-										)}
-										style={
-											isActive
-												? { color: "var(--color-primary-700)" }
-												: sidebarMutedTextStyle
-										}
-									>
-										{isActive && !collapsed && (
-											<span
-												aria-hidden
-												className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r"
-												style={{
-													background:
-														"linear-gradient(180deg, var(--color-primary-500), var(--color-primary-600))",
-												}}
-											/>
-										)}
-										<div className="relative z-10">
-											<item.icon
-												className="h-5 w-5 shrink-0"
-												style={
-													isActive
-														? { color: "var(--color-primary-700)" }
-														: sidebarMutedTextStyle
-												}
-											/>
-										</div>
-										{!collapsed ? (
-											<span className="relative z-10 whitespace-nowrap">
-												{t(item.name)}
-											</span>
-										) : null}
-									</Link>
-								</div>
-							);
-						})}
-					</div>
-				)}
 
 				{/* Categories */}
 				{!collapsed && canReadCategories && (
@@ -897,13 +806,11 @@ export function Sidebar() {
 
 	const baseAsideClassName = cn(
 		"fixed left-0 top-0 flex h-screen flex-col",
-		"backdrop-blur-xl",
 		"border-r",
 	);
 	const baseAsideStyle = {
-		backgroundColor: "var(--surface-muted-bg)",
+		backgroundColor: "var(--color-card)",
 		borderColor: "var(--surface-muted-border)",
-		boxShadow: "0 24px 56px color-mix(in srgb, black 32%, transparent)",
 	} as const;
 
 	return (
