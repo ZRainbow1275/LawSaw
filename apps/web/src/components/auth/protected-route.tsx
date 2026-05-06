@@ -90,7 +90,13 @@ export function ProtectedRoute({
 		router.replace(withLocalePath(locale, "/admin"));
 	}, [isAuthenticated, tierSatisfied, locale, router]);
 
-	if (isLoading && !bootstrapTimedOut) {
+	// Only render the bootstrap spinner during the initial unauthenticated load.
+	// Once `isAuthenticated` is true, subsequent `isLoading` flips come from
+	// background `refreshSession()` calls (e.g. AuthProvider's per-pathname
+	// session probe). Replacing `children` with the spinner in that case would
+	// unmount the persistent shell (Sidebar/Header) on every SPA navigation,
+	// which is exactly what we want to avoid.
+	if (isLoading && !bootstrapTimedOut && !isAuthenticated) {
 		return (
 			fallback ?? (
 				<div className="flex min-h-screen items-center justify-center">

@@ -48,6 +48,13 @@ import { useMemo, useRef, useState } from "react";
 
 interface ReaderPageProps {
 	articleId: string;
+	/**
+	 * When true, the page assumes a parent already provides the user shell
+	 * (Sidebar/Header/ProtectedRoute) and renders only its content. Used by the
+	 * persistent locale shell at
+	 * `[locale]/(shell-default)/me/articles/[id]/page.tsx`.
+	 */
+	embedded?: boolean;
 }
 
 const HERO_TOC_ITEM: TOCItem = {
@@ -64,7 +71,7 @@ function estimateMinutes(source: ArticleMarkdownSource | null): number {
 	return Math.max(1, Math.ceil(source.wordCount / ESTIMATE_WORDS_PER_MINUTE));
 }
 
-export function ReaderPage({ articleId }: ReaderPageProps) {
+export function ReaderPage({ articleId, embedded = false }: ReaderPageProps) {
 	const t = useT();
 	const locale = useLocale();
 	const articleQuery = useArticle(articleId);
@@ -121,9 +128,24 @@ export function ReaderPage({ articleId }: ReaderPageProps) {
 	const publishedDate = parseArticlePublishedAt(article?.published_at ?? null);
 	const minutes = estimateMinutes(markdownSource);
 
+	const DefaultShell = ({ children }: { children: React.ReactNode }) =>
+		embedded ? (
+			<>{children}</>
+		) : (
+			<UserShell widthVariant="default">{children}</UserShell>
+		);
+	const WideShell = ({ children }: { children: React.ReactNode }) =>
+		embedded ? (
+			<>{children}</>
+		) : (
+			<UserShell widthVariant="wide" hideWorkspaceStrip>
+				{children}
+			</UserShell>
+		);
+
 	if (articleQuery.isError) {
 		return (
-			<UserShell widthVariant="default">
+			<DefaultShell>
 				<EmptyState
 					variant="error"
 					title={t("Failed to load article")}
@@ -137,12 +159,12 @@ export function ReaderPage({ articleId }: ReaderPageProps) {
 						onClick: () => articleQuery.refetch(),
 					}}
 				/>
-			</UserShell>
+			</DefaultShell>
 		);
 	}
 
 	return (
-		<UserShell widthVariant="wide" hideWorkspaceStrip>
+		<WideShell>
 			<ReaderProgressBar />
 
 			<div className="space-y-4">
@@ -510,6 +532,6 @@ export function ReaderPage({ articleId }: ReaderPageProps) {
 				open={settingsOpen}
 				onClose={() => setSettingsOpen(false)}
 			/>
-		</UserShell>
+		</WideShell>
 	);
 }

@@ -14,6 +14,7 @@ import { motion } from "framer-motion";
 import { Megaphone, Pin, ShieldAlert, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import type { ReactNode } from "react";
 import { useMemo } from "react";
 
 const containerVariants = {
@@ -60,7 +61,16 @@ const CATEGORY_SKELETON_IDS = [
 	"global",
 ] as const;
 
-export function MeFeedPage() {
+interface MeFeedPageProps {
+	/**
+	 * When true, the page assumes a parent already provides the user shell
+	 * (Sidebar/Header/ProtectedRoute) and renders only its content. Used by the
+	 * persistent locale shell at `[locale]/(shell-default)/me/feed/page.tsx`.
+	 */
+	embedded?: boolean;
+}
+
+export function MeFeedPage({ embedded = false }: MeFeedPageProps = {}) {
 	const t = useT();
 	const locale = useLocale();
 	const searchParams = useSearchParams();
@@ -81,8 +91,15 @@ export function MeFeedPage() {
 	const trendingChannels = visibleChannels.slice(0, 5);
 	const followedCategories = categories.slice(0, 6);
 
+	const Shell = ({ children }: { children: ReactNode }) =>
+		embedded ? (
+			<>{children}</>
+		) : (
+			<UserShell widthVariant="wide">{children}</UserShell>
+		);
+
 	return (
-		<UserShell widthVariant="wide">
+		<Shell>
 			<motion.div
 				className="space-y-8"
 				variants={containerVariants}
@@ -467,6 +484,6 @@ export function MeFeedPage() {
 					</aside>
 				</motion.div>
 			</motion.div>
-		</UserShell>
+		</Shell>
 	);
 }
