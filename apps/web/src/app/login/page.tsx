@@ -9,7 +9,7 @@ export default function LoginPage() {
 	const t = useT();
 
 	return (
-		<div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-neutral-50 via-primary-50/30 to-neutral-50 px-4">
+		<div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-neutral-50 via-primary-50/30 to-neutral-50 px-4 dark:from-neutral-950 dark:via-primary-500/5 dark:to-neutral-950">
 			{/* Background decoration - floating accents */}
 			<div className="pointer-events-none absolute inset-0 overflow-hidden">
 				<motion.div
@@ -87,7 +87,7 @@ export default function LoginPage() {
 						</motion.div>
 					</motion.div>
 					<motion.h1
-						className="text-2xl font-bold text-neutral-900"
+						className="text-2xl font-bold text-neutral-900 dark:text-neutral-50"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.2 }}
@@ -95,7 +95,7 @@ export default function LoginPage() {
 						{t("Welcome back")}
 					</motion.h1>
 					<motion.p
-						className="mt-2 text-neutral-500"
+						className="mt-2 text-neutral-500 dark:text-neutral-400"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.3 }}
@@ -106,7 +106,7 @@ export default function LoginPage() {
 
 				{/* Form Card - glassmorphism */}
 				<motion.div
-					className="rounded-2xl border border-white/60 bg-white/80 p-8 shadow-xl backdrop-blur-xl"
+					className="rounded-2xl border border-white/60 bg-white/80 p-8 shadow-xl backdrop-blur-xl dark:border-white/10 dark:bg-neutral-900/70"
 					initial={{ opacity: 0, y: 20 }}
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ duration: 0.5, delay: 0.2 }}
@@ -119,7 +119,7 @@ export default function LoginPage() {
 
 				{/* Footer */}
 				<motion.p
-					className="mt-8 text-center text-xs text-neutral-400"
+					className="mt-8 text-center text-xs text-neutral-400 dark:text-neutral-500"
 					initial={{ opacity: 0 }}
 					animate={{ opacity: 1 }}
 					transition={{ delay: 0.5 }}

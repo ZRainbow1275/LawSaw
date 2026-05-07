@@ -241,12 +241,12 @@ export function KnowledgeCanvasECharts({
 	return (
 		<section
 			className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border bg-white shadow-sm"
-			style={{ borderColor: "var(--color-neutral-100)" }}
+			style={{ borderColor: "var(--surface-card-border)" }}
 			data-testid="kg-canvas"
 		>
 			<header
 				className="flex items-center justify-between border-b px-4 py-3"
-				style={{ borderColor: "var(--color-neutral-100)" }}
+				style={{ borderColor: "var(--surface-card-border)" }}
 			>
 				<div className="flex items-center gap-2">
 					<Share2
@@ -256,26 +256,26 @@ export function KnowledgeCanvasECharts({
 					/>
 					<div
 						className="text-sm font-bold"
-						style={{ color: "var(--color-neutral-900)" }}
+						style={{ color: "var(--surface-card-foreground)" }}
 					>
 						{t("Knowledge graph canvas")}
 					</div>
 					<div
 						className="hidden text-xs sm:block"
-						style={{ color: "var(--color-neutral-500)" }}
+						style={{ color: "var(--surface-card-faint-fg)" }}
 					>
 						· {t("Drag nodes, scroll to zoom")}
 					</div>
 				</div>
 				<div
 					className="flex items-center gap-1 rounded-lg border bg-white p-1"
-					style={{ borderColor: "var(--color-neutral-200)" }}
+					style={{ borderColor: "var(--surface-card-border-strong)" }}
 				>
 					<button
 						type="button"
 						onClick={handleZoomOut}
 						className="inline-flex h-7 w-7 items-center justify-center rounded-md transition hover:bg-neutral-100"
-						style={{ color: "var(--color-neutral-600)" }}
+						style={{ color: "var(--surface-card-muted-fg)" }}
 						title={t("Zoom out")}
 					>
 						<Minus aria-hidden="true" className="h-3.5 w-3.5" />
@@ -284,7 +284,7 @@ export function KnowledgeCanvasECharts({
 						type="button"
 						onClick={handleReset}
 						className="inline-flex h-7 items-center px-2 text-[11px] font-mono"
-						style={{ color: "var(--color-neutral-600)" }}
+						style={{ color: "var(--surface-card-muted-fg)" }}
 						title={t("Reset zoom")}
 					>
 						<Maximize2 aria-hidden="true" className="mr-1 h-3 w-3" />
@@ -294,7 +294,7 @@ export function KnowledgeCanvasECharts({
 						type="button"
 						onClick={handleZoomIn}
 						className="inline-flex h-7 w-7 items-center justify-center rounded-md transition hover:bg-neutral-100"
-						style={{ color: "var(--color-neutral-600)" }}
+						style={{ color: "var(--surface-card-muted-fg)" }}
 						title={t("Zoom in")}
 					>
 						<Plus aria-hidden="true" className="h-3.5 w-3.5" />
@@ -306,7 +306,7 @@ export function KnowledgeCanvasECharts({
 				className="relative flex-1"
 				style={{
 					backgroundImage:
-						"radial-gradient(circle, var(--color-neutral-300) 1px, transparent 1px)",
+						"radial-gradient(circle, var(--surface-card-border-strong) 1px, transparent 1px)",
 					backgroundSize: "24px 24px",
 				}}
 			>
@@ -315,7 +315,7 @@ export function KnowledgeCanvasECharts({
 						<Loader2
 							aria-hidden="true"
 							className="h-6 w-6 animate-spin"
-							style={{ color: "var(--color-neutral-400)" }}
+							style={{ color: "var(--surface-card-faint-fg)" }}
 						/>
 					</div>
 				) : (

@@ -1,10 +1,12 @@
 "use client";
 
+import { ReactionToggle } from "@/components/reactions/reaction-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { useReactionSummariesBatch } from "@/hooks/use-reaction";
 import {
 	useCreateSource,
 	useSourceStats,
@@ -77,6 +79,12 @@ export default function SourcesPage() {
 
 	const sources = sourcesQuery.data?.data ?? [];
 	const total = sourcesQuery.data?.total ?? 0;
+
+	useReactionSummariesBatch(
+		"source",
+		sources.map((s) => s.id),
+		{ enabled: sources.length > 0 },
+	);
 	const canPrev = page > 0;
 	const canNext = offset + limit < total;
 
@@ -178,10 +186,10 @@ export default function SourcesPage() {
 						{/* Page Title */}
 						<div className="mb-6 flex items-center justify-between">
 							<div>
-								<h1 className="text-2xl font-bold text-neutral-900">
+								<h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-50">
 									{t("Sources")}
 								</h1>
-								<p className="text-sm text-neutral-500">
+								<p className="text-sm text-neutral-500 dark:text-neutral-400">
 									{t("Manage and monitor ingestion sources")}
 								</p>
 							</div>
@@ -200,7 +208,7 @@ export default function SourcesPage() {
 							<Card>
 								<CardContent className="p-4">
 									<div className="flex items-center gap-3">
-										<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-100">
+										<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-100 dark:bg-primary-500/20">
 											<Rss
 												aria-hidden="true"
 												className="h-5 w-5 text-primary-600"
@@ -210,7 +218,7 @@ export default function SourcesPage() {
 											<p className="text-2xl font-bold">
 												{sources?.length ?? 0}
 											</p>
-											<p className="text-sm text-neutral-500">
+											<p className="text-sm text-neutral-500 dark:text-neutral-400">
 												{t("Total sources")}
 											</p>
 										</div>
@@ -228,7 +236,7 @@ export default function SourcesPage() {
 										</div>
 										<div>
 											<p className="text-2xl font-bold">{activeCount}</p>
-											<p className="text-sm text-neutral-500">
+											<p className="text-sm text-neutral-500 dark:text-neutral-400">
 												{t("Active sources")}
 											</p>
 										</div>
@@ -246,7 +254,7 @@ export default function SourcesPage() {
 										</div>
 										<div>
 											<p className="text-2xl font-bold">{errorCount}</p>
-											<p className="text-sm text-neutral-500">
+											<p className="text-sm text-neutral-500 dark:text-neutral-400">
 												{t("Sources with errors")}
 											</p>
 										</div>
@@ -298,7 +306,7 @@ export default function SourcesPage() {
 												</label>
 												<select
 													id="new-source-type"
-													className="h-10 w-full rounded-md border border-neutral-200 px-3"
+													className="h-10 w-full rounded-md border border-neutral-200 px-3 dark:border-white/10 dark:bg-white/5 dark:text-neutral-100"
 													value={newSource.source_type}
 													onChange={(e) =>
 														setNewSource({
@@ -332,12 +340,12 @@ export default function SourcesPage() {
 										</div>
 
 										{newSource.source_type === "spider" && (
-											<div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 space-y-4">
+											<div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 space-y-4 dark:border-white/10 dark:bg-white/5">
 												<div>
-													<p className="text-sm font-medium text-neutral-700">
+													<p className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
 														{t("Crawler config")}
 													</p>
-													<p className="mt-1 text-xs text-neutral-500">
+													<p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
 														{t(
 															"Required: list/title/link selectors. Optional: content/date selectors and delay (ms).",
 														)}
@@ -509,7 +517,7 @@ export default function SourcesPage() {
 										).map((key) => (
 											<div
 												key={key}
-												className="h-20 rounded-lg bg-neutral-100"
+												className="h-20 rounded-lg bg-neutral-100 dark:bg-white/10"
 											/>
 										))}
 									</div>
@@ -524,7 +532,7 @@ export default function SourcesPage() {
 										}}
 									/>
 								) : sources.length === 0 ? (
-									<p className="py-12 text-center text-neutral-500">
+									<p className="py-12 text-center text-neutral-500 dark:text-neutral-400">
 										{t("No sources yet. Click the button above to add one.")}
 									</p>
 								) : (
@@ -532,7 +540,7 @@ export default function SourcesPage() {
 										{sources.map((source) => (
 											<div
 												key={source.id}
-												className="group flex items-start justify-between rounded-lg border border-neutral-100 p-4 transition-all hover:border-primary-200 hover:bg-primary-50/50"
+												className="group flex items-start justify-between rounded-lg border border-neutral-100 p-4 transition-all hover:border-primary-200 hover:bg-primary-50/50 dark:border-white/10 dark:hover:border-primary-400/40 dark:hover:bg-primary-500/10"
 											>
 												<div className="flex-1">
 													<div className="mb-2 flex items-center gap-2">
@@ -549,13 +557,13 @@ export default function SourcesPage() {
 															<Badge variant="destructive">{t("Error")}</Badge>
 														)}
 													</div>
-													<h4 className="text-sm font-semibold text-neutral-900">
+													<h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
 														{source.name}
 													</h4>
-													<p className="mt-1 text-xs text-neutral-500 truncate max-w-md">
+													<p className="mt-1 text-xs text-neutral-500 truncate max-w-md dark:text-neutral-400">
 														{source.url}
 													</p>
-													<div className="mt-2 flex items-center gap-4 text-xs text-neutral-500">
+													<div className="mt-2 flex items-center gap-4 text-xs text-neutral-500 dark:text-neutral-400">
 														<span className="flex items-center gap-1">
 															<Clock aria-hidden="true" className="h-3 w-3" />
 															{t("Last fetch: ")}
@@ -578,6 +586,13 @@ export default function SourcesPage() {
 													)}
 												</div>
 												<div className="flex items-center gap-2">
+													<ReactionToggle
+														targetType="source"
+														targetId={source.id}
+														initialSummary={source.reaction_summary ?? null}
+														variant="inline"
+														lazy
+													/>
 													<Button
 														variant="outline"
 														size="sm"
@@ -603,7 +618,7 @@ export default function SourcesPage() {
 										))}
 
 										<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-											<p className="text-xs text-neutral-500">
+											<p className="text-xs text-neutral-500 dark:text-neutral-400">
 												{t("Showing {from}-{to} / {total}", {
 													from: offset + 1,
 													to: Math.min(offset + sources.length, total),

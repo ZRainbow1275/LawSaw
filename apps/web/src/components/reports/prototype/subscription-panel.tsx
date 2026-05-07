@@ -111,26 +111,26 @@ function SubscriptionRow({ item }: { item: ReportSubscription }) {
 	const badgeStyle = item.is_active
 		? { backgroundColor: "#e8f5e9", color: "#2e7d32" }
 		: {
-				backgroundColor: "var(--color-neutral-100)",
-				color: "var(--color-neutral-600)",
+				backgroundColor: "var(--surface-card-tint-bg)",
+				color: "var(--surface-card-muted-fg)",
 			};
 
 	return (
 		<div
 			className="flex flex-wrap items-center justify-between gap-3 border-b py-3.5 last:border-0"
-			style={{ borderColor: "var(--color-neutral-100)" }}
+			style={{ borderColor: "var(--surface-card-border)" }}
 			data-testid={`subscription-row-${item.id}`}
 		>
 			<div className="min-w-0 flex-1">
 				<div
 					className="text-sm font-semibold"
-					style={{ color: "var(--color-neutral-800)" }}
+					style={{ color: "var(--surface-card-foreground)" }}
 				>
 					{item.name}
 				</div>
 				<div
 					className="mt-1 text-xs"
-					style={{ color: "var(--color-neutral-500)" }}
+					style={{ color: "var(--surface-card-faint-fg)" }}
 				>
 					{t(periodLabelKey(item.period_type))} ·{" "}
 					{t(deliveryLabelKey(item.delivery_channel))} ·{" "}
@@ -149,8 +149,8 @@ function SubscriptionRow({ item }: { item: ReportSubscription }) {
 					onClick={onTrigger}
 					disabled={!item.is_active || triggerMutation.isPending}
 					title={t("Trigger now")}
-					className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-neutral-600 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
-					style={{ borderColor: "var(--color-neutral-200)" }}
+					className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-neutral-600 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-300 dark:hover:bg-white/5"
+					style={{ borderColor: "var(--surface-card-border-strong)" }}
 				>
 					<Send aria-hidden="true" className="h-3.5 w-3.5" />
 				</button>
@@ -159,8 +159,8 @@ function SubscriptionRow({ item }: { item: ReportSubscription }) {
 					onClick={onToggle}
 					disabled={updateMutation.isPending}
 					title={item.is_active ? t("Pause") : t("Resume")}
-					className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-neutral-600 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
-					style={{ borderColor: "var(--color-neutral-200)" }}
+					className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-neutral-600 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-300 dark:hover:bg-white/5"
+					style={{ borderColor: "var(--surface-card-border-strong)" }}
 				>
 					{item.is_active ? (
 						<PauseCircle aria-hidden="true" className="h-3.5 w-3.5" />
@@ -174,7 +174,7 @@ function SubscriptionRow({ item }: { item: ReportSubscription }) {
 					disabled={deleteMutation.isPending}
 					title={t("Delete")}
 					className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
-					style={{ borderColor: "var(--color-neutral-200)" }}
+					style={{ borderColor: "var(--surface-card-border-strong)" }}
 				>
 					<Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
 				</button>
@@ -192,14 +192,14 @@ export function SubscriptionPanel({ onCreate }: SubscriptionPanelProps) {
 
 	return (
 		<section
-			className="mb-5 rounded-2xl border bg-white p-5 shadow-sm"
-			style={{ borderColor: "var(--color-neutral-100)" }}
+			className="mb-5 rounded-2xl border bg-white p-5 shadow-sm dark:bg-neutral-900"
+			style={{ borderColor: "var(--surface-muted-border)" }}
 			data-testid="subscription-panel"
 		>
 			<div className="mb-3 flex items-center justify-between">
 				<div
 					className="text-sm font-bold"
-					style={{ color: "var(--color-neutral-900)" }}
+					style={{ color: "var(--field-foreground)" }}
 				>
 					{t("Periodic subscriptions")}
 				</div>
@@ -207,10 +207,10 @@ export function SubscriptionPanel({ onCreate }: SubscriptionPanelProps) {
 					<button
 						type="button"
 						onClick={onCreate}
-						className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-xs font-semibold transition hover:bg-neutral-50"
+						className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-xs font-semibold transition hover:bg-neutral-50 dark:hover:bg-white/5"
 						style={{
-							borderColor: "var(--color-neutral-200)",
-							color: "var(--color-neutral-700)",
+							borderColor: "var(--surface-card-border-strong)",
+							color: "var(--surface-card-muted-fg)",
 						}}
 					>
 						<Plus aria-hidden="true" className="h-3.5 w-3.5" />
@@ -224,7 +224,7 @@ export function SubscriptionPanel({ onCreate }: SubscriptionPanelProps) {
 						<div
 							key={i}
 							className="h-14 animate-pulse rounded-lg"
-							style={{ backgroundColor: "var(--color-neutral-100)" }}
+							style={{ backgroundColor: "var(--surface-card-tint-bg)" }}
 						/>
 					))}
 				</div>
@@ -232,8 +232,8 @@ export function SubscriptionPanel({ onCreate }: SubscriptionPanelProps) {
 				<div
 					className="rounded-lg border-dashed border px-4 py-6 text-center text-xs"
 					style={{
-						borderColor: "var(--color-neutral-200)",
-						color: "var(--color-neutral-500)",
+						borderColor: "var(--surface-card-border-strong)",
+						color: "var(--surface-card-faint-fg)",
 					}}
 				>
 					{t("No subscription yet — create one to receive scheduled reports.")}

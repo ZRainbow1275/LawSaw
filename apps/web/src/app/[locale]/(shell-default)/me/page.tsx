@@ -185,21 +185,21 @@ export default function LocalizedMePage() {
 						label={t("Articles read")}
 						value={totalRead.toLocaleString()}
 					/>
-					<span aria-hidden style={{ color: "var(--color-neutral-300)" }}>
+					<span aria-hidden style={{ color: "var(--surface-card-border-strong)" }}>
 						·
 					</span>
 					<MeInlineStat
 						label={t("Bookmarks")}
 						value={bookmarkCount.toLocaleString()}
 					/>
-					<span aria-hidden style={{ color: "var(--color-neutral-300)" }}>
+					<span aria-hidden style={{ color: "var(--surface-card-border-strong)" }}>
 						·
 					</span>
 					<MeInlineStat
 						label={t("Followed sources")}
 						value={followedSourceCount.toLocaleString()}
 					/>
-					<span aria-hidden style={{ color: "var(--color-neutral-300)" }}>
+					<span aria-hidden style={{ color: "var(--surface-card-border-strong)" }}>
 						·
 					</span>
 					<MeInlineStat
@@ -419,7 +419,7 @@ function StatTile({
 function MeInlineStat({ label, value }: { label: string; value: string }) {
 	return (
 		<div className="inline-flex items-baseline gap-1.5">
-			<span style={{ color: "var(--color-neutral-500)" }}>{label}</span>
+			<span style={{ color: "var(--surface-card-faint-fg)" }}>{label}</span>
 			<span
 				className="text-sm font-semibold tabular-nums"
 				style={{ color: "var(--auth-copy-primary)" }}

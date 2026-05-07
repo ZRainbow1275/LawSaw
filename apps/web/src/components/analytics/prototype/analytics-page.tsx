@@ -31,7 +31,7 @@ export function AnalyticsPagePrototype() {
 	return (
 		<div className="w-full">
 			<header className="mb-6 flex items-center gap-2">
-				<h1 className="m-0 flex items-center gap-2.5 text-2xl font-bold text-[color:var(--color-neutral-900)]">
+				<h1 className="m-0 flex items-center gap-2.5 text-2xl font-bold text-[color:var(--surface-card-foreground)]">
 					<TrendingUp
 						aria-hidden="true"
 						size={22}

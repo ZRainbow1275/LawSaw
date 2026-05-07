@@ -45,10 +45,10 @@ export function NotificationsModal(props: {
 		<Modal isOpen={isOpen} onClose={onClose} size="lg" className="max-h-[85vh]">
 			<ModalHeader className="flex items-start justify-between gap-4">
 				<div className="min-w-0">
-					<h2 className="text-lg font-semibold text-neutral-900">
+					<h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">
 						{t("Notifications")}
 					</h2>
-					<p className="mt-1 text-sm text-neutral-500">
+					<p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
 						{unreadCount > 0
 							? `${t("Unread")}: ${unreadCount}`
 							: t("All caught up")}
@@ -70,11 +70,11 @@ export function NotificationsModal(props: {
 			</ModalHeader>
 			<ModalBody className="py-0">
 				{query.isLoading ? (
-					<div className="py-10 text-sm text-neutral-500">
+					<div className="py-10 text-sm text-neutral-500 dark:text-neutral-400">
 						{t("Loading...")}
 					</div>
 				) : query.isError ? (
-					<div className="py-10 text-sm text-neutral-500">
+					<div className="py-10 text-sm text-neutral-500 dark:text-neutral-400">
 						{t("Load failed")}
 					</div>
 				) : items.length === 0 ? (
@@ -84,7 +84,7 @@ export function NotificationsModal(props: {
 						description={t("There is nothing to show yet.")}
 					/>
 				) : (
-					<ul className="divide-y divide-neutral-100">
+					<ul className="divide-y divide-neutral-100 dark:divide-white/10">
 						{items.map((item) => {
 							const unread = item.seq > lastSeen;
 							return (
@@ -92,26 +92,26 @@ export function NotificationsModal(props: {
 									key={item.id}
 									className={cn(
 										"px-2 sm:px-4 py-3",
-										unread ? "bg-primary-50/40" : "bg-transparent",
+										unread ? "bg-primary-50/40 dark:bg-primary-500/10" : "bg-transparent",
 									)}
 								>
 									<div className="flex items-start gap-3">
 										<div
 											className={cn(
 												"mt-1 h-2.5 w-2.5 rounded-full",
-												unread ? "bg-primary-500" : "bg-neutral-200",
+												unread ? "bg-primary-500" : "bg-neutral-200 dark:bg-white/20",
 											)}
 										/>
 										<div className="min-w-0 flex-1">
 											<div className="flex items-start justify-between gap-4">
-												<p className="text-sm font-semibold text-neutral-900 truncate">
+												<p className="text-sm font-semibold text-neutral-900 truncate dark:text-neutral-50">
 													{item.summary}
 												</p>
-												<p className="text-xs text-neutral-500 whitespace-nowrap">
+												<p className="text-xs text-neutral-500 whitespace-nowrap dark:text-neutral-400">
 													{formatDateTime(locale, item.created_at)}
 												</p>
 											</div>
-											<p className="mt-1 text-sm text-neutral-600">
+											<p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
 												{item.action} · {item.resource}
 											</p>
 										</div>

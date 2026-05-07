@@ -19,6 +19,7 @@ pub mod object;
 pub mod password_reset;
 pub mod push;
 pub mod rag;
+pub mod reaction;
 pub mod report;
 pub mod role_tier;
 pub mod source;
@@ -56,6 +57,12 @@ pub use object::{
 pub use password_reset::PasswordResetService;
 pub use push::{parse_expiration_time_millis, WebPushSubscriptionService};
 pub use rag::{RagAnswer, RagSearchResult, RagService, RagSource};
+pub use reaction::{
+    CategoryReactionStat, ColdStartTargetRow, NegativeSignalRow, PgReactionRepo,
+    PgReactionService, Reaction, ReactionInsightWindow, ReactionKind, ReactionRepo,
+    ReactionService, ReactionSummary, ReactionTarget, ReactionTrendGranularity,
+    ReactionTrendPoint, SourceHealthRow, TopReactionRow, TopReactionUserRow,
+};
 pub use report::{
     ReportDataAggregator, ReportService, ReportSubscriptionService, ReportTemplateService,
 };

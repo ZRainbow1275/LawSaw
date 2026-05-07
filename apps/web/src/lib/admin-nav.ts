@@ -8,6 +8,7 @@ import {
 	FileSearch,
 	Globe,
 	Globe as GlobeIcon,
+	Heart,
 	Key,
 	LayoutDashboard,
 	type LucideIcon,
@@ -108,6 +109,11 @@ export const ADMIN_NAV_GROUPS: ReadonlyArray<AdminNavGroup> = [
 				href: "/admin/knowledge",
 				labelKey: "Knowledge graph",
 				icon: BarChart3,
+			},
+			{
+				href: "/admin/insights/reactions",
+				labelKey: "Reaction insights",
+				icon: Heart,
 			},
 		],
 	},
@@ -237,5 +243,12 @@ export const ADMIN_WORKSPACE_TILES: ReadonlyArray<AdminWorkspaceTile> = [
 		labelKey: "Tenant settings",
 		descriptionKey: "Tenant-level webhooks, notifications, and identity.",
 		icon: SettingsIcon,
+	},
+	{
+		href: "/admin/insights/reactions",
+		labelKey: "Reaction insights",
+		descriptionKey:
+			"Inspect like / dislike traffic, controversy, and source health across articles.",
+		icon: Heart,
 	},
 ];

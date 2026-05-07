@@ -50,12 +50,12 @@ export function RiskBarChart({ data }: RiskBarChartProps) {
 				data: RISK_LABELS,
 				axisLine: { show: false },
 				axisTick: { show: false },
-				axisLabel: { color: "var(--color-neutral-500)", fontSize: 11 },
+				axisLabel: { color: "var(--surface-card-faint-fg)", fontSize: 11 },
 			},
 			yAxis: {
 				type: "value" as const,
 				splitLine: { lineStyle: { color: "rgba(0,0,0,0.05)" } },
-				axisLabel: { color: "var(--color-neutral-400)", fontSize: 11 },
+				axisLabel: { color: "var(--surface-card-faint-fg)", fontSize: 11 },
 			},
 			series: [
 				{
@@ -68,7 +68,7 @@ export function RiskBarChart({ data }: RiskBarChartProps) {
 					label: {
 						show: true,
 						position: "top" as const,
-						color: "var(--color-neutral-800)",
+						color: "var(--surface-card-foreground)",
 						fontSize: 12,
 						fontWeight: 700,
 					},

@@ -513,7 +513,7 @@ function AdminPermissionsMatrixContent() {
 												</td>
 											</tr>
 											{perms.map((p) => (
-												<tr key={p.key} className="hover:bg-neutral-50">
+												<tr key={p.key} className="hover:bg-neutral-50 dark:hover:bg-white/5">
 													<td
 														className="sticky left-0 z-10 border-b border-r px-4 py-2"
 														style={{
@@ -554,7 +554,7 @@ function AdminPermissionsMatrixContent() {
 																	aria-label={`${pickPermissionLabel(locale, p.labelKey)} — ${t(role.labelKey)}`}
 																	className={
 																		editable
-																			? "inline-flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-neutral-100"
+																			? "inline-flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-neutral-100 dark:hover:bg-white/10"
 																			: "inline-flex h-7 w-7 items-center justify-center rounded-lg cursor-not-allowed opacity-80"
 																	}
 																	style={{

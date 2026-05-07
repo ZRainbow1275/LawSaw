@@ -149,7 +149,9 @@ impl Modify for SecurityAddon {
         crate::routes::tenants::get_tenant_config,
         crate::routes::tenants::update_tenant_config,
         crate::routes::tenants::get_tenant_usage,
-        crate::routes::tenants::refresh_tenant_usage
+        crate::routes::tenants::refresh_tenant_usage,
+        crate::routes::reactions::set_reaction,
+        crate::routes::reactions::get_summary_batch
     ),
     tags(
         (name = "health", description = "Health"),
@@ -169,7 +171,8 @@ impl Modify for SecurityAddon {
         (name = "statistics", description = "Statistics & analytics"),
         (name = "reports", description = "Reports"),
         (name = "report-templates", description = "Report templates"),
-        (name = "tenants", description = "Tenant management")
+        (name = "tenants", description = "Tenant management"),
+        (name = "reactions", description = "Article and source reactions (likes/dislikes)")
     )
 )]
 pub struct ApiDoc;

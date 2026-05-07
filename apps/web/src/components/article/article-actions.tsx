@@ -132,7 +132,7 @@ export function ArticleActions({
 			/>
 
 			{/* Divider */}
-			<div className="h-px bg-neutral-200 my-1" />
+			<div className="h-px bg-neutral-200 my-1 dark:bg-white/10" />
 
 			{/* Scroll to top */}
 			<ActionButton
@@ -169,19 +169,19 @@ function ActionButton({
 			whileTap={{ scale: 0.95 }}
 			className={cn(
 				"group relative flex h-10 w-10 items-center justify-center rounded-full",
-				"bg-white border border-neutral-200 shadow-sm",
-				"transition-all hover:border-primary-200 hover:shadow-md",
-				active && "border-primary-300 bg-primary-50",
+				"bg-white border border-neutral-200 shadow-sm dark:bg-neutral-900 dark:border-white/10",
+				"transition-all hover:border-primary-200 hover:shadow-md dark:hover:border-primary-400/40",
+				active && "border-primary-300 bg-primary-50 dark:border-primary-400 dark:bg-primary-500/15",
 			)}
 		>
 			<Icon
 				className={cn(
 					"h-4 w-4 transition-colors",
-					active ? "text-primary-600 fill-primary-600" : "text-neutral-600",
+					active ? "text-primary-600 fill-primary-600 dark:text-primary-300 dark:fill-primary-300" : "text-neutral-600 dark:text-neutral-300",
 				)}
 			/>
 			{/* Tooltip */}
-			<span className="absolute right-full mr-2 px-2 py-1 text-xs font-medium text-neutral-700 bg-white border border-neutral-100 rounded-lg shadow-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+			<span className="absolute right-full mr-2 px-2 py-1 text-xs font-medium text-neutral-700 bg-white border border-neutral-100 rounded-lg shadow-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none dark:bg-neutral-900 dark:border-white/10 dark:text-neutral-200">
 				{label}
 			</span>
 		</motion.button>
@@ -206,13 +206,13 @@ function ShareMenu({ onCopyLink, copied, onClose }: ShareMenuProps) {
 			animate={{ opacity: 1, x: 0, scale: 1 }}
 			exit={{ opacity: 0, x: 10, scale: 0.95 }}
 			transition={{ duration: 0.15 }}
-			className="absolute right-full mr-2 top-0 bg-white border border-neutral-200 rounded-xl shadow-lg overflow-hidden"
+			className="absolute right-full mr-2 top-0 bg-white border border-neutral-200 rounded-xl shadow-lg overflow-hidden dark:bg-neutral-900 dark:border-white/10"
 		>
 			<div className="p-2 min-w-[140px]">
 				<button
 					type="button"
 					onClick={onCopyLink}
-					className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 rounded-lg hover:bg-neutral-50 transition-colors"
+					className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 rounded-lg hover:bg-neutral-50 transition-colors dark:text-neutral-200 dark:hover:bg-white/5"
 				>
 					{copied ? (
 						<Check aria-hidden="true" className="h-4 w-4 text-green-600" />
@@ -288,7 +288,7 @@ export function MobileArticleActions({
 
 	return (
 		<div className="fixed bottom-0 left-0 right-0 z-40 lg:hidden">
-			<div className="flex items-center justify-around bg-white/95 backdrop-blur-md border-t border-neutral-100 px-4 py-3 safe-area-pb">
+			<div className="flex items-center justify-around bg-white/95 backdrop-blur-md border-t border-neutral-100 dark:bg-neutral-900/95 dark:border-white/10 px-4 py-3 safe-area-pb">
 				{/* Contents */}
 				{tocItemCount > 0 && (
 					<MobileActionButton
@@ -356,7 +356,7 @@ function MobileActionButton({
 			onClick={onClick}
 			className={cn(
 				"flex flex-col items-center gap-1 px-4 py-1",
-				active ? "text-primary-600" : "text-neutral-600",
+				active ? "text-primary-600 dark:text-primary-300" : "text-neutral-600 dark:text-neutral-300",
 			)}
 		>
 			{icon}

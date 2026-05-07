@@ -87,7 +87,7 @@ const headerStyle: CSSProperties = {
 	gap: 10,
 	fontSize: 22,
 	fontWeight: 700,
-	color: "var(--color-neutral-900)",
+	color: "var(--surface-card-foreground)",
 	marginBottom: 24,
 };
 
@@ -100,7 +100,7 @@ const layoutStyle: CSSProperties = {
 
 const cardStyle: CSSProperties = {
 	background: "var(--color-card)",
-	border: "1px solid var(--color-neutral-200)",
+	border: "1px solid var(--surface-card-border-strong)",
 	borderRadius: 12,
 	padding: 24,
 };
@@ -119,7 +119,7 @@ const tabBaseStyle: CSSProperties = {
 	border: "none",
 	borderRadius: 8,
 	background: "transparent",
-	color: "var(--color-neutral-700)",
+	color: "var(--surface-card-muted-fg)",
 	fontSize: 13,
 	fontWeight: 500,
 	textAlign: "left",
@@ -136,7 +136,7 @@ const tabActiveStyle: CSSProperties = {
 const sectionTitleStyle: CSSProperties = {
 	fontSize: 14,
 	fontWeight: 700,
-	color: "var(--color-neutral-800)",
+	color: "var(--surface-card-foreground)",
 	marginBottom: 16,
 };
 
@@ -148,7 +148,7 @@ const formLabelStyle: CSSProperties = {
 	display: "block",
 	fontSize: 13,
 	fontWeight: 600,
-	color: "var(--color-neutral-700)",
+	color: "var(--surface-card-muted-fg)",
 	marginBottom: 8,
 };
 
@@ -156,9 +156,9 @@ const formInputStyle: CSSProperties = {
 	width: "100%",
 	padding: "10px 14px",
 	fontSize: 13,
-	color: "var(--color-neutral-800)",
+	color: "var(--surface-card-foreground)",
 	background: "var(--color-card)",
-	border: "1px solid var(--color-neutral-200)",
+	border: "1px solid var(--surface-card-border-strong)",
 	borderRadius: 8,
 	outline: "none",
 	fontFamily: "inherit",
@@ -175,7 +175,7 @@ const btnSubmitStyle = (disabled: boolean): CSSProperties => ({
 	borderRadius: 8,
 	color: "#fff",
 	background: disabled
-		? "var(--color-neutral-300)"
+		? "var(--surface-card-border-strong)"
 		: "linear-gradient(135deg, #ff8a5e, #ff6b35)",
 	boxShadow: disabled ? "none" : "var(--shadow-brand)",
 	cursor: disabled ? "not-allowed" : "pointer",
@@ -187,9 +187,9 @@ const btnGhostStyle: CSSProperties = {
 	fontSize: 13,
 	fontWeight: 600,
 	background: "transparent",
-	border: "1px solid var(--color-neutral-300)",
+	border: "1px solid var(--surface-card-border-strong)",
 	borderRadius: 8,
-	color: "var(--color-neutral-700)",
+	color: "var(--surface-card-muted-fg)",
 	cursor: "pointer",
 };
 
@@ -209,7 +209,7 @@ const toggleRowStyle: CSSProperties = {
 	alignItems: "center",
 	justifyContent: "space-between",
 	padding: "12px 0",
-	borderBottom: "1px solid var(--color-neutral-100)",
+	borderBottom: "1px solid var(--surface-card-tint-bg)",
 };
 
 const checkboxStyle: CSSProperties = {
@@ -226,9 +226,9 @@ const toolbarBtnStyle = (active: boolean): CSSProperties => ({
 	padding: "8px 16px",
 	fontSize: 13,
 	fontWeight: 600,
-	border: `1px solid ${active ? "var(--color-primary-500)" : "var(--color-neutral-200)"}`,
+	border: `1px solid ${active ? "var(--color-primary-500)" : "var(--surface-card-border-strong)"}`,
 	background: active ? "var(--color-primary-50)" : "var(--color-card)",
-	color: active ? "var(--color-primary-700)" : "var(--color-neutral-700)",
+	color: active ? "var(--color-primary-700)" : "var(--surface-card-muted-fg)",
 	borderRadius: 8,
 	cursor: "pointer",
 });
@@ -236,16 +236,16 @@ const toolbarBtnStyle = (active: boolean): CSSProperties => ({
 const toolbarSelectStyle: CSSProperties = {
 	padding: "8px 14px",
 	fontSize: 13,
-	color: "var(--color-neutral-800)",
+	color: "var(--surface-card-foreground)",
 	background: "var(--color-card)",
-	border: "1px solid var(--color-neutral-200)",
+	border: "1px solid var(--surface-card-border-strong)",
 	borderRadius: 8,
 	cursor: "pointer",
 	fontFamily: "inherit",
 };
 
 const apiKeyCardStyle: CSSProperties = {
-	border: "1px solid var(--color-neutral-200)",
+	border: "1px solid var(--surface-card-border-strong)",
 	borderRadius: 12,
 	padding: "14px 16px",
 	marginBottom: 8,
@@ -257,14 +257,14 @@ const infoRowStyle: CSSProperties = {
 	justifyContent: "space-between",
 	alignItems: "center",
 	padding: "10px 0",
-	borderBottom: "1px solid var(--color-neutral-100)",
+	borderBottom: "1px solid var(--surface-card-tint-bg)",
 	fontSize: 13,
 };
 
-const infoLabelStyle: CSSProperties = { color: "var(--color-neutral-500)" };
+const infoLabelStyle: CSSProperties = { color: "var(--surface-card-faint-fg)" };
 const infoValueStyle: CSSProperties = {
 	fontWeight: 600,
-	color: "var(--color-neutral-800)",
+	color: "var(--surface-card-foreground)",
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -863,7 +863,7 @@ function ProfilePanel({
 					id="settings-email"
 					value={profileEmail}
 					readOnly
-					style={{ ...formInputStyle, background: "var(--color-neutral-50)" }}
+					style={{ ...formInputStyle, background: "var(--surface-card-subtle-bg)" }}
 				/>
 			</div>
 
@@ -944,12 +944,12 @@ function NotificationsPanel({
 								style={{
 									fontSize: 13,
 									fontWeight: 600,
-									color: "var(--color-neutral-800)",
+									color: "var(--surface-card-foreground)",
 								}}
 							>
 								{it.title}
 							</div>
-							<div style={{ fontSize: 12, color: "var(--color-neutral-500)" }}>
+							<div style={{ fontSize: 12, color: "var(--surface-card-faint-fg)" }}>
 								{it.desc}
 							</div>
 						</div>
@@ -968,9 +968,9 @@ function NotificationsPanel({
 					style={{
 						marginTop: 16,
 						padding: 16,
-						border: "1px solid var(--color-neutral-200)",
+						border: "1px solid var(--surface-card-border-strong)",
 						borderRadius: 12,
-						background: "var(--color-neutral-50)",
+						background: "var(--surface-card-subtle-bg)",
 					}}
 				>
 					<div
@@ -985,12 +985,12 @@ function NotificationsPanel({
 								style={{
 									fontSize: 13,
 									fontWeight: 600,
-									color: "var(--color-neutral-800)",
+									color: "var(--surface-card-foreground)",
 								}}
 							>
 								{t("Browser push (Web Push)")}
 							</div>
-							<div style={{ fontSize: 12, color: "var(--color-neutral-500)" }}>
+							<div style={{ fontSize: 12, color: "var(--surface-card-faint-fg)" }}>
 								{t(
 									"Receive notifications in the background (requires browser permission and Service Worker)",
 								)}
@@ -1096,7 +1096,7 @@ function AppearancePanel({
 				style={{
 					...toggleRowStyle,
 					paddingTop: 16,
-					borderTop: "1px solid var(--color-neutral-100)",
+					borderTop: "1px solid var(--surface-card-tint-bg)",
 				}}
 			>
 				<div>
@@ -1104,12 +1104,12 @@ function AppearancePanel({
 						style={{
 							fontSize: 13,
 							fontWeight: 600,
-							color: "var(--color-neutral-800)",
+							color: "var(--surface-card-foreground)",
 						}}
 					>
 						{t("Compact mode")}
 					</div>
-					<div style={{ fontSize: 12, color: "var(--color-neutral-500)" }}>
+					<div style={{ fontSize: 12, color: "var(--surface-card-faint-fg)" }}>
 						{t("Reduce spacing to show more content")}
 					</div>
 				</div>
@@ -1232,14 +1232,14 @@ function SecurityPanel({
 				style={{
 					marginTop: 24,
 					paddingTop: 20,
-					borderTop: "1px solid var(--color-neutral-100)",
+					borderTop: "1px solid var(--surface-card-tint-bg)",
 				}}
 			>
 				<div
 					style={{
 						fontSize: 15,
 						fontWeight: 700,
-						color: "var(--color-neutral-800)",
+						color: "var(--surface-card-foreground)",
 						marginBottom: 4,
 					}}
 				>
@@ -1248,7 +1248,7 @@ function SecurityPanel({
 				<div
 					style={{
 						fontSize: 13,
-						color: "var(--color-neutral-500)",
+						color: "var(--surface-card-faint-fg)",
 						marginBottom: 16,
 					}}
 				>
@@ -1263,9 +1263,9 @@ function SecurityPanel({
 						alignItems: "center",
 						gap: 12,
 						padding: 16,
-						border: "1px solid var(--color-neutral-200)",
+						border: "1px solid var(--surface-card-border-strong)",
 						borderRadius: 12,
-						background: "var(--color-neutral-50)",
+						background: "var(--surface-card-subtle-bg)",
 					}}
 				>
 					<Shield
@@ -1274,7 +1274,7 @@ function SecurityPanel({
 						style={{
 							color: mfaEnabled
 								? "var(--color-success)"
-								: "var(--color-neutral-400)",
+								: "var(--surface-card-faint-fg)",
 						}}
 					/>
 					<div style={{ flex: 1 }}>
@@ -1282,12 +1282,12 @@ function SecurityPanel({
 							style={{
 								fontSize: 13,
 								fontWeight: 600,
-								color: "var(--color-neutral-800)",
+								color: "var(--surface-card-foreground)",
 							}}
 						>
 							{mfaEnabled ? t("2FA enabled successfully") : t("2FA setup")}
 						</div>
-						<div style={{ fontSize: 12, color: "var(--color-neutral-500)" }}>
+						<div style={{ fontSize: 12, color: "var(--surface-card-faint-fg)" }}>
 							{mfaEnabled
 								? t("Your account is protected by TOTP")
 								: t("Enable two-factor for stronger protection")}
@@ -1319,7 +1319,7 @@ function SecurityPanel({
 						style={{
 							marginTop: 16,
 							padding: 16,
-							border: "1px solid var(--color-neutral-200)",
+							border: "1px solid var(--surface-card-border-strong)",
 							borderRadius: 12,
 							background: "var(--color-card)",
 						}}
@@ -1330,7 +1330,7 @@ function SecurityPanel({
 									background: "#fff",
 									padding: 8,
 									borderRadius: 8,
-									border: "1px solid var(--color-neutral-200)",
+									border: "1px solid var(--surface-card-border-strong)",
 								}}
 							>
 								<QRCodeSVG value={mfaSetup.uri} size={140} />
@@ -1344,8 +1344,8 @@ function SecurityPanel({
 										display: "block",
 										padding: "6px 10px",
 										fontSize: 11,
-										color: "var(--color-neutral-700)",
-										background: "var(--color-neutral-50)",
+										color: "var(--surface-card-muted-fg)",
+										background: "var(--surface-card-subtle-bg)",
 										borderRadius: 6,
 										marginBottom: 12,
 										wordBreak: "break-all",
@@ -1495,7 +1495,7 @@ function ApiKeysPanel({
 					style={{
 						padding: 32,
 						textAlign: "center",
-						color: "var(--color-neutral-400)",
+						color: "var(--surface-card-faint-fg)",
 					}}
 				>
 					<Loader2
@@ -1513,7 +1513,7 @@ function ApiKeysPanel({
 				<div
 					style={{
 						padding: 32,
-						color: "var(--color-neutral-500)",
+						color: "var(--surface-card-faint-fg)",
 						fontSize: 13,
 						textAlign: "center",
 					}}
@@ -1536,7 +1536,7 @@ function ApiKeysPanel({
 										style={{
 											fontSize: 13,
 											fontWeight: 600,
-											color: "var(--color-neutral-800)",
+											color: "var(--surface-card-foreground)",
 										}}
 									>
 										{k.name}
@@ -1545,7 +1545,7 @@ function ApiKeysPanel({
 										style={{
 											fontFamily: "var(--font-mono)",
 											fontSize: 12,
-											color: "var(--color-neutral-500)",
+											color: "var(--surface-card-faint-fg)",
 											marginTop: 4,
 										}}
 									>
@@ -1561,10 +1561,10 @@ function ApiKeysPanel({
 											fontWeight: 600,
 											background: k.is_active
 												? "#e8f5e9"
-												: "var(--color-neutral-100)",
+												: "var(--surface-card-tint-bg)",
 											color: k.is_active
 												? "#2e7d32"
-												: "var(--color-neutral-600)",
+												: "var(--surface-card-muted-fg)",
 										}}
 									>
 										{k.is_active ? t("Active") : t("Disabled")}
@@ -1590,7 +1590,7 @@ function ApiKeysPanel({
 							<div
 								style={{
 									fontSize: 11,
-									color: "var(--color-neutral-400)",
+									color: "var(--surface-card-faint-fg)",
 									marginTop: 8,
 								}}
 							>

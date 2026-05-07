@@ -21,6 +21,7 @@ use law_eye_core::role_tier::{
     derive_role_tier_from_names, ROLE_TIER_PREMIUM_USER, ROLE_TIER_VERIFIED_USER,
 };
 use law_eye_core::AuthzCheckInput;
+use law_eye_core::ReactionService as _;
 use law_eye_db::{CreateAuditLog, CreateSource};
 use law_eye_queue::IngestTask;
 use serde_json::Value;
@@ -236,6 +237,10 @@ pub struct SourceResponse {
     pub encoding: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Wave-8 reactions: aggregated like/dislike summary plus the calling
+    /// user's `my_kind`. Populated by `GET /api/v1/sources/{id}` only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reaction_summary: Option<crate::routes::reactions::ReactionSummaryResponse>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -285,6 +290,7 @@ impl From<law_eye_db::Source> for SourceResponse {
             encoding: source.encoding,
             created_at: source.created_at,
             updated_at: source.updated_at,
+            reaction_summary: None,
         }
     }
 }
@@ -579,10 +585,20 @@ pub(crate) async fn get_source(
     )
     .await?;
 
-    Ok(Json(trim_source_for_tier(
-        SourceResponse::from(source),
-        &role_tier,
-    )))
+    let mut response = SourceResponse::from(source);
+    let summary = state
+        .reaction_service
+        .get_summary(
+            user.tenant_id,
+            law_eye_core::ReactionTarget::Source,
+            response.id,
+            Some(user.id),
+        )
+        .await
+        .map_err(AppError::from)?;
+    response.reaction_summary = Some(summary.into());
+
+    Ok(Json(trim_source_for_tier(response, &role_tier)))
 }
 
 #[utoipa::path(
@@ -930,6 +946,7 @@ mod tests {
             encoding: Some("utf-8".to_string()),
             created_at: now,
             updated_at: now,
+            reaction_summary: None,
         }
     }
 

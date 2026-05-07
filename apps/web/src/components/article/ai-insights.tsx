@@ -114,17 +114,17 @@ function AiInsightsSkeleton() {
 	return (
 		<div className="glass-card p-5 space-y-4 animate-pulse">
 			<div className="flex items-center gap-2">
-				<div className="h-5 w-5 rounded bg-neutral-200" />
-				<div className="h-5 w-24 rounded bg-neutral-200" />
+				<div className="h-5 w-5 rounded bg-neutral-200 dark:bg-white/10" />
+				<div className="h-5 w-24 rounded bg-neutral-200 dark:bg-white/10" />
 			</div>
 			<div className="space-y-2">
-				<div className="h-4 w-full rounded bg-neutral-200" />
-				<div className="h-4 w-3/4 rounded bg-neutral-200" />
+				<div className="h-4 w-full rounded bg-neutral-200 dark:bg-white/10" />
+				<div className="h-4 w-3/4 rounded bg-neutral-200 dark:bg-white/10" />
 			</div>
 			<div className="flex gap-2">
-				<div className="h-6 w-16 rounded-full bg-neutral-200" />
-				<div className="h-6 w-20 rounded-full bg-neutral-200" />
-				<div className="h-6 w-14 rounded-full bg-neutral-200" />
+				<div className="h-6 w-16 rounded-full bg-neutral-200 dark:bg-white/10" />
+				<div className="h-6 w-20 rounded-full bg-neutral-200 dark:bg-white/10" />
+				<div className="h-6 w-14 rounded-full bg-neutral-200 dark:bg-white/10" />
 			</div>
 		</div>
 	);
@@ -176,11 +176,11 @@ export function AiInsightsCard({
 			<button
 				type="button"
 				onClick={() => setIsExpanded(!isExpanded)}
-				className="w-full flex items-center justify-between p-4 hover:bg-neutral-50/50 transition-colors"
+				className="w-full flex items-center justify-between p-4 hover:bg-neutral-50/50 transition-colors dark:hover:bg-white/5"
 			>
 				<div className="flex items-center gap-2">
 					<Sparkles aria-hidden="true" className="h-5 w-5 text-primary-500" />
-					<span className="font-semibold text-neutral-900">
+					<span className="font-semibold text-neutral-900 dark:text-neutral-50">
 						{t("AI insights")}
 					</span>
 				</div>
@@ -199,12 +199,12 @@ export function AiInsightsCard({
 					{isExpanded ? (
 						<ChevronUp
 							aria-hidden="true"
-							className="h-4 w-4 text-neutral-400"
+							className="h-4 w-4 text-neutral-400 dark:text-neutral-500"
 						/>
 					) : (
 						<ChevronDown
 							aria-hidden="true"
-							className="h-4 w-4 text-neutral-400"
+							className="h-4 w-4 text-neutral-400 dark:text-neutral-500"
 						/>
 					)}
 				</div>
@@ -220,13 +220,13 @@ export function AiInsightsCard({
 						transition={{ duration: 0.2 }}
 						className="overflow-hidden"
 					>
-						<div className="px-4 pb-4 space-y-5 border-t border-neutral-100">
+						<div className="px-4 pb-4 space-y-5 border-t border-neutral-100 dark:border-white/10">
 							{/* TL;DR */}
 							<div className="pt-4">
-								<h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2">
+								<h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide dark:text-neutral-400 mb-2">
 									TL;DR
 								</h4>
-								<p className="text-sm text-neutral-700 leading-relaxed">
+								<p className="text-sm text-neutral-700 leading-relaxed dark:text-neutral-200">
 									{insights.summary}
 								</p>
 							</div>
@@ -234,7 +234,7 @@ export function AiInsightsCard({
 							{/* Key points */}
 							{keyPoints.length > 0 && (
 								<div>
-									<h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+									<h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide dark:text-neutral-400 mb-2 flex items-center gap-1.5">
 										<Lightbulb aria-hidden="true" className="h-3.5 w-3.5" />
 										{t("Key points")}
 									</h4>
@@ -242,7 +242,7 @@ export function AiInsightsCard({
 										{keyPoints.map((point) => (
 											<li
 												key={point}
-												className="text-sm text-neutral-600 flex items-start gap-2"
+												className="text-sm text-neutral-600 flex items-start gap-2 dark:text-neutral-300"
 											>
 												<span className="text-primary-500 mt-1">•</span>
 												<span>{point}</span>
@@ -255,7 +255,7 @@ export function AiInsightsCard({
 							{/* Entities */}
 							{insights.entities.length > 0 && (
 								<div>
-									<h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2">
+									<h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide dark:text-neutral-400 mb-2">
 										{t("Key entities")}
 									</h4>
 									<div className="flex flex-wrap gap-2">
@@ -269,7 +269,7 @@ export function AiInsightsCard({
 													onClick={() => onEntityClick?.(entity)}
 													className={cn(
 														"inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs",
-														"bg-neutral-100 text-neutral-700 hover:bg-primary-50 hover:text-primary-700",
+														"bg-neutral-100 text-neutral-700 hover:bg-primary-50 hover:text-primary-700 dark:bg-white/10 dark:text-neutral-200 dark:hover:bg-primary-500/15 dark:hover:text-primary-200",
 														"transition-colors cursor-pointer",
 													)}
 													title={`${t(entityTypeLabelKeys[entity.entity_type])}: ${entity.context || entity.name}`}
@@ -280,7 +280,7 @@ export function AiInsightsCard({
 											);
 										})}
 										{insights.entities.length > 8 && (
-											<span className="text-xs text-neutral-400 self-center">
+											<span className="text-xs text-neutral-400 self-center dark:text-neutral-500">
 												{t("{count} more", {
 													count: insights.entities.length - 8,
 												})}
@@ -295,7 +295,7 @@ export function AiInsightsCard({
 								insights.risk_level === "critical") &&
 								insights.risk_dimensions.length > 0 && (
 									<div>
-										<h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+										<h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide dark:text-neutral-400 mb-2 flex items-center gap-1.5">
 											<AlertTriangle
 												aria-hidden="true"
 												className="h-3.5 w-3.5"
@@ -308,10 +308,10 @@ export function AiInsightsCard({
 													key={`${dim.name}:${dim.score}`}
 													className="flex items-center gap-3"
 												>
-													<span className="text-xs text-neutral-600 w-16 shrink-0">
+													<span className="text-xs text-neutral-600 w-16 shrink-0 dark:text-neutral-300">
 														{dim.name}
 													</span>
-													<div className="flex-1 h-1.5 bg-neutral-100 rounded-full overflow-hidden">
+													<div className="flex-1 h-1.5 bg-neutral-100 rounded-full overflow-hidden dark:bg-white/10">
 														<div
 															className={cn(
 																"h-full rounded-full transition-all",
@@ -326,7 +326,7 @@ export function AiInsightsCard({
 															style={{ width: `${dim.score}%` }}
 														/>
 													</div>
-													<span className="text-xs font-medium text-neutral-700 w-8 text-right">
+													<span className="text-xs font-medium text-neutral-700 w-8 text-right dark:text-neutral-200">
 														{dim.score}
 													</span>
 												</div>
@@ -338,7 +338,7 @@ export function AiInsightsCard({
 							{/* Recommendations */}
 							{recommendations.length > 0 && (
 								<div>
-									<h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+									<h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide dark:text-neutral-400 mb-2 flex items-center gap-1.5">
 										<Shield aria-hidden="true" className="h-3.5 w-3.5" />
 										{t("Compliance recommendations")}
 									</h4>
@@ -346,7 +346,7 @@ export function AiInsightsCard({
 										{recommendations.map((rec) => (
 											<li
 												key={rec}
-												className="text-sm text-neutral-600 flex items-start gap-2"
+												className="text-sm text-neutral-600 flex items-start gap-2 dark:text-neutral-300"
 											>
 												<span className="text-info mt-0.5">→</span>
 												<span>{rec}</span>
@@ -358,7 +358,7 @@ export function AiInsightsCard({
 
 							{/* Tags */}
 							{tags.length > 0 && (
-								<div className="flex flex-wrap gap-1.5 pt-2 border-t border-neutral-100">
+								<div className="flex flex-wrap gap-1.5 pt-2 border-t border-neutral-100 dark:border-white/10">
 									{tags.map((tag) => (
 										<Badge key={tag} variant="secondary" className="text-xs">
 											{tag}
@@ -397,7 +397,7 @@ export function AiInsightsBrief({
 	return (
 		<div
 			className={cn(
-				"flex items-start gap-3 p-3 rounded-lg bg-neutral-50",
+				"flex items-start gap-3 p-3 rounded-lg bg-neutral-50 dark:bg-white/5",
 				className,
 			)}
 		>
@@ -406,7 +406,7 @@ export function AiInsightsBrief({
 				className="h-4 w-4 text-primary-400 mt-0.5 shrink-0"
 			/>
 			<div className="flex-1 min-w-0">
-				<p className="text-sm text-neutral-600 line-clamp-2">{summary}</p>
+				<p className="text-sm text-neutral-600 line-clamp-2 dark:text-neutral-300">{summary}</p>
 			</div>
 			<div
 				className={cn(

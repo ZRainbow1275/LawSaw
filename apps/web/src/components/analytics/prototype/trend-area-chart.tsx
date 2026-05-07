@@ -49,12 +49,12 @@ export function TrendAreaChart({ data }: TrendAreaChartProps) {
 				boundaryGap: false,
 				axisLine: { show: false },
 				axisTick: { show: false },
-				axisLabel: { color: "var(--color-neutral-400)", fontSize: 11 },
+				axisLabel: { color: "var(--surface-card-faint-fg)", fontSize: 11 },
 			},
 			yAxis: {
 				type: "value" as const,
 				splitLine: { lineStyle: { color: "rgba(0,0,0,0.05)" } },
-				axisLabel: { color: "var(--color-neutral-400)", fontSize: 11 },
+				axisLabel: { color: "var(--surface-card-faint-fg)", fontSize: 11 },
 			},
 			series: [
 				{

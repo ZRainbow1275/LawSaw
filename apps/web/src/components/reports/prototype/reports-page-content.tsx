@@ -121,7 +121,7 @@ export function ReportsPageContent() {
 					{[0, 1, 2, 3].map((i) => (
 						<div
 							key={i}
-							className="h-44 animate-pulse rounded-2xl bg-[color:var(--color-neutral-100)]"
+							className="h-44 animate-pulse rounded-2xl bg-[color:var(--surface-card-tint-bg)]"
 						/>
 					))}
 				</div>

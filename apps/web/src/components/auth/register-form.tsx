@@ -164,10 +164,10 @@ export function RegisterForm() {
 			<div className="space-y-2">
 				<label
 					htmlFor="displayName"
-					className="text-sm font-medium text-neutral-700"
+					className="text-sm font-medium text-neutral-700 dark:text-neutral-200"
 				>
 					{t("Display name")}{" "}
-					<span className="text-neutral-400">({t("Optional")})</span>
+					<span className="text-neutral-400 dark:text-neutral-500">({t("Optional")})</span>
 				</label>
 				<Input
 					id="displayName"
@@ -182,10 +182,10 @@ export function RegisterForm() {
 			<div className="space-y-2">
 				<label
 					htmlFor="tenantSlug"
-					className="text-sm font-medium text-neutral-700"
+					className="text-sm font-medium text-neutral-700 dark:text-neutral-200"
 				>
 					{t("Tenant slug")}{" "}
-					<span className="text-neutral-400">({t("Optional")})</span>
+					<span className="text-neutral-400 dark:text-neutral-500">({t("Optional")})</span>
 				</label>
 				<Input
 					id="tenantSlug"
@@ -195,7 +195,7 @@ export function RegisterForm() {
 					placeholder="default / acme / beta"
 					autoComplete="organization"
 				/>
-				<p className="text-xs text-neutral-500">
+				<p className="text-xs text-neutral-500 dark:text-neutral-400 dark:text-neutral-500">
 					{t("Leave blank to use")} <span className="font-mono">default</span>
 					{t(". Rules: start with a lowercase letter, length 3-32, allowed")}{" "}
 					<span className="font-mono">a-z0-9-</span>
@@ -205,10 +205,10 @@ export function RegisterForm() {
 			<div className="space-y-2">
 				<label
 					htmlFor="tenantName"
-					className="text-sm font-medium text-neutral-700"
+					className="text-sm font-medium text-neutral-700 dark:text-neutral-200"
 				>
 					{t("Tenant name")}{" "}
-					<span className="text-neutral-400">({t("Optional")})</span>
+					<span className="text-neutral-400 dark:text-neutral-500">({t("Optional")})</span>
 				</label>
 				<Input
 					id="tenantName"
@@ -219,7 +219,7 @@ export function RegisterForm() {
 					autoComplete="organization"
 					disabled={!tenantSlug.trim()}
 				/>
-				<p className="text-xs text-neutral-500">
+				<p className="text-xs text-neutral-500 dark:text-neutral-400 dark:text-neutral-500">
 					{t(
 						"Only used when you set a tenant slug; if empty, the slug will be used as the name.",
 					)}
@@ -227,7 +227,7 @@ export function RegisterForm() {
 			</div>
 
 			<div className="space-y-2">
-				<label htmlFor="email" className="text-sm font-medium text-neutral-700">
+				<label htmlFor="email" className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
 					{t("Email")}
 				</label>
 				<Input
@@ -254,7 +254,7 @@ export function RegisterForm() {
 			<div className="space-y-2">
 				<label
 					htmlFor="password"
-					className="text-sm font-medium text-neutral-700"
+					className="text-sm font-medium text-neutral-700 dark:text-neutral-200"
 				>
 					{t("Password")}
 				</label>
@@ -275,7 +275,7 @@ export function RegisterForm() {
 					}
 				/>
 				<div className="space-y-1">
-					<p className="text-xs text-neutral-500">
+					<p className="text-xs text-neutral-500 dark:text-neutral-400 dark:text-neutral-500">
 						{t("Strength: ")}
 						{password ? t(passwordStrengthLabel(password)) : "—"}
 					</p>
@@ -283,7 +283,7 @@ export function RegisterForm() {
 						{passwordChecks(password).map((c) => (
 							<li
 								key={c.label}
-								className={c.ok ? "text-emerald-700" : "text-neutral-500"}
+								className={c.ok ? "text-emerald-700 dark:text-emerald-300" : "text-neutral-500 dark:text-neutral-400"}
 							>
 								{t(c.label)}
 							</li>
@@ -300,7 +300,7 @@ export function RegisterForm() {
 			<div className="space-y-2">
 				<label
 					htmlFor="confirmPassword"
-					className="text-sm font-medium text-neutral-700"
+					className="text-sm font-medium text-neutral-700 dark:text-neutral-200"
 				>
 					{t("Confirm password")}
 				</label>
@@ -349,7 +349,7 @@ export function RegisterForm() {
 				{isSubmitting ? t("Signing up...") : t("Create account")}
 			</Button>
 
-			<p className="text-center text-sm text-neutral-500">
+			<p className="text-center text-sm text-neutral-500 dark:text-neutral-400">
 				{t("Already have an account?")}{" "}
 				<a
 					href={withLocalePath(

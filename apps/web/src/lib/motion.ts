@@ -234,20 +234,25 @@ export const staggerItemVariants: Variants = {
 // ============================================
 
 export const toastVariants: Variants = {
+	// P2#6 — Slide-in from top-right with subtle scale lift, exit slides out
+	// horizontally to the right so stacked toasts cascade naturally.
 	hidden: {
 		opacity: 0,
-		y: 20,
-		scale: 0.95,
+		x: 60,
+		y: -8,
+		scale: 0.96,
 	},
 	visible: {
 		opacity: 1,
+		x: 0,
 		y: 0,
 		scale: 1,
 		transition: transitions.spring,
 	},
 	exit: {
 		opacity: 0,
-		x: 100,
+		x: 80,
+		scale: 0.95,
 		transition: transitions.fast,
 	},
 };

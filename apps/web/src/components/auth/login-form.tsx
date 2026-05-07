@@ -186,14 +186,14 @@ export function LoginForm() {
 					</div>
 				)}
 
-				<p className="text-center text-sm text-neutral-600">
+				<p className="text-center text-sm text-neutral-600 dark:text-neutral-300">
 					{t("Enter the 6-digit code from your authenticator app")}
 				</p>
 
 				<div className="space-y-2">
 					<label
 						htmlFor="mfa-code"
-						className="text-sm font-medium text-neutral-700"
+						className="text-sm font-medium text-neutral-700 dark:text-neutral-200"
 					>
 						{t("Verification code")}
 					</label>
@@ -237,7 +237,7 @@ export function LoginForm() {
 				<button
 					type="button"
 					onClick={handleBackToLogin}
-					className="w-full text-center text-sm text-neutral-500 hover:text-neutral-700 hover:underline"
+					className="w-full text-center text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 hover:underline dark:text-neutral-400 dark:hover:text-neutral-200"
 				>
 					{t("Back to login")}
 				</button>
@@ -254,7 +254,7 @@ export function LoginForm() {
 			)}
 
 			<div className="space-y-2">
-				<label htmlFor="email" className="text-sm font-medium text-neutral-700">
+				<label htmlFor="email" className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
 					{t("Email")}
 				</label>
 				<Input
@@ -285,7 +285,7 @@ export function LoginForm() {
 			<div className="space-y-2">
 				<label
 					htmlFor="password"
-					className="text-sm font-medium text-neutral-700"
+					className="text-sm font-medium text-neutral-700 dark:text-neutral-200"
 				>
 					{t("Password")}
 				</label>
@@ -326,7 +326,7 @@ export function LoginForm() {
 				{isSubmitting ? t("Signing in...") : t("Sign in")}
 			</Button>
 
-			<p className="text-center text-sm text-neutral-500">
+			<p className="text-center text-sm text-neutral-500 dark:text-neutral-400">
 				{t("Don't have an account?")}{" "}
 				<a
 					href={withLocalePath(

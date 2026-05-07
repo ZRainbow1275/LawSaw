@@ -1,6 +1,7 @@
 pub mod admin_ai_governance;
 pub mod admin_authz;
 pub mod admin_dashboard;
+pub mod admin_insights_reactions;
 pub mod admin_rbac;
 pub mod ai;
 pub mod ai_usage_admin;
@@ -21,6 +22,7 @@ pub mod notifications;
 pub mod objects;
 pub mod openapi;
 pub mod push;
+pub mod reactions;
 pub mod report_subscriptions;
 pub mod reports;
 pub mod search;
@@ -581,6 +583,20 @@ pub fn create_router(state: AppState) -> Router {
             "/super/tenants",
             require_role_tier_and_permission(
                 super_tenants::router(),
+                ROLE_TIER_SUPER_ADMIN,
+                "tenants:manage",
+            ),
+        )
+        // W8 / Stream C-1: reactions (article + source) — login required.
+        .nest(
+            "/reactions",
+            require_role_tier(reactions::router(), ROLE_TIER_BASIC_USER),
+        )
+        // W8 / Stream C-3: admin reaction insights — super-admin gated.
+        .nest(
+            "/admin/insights/reactions",
+            require_role_tier_and_permission(
+                admin_insights_reactions::router(),
                 ROLE_TIER_SUPER_ADMIN,
                 "tenants:manage",
             ),

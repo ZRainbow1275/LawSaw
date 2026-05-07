@@ -91,7 +91,7 @@ export function ParagraphAnchor({ containerRef }: ParagraphAnchorProps) {
 				anchor.setAttribute("aria-label", copyLabel);
 				anchor.title = copyLabel;
 				anchor.className =
-					"paragraph-anchor-button absolute -left-7 top-1 flex h-5 w-5 items-center justify-center rounded text-neutral-300 opacity-0 transition-all duration-200 hover:bg-primary-50 hover:text-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 group-hover:opacity-100";
+					"paragraph-anchor-button absolute -left-7 top-1 flex h-5 w-5 items-center justify-center rounded text-neutral-300 dark:text-neutral-500 opacity-0 transition-all duration-200 hover:bg-primary-50 hover:text-primary-500 dark:hover:bg-primary-500/15 dark:hover:text-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-500/20 group-hover:opacity-100";
 				anchor.innerHTML =
 					'<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3 w-3"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
 				anchor.addEventListener("click", (event) => {

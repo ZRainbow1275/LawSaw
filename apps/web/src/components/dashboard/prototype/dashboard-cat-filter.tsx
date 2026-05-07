@@ -39,13 +39,13 @@ export function DashboardCatFilter({ value, onChange }: Props) {
 
 	if (categoriesQuery.isPending) {
 		return (
-			<div className="mb-5 flex flex-wrap gap-2">
+			<div className="flex flex-wrap gap-2">
 				{Array.from({ length: 6 }, (_, idx) => (
 					<span
 						// biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholder list is fixed-size and stable
 						key={`cat-skel-${idx}`}
 						className="h-7 w-24 animate-pulse rounded-full"
-						style={{ backgroundColor: "var(--color-neutral-100)" }}
+						style={{ backgroundColor: "var(--surface-card-tint-bg)" }}
 					/>
 				))}
 			</div>
@@ -56,7 +56,7 @@ export function DashboardCatFilter({ value, onChange }: Props) {
 
 	return (
 		<div
-			className="mb-5 flex flex-wrap gap-2"
+			className="flex flex-wrap gap-2"
 			role="tablist"
 			aria-label={t("All ({count})", { count: totalCount })}
 		>
@@ -76,9 +76,9 @@ export function DashboardCatFilter({ value, onChange }: Props) {
 								borderColor: "var(--color-primary-500)",
 							}
 						: {
-								backgroundColor: "white",
-								color: "var(--color-neutral-600)",
-								borderColor: "var(--color-neutral-200)",
+								backgroundColor: "var(--color-card)",
+								color: "var(--surface-card-muted-fg)",
+								borderColor: "var(--surface-card-border-strong)",
 							}
 				}
 			>
@@ -87,7 +87,7 @@ export function DashboardCatFilter({ value, onChange }: Props) {
 			{categories.map((cat) => {
 				const active = cat.id === value;
 				const count = counts.get(cat.id) ?? 0;
-				const dotColor = cat.color ?? "var(--color-neutral-400)";
+				const dotColor = cat.color ?? "var(--surface-card-faint-fg)";
 				return (
 					<button
 						key={cat.id}
@@ -107,8 +107,8 @@ export function DashboardCatFilter({ value, onChange }: Props) {
 									}
 								: {
 										backgroundColor: "white",
-										color: "var(--color-neutral-600)",
-										borderColor: "var(--color-neutral-200)",
+										color: "var(--surface-card-muted-fg)",
+										borderColor: "var(--surface-card-border-strong)",
 									}
 						}
 					>

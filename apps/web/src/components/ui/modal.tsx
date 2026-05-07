@@ -98,8 +98,8 @@ export function Modal({
 						exit="exit"
 						className={cn(
 							"relative z-10 w-full mx-4 p-0 my-0",
-							"bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl",
-							"border border-neutral-200/50",
+							"bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl dark:bg-neutral-900/95",
+							"border border-neutral-200/50 dark:border-white/10",
 							sizeClasses[size],
 							className,
 						)}
@@ -112,8 +112,8 @@ export function Modal({
 								className={cn(
 									"absolute right-4 top-4 z-10",
 									"flex h-8 w-8 items-center justify-center rounded-full",
-									"bg-neutral-100 text-neutral-500",
-									"hover:bg-neutral-200 hover:text-neutral-700",
+									"bg-neutral-100 text-neutral-500 dark:bg-white/10 dark:text-neutral-300",
+									"hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-white/15 dark:hover:text-neutral-100",
 									"transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/20",
 								)}
 								aria-label="Close"
@@ -138,7 +138,10 @@ interface ModalHeaderProps {
 export function ModalHeader({ children, className }: ModalHeaderProps) {
 	return (
 		<div
-			className={cn("px-6 pt-6 pb-4 border-b border-neutral-100", className)}
+			className={cn(
+				"px-6 pt-6 pb-4 border-b border-neutral-100 dark:border-white/10",
+				className,
+			)}
 		>
 			{children}
 		</div>
@@ -167,7 +170,7 @@ export function ModalFooter({ children, className }: ModalFooterProps) {
 	return (
 		<div
 			className={cn(
-				"px-6 py-4 border-t border-neutral-100 flex justify-end gap-3",
+				"px-6 py-4 border-t border-neutral-100 dark:border-white/10 flex justify-end gap-3",
 				className,
 			)}
 		>

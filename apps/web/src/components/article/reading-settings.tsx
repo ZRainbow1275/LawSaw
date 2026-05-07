@@ -20,7 +20,7 @@ import {
 	useReadingStore,
 } from "@/stores/reading-store";
 import { AnimatePresence, motion } from "framer-motion";
-import { AlignJustify, Leaf, Moon, Sun, Type, X } from "lucide-react";
+import { AlignJustify, Leaf, Moon, Sparkles, Sun, Type, X } from "lucide-react";
 import type * as React from "react";
 
 // ============================================
@@ -129,11 +129,11 @@ export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
 						animate={{ opacity: 1, y: 0, scale: 1 }}
 						exit={{ opacity: 0, y: 20, scale: 0.95 }}
 						transition={{ type: "spring", damping: 25, stiffness: 300 }}
-						className="fixed right-4 bottom-4 lg:right-20 lg:top-1/2 lg:-translate-y-1/2 lg:bottom-auto z-50 w-72 bg-white rounded-2xl shadow-xl border border-neutral-200 overflow-hidden"
+						className="fixed right-4 bottom-4 lg:right-20 lg:top-1/2 lg:-translate-y-1/2 lg:bottom-auto z-50 w-72 bg-white rounded-2xl shadow-xl border border-neutral-200 overflow-hidden dark:bg-neutral-900 dark:border-white/10"
 					>
 						{/* Header */}
-						<div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
-							<h3 className="font-semibold text-neutral-900">
+						<div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100 dark:border-white/10">
+							<h3 className="font-semibold text-neutral-900 dark:text-neutral-50">
 								{t("Reading settings")}
 							</h3>
 							<Button variant="ghost" size="icon" onClick={onClose}>
@@ -156,8 +156,8 @@ export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
 												"flex-1 h-10 rounded-lg border text-center transition-all",
 												"hover:border-primary-200",
 												settings.fontSize === option.value
-													? "border-primary-500 bg-primary-50 text-primary-700"
-													: "border-neutral-200 text-neutral-600",
+													? "border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-500/15 dark:text-primary-200"
+													: "border-neutral-200 text-neutral-600 dark:border-white/10 dark:text-neutral-300",
 											)}
 											style={{ fontSize: fontSizeMap[option.value] }}
 										>
@@ -181,8 +181,8 @@ export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
 												"flex-1 h-9 rounded-lg border text-sm font-medium transition-all",
 												"hover:border-primary-200",
 												settings.lineHeight === option.value
-													? "border-primary-500 bg-primary-50 text-primary-700"
-													: "border-neutral-200 text-neutral-600",
+													? "border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-500/15 dark:text-primary-200"
+													: "border-neutral-200 text-neutral-600 dark:border-white/10 dark:text-neutral-300",
 											)}
 										>
 											{t(option.labelKey)}
@@ -226,7 +226,7 @@ export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
 														)}
 													/>
 												</div>
-												<span className="text-xs text-neutral-600">
+												<span className="text-xs text-neutral-600 dark:text-neutral-300">
 													{t(option.labelKey)}
 												</span>
 											</button>
@@ -249,8 +249,8 @@ export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
 												"flex-1 h-9 rounded-lg border text-sm font-medium transition-all",
 												"hover:border-primary-200",
 												settings.contentWidth === option.value
-													? "border-primary-500 bg-primary-50 text-primary-700"
-													: "border-neutral-200 text-neutral-600",
+													? "border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-500/15 dark:text-primary-200"
+													: "border-neutral-200 text-neutral-600 dark:border-white/10 dark:text-neutral-300",
 											)}
 										>
 											{t(option.labelKey)}
@@ -273,8 +273,8 @@ export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
 												"flex-1 flex flex-col items-center gap-1 py-2.5 rounded-lg border transition-all",
 												"hover:border-primary-200",
 												settings.fontFamily === option.value
-													? "border-primary-500 bg-primary-50"
-													: "border-neutral-200",
+													? "border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-500/15"
+													: "border-neutral-200 dark:border-white/10",
 											)}
 										>
 											<span
@@ -282,28 +282,69 @@ export function ReadingSettings({ open, onClose }: ReadingSettingsProps) {
 													"text-xl font-medium",
 													option.value === "serif" ? "font-serif" : "font-sans",
 													settings.fontFamily === option.value
-														? "text-primary-700"
-														: "text-neutral-700",
+														? "text-primary-700 dark:text-primary-200"
+														: "text-neutral-700 dark:text-neutral-200",
 												)}
 											>
 												{option.sample}
 											</span>
-											<span className="text-xs text-neutral-500">
+											<span className="text-xs text-neutral-500 dark:text-neutral-400">
 												{t(option.labelKey)}
 											</span>
 										</button>
 									))}
 								</div>
 							</SettingSection>
+
+							{/* Focus mode (P3#7) */}
+							<SettingSection icon={Sparkles} label={t("Focus mode")}>
+								<button
+									type="button"
+									onClick={() =>
+										updateSettings({ focusMode: !settings.focusMode })
+									}
+									aria-pressed={settings.focusMode}
+									className={cn(
+										"flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-sm transition-all",
+										"hover:border-primary-200",
+										settings.focusMode
+											? "border-primary-500 bg-primary-50 text-primary-700"
+											: "border-neutral-200 text-neutral-600",
+									)}
+								>
+									<span className="flex flex-col items-start gap-0.5 text-left">
+										<span className="font-medium">
+											{settings.focusMode ? t("On") : t("Off")}
+										</span>
+										<span className="text-xs text-neutral-500 dark:text-neutral-400">
+											{t("Dim non-central paragraphs while reading")}
+										</span>
+									</span>
+									<span
+										aria-hidden="true"
+										className={cn(
+											"relative inline-block h-5 w-9 shrink-0 rounded-full transition-colors",
+											settings.focusMode ? "bg-primary-500" : "bg-neutral-300",
+										)}
+									>
+										<span
+											className={cn(
+												"absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform",
+												settings.focusMode ? "translate-x-4" : "translate-x-0.5",
+											)}
+										/>
+									</span>
+								</button>
+							</SettingSection>
 						</div>
 
 						{/* Footer */}
-						<div className="px-4 py-3 border-t border-neutral-100">
+						<div className="px-4 py-3 border-t border-neutral-100 dark:border-white/10">
 							<Button
 								variant="ghost"
 								size="sm"
 								onClick={resetSettings}
-								className="w-full text-neutral-500 hover:text-neutral-700"
+								className="w-full text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
 							>
 								{t("Reset to defaults")}
 							</Button>
@@ -329,8 +370,8 @@ function SettingSection({ icon: Icon, label, children }: SettingSectionProps) {
 	return (
 		<div className="space-y-2">
 			<div className="flex items-center gap-2">
-				<Icon aria-hidden="true" className="h-4 w-4 text-neutral-400" />
-				<span className="text-sm font-medium text-neutral-700">{label}</span>
+				<Icon aria-hidden="true" className="h-4 w-4 text-neutral-400 dark:text-neutral-500" />
+				<span className="text-sm font-medium text-neutral-700 dark:text-neutral-200">{label}</span>
 			</div>
 			{children}
 		</div>
@@ -349,13 +390,13 @@ export function ReadingSettingsBar({ className }: { className?: string }) {
 	return (
 		<div
 			className={cn(
-				"flex items-center gap-4 p-2 rounded-lg bg-neutral-50 border border-neutral-100",
+				"flex items-center gap-4 p-2 rounded-lg bg-neutral-50 border border-neutral-100 dark:bg-white/5 dark:border-white/10",
 				className,
 			)}
 		>
 			{/* Font size */}
 			<div className="flex items-center gap-1">
-				<span className="text-xs text-neutral-500 mr-1">{t("Font size")}</span>
+				<span className="text-xs text-neutral-500 dark:text-neutral-400 mr-1">{t("Font size")}</span>
 				{fontSizeOptions.map((option) => (
 					<button
 						key={option.value}
@@ -365,8 +406,8 @@ export function ReadingSettingsBar({ className }: { className?: string }) {
 						className={cn(
 							"w-7 h-7 rounded text-sm transition-all",
 							settings.fontSize === option.value
-								? "bg-primary-100 text-primary-700"
-								: "text-neutral-500 hover:bg-neutral-100",
+								? "bg-primary-100 text-primary-700 dark:bg-primary-500/20 dark:text-primary-200"
+								: "text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-white/10",
 						)}
 						style={{ fontSize: fontSizeMap[option.value] }}
 					>
@@ -375,7 +416,7 @@ export function ReadingSettingsBar({ className }: { className?: string }) {
 				))}
 			</div>
 
-			<div className="w-px h-5 bg-neutral-200" />
+			<div className="w-px h-5 bg-neutral-200 dark:bg-white/10" />
 
 			{/* Theme */}
 			<div className="flex items-center gap-1">

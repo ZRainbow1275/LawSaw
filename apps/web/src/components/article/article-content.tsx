@@ -97,6 +97,7 @@ export function ArticleContent({
 				className,
 			)}
 			suppressHydrationWarning
+			data-reader-root="true"
 			// biome-ignore lint/security/noDangerouslySetInnerHtml: HTML is sanitized with DOMPurify on the client; SSR emits empty content to avoid XSS.
 			dangerouslySetInnerHTML={{ __html: sanitizedContent }}
 		/>

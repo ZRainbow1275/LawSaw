@@ -1,4 +1,4 @@
-﻿{
+{
   "openapi": "3.1.0",
   "info": {
     "title": "LawSaw API",
@@ -2446,210 +2446,6 @@
         }
       }
     },
-    "/api/v1/authz/check": {
-      "get": {
-        "tags": [
-          "authz"
-        ],
-        "operationId": "check",
-        "parameters": [
-          {
-            "name": "resource_type",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "resource_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "permission",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Authorization decision",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthzDecisionResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "session": []
-          }
-        ]
-      }
-    },
-    "/api/v1/authz/relations": {
-      "post": {
-        "tags": [
-          "authz"
-        ],
-        "operationId": "create_relation",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateRelationRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Relation created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RelationMutationResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Permission denied",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "session": []
-          }
-        ]
-      }
-    },
-    "/api/v1/authz/relations/{id}": {
-      "delete": {
-        "tags": [
-          "authz"
-        ],
-        "operationId": "delete_relation",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Relation id",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Relation deleted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeleteRelationResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Permission denied",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Relation not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "session": []
-          }
-        ]
-      }
-    },
     "/api/v1/categories": {
       "get": {
         "tags": [
@@ -4623,6 +4419,105 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reactions": {
+      "post": {
+        "tags": [
+          "reactions"
+        ],
+        "operationId": "set_reaction",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetReactionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated reaction summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetReactionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid payload"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "Target article or source not found"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reactions/summary": {
+      "get": {
+        "tags": [
+          "reactions"
+        ],
+        "operationId": "get_summary_batch",
+        "parameters": [
+          {
+            "name": "target_type",
+            "in": "query",
+            "description": "`\"article\"` or `\"source\"`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "target_ids[]",
+            "in": "query",
+            "description": "Repeated `target_ids[]=<uuid>` query parameter; up to 100 ids per call.",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reaction summaries keyed by target id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummaryBatchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid params or too many target ids"
+          },
+          "401": {
+            "description": "Authentication required"
           }
         },
         "security": [
@@ -9495,6 +9390,17 @@
             ],
             "format": "date-time"
           },
+          "reaction_summary": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReactionSummaryResponse",
+                "description": "Wave-8 reactions: aggregated like/dislike summary plus the calling\nuser's `my_kind`. Only populated by `GET /api/v1/articles/{id}` —\nlist endpoints leave this `None` and the frontend resolves them via\nthe batch `GET /api/v1/reactions/summary` call."
+              }
+            ]
+          },
           "region_code": {
             "type": [
               "string",
@@ -9736,69 +9642,6 @@
           }
         }
       },
-      "AuthRelationResponse": {
-        "type": "object",
-        "required": [
-          "id",
-          "tenant_id",
-          "resource_type",
-          "resource_id",
-          "relation",
-          "subject_type",
-          "subject_key",
-          "properties",
-          "created_at",
-          "updated_at"
-        ],
-        "properties": {
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "created_by": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "properties": {},
-          "relation": {
-            "type": "string"
-          },
-          "resource_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "resource_type": {
-            "type": "string"
-          },
-          "subject_key": {
-            "type": "string"
-          },
-          "subject_relation": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "subject_type": {
-            "type": "string"
-          },
-          "tenant_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time"
-          }
-        }
-      },
       "AuthResponse": {
         "type": "object",
         "required": [
@@ -9883,73 +9726,6 @@
           "percentage": {
             "type": "number",
             "format": "double"
-          }
-        }
-      },
-      "AuthzDecisionResponse": {
-        "type": "object",
-        "required": [
-          "allow",
-          "decision_path",
-          "role_tier",
-          "roles",
-          "permissions"
-        ],
-        "properties": {
-          "allow": {
-            "type": "boolean"
-          },
-          "decision_path": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AuthzDecisionStepResponse"
-            }
-          },
-          "matched_relation": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "matched_subject": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "permissions": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "role_tier": {
-            "type": "string"
-          },
-          "roles": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        }
-      },
-      "AuthzDecisionStepResponse": {
-        "type": "object",
-        "required": [
-          "stage",
-          "outcome",
-          "reason"
-        ],
-        "properties": {
-          "outcome": {
-            "type": "string"
-          },
-          "reason": {
-            "type": "string"
-          },
-          "stage": {
-            "type": "string"
           }
         }
       },
@@ -10111,7 +9887,9 @@
           "slug",
           "name",
           "sort_order",
-          "created_at"
+          "visibility_tier",
+          "created_at",
+          "updated_at"
         ],
         "properties": {
           "color": {
@@ -10156,6 +9934,13 @@
           "sort_order": {
             "type": "integer",
             "format": "int32"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "visibility_tier": {
+            "type": "string"
           }
         }
       },
@@ -10302,42 +10087,6 @@
             "type": "string"
           }
         }
-      },
-      "CreateRelationRequest": {
-        "type": "object",
-        "required": [
-          "resource_type",
-          "resource_id",
-          "relation",
-          "subject_type",
-          "subject_key"
-        ],
-        "properties": {
-          "properties": {},
-          "relation": {
-            "type": "string"
-          },
-          "resource_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "resource_type": {
-            "type": "string"
-          },
-          "subject_key": {
-            "type": "string"
-          },
-          "subject_relation": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "subject_type": {
-            "type": "string"
-          }
-        },
-        "additionalProperties": false
       },
       "CreateReportRequest": {
         "type": "object",
@@ -10587,26 +10336,6 @@
           "total_degree": {
             "type": "integer",
             "format": "int64"
-          }
-        }
-      },
-      "DeleteRelationResponse": {
-        "type": "object",
-        "required": [
-          "success",
-          "message",
-          "id"
-        ],
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "message": {
-            "type": "string"
-          },
-          "success": {
-            "type": "boolean"
           }
         }
       },
@@ -11703,6 +11432,35 @@
         },
         "additionalProperties": false
       },
+      "ReactionSummaryResponse": {
+        "type": "object",
+        "required": [
+          "likes",
+          "dislikes",
+          "score"
+        ],
+        "properties": {
+          "dislikes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "likes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "my_kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`\"like\"` / `\"dislike\"` / null. Present only when the request has an\nauthenticated viewer; the field is omitted otherwise so anonymous\ncallers never accidentally see another user's state."
+          },
+          "score": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "RegionalCountDto": {
         "type": "object",
         "required": [
@@ -11818,21 +11576,6 @@
           "outgoing",
           "incoming"
         ]
-      },
-      "RelationMutationResponse": {
-        "type": "object",
-        "required": [
-          "success",
-          "relation"
-        ],
-        "properties": {
-          "relation": {
-            "$ref": "#/components/schemas/AuthRelationResponse"
-          },
-          "success": {
-            "type": "boolean"
-          }
-        }
       },
       "ReportListResponse": {
         "type": "object",
@@ -12184,6 +11927,42 @@
           }
         }
       },
+      "SetReactionRequest": {
+        "type": "object",
+        "required": [
+          "target_type",
+          "target_id"
+        ],
+        "properties": {
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`\"like\"` / `\"dislike\"` / null. `null` clears any existing reaction."
+          },
+          "target_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "target_type": {
+            "type": "string",
+            "description": "`\"article\"` or `\"source\"`."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SetReactionResponse": {
+        "type": "object",
+        "required": [
+          "summary"
+        ],
+        "properties": {
+          "summary": {
+            "$ref": "#/components/schemas/ReactionSummaryResponse"
+          }
+        }
+      },
       "SlowQueryItem": {
         "type": "object",
         "required": [
@@ -12354,6 +12133,17 @@
             "type": "integer",
             "format": "int32"
           },
+          "reaction_summary": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReactionSummaryResponse",
+                "description": "Wave-8 reactions: aggregated like/dislike summary plus the calling\nuser's `my_kind`. Populated by `GET /api/v1/sources/{id}` only."
+              }
+            ]
+          },
           "render_mode": {
             "type": "string"
           },
@@ -12501,6 +12291,23 @@
           },
           "success": {
             "type": "boolean"
+          }
+        }
+      },
+      "SummaryBatchResponse": {
+        "type": "object",
+        "required": [
+          "summaries"
+        ],
+        "properties": {
+          "summaries": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ReactionSummaryResponse"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
           }
         }
       },
@@ -13133,8 +12940,7 @@
         "required": [
           "user",
           "roles",
-          "permissions",
-          "role_tier"
+          "permissions"
         ],
         "properties": {
           "permissions": {
@@ -13142,9 +12948,6 @@
             "items": {
               "type": "string"
             }
-          },
-          "role_tier": {
-            "type": "string"
           },
           "roles": {
             "type": "array",
@@ -13216,7 +13019,9 @@
           "email",
           "is_active",
           "version",
-          "created_at"
+          "created_at",
+          "roles",
+          "role_tier"
         ],
         "properties": {
           "avatar_url": {
@@ -13258,6 +13063,16 @@
               "null"
             ],
             "format": "date-time"
+          },
+          "role_tier": {
+            "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Role names assigned to the user in this tenant. Included on list rows so\nadmin rosters and detail drawers render the same tier labels."
           },
           "tenant_id": {
             "type": "string",
@@ -13475,10 +13290,6 @@
       "description": "Authentication"
     },
     {
-      "name": "authz",
-      "description": "Relationship-based authorization"
-    },
-    {
       "name": "articles",
       "description": "Articles"
     },
@@ -13541,6 +13352,10 @@
     {
       "name": "tenants",
       "description": "Tenant management"
+    },
+    {
+      "name": "reactions",
+      "description": "Article and source reactions (likes/dislikes)"
     }
   ]
 }

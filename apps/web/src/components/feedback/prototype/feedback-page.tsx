@@ -67,8 +67,8 @@ const TYPE_OPTIONS: TypeOption[] = [
 		value: "other",
 		labelKey: "Other",
 		Icon: HelpCircle,
-		bgVar: "var(--color-neutral-100)",
-		fgVar: "var(--color-neutral-600)",
+		bgVar: "var(--surface-card-tint-bg)",
+		fgVar: "var(--surface-card-muted-fg)",
 	},
 ];
 
@@ -116,7 +116,7 @@ function formatDate(dateStr: string): string {
 
 function HistoryEmpty({ children }: { children: ReactNode }) {
 	return (
-		<div className="p-8 text-center text-[13px] text-[color:var(--color-neutral-500)]">
+		<div className="p-8 text-center text-[13px] text-[color:var(--surface-card-faint-fg)]">
 			{children}
 		</div>
 	);
@@ -171,20 +171,20 @@ export function FeedbackPagePrototype() {
 	const submitting = create.isPending;
 
 	const cardClass =
-		"rounded-xl border p-6 [border-color:var(--color-neutral-200)] bg-[var(--color-card)]";
+		"rounded-xl border p-6 [border-color:var(--surface-card-border-strong)] bg-[var(--color-card)]";
 	const sectionTitleClass =
-		"text-sm font-bold mb-4 [color:var(--color-neutral-800)]";
+		"text-sm font-bold mb-4 [color:var(--surface-card-foreground)]";
 	const formLabelClass =
-		"block text-[13px] font-semibold mb-2 [color:var(--color-neutral-700)]";
+		"block text-[13px] font-semibold mb-2 [color:var(--surface-card-muted-fg)]";
 	const formInputClass =
 		"w-full rounded-lg border px-3.5 py-2.5 text-[13px] outline-none transition-colors duration-150 ease-out font-[inherit] " +
-		"[border-color:var(--color-neutral-200)] [background:var(--color-card)] [color:var(--color-neutral-800)] " +
+		"[border-color:var(--surface-card-border-strong)] [background:var(--color-card)] [color:var(--surface-card-foreground)] " +
 		"focus-visible:[border-color:var(--color-primary-500)] focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary-500)]/30";
 
 	return (
 		<div className="w-full">
 			<header className="mb-6 flex flex-col gap-1">
-				<h1 className="m-0 flex items-center gap-2.5 text-2xl font-bold text-[color:var(--color-neutral-900)]">
+				<h1 className="m-0 flex items-center gap-2.5 text-2xl font-bold text-[color:var(--surface-card-foreground)]">
 					<Sparkles
 						aria-hidden="true"
 						size={22}
@@ -192,7 +192,7 @@ export function FeedbackPagePrototype() {
 					/>
 					{t("Feedback")}
 				</h1>
-				<p className="text-[13px] text-[color:var(--color-neutral-500)]">
+				<p className="text-[13px] text-[color:var(--surface-card-faint-fg)]">
 					{t("Submit suggestions, report issues, or recommend new sources")}
 				</p>
 			</header>
@@ -214,7 +214,7 @@ export function FeedbackPagePrototype() {
 									className={`flex items-center gap-3 rounded-[10px] border-2 px-4 py-3.5 cursor-pointer transition-colors duration-150 ease-out ${
 										selected
 											? "[border-color:var(--color-primary-500)] [background:var(--color-primary-50)]"
-											: "[border-color:var(--color-neutral-200)] [background:var(--color-card)] hover:[border-color:var(--color-primary-300)] hover:[background:var(--color-primary-50)]/40"
+											: "[border-color:var(--surface-card-border-strong)] [background:var(--color-card)] hover:[border-color:var(--color-primary-300)] hover:[background:var(--color-primary-50)]/40"
 									}`}
 								>
 									<span
@@ -223,7 +223,7 @@ export function FeedbackPagePrototype() {
 									>
 										<opt.Icon aria-hidden="true" size={18} />
 									</span>
-									<span className="text-[13px] font-semibold text-[color:var(--color-neutral-800)]">
+									<span className="text-[13px] font-semibold text-[color:var(--surface-card-foreground)]">
 										{t(opt.labelKey)}
 									</span>
 								</button>
@@ -263,7 +263,7 @@ export function FeedbackPagePrototype() {
 					<div className="mb-4">
 						<label htmlFor="fb-email" className={formLabelClass}>
 							{t("Contact email")}
-							<span className="ml-1 font-normal text-[color:var(--color-neutral-400)]">
+							<span className="ml-1 font-normal text-[color:var(--surface-card-faint-fg)]">
 								{t("(optional)")}
 							</span>
 						</label>
@@ -281,7 +281,7 @@ export function FeedbackPagePrototype() {
 						<button
 							type="button"
 							onClick={reset}
-							className="rounded-lg border bg-transparent px-[18px] py-2 text-[13px] font-semibold cursor-pointer transition-colors duration-150 ease-out [border-color:var(--color-neutral-300)] [color:var(--color-neutral-700)] hover:[background:var(--color-neutral-50)]"
+							className="rounded-lg border bg-transparent px-[18px] py-2 text-[13px] font-semibold cursor-pointer transition-colors duration-150 ease-out [border-color:var(--surface-card-border-strong)] [color:var(--surface-card-muted-fg)] hover:[background:var(--surface-card-subtle-bg)]"
 						>
 							{t("Cancel")}
 						</button>
@@ -290,7 +290,7 @@ export function FeedbackPagePrototype() {
 							disabled={submitting}
 							className={`inline-flex items-center gap-2 rounded-lg border-0 px-5 py-2 text-[13px] font-semibold text-white transition-[opacity,box-shadow,background] duration-150 ease-out ${
 								submitting
-									? "opacity-70 cursor-not-allowed [background:var(--color-neutral-300)]"
+									? "opacity-70 cursor-not-allowed [background:var(--surface-card-border-strong)]"
 									: "cursor-pointer shadow-[var(--shadow-brand)] [background:var(--gradient-feedback-submit)] hover:[background:var(--gradient-feedback-submit-hover)] hover:shadow-[var(--shadow-brand-lg)] focus-visible:shadow-[var(--shadow-brand-lg)]"
 							}`}
 						>
@@ -318,7 +318,7 @@ export function FeedbackPagePrototype() {
 							<Loader2
 								aria-hidden="true"
 								size={18}
-								className="animate-spin text-[color:var(--color-neutral-400)]"
+								className="animate-spin text-[color:var(--surface-card-faint-fg)]"
 							/>
 						</HistoryEmpty>
 					) : myFeedbacks.isError ? (
@@ -332,12 +332,12 @@ export function FeedbackPagePrototype() {
 								return (
 									<li
 										key={fb.id}
-										className="border-b py-4 [border-color:var(--color-neutral-100)] last:border-b-0"
+										className="border-b py-4 [border-color:var(--surface-card-tint-bg)] last:border-b-0"
 									>
-										<div className="mb-1.5 text-[13px] font-semibold text-[color:var(--color-neutral-800)]">
+										<div className="mb-1.5 text-[13px] font-semibold text-[color:var(--surface-card-foreground)]">
 											{fb.title}
 										</div>
-										<div className="flex items-center gap-2.5 text-[11px] text-[color:var(--color-neutral-500)]">
+										<div className="flex items-center gap-2.5 text-[11px] text-[color:var(--surface-card-faint-fg)]">
 											<span
 												className="rounded-full px-2.5 py-[3px] text-[11px] font-semibold"
 												style={{ background: badge.bg, color: badge.fg }}
@@ -347,8 +347,8 @@ export function FeedbackPagePrototype() {
 											<span>{formatDate(fb.created_at)}</span>
 										</div>
 										{fb.admin_response ? (
-											<div className="mt-2.5 rounded-md border-l-[3px] px-3 py-2.5 text-xs leading-[1.5] [background:var(--color-neutral-50)] [border-left-color:var(--color-primary-500)] [color:var(--color-neutral-700)]">
-												<b className="text-[color:var(--color-neutral-800)]">
+											<div className="mt-2.5 rounded-md border-l-[3px] px-3 py-2.5 text-xs leading-[1.5] [background:var(--surface-card-subtle-bg)] [border-left-color:var(--color-primary-500)] [color:var(--surface-card-muted-fg)]">
+												<b className="text-[color:var(--surface-card-foreground)]">
 													{t("Admin reply:")}
 												</b>
 												{` ${fb.admin_response}`}

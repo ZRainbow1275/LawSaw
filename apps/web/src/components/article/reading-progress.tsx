@@ -107,12 +107,12 @@ function ProgressPercentage({
 }) {
 	return (
 		<motion.div
-			className="fixed top-4 right-4 z-50 rounded-full bg-white/90 backdrop-blur-sm px-3 py-1.5 shadow-lg border border-neutral-100"
+			className="fixed top-4 right-4 z-50 rounded-full bg-white/90 backdrop-blur-sm px-3 py-1.5 shadow-lg border border-neutral-100 dark:bg-neutral-900/90 dark:border-white/10"
 			initial={{ opacity: 0, y: -10 }}
 			animate={{ opacity: 1, y: 0 }}
 			transition={{ delay: 0.5 }}
 		>
-			<motion.span className="text-xs font-medium text-neutral-700">
+			<motion.span className="text-xs font-medium text-neutral-700 dark:text-neutral-200">
 				{/* Subscribe to motion value updates */}
 				<ProgressValue scrollYProgress={scrollYProgress} />
 			</motion.span>

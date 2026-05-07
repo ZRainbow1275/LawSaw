@@ -146,10 +146,10 @@ export function ReportExportDialog({
 	return (
 		<Modal isOpen={isOpen} onClose={onClose} size="md">
 			<ModalHeader>
-				<h2 className="text-xl font-bold text-neutral-900">
+				<h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-50">
 					{t("Export Report")}
 				</h2>
-				<p className="text-sm text-neutral-500 mt-1 truncate">{report.title}</p>
+				<p className="text-sm text-neutral-500 mt-1 truncate dark:text-neutral-400">{report.title}</p>
 			</ModalHeader>
 
 			<ModalBody>
@@ -180,7 +180,7 @@ export function ReportExportDialog({
 								<p className="text-sm font-medium text-primary-700">
 									{t("Export task queued!")}
 								</p>
-								<p className="text-xs text-neutral-500">
+								<p className="text-xs text-neutral-500 dark:text-neutral-400">
 									{t("Preparing export file...")}
 								</p>
 							</>
@@ -209,8 +209,8 @@ export function ReportExportDialog({
 										className={cn(
 											"flex flex-col items-center gap-2 p-4 rounded-xl border-2 cursor-pointer transition-all",
 											isSelected && !disabled
-												? "border-primary-500 bg-primary-50 text-primary-700"
-												: "border-neutral-200 bg-white text-neutral-600 hover:border-primary-200 hover:bg-neutral-50",
+												? "border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-500/15 dark:text-primary-200"
+												: "border-neutral-200 bg-white text-neutral-600 hover:border-primary-200 hover:bg-neutral-50 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:border-primary-400/40 dark:hover:bg-white/5",
 											disabled && "cursor-not-allowed opacity-45",
 										)}
 									>

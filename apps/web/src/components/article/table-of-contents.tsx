@@ -71,10 +71,10 @@ export function TableOfContents({
 			aria-label={t("Table of contents")}
 			className={cn("w-48 text-sm", className)}
 		>
-			<h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+			<h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
 				{t("Contents")}
 			</h4>
-			<ul className="space-y-1 border-l-2 border-neutral-100">
+			<ul className="space-y-1 border-l-2 border-neutral-100 dark:border-white/10">
 				{items.map((item) => (
 					<li key={item.id}>
 						<button
@@ -83,19 +83,19 @@ export function TableOfContents({
 							aria-current={activeId === item.id ? "location" : undefined}
 							className={cn(
 								"block w-full text-left py-1.5 transition-all duration-200",
-								"hover:text-primary-600",
+								"hover:text-primary-600 dark:hover:text-primary-300",
 								// Indentation by level
 								item.level === 1 && "pl-4 font-medium",
-								item.level === 2 && "pl-6 text-neutral-600",
-								item.level === 3 && "pl-8 text-neutral-500 text-xs",
+								item.level === 2 && "pl-6 text-neutral-600 dark:text-neutral-300",
+								item.level === 3 && "pl-8 text-neutral-500 text-xs dark:text-neutral-400",
 								// Active state
 								activeId === item.id && [
 									"border-l-2 border-primary-500 -ml-[2px]",
-									"text-primary-600 font-medium",
-									"bg-primary-50/50",
+									"text-primary-600 font-medium dark:text-primary-300",
+									"bg-primary-50/50 dark:bg-primary-500/10",
 								],
 								// Inactive
-								activeId !== item.id && "text-neutral-500",
+								activeId !== item.id && "text-neutral-500 dark:text-neutral-400",
 							)}
 						>
 							<span className="line-clamp-2">{item.text}</span>
@@ -152,11 +152,11 @@ export function TOCDrawer({
 						animate={{ x: 0 }}
 						exit={{ x: "-100%" }}
 						transition={{ type: "spring", damping: 25, stiffness: 200 }}
-						className="fixed left-0 top-0 bottom-0 z-50 w-72 bg-white shadow-xl lg:hidden"
+						className="fixed left-0 top-0 bottom-0 z-50 w-72 bg-white shadow-xl lg:hidden dark:bg-neutral-900"
 					>
 						{/* Header */}
-						<div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
-							<h3 className="font-semibold text-neutral-900">
+						<div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3 dark:border-white/10">
+							<h3 className="font-semibold text-neutral-900 dark:text-neutral-50">
 								{t("Table of contents")}
 							</h3>
 							<Button
@@ -181,12 +181,12 @@ export function TOCDrawer({
 											onClick={() => handleClick(item.id)}
 											className={cn(
 												"flex items-center gap-2 w-full text-left py-2 px-3 rounded-lg transition-all",
-												"hover:bg-neutral-50",
+												"hover:bg-neutral-50 dark:hover:bg-white/5",
 												item.level === 1 && "font-medium",
 												item.level === 2 && "pl-6 text-sm",
-												item.level === 3 && "pl-9 text-sm text-neutral-500",
+												item.level === 3 && "pl-9 text-sm text-neutral-500 dark:text-neutral-400",
 												activeId === item.id && [
-													"bg-primary-50 text-primary-600",
+													"bg-primary-50 text-primary-600 dark:bg-primary-500/15 dark:text-primary-200",
 													"border-l-2 border-primary-500",
 												],
 											)}
@@ -235,7 +235,7 @@ export function TOCTrigger({ onClick, itemCount, className }: TOCTriggerProps) {
 		>
 			<List aria-hidden="true" className="h-4 w-4" />
 			<span>{t("Contents")}</span>
-			<span className="text-xs text-neutral-400">({itemCount})</span>
+			<span className="text-xs text-neutral-400 dark:text-neutral-500">({itemCount})</span>
 		</Button>
 	);
 }

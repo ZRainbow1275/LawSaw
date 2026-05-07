@@ -249,7 +249,7 @@ export function SwipeableCard({
 				onDragEnd={handleDragEnd}
 				animate={controls}
 				style={{ x }}
-				className="relative bg-white rounded-xl touch-pan-y"
+				className="relative bg-white rounded-xl touch-pan-y dark:bg-neutral-900"
 				onClick={isOpen ? handleClose : undefined}
 			>
 				{children}
@@ -286,7 +286,7 @@ export function SwipeHint({ direction = "left", className }: SwipeHintProps) {
 			animate={{ opacity: 1 }}
 			exit={{ opacity: 0 }}
 			className={cn(
-				"flex items-center justify-center gap-2 text-xs text-neutral-400 py-2",
+				"flex items-center justify-center gap-2 text-xs text-neutral-400 py-2 dark:text-neutral-500",
 				className,
 			)}
 		>
@@ -301,7 +301,7 @@ export function SwipeHint({ direction = "left", className }: SwipeHintProps) {
 					{t("Swipe left for actions")}
 				</span>
 			)}
-			{direction === "both" && <span className="text-neutral-300">|</span>}
+			{direction === "both" && <span className="text-neutral-300 dark:text-neutral-600">|</span>}
 			{(direction === "right" || direction === "both") && (
 				<span className="flex items-center gap-1">
 					{t("Swipe right to bookmark")}

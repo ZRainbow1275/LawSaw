@@ -32,6 +32,11 @@ export interface ReadingSettings {
 	showToc: boolean;
 	/** Whether to auto-hide the toolbar */
 	autoHideToolbar: boolean;
+	/**
+	 * Focus mode (P3#7) — when true the reader dims non-central paragraphs
+	 * and shows a top progress ring. Persisted across sessions.
+	 */
+	focusMode: boolean;
 }
 
 export interface ReadingProgress {
@@ -84,6 +89,7 @@ const defaultSettings: ReadingSettings = {
 	fontFamily: "serif",
 	showToc: true,
 	autoHideToolbar: true,
+	focusMode: false,
 };
 
 // ============================================

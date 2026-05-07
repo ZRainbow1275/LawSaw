@@ -45,7 +45,7 @@ export function EntityInspectorPanel({
 	return (
 		<aside
 			className="flex h-full min-h-0 flex-col rounded-2xl border bg-white p-5 shadow-sm"
-			style={{ borderColor: "var(--color-neutral-100)" }}
+			style={{ borderColor: "var(--surface-card-border)" }}
 			data-testid="kg-inspector-panel"
 		>
 			<div className="mb-3 flex items-center gap-2">
@@ -56,7 +56,7 @@ export function EntityInspectorPanel({
 				/>
 				<div
 					className="text-[13px] font-bold"
-					style={{ color: "var(--color-neutral-900)" }}
+					style={{ color: "var(--surface-card-foreground)" }}
 				>
 					{t("Entity details")}
 				</div>
@@ -67,8 +67,8 @@ export function EntityInspectorPanel({
 					<div
 						className="rounded-xl border-dashed border p-5 text-center"
 						style={{
-							borderColor: "var(--color-neutral-200)",
-							color: "var(--color-neutral-500)",
+							borderColor: "var(--surface-card-border-strong)",
+							color: "var(--surface-card-faint-fg)",
 						}}
 					>
 						<Sparkles
@@ -87,7 +87,7 @@ export function EntityInspectorPanel({
 						<Loader2
 							aria-hidden="true"
 							className="h-5 w-5 animate-spin"
-							style={{ color: "var(--color-neutral-400)" }}
+							style={{ color: "var(--surface-card-faint-fg)" }}
 						/>
 					</div>
 				) : entityQuery.isError || !entity ? (
@@ -108,7 +108,7 @@ export function EntityInspectorPanel({
 							value={
 								<span
 									className="text-sm font-semibold"
-									style={{ color: "var(--color-neutral-900)" }}
+									style={{ color: "var(--surface-card-foreground)" }}
 								>
 									{entity.name}
 								</span>
@@ -133,7 +133,7 @@ export function EntityInspectorPanel({
 							value={
 								<span
 									className="text-sm font-semibold tabular-nums"
-									style={{ color: "var(--color-neutral-800)" }}
+									style={{ color: "var(--surface-card-foreground)" }}
 								>
 									{entity.mention_count}
 								</span>
@@ -149,8 +149,8 @@ export function EntityInspectorPanel({
 												key={alias}
 												className="rounded-md border px-1.5 py-0.5 text-[10px]"
 												style={{
-													borderColor: "var(--color-neutral-200)",
-													color: "var(--color-neutral-600)",
+													borderColor: "var(--surface-card-border-strong)",
+													color: "var(--surface-card-muted-fg)",
 												}}
 											>
 												{alias}
@@ -164,7 +164,7 @@ export function EntityInspectorPanel({
 						<div>
 							<div
 								className="mb-2 text-[10px] font-semibold uppercase tracking-wider"
-								style={{ color: "var(--color-neutral-400)" }}
+								style={{ color: "var(--surface-card-faint-fg)" }}
 							>
 								{t("Related entities")}
 							</div>
@@ -173,7 +173,7 @@ export function EntityInspectorPanel({
 									<Loader2
 										aria-hidden="true"
 										className="mr-1.5 h-3 w-3 animate-spin"
-										style={{ color: "var(--color-neutral-400)" }}
+										style={{ color: "var(--surface-card-faint-fg)" }}
 									/>
 									{t("Loading...")}
 								</div>
@@ -181,8 +181,8 @@ export function EntityInspectorPanel({
 								<div
 									className="rounded-md border-dashed border px-2 py-3 text-center text-[11px]"
 									style={{
-										borderColor: "var(--color-neutral-200)",
-										color: "var(--color-neutral-500)",
+										borderColor: "var(--surface-card-border-strong)",
+										color: "var(--surface-card-faint-fg)",
 									}}
 								>
 									{t("No related entities yet.")}
@@ -211,7 +211,7 @@ export function EntityInspectorPanel({
 													</span>
 													<span
 														className="truncate text-xs"
-														style={{ color: "var(--color-neutral-800)" }}
+														style={{ color: "var(--surface-card-foreground)" }}
 													>
 														{rel.entity.name}
 													</span>
@@ -227,7 +227,7 @@ export function EntityInspectorPanel({
 							<div>
 								<div
 									className="mb-2 text-[10px] font-semibold uppercase tracking-wider"
-									style={{ color: "var(--color-neutral-400)" }}
+									style={{ color: "var(--surface-card-faint-fg)" }}
 								>
 									{t("Related articles")}
 								</div>
@@ -243,8 +243,8 @@ export function EntityInspectorPanel({
 									<div
 										className="rounded-md border-dashed border px-2 py-3 text-center text-[11px]"
 										style={{
-											borderColor: "var(--color-neutral-200)",
-											color: "var(--color-neutral-500)",
+											borderColor: "var(--surface-card-border-strong)",
+											color: "var(--surface-card-faint-fg)",
 										}}
 									>
 										{t("No related articles yet.")}
@@ -263,18 +263,18 @@ export function EntityInspectorPanel({
 													<FileText
 														aria-hidden="true"
 														className="mt-0.5 h-3 w-3 shrink-0"
-														style={{ color: "var(--color-neutral-400)" }}
+														style={{ color: "var(--surface-card-faint-fg)" }}
 													/>
 													<span
 														className="line-clamp-2 flex-1"
-														style={{ color: "var(--color-neutral-800)" }}
+														style={{ color: "var(--surface-card-foreground)" }}
 													>
 														{article.title}
 													</span>
 													<ExternalLink
 														aria-hidden="true"
 														className="mt-0.5 h-3 w-3 shrink-0"
-														style={{ color: "var(--color-neutral-400)" }}
+														style={{ color: "var(--surface-card-faint-fg)" }}
 													/>
 												</Link>
 											</li>
@@ -301,7 +301,7 @@ function InspectorRow({
 		<div>
 			<div
 				className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
-				style={{ color: "var(--color-neutral-400)" }}
+				style={{ color: "var(--surface-card-faint-fg)" }}
 			>
 				{label}
 			</div>

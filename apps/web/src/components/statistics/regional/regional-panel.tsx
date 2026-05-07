@@ -29,7 +29,7 @@ export function RegionalPanel() {
 								(key) => (
 									<div
 										key={key}
-										className="h-8 animate-pulse rounded bg-neutral-100"
+										className="h-8 animate-pulse rounded bg-neutral-100 dark:bg-white/10"
 									/>
 								),
 							)}

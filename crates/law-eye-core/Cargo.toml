@@ -31,6 +31,6 @@ tera.workspace = true
 docx-rs.workspace = true
 plotters.workspace = true
 plotters-svg.workspace = true
+async-trait.workspace = true
 
 [dev-dependencies]
-async-trait.workspace = true

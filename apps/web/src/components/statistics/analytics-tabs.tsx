@@ -38,7 +38,7 @@ export function AnalyticsTabs({
 	const t = useT();
 
 	return (
-		<div className="mb-6 flex flex-wrap gap-1 rounded-xl border border-neutral-200 bg-neutral-50 p-1">
+		<div className="mb-6 flex flex-wrap gap-1 rounded-xl border border-neutral-200 bg-neutral-50 p-1 dark:border-white/10 dark:bg-white/5">
 			{TAB_DEFINITIONS.map(({ key, labelKey }) => {
 				const locked = lockedTabs?.has(key) ?? false;
 				return (
@@ -51,10 +51,10 @@ export function AnalyticsTabs({
 						className={cn(
 							"flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all",
 							activeTab === key
-								? "bg-white text-primary-700 shadow-sm"
+								? "bg-white text-primary-700 shadow-sm dark:bg-neutral-900 dark:text-primary-200"
 								: locked
-									? "text-neutral-400 hover:bg-white/40"
-									: "text-neutral-600 hover:bg-white/60 hover:text-neutral-900",
+									? "text-neutral-400 hover:bg-white/40 dark:text-neutral-500 dark:hover:bg-white/10"
+									: "text-neutral-600 hover:bg-white/60 hover:text-neutral-900 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-neutral-50",
 						)}
 					>
 						{locked && (

@@ -199,16 +199,16 @@ export function ArticlesPagePrototype() {
 			>
 				{/* page-header */}
 				<header className="flex flex-wrap items-center gap-3">
-					<h1 className="text-2xl font-bold text-neutral-900">
+					<h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-50">
 						{t("All articles")}
 					</h1>
-					<span className="inline-flex items-center rounded-full bg-primary-50 px-2.5 py-0.5 text-xs font-semibold text-primary-700">
+					<span className="inline-flex items-center rounded-full bg-primary-50 px-2.5 py-0.5 text-xs font-semibold text-primary-700 dark:bg-primary-500/15 dark:text-primary-200">
 						{t("Total {count} articles", { count: String(totalCount) })}
 					</span>
 				</header>
 
 				{/* toolbar */}
-				<div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white p-3">
+				<div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white p-3 dark:border-white/10 dark:bg-neutral-900">
 					<div className="flex items-center gap-2">
 						<button
 							type="button"
@@ -217,8 +217,8 @@ export function ArticlesPagePrototype() {
 							className={cn(
 								"inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors",
 								viewMode === "list"
-									? "border-primary-500 bg-primary-50 text-primary-700"
-									: "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300",
+									? "border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-500/15 dark:text-primary-200"
+									: "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:border-white/20",
 							)}
 						>
 							<List aria-hidden="true" className="h-4 w-4" />
@@ -231,8 +231,8 @@ export function ArticlesPagePrototype() {
 							className={cn(
 								"inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors",
 								viewMode === "grid"
-									? "border-primary-500 bg-primary-50 text-primary-700"
-									: "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300",
+									? "border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-500/15 dark:text-primary-200"
+									: "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:border-white/20",
 							)}
 						>
 							<LayoutGrid aria-hidden="true" className="h-4 w-4" />
@@ -240,7 +240,7 @@ export function ArticlesPagePrototype() {
 						</button>
 						<button
 							type="button"
-							className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:border-neutral-300"
+							className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:border-neutral-300 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:border-white/20"
 						>
 							<Filter aria-hidden="true" className="h-4 w-4" />
 							{t("Filter")}
@@ -249,7 +249,7 @@ export function ArticlesPagePrototype() {
 					<label className="relative flex w-full max-w-xs items-center">
 						<Search
 							aria-hidden="true"
-							className="pointer-events-none absolute left-3 h-4 w-4 text-neutral-400"
+							className="pointer-events-none absolute left-3 h-4 w-4 text-neutral-400 dark:text-neutral-500"
 						/>
 						<input
 							type="search"
@@ -260,7 +260,7 @@ export function ArticlesPagePrototype() {
 								updateUrl({ q: event.target.value, page: 1 });
 							}}
 							placeholder={t("Search article titles, keywords...")}
-							className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm text-neutral-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100"
+							className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm text-neutral-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-100 dark:focus:ring-primary-500/30"
 						/>
 					</label>
 				</div>
@@ -277,8 +277,8 @@ export function ArticlesPagePrototype() {
 						className={cn(
 							"inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition-colors",
 							selectedCategoryId == null
-								? "border-primary-500 bg-primary-500 text-white"
-								: "border-neutral-200 bg-white text-neutral-700 hover:border-primary-300",
+								? "border-primary-500 bg-primary-500 text-white dark:border-primary-400 dark:bg-primary-500"
+								: "border-neutral-200 bg-white text-neutral-700 hover:border-primary-300 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:border-primary-400/40",
 						)}
 					>
 						{t("All")}
@@ -315,7 +315,7 @@ export function ArticlesPagePrototype() {
 				</div>
 
 				{/* article rows */}
-				<section className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+				<section className="overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-white/10 dark:bg-neutral-900">
 					{articlesQuery.isLoading ? (
 						<div className="space-y-3 p-5">
 							{[0, 1, 2, 3, 4].map((index) => (
@@ -332,16 +332,16 @@ export function ArticlesPagePrototype() {
 								aria-hidden="true"
 								className="mx-auto h-8 w-8 text-red-500"
 							/>
-							<p className="mt-3 text-sm font-medium text-neutral-900">
+							<p className="mt-3 text-sm font-medium text-neutral-900 dark:text-neutral-50">
 								{t("Failed to load articles")}
 							</p>
 						</div>
 					) : filteredArticles.length === 0 ? (
-						<div className="p-12 text-center text-sm text-neutral-500">
+						<div className="p-12 text-center text-sm text-neutral-500 dark:text-neutral-400">
 							{search ? t("No articles in this category") : t("No articles")}
 						</div>
 					) : (
-						<ul className="divide-y divide-neutral-100">
+						<ul className="divide-y divide-neutral-100 dark:divide-white/10">
 							{filteredArticles.map((article) => {
 								const risk = bucketRisk(article.risk_score);
 								const riskMeta = riskPillStyles[risk];
@@ -354,7 +354,7 @@ export function ArticlesPagePrototype() {
 									<li key={article.id}>
 										<Link
 											href={withLocalePath(locale, `/articles/${article.id}`)}
-											className="group flex gap-4 px-6 py-5 transition-colors hover:bg-neutral-50"
+											className="group flex gap-4 px-6 py-5 transition-colors hover:bg-neutral-50 dark:hover:bg-white/5"
 										>
 											<div className="flex shrink-0 flex-col items-start gap-1.5">
 												<span
@@ -390,15 +390,15 @@ export function ArticlesPagePrototype() {
 												) : null}
 											</div>
 											<div className="min-w-0 flex-1">
-												<h3 className="line-clamp-1 text-[14px] font-semibold text-neutral-900 transition-colors group-hover:text-primary-600">
+												<h3 className="line-clamp-1 text-[14px] font-semibold text-neutral-900 transition-colors group-hover:text-primary-600 dark:text-neutral-50 dark:group-hover:text-primary-300">
 													{article.title}
 												</h3>
 												{article.summary ? (
-													<p className="mt-1 line-clamp-2 text-[13px] text-neutral-500">
+													<p className="mt-1 line-clamp-2 text-[13px] text-neutral-500 dark:text-neutral-400">
 														{article.summary}
 													</p>
 												) : null}
-												<div className="mt-1.5 flex items-center gap-3 text-[12px] text-neutral-400">
+												<div className="mt-1.5 flex items-center gap-3 text-[12px] text-neutral-400 dark:text-neutral-500">
 													{article.author ? (
 														<span>{article.author}</span>
 													) : null}
@@ -435,12 +435,12 @@ export function ArticlesPagePrototype() {
 								updateUrl({ page: next });
 							}}
 							disabled={page <= 1}
-							className="inline-flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 transition-colors hover:border-primary-300 disabled:cursor-not-allowed disabled:opacity-50"
+							className="inline-flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 transition-colors hover:border-primary-300 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:border-primary-400/40"
 						>
 							<ChevronLeft aria-hidden="true" className="h-4 w-4" />
 							{t("Previous")}
 						</button>
-						<span className="text-sm text-neutral-500">
+						<span className="text-sm text-neutral-500 dark:text-neutral-400">
 							{t("Page {current} / {total}", {
 								current: page,
 								total: totalPages,
@@ -454,7 +454,7 @@ export function ArticlesPagePrototype() {
 								updateUrl({ page: next });
 							}}
 							disabled={page >= totalPages}
-							className="inline-flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 transition-colors hover:border-primary-300 disabled:cursor-not-allowed disabled:opacity-50"
+							className="inline-flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 transition-colors hover:border-primary-300 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:border-primary-400/40"
 						>
 							{t("Next")}
 							<ChevronRight aria-hidden="true" className="h-4 w-4" />

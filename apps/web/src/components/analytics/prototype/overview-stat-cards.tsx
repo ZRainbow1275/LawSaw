@@ -29,7 +29,7 @@ const gridStyle: CSSProperties = {
 
 const cardStyle: CSSProperties = {
 	background: "var(--color-card)",
-	border: "1px solid var(--color-neutral-200)",
+	border: "1px solid var(--surface-card-border-strong)",
 	borderRadius: 12,
 	padding: 20,
 	boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
@@ -44,7 +44,7 @@ const headerStyle: CSSProperties = {
 
 const labelStyle: CSSProperties = {
 	fontSize: 13,
-	color: "var(--color-neutral-500)",
+	color: "var(--surface-card-faint-fg)",
 	fontWeight: 500,
 };
 
@@ -62,7 +62,7 @@ const iconStyle = (bg: string, color: string): CSSProperties => ({
 const valueStyle: CSSProperties = {
 	fontSize: 32,
 	fontWeight: 700,
-	color: "var(--color-neutral-900)",
+	color: "var(--surface-card-foreground)",
 	lineHeight: 1.1,
 };
 

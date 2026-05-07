@@ -18,7 +18,7 @@ function getTypeBadge(entityType: string) {
 		case "person":
 			return "bg-amber-50 text-amber-700 border-amber-200";
 		default:
-			return "bg-neutral-50 text-neutral-700 border-neutral-200";
+			return "bg-neutral-50 text-neutral-700 border-neutral-200 dark:bg-white/5 dark:text-neutral-200 dark:border-white/10";
 	}
 }
 
@@ -57,20 +57,20 @@ export function EntityPalette({
 	return (
 		<div
 			className={cn(
-				"flex h-full min-h-0 flex-col rounded-2xl border border-neutral-200 bg-white",
+				"flex h-full min-h-0 flex-col rounded-2xl border border-neutral-200 bg-white dark:border-white/10 dark:bg-neutral-900",
 				className,
 			)}
 		>
-			<div className="border-b border-neutral-100 p-4">
+			<div className="border-b border-neutral-100 p-4 dark:border-white/10">
 				<div className="flex items-center gap-2">
-					<div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-100 text-neutral-700">
+					<div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-100 text-neutral-700 dark:bg-white/10 dark:text-neutral-200">
 						<Sparkles aria-hidden="true" className="h-4 w-4" />
 					</div>
 					<div className="min-w-0">
-						<div className="text-sm font-semibold text-neutral-900">
+						<div className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
 							{t("Entity list")}
 						</div>
-						<div className="text-xs text-neutral-500">
+						<div className="text-xs text-neutral-500 dark:text-neutral-400">
 							{mode === "search"
 								? t("Search results")
 								: t("Sorted by popularity")}
@@ -81,7 +81,7 @@ export function EntityPalette({
 				<div className="relative mt-3">
 					<Search
 						aria-hidden="true"
-						className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
+						className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400 dark:text-neutral-500"
 					/>
 					<Input
 						value={searchTerm}
@@ -103,7 +103,7 @@ export function EntityPalette({
 						).map((key) => (
 							<div
 								key={key}
-								className="h-12 rounded-xl bg-neutral-100 animate-pulse"
+								className="h-12 rounded-xl bg-neutral-100 animate-pulse dark:bg-white/10"
 							/>
 						))}
 					</div>
@@ -125,16 +125,16 @@ export function EntityPalette({
 					</div>
 				) : empty ? (
 					<div className="p-4">
-						<div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-5 text-sm text-neutral-700">
+						<div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-5 text-sm text-neutral-700 dark:border-white/10 dark:bg-white/5 dark:text-neutral-200">
 							<div className="flex items-start gap-3">
-								<div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-neutral-600 shadow-sm">
+								<div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-neutral-600 shadow-sm dark:bg-neutral-900 dark:text-neutral-300">
 									<Database aria-hidden="true" className="h-5 w-5" />
 								</div>
 								<div className="min-w-0">
-									<div className="font-semibold text-neutral-900">
+									<div className="font-semibold text-neutral-900 dark:text-neutral-50">
 										{t("No entities")}
 									</div>
-									<p className="mt-1 text-xs text-neutral-600">
+									<p className="mt-1 text-xs text-neutral-600 dark:text-neutral-300">
 										{t(
 											"The knowledge graph depends on entity/relationship data. You can run the ingestion/AI pipeline first, or initialize it from existing articles.",
 										)}
@@ -185,16 +185,16 @@ export function EntityPalette({
 									onClick={() => onSelect(entity.id)}
 									className={cn(
 										"w-full rounded-xl px-3 py-2 text-left transition-colors",
-										"hover:bg-neutral-50",
-										active && "bg-primary-50 hover:bg-primary-50",
+										"hover:bg-neutral-50 dark:hover:bg-white/5",
+										active && "bg-primary-50 hover:bg-primary-50 dark:bg-primary-500/15 dark:hover:bg-primary-500/15",
 									)}
 								>
 									<div className="flex items-start justify-between gap-2">
 										<div className="min-w-0">
-											<div className="truncate text-sm font-medium text-neutral-900">
+											<div className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">
 												{entity.name}
 											</div>
-											<div className="mt-0.5 text-xs text-neutral-500">
+											<div className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
 												{t("Mentioned {count} times", {
 													count: entity.mention_count,
 												})}

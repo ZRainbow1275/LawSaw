@@ -205,8 +205,8 @@ function SearchContent() {
 		<div className="p-6">
 			{/* Page Title */}
 			<div className="mb-6">
-				<h1 className="text-2xl font-bold text-neutral-900">{t("Search")}</h1>
-				<p className="text-sm text-neutral-500">
+				<h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-50">{t("Search")}</h1>
+				<p className="text-sm text-neutral-500 dark:text-neutral-400">
 					{t("Search legal updates or ask AI")}
 				</p>
 			</div>
@@ -216,7 +216,7 @@ function SearchContent() {
 				<div className="relative">
 					<Search
 						aria-hidden="true"
-						className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-neutral-400"
+						className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-neutral-400 dark:text-neutral-500"
 					/>
 					<Input
 						type="search"
@@ -257,18 +257,18 @@ function SearchContent() {
 			</div>
 
 			{aiAvailabilityQuery.isLoading ? (
-				<p className="mb-6 text-xs text-neutral-500">
+				<p className="mb-6 text-xs text-neutral-500 dark:text-neutral-400">
 					{t("Checking AI service...")}
 				</p>
 			) : aiAvailabilityQuery.isError ? (
-				<p className="mb-6 text-xs text-neutral-500">
+				<p className="mb-6 text-xs text-neutral-500 dark:text-neutral-400">
 					{t("AI service check failed: {message}.", {
 						message: aiAvailabilityError ?? t("Unknown error"),
 					})}{" "}
 					{t("Please try again later or contact an administrator.")}
 				</p>
 			) : !aiAvailable ? (
-				<p className="mb-6 text-xs text-neutral-500">
+				<p className="mb-6 text-xs text-neutral-500 dark:text-neutral-400">
 					{t(
 						"AI service is disabled: configure the backend AI API key to enable Q&A.",
 					)}
@@ -311,10 +311,10 @@ function SearchContent() {
 						{askMutation.data && (
 							<div className="space-y-4">
 								<div className="rounded-lg bg-primary-50 p-4">
-									<p className="font-medium text-neutral-900">
+									<p className="font-medium text-neutral-900 dark:text-neutral-50">
 										{askMutation.data.answer}
 									</p>
-									<p className="mt-2 text-xs text-neutral-500">
+									<p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
 										{t("Confidence: {value}%", {
 											value: formatNumber(
 												locale,
@@ -329,17 +329,17 @@ function SearchContent() {
 
 								{askMutation.data.sources.length > 0 && (
 									<div>
-										<h4 className="mb-2 text-sm font-medium text-neutral-700">
+										<h4 className="mb-2 text-sm font-medium text-neutral-700 dark:text-neutral-200">
 											{t("Sources:")}
 										</h4>
 										<div className="space-y-2">
 											{askMutation.data.sources.map((source) => (
 												<div
 													key={source.article_id}
-													className="rounded border border-neutral-100 p-3"
+													className="rounded border border-neutral-100 p-3 dark:border-white/10"
 												>
 													<p className="text-sm font-medium">{source.title}</p>
-													<p className="mt-1 text-xs text-neutral-500">
+													<p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
 														{normalizeExcerpt(source.excerpt)}
 													</p>
 												</div>
@@ -367,11 +367,11 @@ function SearchContent() {
 					</CardHeader>
 					<CardContent>
 						{!trimmedSearchTerm ? (
-							<p className="py-12 text-center text-neutral-500">
+							<p className="py-12 text-center text-neutral-500 dark:text-neutral-400">
 								{t("Type keywords to start searching")}
 							</p>
 						) : trimmedSearchTerm.length < 3 ? (
-							<p className="py-12 text-center text-neutral-500">
+							<p className="py-12 text-center text-neutral-500 dark:text-neutral-400">
 								{t("Please enter at least {count} characters", { count: 3 })}
 							</p>
 						) : searching ? (
@@ -380,11 +380,11 @@ function SearchContent() {
 									{ length: 5 },
 									(_, idx) => `search-skel-${idx}`,
 								).map((key) => (
-									<div key={key} className="h-20 rounded-lg bg-neutral-100" />
+									<div key={key} className="h-20 rounded-lg bg-neutral-100 dark:bg-white/10" />
 								))}
 							</div>
 						) : searchIsError ? (
-							<div className="py-12 text-center text-neutral-500">
+							<div className="py-12 text-center text-neutral-500 dark:text-neutral-400">
 								<p>
 									{t("Search failed")}:{" "}
 									{searchError instanceof Error
@@ -401,7 +401,7 @@ function SearchContent() {
 								</Button>
 							</div>
 						) : !searchData || searchData.results.length === 0 ? (
-							<p className="py-12 text-center text-neutral-500">
+							<p className="py-12 text-center text-neutral-500 dark:text-neutral-400">
 								{t("No results found")}
 							</p>
 						) : (
@@ -409,19 +409,19 @@ function SearchContent() {
 								{searchData.results.map((result) => (
 									<div
 										key={result.article_id}
-										className="group flex items-start justify-between rounded-lg border border-neutral-100 p-4 transition-all hover:border-primary-200 hover:bg-primary-50/50"
+										className="group flex items-start justify-between rounded-lg border border-neutral-100 p-4 transition-all hover:border-primary-200 hover:bg-primary-50/50 dark:border-white/10 dark:hover:border-primary-400/40 dark:hover:bg-primary-500/10"
 									>
 										<div className="flex-1">
 											<Link
 												href={withLocalePath(locale, `/articles/${result.article_id}`)}
-												className="text-sm font-semibold text-neutral-900 group-hover:text-primary-600 hover:underline"
+												className="text-sm font-semibold text-neutral-900 group-hover:text-primary-600 hover:underline dark:text-neutral-50 dark:group-hover:text-primary-300"
 											>
 												{result.title}
 											</Link>
-											<p className="mt-1 line-clamp-2 text-xs text-neutral-500">
+											<p className="mt-1 line-clamp-2 text-xs text-neutral-500 dark:text-neutral-400">
 												{normalizeExcerpt(result.excerpt)}
 											</p>
-											<p className="mt-2 text-xs text-neutral-400">
+											<p className="mt-2 text-xs text-neutral-400 dark:text-neutral-500">
 												{t("Relevance: {value}%", {
 													value: formatNumber(locale, result.score * 100, {
 														maximumFractionDigits: 0,
@@ -444,7 +444,7 @@ function SearchContent() {
 									</div>
 								))}
 								<div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-									<p className="text-xs text-neutral-500">
+									<p className="text-xs text-neutral-500 dark:text-neutral-400">
 										{t("Showing {from}-{to} / {total} (page {page}/{pages})", {
 											from: resultFrom,
 											to: resultTo,
@@ -487,10 +487,10 @@ function SearchLoading() {
 	return (
 		<div className="p-6">
 			<div className="mb-6">
-				<div className="h-8 w-24 animate-pulse rounded bg-neutral-200" />
-				<div className="mt-2 h-4 w-48 animate-pulse rounded bg-neutral-100" />
+				<div className="h-8 w-24 animate-pulse rounded bg-neutral-200 dark:bg-white/10" />
+				<div className="mt-2 h-4 w-48 animate-pulse rounded bg-neutral-100 dark:bg-white/10" />
 			</div>
-			<div className="h-12 animate-pulse rounded-lg bg-neutral-100" />
+			<div className="h-12 animate-pulse rounded-lg bg-neutral-100 dark:bg-white/10" />
 		</div>
 	);
 }

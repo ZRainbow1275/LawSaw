@@ -123,9 +123,9 @@ export function IndustryPanel() {
 								.map((item) => (
 									<div
 										key={item.domain_root}
-										className="rounded-lg border border-neutral-100 p-4"
+										className="rounded-lg border border-neutral-100 p-4 dark:border-white/10"
 									>
-										<h5 className="mb-3 text-sm font-semibold text-neutral-800">
+										<h5 className="mb-3 text-sm font-semibold text-neutral-800 dark:text-neutral-100">
 											{DOMAIN_LABELS[item.domain_root] ?? item.label}
 										</h5>
 										<div className="space-y-2">
@@ -134,10 +134,10 @@ export function IndustryPanel() {
 													key={sub.domain_sub}
 													className="flex items-center justify-between text-sm"
 												>
-													<span className="text-neutral-600">
+													<span className="text-neutral-600 dark:text-neutral-300">
 														{sub.domain_sub}
 													</span>
-													<span className="font-medium text-neutral-800">
+													<span className="font-medium text-neutral-800 dark:text-neutral-100">
 														{sub.count}
 													</span>
 												</div>

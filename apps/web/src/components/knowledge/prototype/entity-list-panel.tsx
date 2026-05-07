@@ -61,14 +61,14 @@ export function EntityListPanel({
 	return (
 		<aside
 			className="flex h-full min-h-0 flex-col rounded-2xl border bg-white p-4 shadow-sm"
-			style={{ borderColor: "var(--color-neutral-100)" }}
+			style={{ borderColor: "var(--surface-card-border)" }}
 			data-testid="kg-entity-list-panel"
 		>
 			<div className="relative mb-3">
 				<Search
 					aria-hidden="true"
 					className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2"
-					style={{ color: "var(--color-neutral-400)" }}
+					style={{ color: "var(--surface-card-faint-fg)" }}
 				/>
 				<input
 					type="text"
@@ -77,15 +77,15 @@ export function EntityListPanel({
 					placeholder={t("Search entities...")}
 					className="h-9 w-full rounded-lg border bg-white px-3 pl-9 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200"
 					style={{
-						borderColor: "var(--color-neutral-200)",
-						color: "var(--color-neutral-800)",
+						borderColor: "var(--surface-card-border-strong)",
+						color: "var(--surface-card-foreground)",
 					}}
 				/>
 			</div>
 
 			<div
 				className="mb-2 text-[13px] font-bold"
-				style={{ color: "var(--color-neutral-900)" }}
+				style={{ color: "var(--surface-card-foreground)" }}
 			>
 				{t("Entity list")}
 			</div>
@@ -106,7 +106,7 @@ export function EntityListPanel({
 							<div
 								key={key}
 								className="h-12 animate-pulse rounded-lg"
-								style={{ backgroundColor: "var(--color-neutral-100)" }}
+								style={{ backgroundColor: "var(--surface-card-tint-bg)" }}
 							/>
 						))}
 					</div>
@@ -125,8 +125,8 @@ export function EntityListPanel({
 					<div
 						className="rounded-lg border-dashed border px-3 py-6 text-center text-xs"
 						style={{
-							borderColor: "var(--color-neutral-200)",
-							color: "var(--color-neutral-500)",
+							borderColor: "var(--surface-card-border-strong)",
+							color: "var(--surface-card-faint-fg)",
 						}}
 					>
 						{t("No entities found")}
@@ -164,13 +164,13 @@ export function EntityListPanel({
 										<div className="min-w-0">
 											<div
 												className="truncate text-sm font-medium"
-												style={{ color: "var(--color-neutral-900)" }}
+												style={{ color: "var(--surface-card-foreground)" }}
 											>
 												{entity.name}
 											</div>
 											<div
 												className="text-[11px]"
-												style={{ color: "var(--color-neutral-500)" }}
+												style={{ color: "var(--surface-card-faint-fg)" }}
 											>
 												{t("Mentioned {count} times", {
 													count: entity.mention_count,

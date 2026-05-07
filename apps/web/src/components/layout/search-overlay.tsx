@@ -99,18 +99,21 @@ export function SearchOverlay({ open, onClose }: SearchOverlayProps) {
 				ref={panelRef}
 				aria-modal="true"
 				aria-label={t("Open search")}
-				className="fixed left-1/2 top-20 z-[500] m-0 w-full max-w-[640px] -translate-x-1/2 overflow-hidden rounded-2xl border-0 bg-white p-0 shadow-popup-deep animate-popup-in"
-				style={{ maxHeight: "500px" }}
+				className="fixed left-1/2 top-20 z-[500] m-0 w-full max-w-[640px] -translate-x-1/2 overflow-hidden rounded-2xl border-0 p-0 shadow-popup-deep animate-popup-in"
+				style={{
+					maxHeight: "500px",
+					backgroundColor: "var(--surface-popover-bg)",
+				}}
 			>
 				<form
 					onSubmit={handleSubmit}
 					className="flex items-center gap-3 border-b px-5 py-4"
-					style={{ borderColor: "var(--color-neutral-100)" }}
+					style={{ borderColor: "var(--surface-card-border)" }}
 				>
 					<Search
 						aria-hidden="true"
 						className="h-5 w-5 shrink-0"
-						style={{ color: "var(--color-neutral-400)" }}
+						style={{ color: "var(--surface-card-faint-fg)" }}
 					/>
 					<input
 						ref={inputRef}
@@ -118,7 +121,7 @@ export function SearchOverlay({ open, onClose }: SearchOverlayProps) {
 						value={query}
 						onChange={(event) => setQuery(event.target.value)}
 						placeholder={t("Search news, regulations, keywords...")}
-						className="flex-1 border-0 bg-transparent text-base outline-none placeholder:text-neutral-400"
+						className="flex-1 border-0 bg-transparent text-base outline-none placeholder:text-neutral-400 dark:placeholder:text-neutral-500"
 						style={{ color: "var(--field-foreground)" }}
 						aria-label={t("Open search")}
 					/>
@@ -126,14 +129,14 @@ export function SearchOverlay({ open, onClose }: SearchOverlayProps) {
 						<Loader2
 							aria-hidden="true"
 							className="h-4 w-4 shrink-0 animate-spin"
-							style={{ color: "var(--color-neutral-400)" }}
+							style={{ color: "var(--surface-card-faint-fg)" }}
 						/>
 					) : null}
 					<span
 						className="rounded px-1.5 py-0.5 text-[11px] font-semibold"
 						style={{
-							backgroundColor: "var(--color-neutral-100)",
-							color: "var(--color-neutral-500)",
+							backgroundColor: "var(--surface-card-tint-bg)",
+							color: "var(--surface-card-faint-fg)",
 						}}
 					>
 						ESC
@@ -144,14 +147,14 @@ export function SearchOverlay({ open, onClose }: SearchOverlayProps) {
 					{query.trim().length <= 2 ? (
 						<div
 							className="px-5 py-8 text-center text-sm"
-							style={{ color: "var(--color-neutral-400)" }}
+							style={{ color: "var(--surface-card-faint-fg)" }}
 						>
 							{t("Type to start searching...")}
 						</div>
 					) : results.length === 0 && !isFetching ? (
 						<div
 							className="px-5 py-8 text-center text-sm"
-							style={{ color: "var(--color-neutral-400)" }}
+							style={{ color: "var(--surface-card-faint-fg)" }}
 						>
 							{t("No matching results")}
 						</div>
@@ -162,7 +165,7 @@ export function SearchOverlay({ open, onClose }: SearchOverlayProps) {
 									<button
 										type="button"
 										onClick={() => handleNavigateToArticle(result.article_id)}
-										className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-neutral-50"
+										className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-neutral-50 dark:hover:bg-white/5"
 									>
 										<span
 											className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
@@ -183,7 +186,7 @@ export function SearchOverlay({ open, onClose }: SearchOverlayProps) {
 											{result.excerpt ? (
 												<div
 													className="truncate text-xs"
-													style={{ color: "var(--color-neutral-500)" }}
+													style={{ color: "var(--surface-card-faint-fg)" }}
 												>
 													{result.excerpt}
 												</div>

@@ -42,7 +42,10 @@ export function Skeleton({
 	className,
 }: SkeletonProps) {
 	const baseStyles = cn(
+		// Theme-aware shimmer: in light mode uses neutral-200 → 100 → 200,
+		// dark mode falls back to neutral-800 → 700 → 800 via tailwind.
 		"animate-shimmer bg-gradient-to-r from-neutral-200 via-neutral-100 to-neutral-200 bg-[length:200%_100%]",
+		"dark:from-neutral-800 dark:via-neutral-700 dark:to-neutral-800",
 		{
 			"h-4 rounded": variant === "text",
 			"rounded-full": variant === "circular",
@@ -77,7 +80,7 @@ export function Skeleton({
 /** Article card skeleton. */
 export function ArticleCardSkeleton() {
 	return (
-		<div className="rounded-xl border border-neutral-100 bg-white p-4 space-y-3">
+		<div className="rounded-xl border border-neutral-100 bg-white p-4 space-y-3 dark:border-white/10 dark:bg-neutral-900">
 			{/* Tags */}
 			<div className="flex gap-2">
 				<Skeleton variant="rectangular" width={60} height={24} />
@@ -98,7 +101,7 @@ export function ArticleCardSkeleton() {
 /** Stats card skeleton. */
 export function StatCardSkeleton() {
 	return (
-		<div className="rounded-xl border border-neutral-100 bg-white p-6">
+		<div className="rounded-xl border border-neutral-100 bg-white p-6 dark:border-white/10 dark:bg-neutral-900">
 			<div className="flex items-center justify-between">
 				<div className="space-y-2">
 					<Skeleton variant="text" width={80} height={16} />
@@ -143,7 +146,7 @@ export function SidebarSkeleton() {
 	return (
 		<div className="space-y-4 p-4">
 			{/* Logo */}
-			<div className="flex items-center gap-3 pb-4 border-b border-neutral-100">
+			<div className="flex items-center gap-3 pb-4 border-b border-neutral-100 dark:border-white/10">
 				<Skeleton variant="circular" width={40} height={40} />
 				<Skeleton variant="text" width={100} height={24} />
 			</div>
@@ -170,7 +173,7 @@ export function ChartPanelSkeleton({
 	height = 224,
 }: ChartPanelSkeletonProps = {}) {
 	return (
-		<div className="rounded-xl border border-neutral-100 bg-white p-4 space-y-4">
+		<div className="rounded-xl border border-neutral-100 bg-white p-4 space-y-4 dark:border-white/10 dark:bg-neutral-900">
 			{/* Toolbar */}
 			<div className="flex items-center justify-between">
 				<div className="flex gap-2">
@@ -185,7 +188,7 @@ export function ChartPanelSkeleton({
 					{createStableKeys(4, "chart-panel-grid-row").map((key) => (
 						<div
 							key={key}
-							className="border-b border-dashed border-neutral-100"
+							className="border-b border-dashed border-neutral-100 dark:border-white/10"
 						/>
 					))}
 				</div>
@@ -220,6 +223,66 @@ export function ListSkeleton({ count = 5 }: { count?: number }) {
 		<div className="space-y-4">
 			{createStableKeys(count, "list-skeleton-item").map((key) => (
 				<ArticleCardSkeleton key={key} />
+			))}
+		</div>
+	);
+}
+
+/** Feed row skeleton — matches `<FeedRow>` 3-column layout. */
+export function FeedRowSkeleton() {
+	return (
+		<div className="flex items-start gap-4 rounded-xl border border-neutral-100 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+			<Skeleton variant="rectangular" width={88} height={64} className="shrink-0" />
+			<div className="flex-1 space-y-2">
+				<Skeleton variant="text" width="78%" height={20} />
+				<Skeleton variant="text" width="55%" height={16} />
+				<div className="flex gap-3 pt-1">
+					<Skeleton variant="text" width={64} height={14} />
+					<Skeleton variant="text" width={48} height={14} />
+					<Skeleton variant="text" width={40} height={14} />
+				</div>
+			</div>
+			<Skeleton variant="circular" width={28} height={28} className="shrink-0" />
+		</div>
+	);
+}
+
+/** Report row skeleton — matches `<ReportListItem>`. */
+export function ReportRowSkeleton() {
+	return (
+		<div className="rounded-xl border border-neutral-100 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
+			<div className="flex items-start justify-between gap-4">
+				<div className="flex-1 space-y-2">
+					<div className="flex items-center gap-2">
+						<Skeleton variant="rectangular" width={56} height={20} />
+						<Skeleton variant="rectangular" width={40} height={20} />
+					</div>
+					<Skeleton variant="text" width="65%" height={22} />
+					<Skeleton variant="text" width="92%" height={16} />
+				</div>
+				<Skeleton variant="rectangular" width={96} height={32} className="shrink-0" />
+			</div>
+		</div>
+	);
+}
+
+/** Feed list — content-shape feed loader. */
+export function FeedListSkeleton({ count = 6 }: { count?: number }) {
+	return (
+		<div className="space-y-3">
+			{createStableKeys(count, "feed-row-skel").map((key) => (
+				<FeedRowSkeleton key={key} />
+			))}
+		</div>
+	);
+}
+
+/** Report list — content-shape report loader. */
+export function ReportListSkeleton({ count = 4 }: { count?: number }) {
+	return (
+		<div className="space-y-3">
+			{createStableKeys(count, "report-row-skel").map((key) => (
+				<ReportRowSkeleton key={key} />
 			))}
 		</div>
 	);

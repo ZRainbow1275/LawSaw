@@ -140,33 +140,33 @@ function ImagePreviewer({ src, alt }: ImagePreviewerProps) {
 	return (
 		<div className="relative flex flex-col h-full">
 			{/* Toolbar */}
-			<div className="flex items-center justify-center gap-2 p-3 border-b border-neutral-100">
+			<div className="flex items-center justify-center gap-2 p-3 border-b border-neutral-100 dark:border-white/10">
 				<button
 					type="button"
 					onClick={handleZoomOut}
 					disabled={zoom <= 0.5}
-					className="p-2 rounded-lg hover:bg-neutral-100 disabled:opacity-40 transition-colors"
+					className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-white/10 disabled:opacity-40 transition-colors"
 					title={t("Zoom out")}
 				>
 					<ZoomOut aria-hidden="true" className="h-4 w-4" />
 				</button>
-				<span className="text-sm text-neutral-600 min-w-[4rem] text-center">
+				<span className="text-sm text-neutral-600 dark:text-neutral-300 min-w-[4rem] text-center">
 					{Math.round(zoom * 100)}%
 				</span>
 				<button
 					type="button"
 					onClick={handleZoomIn}
 					disabled={zoom >= 3}
-					className="p-2 rounded-lg hover:bg-neutral-100 disabled:opacity-40 transition-colors"
+					className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-white/10 disabled:opacity-40 transition-colors"
 					title={t("Zoom in")}
 				>
 					<ZoomIn aria-hidden="true" className="h-4 w-4" />
 				</button>
-				<div className="w-px h-5 bg-neutral-200 mx-2" />
+				<div className="w-px h-5 bg-neutral-200 mx-2 dark:bg-white/10" />
 				<button
 					type="button"
 					onClick={handleRotate}
-					className="p-2 rounded-lg hover:bg-neutral-100 transition-colors"
+					className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-white/10 transition-colors"
 					title={t("Rotate")}
 				>
 					<RotateCw aria-hidden="true" className="h-4 w-4" />
@@ -174,14 +174,14 @@ function ImagePreviewer({ src, alt }: ImagePreviewerProps) {
 				<button
 					type="button"
 					onClick={handleReset}
-					className="px-3 py-1.5 text-xs text-neutral-600 rounded-lg hover:bg-neutral-100 transition-colors"
+					className="px-3 py-1.5 text-xs text-neutral-600 rounded-lg hover:bg-neutral-100 dark:hover:bg-white/10 transition-colors"
 				>
 					{t("Reset")}
 				</button>
 			</div>
 
 			{/* Canvas */}
-			<div className="flex-1 overflow-auto flex items-center justify-center p-4 bg-neutral-50/50">
+			<div className="flex-1 overflow-auto flex items-center justify-center p-4 bg-neutral-50/50 dark:bg-white/5">
 				<motion.img
 					src={src}
 					alt={alt || t("Image preview")}
@@ -213,8 +213,8 @@ function PdfPreviewer({ src, title }: PdfPreviewerProps) {
 	return (
 		<div className="flex flex-col h-full">
 			{/* Toolbar */}
-			<div className="flex items-center justify-between p-3 border-b border-neutral-100">
-				<span className="text-sm font-medium text-neutral-700 truncate">
+			<div className="flex items-center justify-between p-3 border-b border-neutral-100 dark:border-white/10">
+				<span className="text-sm font-medium text-neutral-700 dark:text-neutral-200 truncate">
 					{title || t("PDF document")}
 				</span>
 				<div className="flex items-center gap-2">
@@ -222,7 +222,7 @@ function PdfPreviewer({ src, title }: PdfPreviewerProps) {
 						href={src}
 						target="_blank"
 						rel="noopener noreferrer"
-						className="p-2 rounded-lg hover:bg-neutral-100 transition-colors"
+						className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-white/10 transition-colors"
 						title={t("Open in new window")}
 					>
 						<ExternalLink aria-hidden="true" className="h-4 w-4" />
@@ -230,7 +230,7 @@ function PdfPreviewer({ src, title }: PdfPreviewerProps) {
 					<a
 						href={src}
 						download
-						className="p-2 rounded-lg hover:bg-neutral-100 transition-colors"
+						className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-white/10 transition-colors"
 						title={t("Download")}
 					>
 						<Download aria-hidden="true" className="h-4 w-4" />
@@ -239,7 +239,7 @@ function PdfPreviewer({ src, title }: PdfPreviewerProps) {
 			</div>
 
 			{/* Embed */}
-			<div className="flex-1 bg-neutral-100">
+			<div className="flex-1 bg-neutral-100 dark:bg-white/5">
 				<iframe
 					src={`${src}#toolbar=0&navpanes=0`}
 					className="w-full h-full border-0"
@@ -265,14 +265,14 @@ function VideoPreviewer({ src, title }: VideoPreviewerProps) {
 	return (
 		<div className="flex flex-col h-full">
 			{/* Header */}
-			<div className="flex items-center justify-between p-3 border-b border-neutral-100">
-				<span className="text-sm font-medium text-neutral-700 truncate">
+			<div className="flex items-center justify-between p-3 border-b border-neutral-100 dark:border-white/10">
+				<span className="text-sm font-medium text-neutral-700 dark:text-neutral-200 truncate">
 					{title || t("Video")}
 				</span>
 				<a
 					href={src}
 					download
-					className="p-2 rounded-lg hover:bg-neutral-100 transition-colors"
+					className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-white/10 transition-colors"
 					title={t("Download")}
 				>
 					<Download aria-hidden="true" className="h-4 w-4" />
@@ -311,7 +311,7 @@ function AudioPreviewer({ src, title }: AudioPreviewerProps) {
 			<div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary-100 to-primary-200 flex items-center justify-center">
 				<Volume2 aria-hidden="true" className="w-12 h-12 text-primary-600" />
 			</div>
-			<span className="text-sm font-medium text-neutral-700">
+			<span className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
 				{title || t("Audio file")}
 			</span>
 			{/* biome-ignore lint/a11y/useMediaCaption: External audio usually has no captions/transcripts; preview only provides playback/download. */}
@@ -321,7 +321,7 @@ function AudioPreviewer({ src, title }: AudioPreviewerProps) {
 			<a
 				href={src}
 				download
-				className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-600 rounded-lg hover:bg-neutral-100 transition-colors"
+				className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-600 dark:text-neutral-300 rounded-lg hover:bg-neutral-100 dark:hover:bg-white/10 transition-colors"
 			>
 				<Download aria-hidden="true" className="h-4 w-4" />
 				{t("Download audio")}
@@ -346,14 +346,14 @@ function DocumentPreviewer({ src, title, type }: DocumentPreviewerProps) {
 
 	return (
 		<div className="flex flex-col items-center justify-center p-8 gap-6">
-			<div className="w-24 h-24 rounded-2xl bg-neutral-100 flex items-center justify-center">
-				<Icon aria-hidden="true" className="w-12 h-12 text-neutral-400" />
+			<div className="w-24 h-24 rounded-2xl bg-neutral-100 flex items-center justify-center dark:bg-white/10">
+				<Icon aria-hidden="true" className="w-12 h-12 text-neutral-400 dark:text-neutral-500" />
 			</div>
 			<div className="text-center">
-				<p className="text-sm font-medium text-neutral-700">
+				<p className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
 					{title || t("Document")}
 				</p>
-				<p className="text-xs text-neutral-500 mt-1">
+				<p className="text-xs text-neutral-500 mt-1 dark:text-neutral-400">
 					{t(mediaTypeLabelKeys[type])} ·{" "}
 					{t("Online preview is not supported yet.")}
 				</p>
@@ -371,7 +371,7 @@ function DocumentPreviewer({ src, title, type }: DocumentPreviewerProps) {
 					href={src}
 					target="_blank"
 					rel="noopener noreferrer"
-					className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-600 rounded-lg border border-neutral-200 hover:bg-neutral-50 transition-colors"
+					className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-600 dark:text-neutral-300 rounded-lg border border-neutral-200 hover:bg-neutral-50 transition-colors"
 				>
 					<ExternalLink aria-hidden="true" className="h-4 w-4" />
 					{t("Open in new window")}
@@ -460,8 +460,8 @@ export function MediaPreviewTrigger({
 			type="button"
 			onClick={onClick}
 			className={cn(
-				"group relative overflow-hidden rounded-lg border border-neutral-200",
-				"hover:border-primary-300 hover:shadow-md transition-all",
+				"group relative overflow-hidden rounded-lg border border-neutral-200 dark:border-white/10",
+				"hover:border-primary-300 dark:hover:border-primary-400/40 hover:shadow-md transition-all",
 				className,
 			)}
 		>
@@ -477,8 +477,8 @@ export function MediaPreviewTrigger({
 					loader={({ src }) => src}
 				/>
 			) : (
-				<div className="w-full h-full flex items-center justify-center bg-neutral-50">
-					<Icon aria-hidden="true" className="w-8 h-8 text-neutral-400" />
+				<div className="w-full h-full flex items-center justify-center bg-neutral-50 dark:bg-white/5">
+					<Icon aria-hidden="true" className="w-8 h-8 text-neutral-400 dark:text-neutral-500" />
 				</div>
 			)}
 

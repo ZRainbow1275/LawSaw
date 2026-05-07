@@ -9,6 +9,7 @@ import {
 	useTableOfContents,
 } from "@/components/article/table-of-contents";
 import { UserShell } from "@/components/layout/user-shell";
+import { ReactionToggle } from "@/components/reactions/reaction-toggle";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ArticleContentSkeleton } from "@/components/ui/skeleton";
@@ -352,6 +353,29 @@ export function ReaderPage({ articleId, embedded = false }: ReaderPageProps) {
 								</section>
 
 								<ArticleContent content={article.content} />
+
+								<section
+									aria-label={t("Reactions")}
+									className="mt-2 flex flex-col items-center gap-3 rounded-2xl border p-5"
+									style={{
+										backgroundColor: "var(--surface-popover-bg)",
+										borderColor: "var(--surface-muted-border)",
+									}}
+									data-testid="reader-reactions"
+								>
+									<p
+										className="text-sm font-medium"
+										style={{ color: "var(--surface-muted-text)" }}
+									>
+										{t("Was this helpful?")}
+									</p>
+									<ReactionToggle
+										targetType="article"
+										targetId={article.id}
+										initialSummary={article.reaction_summary ?? null}
+										variant="stacked"
+									/>
+								</section>
 
 								{isContentTruncated ? (
 									<aside

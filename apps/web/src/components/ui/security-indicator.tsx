@@ -60,27 +60,27 @@ const statusConfig: Record<
 		icon: ShieldCheck,
 		label: "Encryption enabled",
 		description: "All data is transmitted securely",
-		bgColor: "bg-green-50",
-		borderColor: "border-green-200",
-		iconColor: "text-green-600",
+		bgColor: "bg-green-50 dark:bg-green-500/10",
+		borderColor: "border-green-200 dark:border-green-500/30",
+		iconColor: "text-green-600 dark:text-green-300",
 		pulseColor: "bg-green-500",
 	},
 	inactive: {
 		icon: ShieldAlert,
 		label: "Encryption disabled",
 		description: "Enable encryption for better security",
-		bgColor: "bg-amber-50",
-		borderColor: "border-amber-200",
-		iconColor: "text-amber-600",
+		bgColor: "bg-amber-50 dark:bg-amber-500/10",
+		borderColor: "border-amber-200 dark:border-amber-500/30",
+		iconColor: "text-amber-600 dark:text-amber-300",
 		pulseColor: "bg-amber-500",
 	},
 	unknown: {
 		icon: ShieldX,
 		label: "Unknown status",
 		description: "Unable to retrieve security status",
-		bgColor: "bg-neutral-50",
-		borderColor: "border-neutral-200",
-		iconColor: "text-neutral-400",
+		bgColor: "bg-neutral-50 dark:bg-white/5",
+		borderColor: "border-neutral-200 dark:border-white/10",
+		iconColor: "text-neutral-400 dark:text-neutral-500",
 		pulseColor: "bg-neutral-400",
 	},
 };
@@ -92,17 +92,17 @@ const integrityConfig: Record<
 	verified: {
 		icon: CheckCircle2,
 		label: "Integrity verified",
-		color: "text-green-600",
+		color: "text-green-600 dark:text-green-300",
 	},
 	pending: {
 		icon: Clock,
 		label: "Verifying",
-		color: "text-amber-600",
+		color: "text-amber-600 dark:text-amber-300",
 	},
 	failed: {
 		icon: ShieldX,
 		label: "Verification failed",
-		color: "text-red-600",
+		color: "text-red-600 dark:text-red-300",
 	},
 };
 
@@ -178,7 +178,7 @@ export function SecurityIndicator({
 						/>
 					)}
 				</div>
-				<span className="text-xs font-medium text-neutral-700">
+				<span className="text-xs font-medium text-neutral-700 dark:text-neutral-200">
 					{t(config.label)}
 				</span>
 			</button>
@@ -215,14 +215,14 @@ export function SecurityIndicator({
 
 			{/* Content */}
 			<div className="flex-1 min-w-0 text-left">
-				<p className="text-sm font-semibold text-neutral-900">
+				<p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
 					{t(config.label)}
 				</p>
-				<p className="text-xs text-neutral-500 truncate">
+				<p className="text-xs text-neutral-500 truncate dark:text-neutral-400">
 					{t(config.description)}
 				</p>
 				{lastSyncTime && (
-					<p className="text-xs text-neutral-400 mt-1">
+					<p className="text-xs text-neutral-400 mt-1 dark:text-neutral-500">
 						{t("Last sync: ")}
 						{formatSyncTime(locale, lastSyncTime)}
 					</p>

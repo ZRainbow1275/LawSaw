@@ -154,7 +154,7 @@ function RedirectingToLogin() {
 			className="flex min-h-screen flex-col items-center justify-center gap-4"
 		>
 			<div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent" />
-			<p className="text-sm text-neutral-600">{t("Redirecting to login...")}</p>
+			<p className="text-sm text-neutral-600 dark:text-neutral-300">{t("Redirecting to login...")}</p>
 			<span className="sr-only">{label}</span>
 		</div>
 	);

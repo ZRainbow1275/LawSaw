@@ -90,6 +90,17 @@ function AdminSidebarPanel({
 	const reducedMotion = useReducedMotion() ?? false;
 	const user = useAuthStore((state) => state.user);
 	const roleTier = normalizeRoleTier(useAuthStore((state) => state.roleTier));
+	const navRef = useRef<HTMLElement | null>(null);
+
+	// Reset internal nav scroll when the active path changes so deep links
+	// always show the active group from the top instead of leaving the user
+	// staring at residual scroll from the previous page.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: activePath is intentional — it's the "reset trigger" signal, not a value read inside the effect.
+	useEffect(() => {
+		const node = navRef.current;
+		if (!node) return;
+		node.scrollTop = 0;
+	}, [activePath]);
 	const displayName =
 		user?.display_name?.trim() || user?.email?.split("@")[0] || t("Admin");
 	const avatarText = (displayName.charAt(0) || "A").toUpperCase();
@@ -115,7 +126,7 @@ function AdminSidebarPanel({
 		<>
 			<div
 				className="flex h-16 items-center gap-3 border-b px-4"
-				style={{ borderColor: "var(--color-neutral-100)" }}
+				style={{ borderColor: "var(--surface-card-border)" }}
 			>
 				<div
 					className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
@@ -169,8 +180,9 @@ function AdminSidebarPanel({
 				}
 			>
 				<nav
+					ref={navRef}
 					aria-label={t("Admin navigation")}
-					className="flex-1 space-y-4 overflow-y-auto p-3"
+					className="flex-1 space-y-4 overflow-y-auto overscroll-contain p-3"
 				>
 					{ADMIN_NAV_GROUPS.map((group) => (
 						<div key={group.titleKey}>
@@ -242,7 +254,7 @@ function AdminSidebarPanel({
 
 			<div
 				className="relative border-t p-3"
-				style={{ borderColor: "var(--color-neutral-100)" }}
+				style={{ borderColor: "var(--surface-card-border)" }}
 			>
 				{showCollapseToggle && onToggleCollapsed ? (
 					<motion.button
@@ -280,7 +292,7 @@ function AdminSidebarPanel({
 					)}
 					style={{
 						backgroundColor: "var(--admin-card-bg)",
-						borderColor: "var(--color-neutral-100)",
+						borderColor: "var(--surface-card-border)",
 					}}
 				>
 					<div
@@ -357,7 +369,7 @@ function AdminTopBar() {
 	const bannerStyle = {
 		backgroundColor: "var(--admin-surface-bg)",
 		color: "var(--color-foreground)",
-		borderColor: "var(--color-neutral-100)",
+		borderColor: "var(--surface-card-border)",
 	} as const;
 
 	return (
@@ -541,27 +553,38 @@ export function AdminShell({ children, className }: AdminShellProps) {
 	// "background pure white, cards float" admin direction. We now use the
 	// admin surface token + subtle 1px right-side hairline so the sidebar
 	// reads as part of the same canvas as the main column.
-	const baseAsideClassName = cn(
-		"fixed left-0 top-0 flex h-screen flex-col",
-		"border-r",
+	//
+	// Layout note (sidebar sticky bug, 2026-05-07):
+	// We deliberately use a flex-row + per-column `overflow-y-auto` shell
+	// instead of `<aside position: fixed>`. An ancestor `<motion.div>` from
+	// `RouteTransitionProvider` carries `filter: blur(0px)` during/after route
+	// transitions, which (per CSS spec) becomes the containing block for any
+	// descendant `position: fixed` element. With the legacy fixed layout the
+	// sidebar would scroll away with the document instead of staying pinned.
+	// A flex shell sidesteps the containing-block trap entirely — sidebar is
+	// a flow-level flex item naturally locked to the viewport-height row.
+	const desktopAsideClassName = cn(
+		"hidden md:flex shrink-0 flex-col border-r",
+		"transition-[width] duration-300",
+		collapsed ? "w-16" : "w-[260px]",
+	);
+	const mobileAsideClassName = cn(
+		"fixed inset-y-0 left-0 z-50 flex h-full flex-col border-r",
+		"m-0 w-[280px] max-w-none p-0 md:hidden",
 	);
 	const baseAsideStyle = {
 		backgroundColor: "var(--admin-surface-bg)",
-		borderColor: "var(--color-neutral-100)",
+		borderColor: "var(--surface-card-border)",
 	} as const;
 
 	return (
 		<div
-			className="relative min-h-screen"
+			className="relative flex h-screen w-full overflow-hidden"
 			style={{ backgroundColor: "var(--admin-surface-bg)" }}
 		>
 
 			<aside
-				className={cn(
-					baseAsideClassName,
-					"z-30 hidden md:flex",
-					collapsed ? "w-16" : "w-[260px]",
-				)}
+				className={desktopAsideClassName}
 				style={baseAsideStyle}
 				aria-label={t("Admin navigation")}
 			>
@@ -599,10 +622,7 @@ export function AdminShell({ children, className }: AdminShellProps) {
 									? { duration: 0 }
 									: { duration: 0.25, ease: [0.4, 0, 0.2, 1] }
 							}
-							className={cn(
-								baseAsideClassName,
-								"z-50 m-0 w-[280px] max-w-none p-0 md:hidden",
-							)}
+							className={mobileAsideClassName}
 							style={baseAsideStyle}
 							aria-modal="true"
 							aria-label={t("Admin navigation")}
@@ -621,23 +641,18 @@ export function AdminShell({ children, className }: AdminShellProps) {
 				) : null}
 			</AnimatePresence>
 
-			<div
-				className={cn(
-					"flex min-h-screen flex-col transition-[margin] duration-300",
-					"md:ml-[260px]",
-					collapsed && "md:ml-16",
-				)}
-			>
+			<div className="flex min-w-0 flex-1 flex-col">
 				<AdminTopBar />
 
-				<main
-					className={cn(
-						"flex-1 px-4 py-6 md:px-6 md:py-8",
-						"mx-auto w-full max-w-screen-2xl",
-						className,
-					)}
-				>
-					{children}
+				<main className="flex-1 overflow-y-auto">
+					<div
+						className={cn(
+							"mx-auto w-full max-w-screen-2xl px-4 py-6 md:px-6 md:py-8",
+							className,
+						)}
+					>
+						{children}
+					</div>
 				</main>
 			</div>
 		</div>

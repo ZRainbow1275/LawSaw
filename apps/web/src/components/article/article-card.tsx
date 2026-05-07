@@ -1,5 +1,6 @@
 "use client";
 
+import { ReactionToggle } from "@/components/reactions/reaction-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useLongPress } from "@/hooks/use-long-press";
@@ -77,37 +78,37 @@ const riskConfig: Record<
 > = {
 	unknown: {
 		label: "Unrated",
-		color: "text-neutral-700",
-		bgColor: "bg-neutral-100",
-		borderColor: "border-neutral-200",
+		color: "text-neutral-700 dark:text-neutral-300",
+		bgColor: "bg-neutral-100 dark:bg-white/10",
+		borderColor: "border-neutral-200 dark:border-white/15",
 		icon: <HelpCircle aria-hidden="true" className="h-3.5 w-3.5" />,
 	},
 	low: {
 		label: "Low risk",
-		color: "text-green-700",
-		bgColor: "bg-green-50",
-		borderColor: "border-green-200",
+		color: "text-green-700 dark:text-green-300",
+		bgColor: "bg-green-50 dark:bg-green-500/15",
+		borderColor: "border-green-200 dark:border-green-500/30",
 		icon: <ShieldCheck aria-hidden="true" className="h-3.5 w-3.5" />,
 	},
 	medium: {
 		label: "Medium risk",
-		color: "text-amber-700",
-		bgColor: "bg-amber-50",
-		borderColor: "border-amber-200",
+		color: "text-amber-700 dark:text-amber-300",
+		bgColor: "bg-amber-50 dark:bg-amber-500/15",
+		borderColor: "border-amber-200 dark:border-amber-500/30",
 		icon: <Shield aria-hidden="true" className="h-3.5 w-3.5" />,
 	},
 	high: {
 		label: "High risk",
-		color: "text-orange-700",
-		bgColor: "bg-orange-50",
-		borderColor: "border-orange-200",
+		color: "text-orange-700 dark:text-orange-300",
+		bgColor: "bg-orange-50 dark:bg-orange-500/15",
+		borderColor: "border-orange-200 dark:border-orange-500/30",
 		icon: <ShieldAlert aria-hidden="true" className="h-3.5 w-3.5" />,
 	},
 	critical: {
 		label: "Critical",
-		color: "text-red-700",
-		bgColor: "bg-red-50",
-		borderColor: "border-red-200",
+		color: "text-red-700 dark:text-red-300",
+		bgColor: "bg-red-50 dark:bg-red-500/15",
+		borderColor: "border-red-200 dark:border-red-500/30",
 		icon: <AlertTriangle aria-hidden="true" className="h-3.5 w-3.5" />,
 	},
 };
@@ -201,15 +202,15 @@ export const ArticleCard = forwardRef<HTMLDivElement, ArticleCardProps>(
 				transition={{ delay: animationDelay }}
 				className={cn(
 					// Base styles
-					"group relative rounded-xl border bg-white transition-all duration-200",
-					"hover:shadow-lg hover:border-primary-200",
+					"group relative rounded-xl border bg-white transition-all duration-200 dark:bg-neutral-900 dark:border-white/10",
+					"hover:shadow-lg hover:border-primary-200 dark:hover:border-primary-400/40",
 					// Left risk indicator
 					"before:absolute before:left-0 before:top-3 before:bottom-3 before:w-1 before:rounded-full before:transition-all",
-					riskLevel === "unknown" && "before:bg-neutral-300",
-					riskLevel === "low" && "before:bg-green-400",
-					riskLevel === "medium" && "before:bg-amber-400",
-					riskLevel === "high" && "before:bg-orange-400",
-					riskLevel === "critical" && "before:bg-red-400",
+					riskLevel === "unknown" && "before:bg-neutral-300 dark:before:bg-white/20",
+					riskLevel === "low" && "before:bg-green-400 dark:before:bg-green-500",
+					riskLevel === "medium" && "before:bg-amber-400 dark:before:bg-amber-500",
+					riskLevel === "high" && "before:bg-orange-400 dark:before:bg-orange-500",
+					riskLevel === "critical" && "before:bg-red-400 dark:before:bg-red-500",
 					// Variant styles
 					variant === "default" && "p-4 pl-5",
 					variant === "compact" && "p-3 pl-4",
@@ -269,7 +270,7 @@ export const ArticleCard = forwardRef<HTMLDivElement, ArticleCardProps>(
 				{/* Title */}
 				<h3
 					className={cn(
-						"font-semibold text-neutral-900 group-hover:text-primary-600 transition-colors line-clamp-2",
+						"font-semibold text-neutral-900 group-hover:text-primary-600 transition-colors line-clamp-2 dark:text-neutral-50 dark:group-hover:text-primary-300",
 						variant === "default" && "text-base",
 						variant === "compact" && "text-sm",
 					)}
@@ -279,17 +280,17 @@ export const ArticleCard = forwardRef<HTMLDivElement, ArticleCardProps>(
 
 				{/* Summary */}
 				{showSummary && article.summary && variant === "default" && (
-					<p className="mt-2 text-sm text-neutral-500 line-clamp-2">
+					<p className="mt-2 text-sm text-neutral-500 line-clamp-2 dark:text-neutral-400">
 						{article.summary}
 					</p>
 				)}
 
 				{/* Meta */}
-				<div className="mt-3 flex items-center justify-between text-xs text-neutral-400">
+				<div className="mt-3 flex items-center justify-between text-xs text-neutral-400 dark:text-neutral-500">
 					<div className="flex items-center gap-3">
 						{/* Author */}
 						{article.author && (
-							<span className="text-neutral-500">{article.author}</span>
+							<span className="text-neutral-500 dark:text-neutral-400">{article.author}</span>
 						)}
 						{/* Time */}
 						{relativeTime && (
@@ -307,6 +308,26 @@ export const ArticleCard = forwardRef<HTMLDivElement, ArticleCardProps>(
 							className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity"
 						/>
 					)}
+				</div>
+
+				{/* Reactions footer — interactive, must sit above the card-wide link/button overlay. */}
+				<div
+					className={cn(
+						"relative z-20 mt-3 flex items-center justify-end",
+						variant === "compact" && "mt-2",
+					)}
+					onClick={(e) => e.stopPropagation()}
+					onMouseDown={(e) => e.stopPropagation()}
+					onPointerDown={(e) => e.stopPropagation()}
+					onKeyDown={(e) => e.stopPropagation()}
+				>
+					<ReactionToggle
+						targetType="article"
+						targetId={article.id}
+						initialSummary={article.reaction_summary ?? null}
+						variant="inline"
+						lazy
+					/>
 				</div>
 			</motion.div>
 		);
@@ -354,30 +375,30 @@ export function ArticleCardSkeleton({
 	return (
 		<div
 			className={cn(
-				"rounded-xl border border-neutral-100 bg-white animate-pulse",
+				"rounded-xl border border-neutral-100 bg-white animate-pulse dark:border-white/10 dark:bg-neutral-900",
 				variant === "default" && "p-4 pl-5",
 				variant === "compact" && "p-3 pl-4",
 			)}
 		>
 			{/* Badges */}
 			<div className="flex gap-2 mb-3">
-				<div className="h-5 w-14 rounded-full bg-neutral-100" />
-				<div className="h-5 w-16 rounded-full bg-neutral-100" />
+				<div className="h-5 w-14 rounded-full bg-neutral-100 dark:bg-white/10" />
+				<div className="h-5 w-16 rounded-full bg-neutral-100 dark:bg-white/10" />
 			</div>
 			{/* Title */}
-			<div className="h-5 w-full rounded bg-neutral-100 mb-2" />
-			<div className="h-5 w-3/4 rounded bg-neutral-100" />
+			<div className="h-5 w-full rounded bg-neutral-100 mb-2 dark:bg-white/10" />
+			<div className="h-5 w-3/4 rounded bg-neutral-100 dark:bg-white/10" />
 			{/* Summary */}
 			{variant === "default" && (
 				<div className="mt-3 space-y-1.5">
-					<div className="h-4 w-full rounded bg-neutral-50" />
-					<div className="h-4 w-2/3 rounded bg-neutral-50" />
+					<div className="h-4 w-full rounded bg-neutral-50 dark:bg-white/5" />
+					<div className="h-4 w-2/3 rounded bg-neutral-50 dark:bg-white/5" />
 				</div>
 			)}
 			{/* Meta */}
 			<div className="mt-3 flex gap-4">
-				<div className="h-3 w-16 rounded bg-neutral-50" />
-				<div className="h-3 w-12 rounded bg-neutral-50" />
+				<div className="h-3 w-16 rounded bg-neutral-50 dark:bg-white/5" />
+				<div className="h-3 w-12 rounded bg-neutral-50 dark:bg-white/5" />
 			</div>
 		</div>
 	);

@@ -31,7 +31,7 @@ const stackStyle: CSSProperties = {
 
 const cardStyle: CSSProperties = {
 	background: "var(--color-card)",
-	border: "1px solid var(--color-neutral-200)",
+	border: "1px solid var(--surface-card-border-strong)",
 	borderRadius: 12,
 	padding: 20,
 };
@@ -39,7 +39,7 @@ const cardStyle: CSSProperties = {
 const sectionTitleStyle: CSSProperties = {
 	fontSize: 14,
 	fontWeight: 700,
-	color: "var(--color-neutral-800)",
+	color: "var(--surface-card-foreground)",
 	marginBottom: 16,
 };
 
@@ -125,7 +125,7 @@ export function CrossPanel() {
 				splitArea: { show: true },
 				axisLine: { show: false },
 				axisTick: { show: false },
-				axisLabel: { color: "var(--color-neutral-700)", fontSize: 12 },
+				axisLabel: { color: "var(--surface-card-muted-fg)", fontSize: 12 },
 			},
 			yAxis: {
 				type: "category" as const,
@@ -133,7 +133,7 @@ export function CrossPanel() {
 				splitArea: { show: true },
 				axisLine: { show: false },
 				axisTick: { show: false },
-				axisLabel: { color: "var(--color-neutral-700)", fontSize: 12 },
+				axisLabel: { color: "var(--surface-card-muted-fg)", fontSize: 12 },
 			},
 			visualMap: {
 				min: 0,
@@ -152,7 +152,7 @@ export function CrossPanel() {
 						"#cc4a1f",
 					],
 				},
-				textStyle: { color: "var(--color-neutral-500)", fontSize: 11 },
+				textStyle: { color: "var(--surface-card-faint-fg)", fontSize: 11 },
 			},
 			series: [
 				{
@@ -161,7 +161,7 @@ export function CrossPanel() {
 					label: {
 						show: true,
 						fontSize: 11,
-						color: "var(--color-neutral-800)",
+						color: "var(--surface-card-foreground)",
 					},
 					emphasis: {
 						itemStyle: { shadowBlur: 4, shadowColor: "rgba(0,0,0,0.2)" },
@@ -243,7 +243,7 @@ export function CrossPanel() {
 					layoutIterations: 32,
 					lineStyle: { color: "gradient" as const, curveness: 0.5 },
 					label: {
-						color: "var(--color-neutral-800)",
+						color: "var(--surface-card-foreground)",
 						fontSize: 12,
 						fontWeight: 600,
 					},
@@ -273,7 +273,7 @@ export function CrossPanel() {
 						alignItems: "center",
 						justifyContent: "center",
 						padding: 80,
-						color: "var(--color-neutral-400)",
+						color: "var(--surface-card-faint-fg)",
 					}}
 				>
 					<Loader2 aria-hidden="true" size={20} className="animate-spin" />
@@ -305,7 +305,7 @@ export function CrossPanel() {
 				<div
 					style={{
 						padding: 32,
-						color: "var(--color-neutral-500)",
+						color: "var(--surface-card-faint-fg)",
 						fontSize: 13,
 						textAlign: "center",
 					}}

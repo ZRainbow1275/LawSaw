@@ -21,6 +21,7 @@ use law_eye_core::role_tier::{
     category_visible_for_tier, derive_role_tier_from_names, is_admin_tier, truncate_body_for_tier,
     ROLE_TIER_PREMIUM_USER, ROLE_TIER_TENANT_ADMIN, ROLE_TIER_VERIFIED_USER,
 };
+use law_eye_core::ReactionService as _;
 use std::net::SocketAddr;
 
 async fn fetch_role_tier(
@@ -176,6 +177,12 @@ pub struct ArticleResponse {
     pub version: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Wave-8 reactions: aggregated like/dislike summary plus the calling
+    /// user's `my_kind`. Only populated by `GET /api/v1/articles/{id}` —
+    /// list endpoints leave this `None` and the frontend resolves them via
+    /// the batch `GET /api/v1/reactions/summary` call.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reaction_summary: Option<crate::routes::reactions::ReactionSummaryResponse>,
 }
 
 impl From<law_eye_db::Article> for ArticleResponse {
@@ -210,6 +217,7 @@ impl From<law_eye_db::Article> for ArticleResponse {
             version: a.version,
             created_at: a.created_at,
             updated_at: a.updated_at,
+            reaction_summary: None,
         }
     }
 }
@@ -909,7 +917,19 @@ pub(crate) mod query {
             }
         }
 
-        let body: ArticleResponse = article.into();
+        let mut body: ArticleResponse = article.into();
+        let body_id = body.id;
+        let summary = state
+            .reaction_service
+            .get_summary(
+                user.tenant_id,
+                law_eye_core::ReactionTarget::Article,
+                body_id,
+                Some(user.id),
+            )
+            .await
+            .map_err(AppError::from)?;
+        body.reaction_summary = Some(summary.into());
         let body = trim_article_for_tier(body, &role_tier);
         let etag = etag_for_version(body.version)?;
         let mut response = Json(body).into_response();
@@ -2101,6 +2121,7 @@ mod tier_filter_tests {
             version: 1,
             created_at: now,
             updated_at: now,
+            reaction_summary: None,
         }
     }
 

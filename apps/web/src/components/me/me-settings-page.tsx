@@ -692,7 +692,7 @@ export default function MeSettingsPage() {
 										<Crown
 											aria-hidden="true"
 											className="h-5 w-5"
-											style={{ color: "#b45309" }}
+											style={{ color: "var(--cat-industry)" }}
 										/>
 										{t("API keys are a Premium feature")}
 									</CardTitle>
@@ -805,8 +805,8 @@ export default function MeSettingsPage() {
 														aria-controls={`me-settings-tabpanel-${tab.key}`}
 														className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
 															isActive
-																? "bg-primary-50 text-primary-700 font-medium"
-																: "text-neutral-600 hover:bg-neutral-50"
+																? "bg-primary-50 text-primary-700 font-medium dark:bg-primary-500/15 dark:text-primary-200"
+																: "text-neutral-600 hover:bg-neutral-50 dark:text-neutral-300 dark:hover:bg-white/5"
 														}`}
 													>
 														<tab.Icon aria-hidden="true" className="h-4 w-4" />
@@ -817,7 +817,7 @@ export default function MeSettingsPage() {
 															<Crown
 																aria-hidden="true"
 																className="h-3.5 w-3.5"
-																style={{ color: "#b45309" }}
+																style={{ color: "var(--cat-industry)" }}
 															/>
 														)}
 													</button>

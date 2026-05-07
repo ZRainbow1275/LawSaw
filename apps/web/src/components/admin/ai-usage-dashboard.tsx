@@ -784,7 +784,7 @@ function AdminAiUsageDashboardContent() {
 														height={36}
 														iconType="circle"
 														formatter={(value: string) => (
-															<span className="text-xs text-neutral-600">
+															<span className="text-xs text-neutral-600 dark:text-neutral-300">
 																{value}
 															</span>
 														)}

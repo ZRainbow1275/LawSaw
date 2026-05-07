@@ -25,7 +25,7 @@ const stackStyle: CSSProperties = {
 
 const cardStyle: CSSProperties = {
 	background: "var(--color-card)",
-	border: "1px solid var(--color-neutral-200)",
+	border: "1px solid var(--surface-card-border-strong)",
 	borderRadius: 12,
 	padding: 20,
 };
@@ -33,7 +33,7 @@ const cardStyle: CSSProperties = {
 const sectionTitleStyle: CSSProperties = {
 	fontSize: 14,
 	fontWeight: 700,
-	color: "var(--color-neutral-800)",
+	color: "var(--surface-card-foreground)",
 	marginBottom: 16,
 };
 
@@ -76,7 +76,7 @@ export function IndustryPanel() {
 				orient: "vertical" as const,
 				right: 16,
 				top: "middle",
-				textStyle: { color: "var(--color-neutral-600)", fontSize: 12 },
+				textStyle: { color: "var(--surface-card-muted-fg)", fontSize: 12 },
 				icon: "circle",
 			},
 			series: [
@@ -89,7 +89,7 @@ export function IndustryPanel() {
 						show: true,
 						position: "outer" as const,
 						formatter: "{b} {d}%",
-						color: "var(--color-neutral-700)",
+						color: "var(--surface-card-muted-fg)",
 						fontSize: 12,
 					},
 					labelLine: { length: 8, length2: 6 },
@@ -111,14 +111,14 @@ export function IndustryPanel() {
 			xAxis: {
 				type: "value" as const,
 				splitLine: { lineStyle: { color: "rgba(0,0,0,0.05)" } },
-				axisLabel: { color: "var(--color-neutral-400)", fontSize: 11 },
+				axisLabel: { color: "var(--surface-card-faint-fg)", fontSize: 11 },
 			},
 			yAxis: {
 				type: "category" as const,
 				data: sorted.map((it) => it.label || it.domain_root),
 				axisLine: { show: false },
 				axisTick: { show: false },
-				axisLabel: { color: "var(--color-neutral-700)", fontSize: 12 },
+				axisLabel: { color: "var(--surface-card-muted-fg)", fontSize: 12 },
 			},
 			series: [
 				{
@@ -134,7 +134,7 @@ export function IndustryPanel() {
 					label: {
 						show: true,
 						position: "right" as const,
-						color: "var(--color-neutral-700)",
+						color: "var(--surface-card-muted-fg)",
 						fontSize: 11,
 						fontWeight: 600,
 					},
@@ -152,7 +152,7 @@ export function IndustryPanel() {
 						alignItems: "center",
 						justifyContent: "center",
 						padding: 80,
-						color: "var(--color-neutral-400)",
+						color: "var(--surface-card-faint-fg)",
 					}}
 				>
 					<Loader2 aria-hidden="true" size={20} className="animate-spin" />
@@ -185,7 +185,7 @@ export function IndustryPanel() {
 					style={{
 						padding: 32,
 						fontSize: 13,
-						color: "var(--color-neutral-500)",
+						color: "var(--surface-card-faint-fg)",
 						textAlign: "center",
 					}}
 				>

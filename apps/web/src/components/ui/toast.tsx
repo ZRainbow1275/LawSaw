@@ -34,24 +34,24 @@ const styleMap: Record<
 	{ bg: string; border: string; iconColor: string }
 > = {
 	success: {
-		bg: "bg-green-50",
-		border: "border-green-200",
-		iconColor: "text-green-600",
+		bg: "bg-green-50 dark:bg-green-500/10",
+		border: "border-green-200 dark:border-green-500/30",
+		iconColor: "text-green-600 dark:text-green-300",
 	},
 	error: {
-		bg: "bg-red-50",
-		border: "border-red-200",
-		iconColor: "text-red-600",
+		bg: "bg-red-50 dark:bg-red-500/10",
+		border: "border-red-200 dark:border-red-500/30",
+		iconColor: "text-red-600 dark:text-red-300",
 	},
 	warning: {
-		bg: "bg-amber-50",
-		border: "border-amber-200",
-		iconColor: "text-amber-600",
+		bg: "bg-amber-50 dark:bg-amber-500/10",
+		border: "border-amber-200 dark:border-amber-500/30",
+		iconColor: "text-amber-600 dark:text-amber-300",
 	},
 	info: {
-		bg: "bg-blue-50",
-		border: "border-blue-200",
-		iconColor: "text-blue-600",
+		bg: "bg-blue-50 dark:bg-blue-500/10",
+		border: "border-blue-200 dark:border-blue-500/30",
+		iconColor: "text-blue-600 dark:text-blue-300",
 	},
 };
 
@@ -112,11 +112,11 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
 
 					{/* Content */}
 					<div className="flex-1 min-w-0">
-						<p className="text-sm font-semibold text-neutral-900">
+						<p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
 							{toast.title}
 						</p>
 						{toast.description && (
-							<p className="mt-1 text-sm text-neutral-600">
+							<p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
 								{toast.description}
 							</p>
 						)}
@@ -124,7 +124,7 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
 							<button
 								type="button"
 								onClick={toast.action.onClick}
-								className="mt-2 text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors"
+								className="mt-2 text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors dark:text-primary-300 dark:hover:text-primary-200"
 							>
 								{toast.action.label}
 							</button>
@@ -135,7 +135,7 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
 					<button
 						type="button"
 						onClick={() => onDismiss(toast.id)}
-						className="shrink-0 rounded-lg p-1 text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 transition-colors"
+						className="shrink-0 rounded-lg p-1 text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 transition-colors dark:text-neutral-500 dark:hover:text-neutral-200 dark:hover:bg-white/10"
 					>
 						<X aria-hidden="true" className="h-4 w-4" />
 						<span className="sr-only">Close</span>
@@ -158,9 +158,9 @@ export function ToastContainer() {
 		<div
 			aria-live="polite"
 			aria-atomic="true"
-			className="pointer-events-none fixed bottom-0 right-0 z-50 flex flex-col gap-3 p-6 w-full max-w-sm"
+			className="pointer-events-none fixed top-4 right-0 z-50 flex flex-col gap-3 p-6 w-full max-w-sm"
 		>
-			<AnimatePresence mode="popLayout">
+			<AnimatePresence mode="popLayout" initial={false}>
 				{toasts.map((toast) => (
 					<ToastItem key={toast.id} toast={toast} onDismiss={removeToast} />
 				))}

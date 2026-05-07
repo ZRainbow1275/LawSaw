@@ -27,14 +27,14 @@ const containerStyle: CSSProperties = {
 	display: "flex",
 	gap: 4,
 	marginBottom: 24,
-	borderBottom: "1px solid var(--color-neutral-200)",
+	borderBottom: "1px solid var(--surface-card-border-strong)",
 };
 
 const tabBaseStyle: CSSProperties = {
 	padding: "10px 18px",
 	fontSize: 13,
 	fontWeight: 600,
-	color: "var(--color-neutral-500)",
+	color: "var(--surface-card-faint-fg)",
 	background: "transparent",
 	border: "none",
 	borderBottom: "2px solid transparent",

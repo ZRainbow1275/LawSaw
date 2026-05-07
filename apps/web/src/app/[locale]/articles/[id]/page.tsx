@@ -275,18 +275,18 @@ function getReaderPageTone(theme: ReadingTheme): ReaderPageTone {
 			backgroundColor: isDark ? "#111114" : "#FFFFFF",
 			color: isDark
 				? "color-mix(in srgb, white 96%, transparent)"
-				: "var(--color-neutral-900)",
+				: "var(--surface-card-foreground)",
 			"--surface-muted-bg": isDark
-				? "color-mix(in srgb, var(--color-neutral-900) 92%, transparent)"
+				? "color-mix(in srgb, var(--surface-card-foreground) 92%, transparent)"
 				: "color-mix(in srgb, white 92%, transparent)",
 			"--surface-muted-border": isDark
-				? "color-mix(in srgb, var(--color-neutral-600) 80%, transparent)"
-				: "color-mix(in srgb, var(--color-neutral-200) 80%, transparent)",
+				? "color-mix(in srgb, var(--surface-card-muted-fg) 80%, transparent)"
+				: "color-mix(in srgb, var(--surface-card-border-strong) 80%, transparent)",
 			"--surface-muted-text": isDark
-				? "color-mix(in srgb, white 82%, var(--color-neutral-300) 18%)"
-				: "var(--color-neutral-700)",
+				? "color-mix(in srgb, white 82%, var(--surface-card-border-strong) 18%)"
+				: "var(--surface-card-muted-fg)",
 			"--surface-accent-bg": isDark
-				? "color-mix(in srgb, var(--color-primary-900) 34%, var(--color-neutral-900) 66%)"
+				? "color-mix(in srgb, var(--color-primary-900) 34%, var(--surface-card-foreground) 66%)"
 				: "color-mix(in srgb, var(--color-primary-50) 72%, white 28%)",
 			"--surface-accent-border": isDark
 				? "color-mix(in srgb, var(--color-primary-500) 28%, transparent)"
@@ -296,21 +296,21 @@ function getReaderPageTone(theme: ReadingTheme): ReaderPageTone {
 				: "var(--color-primary-700)",
 			"--field-foreground": isDark
 				? "color-mix(in srgb, white 96%, transparent)"
-				: "var(--color-neutral-900)",
+				: "var(--surface-card-foreground)",
 			"--control-hover-bg": isDark
-				? "color-mix(in srgb, var(--color-neutral-800) 92%, transparent)"
-				: "color-mix(in srgb, var(--color-neutral-50) 92%, white 8%)",
+				? "color-mix(in srgb, var(--surface-card-foreground) 92%, transparent)"
+				: "color-mix(in srgb, var(--surface-card-subtle-bg) 92%, white 8%)",
 			"--reading-link-hover": isDark
 				? "color-mix(in srgb, var(--color-primary-200) 88%, white 12%)"
 				: "var(--color-primary-700)",
 			"--reading-inline-code-bg": isDark
-				? "color-mix(in srgb, var(--color-neutral-800) 92%, transparent)"
-				: "color-mix(in srgb, var(--color-neutral-50) 92%, white 8%)",
+				? "color-mix(in srgb, var(--surface-card-foreground) 92%, transparent)"
+				: "color-mix(in srgb, var(--surface-card-subtle-bg) 92%, white 8%)",
 			"--reading-inline-code-text": isDark
 				? "var(--field-foreground)"
-				: "var(--color-neutral-900)",
+				: "var(--surface-card-foreground)",
 			"--reading-pre-bg": isDark
-				? "color-mix(in srgb, black 96%, var(--color-neutral-950) 4%)"
+				? "color-mix(in srgb, black 96%, var(--surface-card-foreground) 4%)"
 				: "#18181B",
 			"--reading-pre-code": isDark ? "var(--field-foreground)" : "#F4F4F5",
 		} as CSSProperties,
@@ -331,19 +331,19 @@ function getReaderPageTone(theme: ReadingTheme): ReaderPageTone {
 		titleStyle: { color: "var(--field-foreground)" },
 		bodyStyle: {
 			color: isDark
-				? "color-mix(in srgb, white 90%, var(--color-neutral-300) 10%)"
-				: "var(--color-neutral-700)",
+				? "color-mix(in srgb, white 90%, var(--surface-card-border-strong) 10%)"
+				: "var(--surface-card-muted-fg)",
 		},
 		mutedStyle: { color: "var(--surface-muted-text)" },
 		subtleStyle: {
 			color: isDark
-				? "color-mix(in srgb, white 64%, var(--color-neutral-400) 36%)"
-				: "var(--color-neutral-600)",
+				? "color-mix(in srgb, white 64%, var(--surface-card-faint-fg) 36%)"
+				: "var(--surface-card-muted-fg)",
 		},
 		navStyle: {
 			borderColor: "var(--surface-muted-border)",
 			backgroundColor: isDark
-				? "color-mix(in srgb, black 95%, var(--color-neutral-900) 5%)"
+				? "color-mix(in srgb, black 95%, var(--surface-card-foreground) 5%)"
 				: "color-mix(in srgb, white 95%, transparent)",
 		},
 		actionStyle: { color: "var(--surface-muted-text)" },

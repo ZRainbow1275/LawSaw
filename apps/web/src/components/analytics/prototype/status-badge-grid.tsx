@@ -67,8 +67,8 @@ export function StatusBadgeGrid({ data }: StatusBadgeGridProps) {
 			label: t("Archived"),
 			value: data.archived ?? 0,
 			Icon: Archive,
-			bg: "var(--color-neutral-100)",
-			color: "var(--color-neutral-600)",
+			bg: "var(--surface-card-tint-bg)",
+			color: "var(--surface-card-muted-fg)",
 		},
 		{
 			label: t("Rejected"),

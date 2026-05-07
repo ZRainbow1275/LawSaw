@@ -65,18 +65,18 @@ const dashboardHeroMutedTextStyle = {
 } as const;
 
 const dashboardHeroShellStyle = {
-	backgroundColor: "var(--color-neutral-950)",
+	backgroundColor: "var(--surface-card-foreground)",
 	backgroundImage:
-		"linear-gradient(135deg, color-mix(in srgb, var(--color-neutral-950) 98%, transparent) 0%, color-mix(in srgb, var(--color-neutral-950) 95%, transparent) 52%, color-mix(in srgb, var(--color-neutral-800) 95%, transparent) 76%, color-mix(in srgb, var(--color-primary-500) 86%, var(--color-neutral-950) 14%) 100%)",
-	borderColor: "color-mix(in srgb, var(--color-neutral-400) 24%, transparent)",
+		"linear-gradient(135deg, color-mix(in srgb, var(--surface-card-foreground) 98%, transparent) 0%, color-mix(in srgb, var(--surface-card-foreground) 95%, transparent) 52%, color-mix(in srgb, var(--surface-card-foreground) 95%, transparent) 76%, color-mix(in srgb, var(--color-primary-500) 86%, var(--surface-card-foreground) 14%) 100%)",
+	borderColor: "color-mix(in srgb, var(--surface-card-faint-fg) 24%, transparent)",
 	boxShadow:
-		"0 24px 80px color-mix(in srgb, var(--color-neutral-950) 22%, transparent)",
+		"0 24px 80px color-mix(in srgb, var(--surface-card-foreground) 22%, transparent)",
 } as const;
 
 const dashboardHeroSelectedPillStyle = {
 	backgroundColor: "color-mix(in srgb, white 92%, transparent)",
 	boxShadow:
-		"0 10px 24px color-mix(in srgb, var(--color-neutral-950) 22%, transparent)",
+		"0 10px 24px color-mix(in srgb, var(--surface-card-foreground) 22%, transparent)",
 } as const;
 
 const dashboardHeroEyebrowTextStyle = {
@@ -88,11 +88,11 @@ const dashboardHeroStrongTextStyle = {
 } as const;
 
 const dashboardHeroSoftTextStyle = {
-	color: "color-mix(in srgb, var(--color-neutral-200) 90%, transparent)",
+	color: "color-mix(in srgb, var(--surface-card-border-strong) 90%, transparent)",
 } as const;
 
 const dashboardHeroInverseTextStyle = {
-	color: "var(--color-neutral-950)",
+	color: "var(--surface-card-foreground)",
 } as const;
 
 const dashboardHeroPrimaryIconStyle = {
@@ -300,7 +300,7 @@ export function DashboardHero() {
 			count: overview?.with_issuer ?? 0,
 			barStyle: {
 				backgroundImage:
-					"linear-gradient(135deg, color-mix(in srgb, var(--color-error) 72%, var(--color-warning) 28%), color-mix(in srgb, var(--color-error) 88%, var(--color-neutral-950) 12%))",
+					"linear-gradient(135deg, color-mix(in srgb, var(--color-error) 72%, var(--color-warning) 28%), color-mix(in srgb, var(--color-error) 88%, var(--surface-card-foreground) 12%))",
 			},
 		},
 	];

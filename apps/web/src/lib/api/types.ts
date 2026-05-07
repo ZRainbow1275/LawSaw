@@ -1,5 +1,7 @@
 // Base types matching Rust backend models
 
+import type { ReactionSummary } from "@/lib/api/reactions";
+
 export interface ArticleSourceViewPolicy {
 	role_tier: string;
 	matched_relation?: string | null;
@@ -52,6 +54,12 @@ export interface Article {
 	 * context and must not inspect operational metadata.
 	 */
 	source_view?: ArticleSourceView | null;
+	/**
+	 * Reactions summary embedded by `GET /api/v1/articles/{id}` (Wave 8 Stream
+	 * C). May be absent on list payloads or when the user is anonymous; consumers
+	 * should fall back to the dedicated reactions endpoints in those cases.
+	 */
+	reaction_summary?: ReactionSummary | null;
 	status: "pending" | "processing" | "published" | "archived" | "rejected";
 	version: number;
 	created_at: string;
@@ -112,6 +120,11 @@ export interface Source {
 	avg_fetch_duration_ms: number | null;
 	render_mode: "static" | "dynamic" | "";
 	encoding: string | null;
+	/**
+	 * Reactions summary embedded by `GET /api/v1/sources/{id}` (Wave 8 Stream
+	 * C). May be absent on list payloads or when the user is anonymous.
+	 */
+	reaction_summary?: ReactionSummary | null;
 	created_at: string;
 	updated_at: string;
 }

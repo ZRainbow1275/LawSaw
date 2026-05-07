@@ -55,12 +55,12 @@ function MetadataItem({ icon, label, value }: MetadataItemProps) {
 		<Card className="hover:shadow-none hover:-translate-y-0">
 			<CardContent className="p-4">
 				<div className="flex items-start gap-3">
-					<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100">
+					<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 dark:bg-white/10">
 						{icon}
 					</div>
 					<div className="min-w-0">
-						<p className="text-xs text-neutral-500">{label}</p>
-						<div className="text-sm font-medium text-neutral-900 truncate">
+						<p className="text-xs text-neutral-500 dark:text-neutral-400">{label}</p>
+						<div className="text-sm font-medium text-neutral-900 truncate dark:text-neutral-100">
 							{value}
 						</div>
 					</div>
@@ -141,11 +141,11 @@ export function ReportDetail({
 					{Array.from({ length: 8 }, (_, i) => `meta-skel-${i}`).map((key) => (
 						<div
 							key={key}
-							className="h-20 rounded-xl bg-neutral-100 animate-pulse"
+							className="h-20 rounded-xl bg-neutral-100 dark:bg-white/10 animate-pulse"
 						/>
 					))}
 				</div>
-				<div className="h-64 rounded-xl bg-neutral-100 animate-pulse" />
+				<div className="h-64 rounded-xl bg-neutral-100 dark:bg-white/10 animate-pulse" />
 			</div>
 		);
 	}
@@ -196,12 +196,12 @@ export function ReportDetail({
 				</Button>
 				<div className="flex-1 min-w-0">
 					<div className="flex items-center gap-3 flex-wrap">
-						<h2 className="text-xl font-bold text-neutral-900 truncate">
+						<h2 className="text-xl font-bold text-neutral-900 truncate dark:text-neutral-50">
 							{report.title}
 						</h2>
 						<ReportStatusBadge status={report.status} />
 					</div>
-					<p className="text-xs text-neutral-400 font-mono mt-0.5">
+					<p className="text-xs text-neutral-400 font-mono mt-0.5 dark:text-neutral-500">
 						{report.report_number}
 					</p>
 				</div>
@@ -344,42 +344,42 @@ export function ReportDetail({
 			<div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
 				<MetadataItem
 					icon={
-						<Hash aria-hidden="true" className="h-4 w-4 text-neutral-500" />
+						<Hash aria-hidden="true" className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
 					}
 					label={t("Report Number")}
 					value={report.report_number}
 				/>
 				<MetadataItem
 					icon={
-						<Calendar aria-hidden="true" className="h-4 w-4 text-neutral-500" />
+						<Calendar aria-hidden="true" className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
 					}
 					label={t("Period Type")}
 					value={<ReportPeriodBadge periodType={report.period_type} />}
 				/>
 				<MetadataItem
 					icon={
-						<Calendar aria-hidden="true" className="h-4 w-4 text-neutral-500" />
+						<Calendar aria-hidden="true" className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
 					}
 					label={t("Period Range")}
 					value={`${new Date(report.period_start).toLocaleDateString()} — ${new Date(report.period_end).toLocaleDateString()}`}
 				/>
 				<MetadataItem
 					icon={
-						<FileText aria-hidden="true" className="h-4 w-4 text-neutral-500" />
+						<FileText aria-hidden="true" className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
 					}
 					label={t("Article Count")}
 					value={report.article_count.toString()}
 				/>
 				<MetadataItem
 					icon={
-						<Sparkles aria-hidden="true" className="h-4 w-4 text-neutral-500" />
+						<Sparkles aria-hidden="true" className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
 					}
 					label={t("AI Model")}
 					value={report.ai_model ?? t("N/A")}
 				/>
 				<MetadataItem
 					icon={
-						<Clock aria-hidden="true" className="h-4 w-4 text-neutral-500" />
+						<Clock aria-hidden="true" className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
 					}
 					label={t("Created")}
 					value={new Date(report.created_at).toLocaleDateString()}
@@ -388,7 +388,7 @@ export function ReportDetail({
 					icon={
 						<CheckCircle
 							aria-hidden="true"
-							className="h-4 w-4 text-neutral-500"
+							className="h-4 w-4 text-neutral-500 dark:text-neutral-400"
 						/>
 					}
 					label={t("Published At")}
@@ -400,7 +400,7 @@ export function ReportDetail({
 				/>
 				<MetadataItem
 					icon={
-						<Sparkles aria-hidden="true" className="h-4 w-4 text-neutral-500" />
+						<Sparkles aria-hidden="true" className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
 					}
 					label={t("AI Generated At")}
 					value={
@@ -415,7 +415,7 @@ export function ReportDetail({
 			{showDownloadPanel && (
 				<Card className="mb-6">
 					<div className="p-4">
-						<h3 className="text-sm font-semibold text-neutral-900 mb-3 flex items-center gap-2">
+						<h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 mb-3 flex items-center gap-2">
 							<Download
 								aria-hidden="true"
 								className="h-4 w-4 text-primary-500"
@@ -428,7 +428,7 @@ export function ReportDetail({
 									href={`/api/v1/reports/${report.id}/download/pdf`}
 									className={cn(
 										"inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium",
-										"border border-neutral-200 bg-white text-neutral-700",
+										"border border-neutral-200 bg-white text-neutral-700 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-200",
 										"hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700",
 										"transition-all",
 									)}
@@ -443,7 +443,7 @@ export function ReportDetail({
 									href={`/api/v1/reports/${report.id}/download/docx`}
 									className={cn(
 										"inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium",
-										"border border-neutral-200 bg-white text-neutral-700",
+										"border border-neutral-200 bg-white text-neutral-700 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-200",
 										"hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700",
 										"transition-all",
 									)}
@@ -458,7 +458,7 @@ export function ReportDetail({
 									href={`/api/v1/reports/${report.id}/download/html`}
 									className={cn(
 										"inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium",
-										"border border-neutral-200 bg-white text-neutral-700",
+										"border border-neutral-200 bg-white text-neutral-700 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-200",
 										"hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700",
 										"transition-all",
 									)}
@@ -469,7 +469,7 @@ export function ReportDetail({
 								</a>
 							)}
 							{!hasAnyExportKey && (
-								<p className="text-xs text-neutral-500">
+								<p className="text-xs text-neutral-500 dark:text-neutral-400">
 									{t(
 										"No export file is ready yet. Please trigger export first.",
 									)}
@@ -483,16 +483,16 @@ export function ReportDetail({
 			{/* Content */}
 			<Card>
 				<div className="p-6">
-					<h3 className="text-lg font-semibold text-neutral-900 mb-4 flex items-center gap-2">
+					<h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50 mb-4 flex items-center gap-2">
 						<FileText aria-hidden="true" className="h-5 w-5 text-primary-500" />
 						{t("Report Content")}
 					</h3>
 					{hasContent ? (
 						<pre
 							className={cn(
-								"bg-neutral-50 rounded-lg p-4 text-sm font-mono",
+								"bg-neutral-50 rounded-lg p-4 text-sm font-mono dark:bg-white/5",
 								"overflow-x-auto max-h-[500px] overflow-y-auto",
-								"border border-neutral-200",
+								"border border-neutral-200 dark:border-white/10",
 							)}
 						>
 							{JSON.stringify(report.content, null, 2)}

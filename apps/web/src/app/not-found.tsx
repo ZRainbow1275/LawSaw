@@ -12,7 +12,7 @@ export default function NotFound() {
 	const t = useT();
 
 	return (
-		<div className="flex min-h-screen items-center justify-center bg-neutral-50 p-6">
+		<div className="flex min-h-screen items-center justify-center bg-neutral-50 p-6 dark:bg-neutral-950">
 			<div className="w-full max-w-lg">
 				<Card>
 					<CardHeader>
@@ -25,7 +25,7 @@ export default function NotFound() {
 						</CardTitle>
 					</CardHeader>
 					<CardContent className="space-y-4">
-						<p className="text-sm text-neutral-600">
+						<p className="text-sm text-neutral-600 dark:text-neutral-300">
 							{t(
 								"The page you are looking for doesn't exist. It may have been moved or deleted.",
 							)}

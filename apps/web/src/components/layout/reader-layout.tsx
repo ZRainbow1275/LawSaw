@@ -1,5 +1,9 @@
 "use client";
 
+import {
+	FocusDimmer,
+	ReaderProgressRing,
+} from "@/components/article/reader-focus-mode";
 import { useSidebarStore } from "@/stores/sidebar-store";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useCallback, useEffect } from "react";
@@ -32,7 +36,11 @@ export function ReaderLayout({ children }: ReaderLayoutProps) {
 	const showSidebar = !readerMode || hovered;
 
 	return (
-		<div className="min-h-screen bg-neutral-50">
+		<div className="min-h-screen bg-neutral-50 dark:bg-neutral-950">
+			{/* Reader-only progress ring + focus dimmer (P3#7). */}
+			<ReaderProgressRing />
+			<FocusDimmer />
+
 			{/* Left trigger area */}
 			<div
 				className="fixed left-0 top-0 z-40 h-full w-4 cursor-pointer"

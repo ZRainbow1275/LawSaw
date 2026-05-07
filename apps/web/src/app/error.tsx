@@ -25,7 +25,7 @@ export default function GlobalError({
 	const showDetails = process.env.NODE_ENV !== "production";
 
 	return (
-		<div className="flex min-h-screen items-center justify-center bg-neutral-50 p-6">
+		<div className="flex min-h-screen items-center justify-center bg-neutral-50 p-6 dark:bg-neutral-950">
 			<div className="w-full max-w-lg">
 				<Card>
 					<CardHeader>
@@ -38,28 +38,28 @@ export default function GlobalError({
 						</CardTitle>
 					</CardHeader>
 					<CardContent className="space-y-4">
-						<p className="text-sm text-neutral-600">
+						<p className="text-sm text-neutral-600 dark:text-neutral-300">
 							{t(
 								"An error occurred while rendering the page. Please try again. If it keeps happening, contact an administrator.",
 							)}
 						</p>
 
 						{showDetails ? (
-							<div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
-								<p className="text-xs font-medium text-neutral-700">
+							<div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-white/10 dark:bg-white/5">
+								<p className="text-xs font-medium text-neutral-700 dark:text-neutral-200">
 									{t("Error details")}
 								</p>
-								<pre className="mt-2 whitespace-pre-wrap break-words text-xs text-neutral-600">
+								<pre className="mt-2 whitespace-pre-wrap break-words text-xs text-neutral-600 dark:text-neutral-300">
 									{error.message}
 								</pre>
 								{error.digest ? (
-									<p className="mt-2 text-xs text-neutral-500">
+									<p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
 										digest: {error.digest}
 									</p>
 								) : null}
 							</div>
 						) : error.digest ? (
-							<p className="text-xs text-neutral-500">
+							<p className="text-xs text-neutral-500 dark:text-neutral-400">
 								{t("Error ID")}: {error.digest}
 							</p>
 						) : null}

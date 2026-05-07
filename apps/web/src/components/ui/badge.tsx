@@ -8,11 +8,14 @@ const badgeVariants = cva(
 		variants: {
 			variant: {
 				default: "bg-primary-500 text-white",
-				secondary: "bg-neutral-100 text-neutral-700",
+				secondary:
+					"bg-neutral-100 text-neutral-700 dark:bg-white/10 dark:text-neutral-200",
 				destructive: "bg-error text-white",
-				outline: "border border-neutral-200 text-neutral-700",
+				outline:
+					"border border-neutral-200 text-neutral-700 dark:border-white/15 dark:text-neutral-200",
 				success: "bg-success-light text-success",
-				warning: "bg-warning-light text-neutral-800",
+				warning:
+					"bg-warning-light text-neutral-800 dark:text-neutral-100",
 				info: "bg-info-light text-info",
 				legislation:
 					"bg-legislation/10 text-legislation border border-legislation/20",

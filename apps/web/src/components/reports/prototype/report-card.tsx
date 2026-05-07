@@ -176,18 +176,18 @@ function ActionButton({
 				}
 			: variant === "muted"
 				? {
-						borderColor: "var(--color-neutral-200)",
-						color: "var(--color-neutral-500)",
+						borderColor: "var(--surface-card-border-strong)",
+						color: "var(--surface-card-faint-fg)",
 					}
 				: {
-						borderColor: "var(--color-neutral-200)",
-						color: "var(--color-neutral-700)",
+						borderColor: "var(--surface-card-border-strong)",
+						color: "var(--surface-card-muted-fg)",
 					};
 
 	const hoverClass =
 		variant === "danger"
 			? "hover:bg-rose-50 focus:bg-rose-50"
-			: "hover:bg-neutral-50 focus:bg-neutral-50";
+			: "hover:bg-neutral-50 focus:bg-neutral-50 dark:hover:bg-white/5 dark:focus:bg-white/5";
 
 	return (
 		<button
@@ -195,7 +195,7 @@ function ActionButton({
 			onClick={onClick}
 			disabled={disabled}
 			data-testid={dataTestid}
-			className={`inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-3 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${hoverClass}`}
+			className={`inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-3 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 dark:bg-neutral-900 ${hoverClass}`}
 			style={variantStyle}
 		>
 			<Icon aria-hidden="true" className="h-3.5 w-3.5" />
@@ -299,10 +299,10 @@ export function ReportCard({ report, onPreview }: ReportCardProps) {
 					<button
 						type="button"
 						disabled
-						className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-3 text-xs font-medium opacity-50"
+						className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-3 text-xs font-medium opacity-50 dark:bg-neutral-900"
 						style={{
-							borderColor: "var(--color-neutral-200)",
-							color: "var(--color-neutral-700)",
+							borderColor: "var(--surface-card-border-strong)",
+							color: "var(--surface-card-muted-fg)",
 						}}
 					>
 						<Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
@@ -462,14 +462,14 @@ export function ReportCard({ report, onPreview }: ReportCardProps) {
 
 	return (
 		<article
-			className="mb-4 rounded-2xl border bg-white p-5 shadow-sm transition hover:shadow-md"
-			style={{ borderColor: "var(--color-neutral-100)" }}
+			className="mb-4 rounded-2xl border bg-white p-5 shadow-sm transition hover:shadow-md dark:bg-neutral-900 dark:border-white/10"
+			style={{ borderColor: "var(--surface-card-border)" }}
 			data-testid={`report-card-${report.id}`}
 		>
 			<div className="mb-3 flex flex-wrap items-center justify-between gap-2">
 				<span
 					className="font-mono text-xs"
-					style={{ color: "var(--color-neutral-500)" }}
+					style={{ color: "var(--surface-card-faint-fg)" }}
 				>
 					{report.report_number}
 				</span>
@@ -481,14 +481,14 @@ export function ReportCard({ report, onPreview }: ReportCardProps) {
 
 			<h3
 				className="mb-2 text-[15px] font-bold"
-				style={{ color: "var(--color-neutral-900)" }}
+				style={{ color: "var(--surface-card-foreground)" }}
 			>
 				{report.title}
 			</h3>
 
 			<div
 				className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs"
-				style={{ color: "var(--color-neutral-500)" }}
+				style={{ color: "var(--surface-card-faint-fg)" }}
 			>
 				<span className="inline-flex items-center gap-1">
 					<Calendar aria-hidden="true" className="h-3.5 w-3.5" />
@@ -519,7 +519,7 @@ export function ReportCard({ report, onPreview }: ReportCardProps) {
 				{status === "archived" && report.updated_at ? (
 					<span
 						className="inline-flex items-center gap-1"
-						style={{ color: "var(--color-neutral-500)" }}
+						style={{ color: "var(--surface-card-faint-fg)" }}
 					>
 						<ArchiveRestore aria-hidden="true" className="h-3.5 w-3.5" />
 						{t("Archived on {date}", {

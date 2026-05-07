@@ -236,10 +236,10 @@ export default function DataPage() {
 			<div className="p-6">
 				{/* Page Title */}
 						<div className="mb-6">
-							<h1 className="text-2xl font-bold text-neutral-900">
+							<h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-50">
 								{t("Data")}
 							</h1>
-							<p className="text-sm text-neutral-500">
+							<p className="text-sm text-neutral-500 dark:text-neutral-400">
 								{t("Manage all ingested articles data")}
 							</p>
 						</div>
@@ -252,7 +252,7 @@ export default function DataPage() {
 										<div className="relative flex-1 max-w-md">
 											<Search
 												aria-hidden="true"
-												className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
+												className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400 dark:text-neutral-500"
 											/>
 											<Input
 												placeholder={t("Search title or summary...")}
@@ -262,7 +262,7 @@ export default function DataPage() {
 											/>
 										</div>
 										<select
-											className="h-10 rounded-md border border-neutral-200 px-3 text-sm"
+											className="h-10 rounded-md border border-neutral-200 px-3 text-sm dark:border-white/10 dark:bg-white/5 dark:text-neutral-100"
 											value={statusFilter}
 											onChange={(e) =>
 												setStatusFilter(e.target.value as ArticleStatus | "all")
@@ -278,7 +278,7 @@ export default function DataPage() {
 									</div>
 									{selectedArticles.size > 0 && (
 										<div className="flex items-center gap-2">
-											<span className="text-sm text-neutral-500">
+											<span className="text-sm text-neutral-500 dark:text-neutral-400">
 												{t("{count} selected", {
 													count: selectedArticles.size,
 												})}
@@ -401,14 +401,14 @@ export default function DataPage() {
 											{ length: 10 },
 											(_, idx) => `data-skel-${idx}`,
 										).map((key) => (
-											<div key={key} className="h-12 rounded bg-neutral-100" />
+											<div key={key} className="h-12 rounded bg-neutral-100 dark:bg-white/10" />
 										))}
 									</div>
 								) : (
 									<div className="overflow-x-auto">
 										<table className="w-full">
 											<thead>
-												<tr className="border-b border-neutral-100">
+												<tr className="border-b border-neutral-100 dark:border-white/10">
 													<th className="py-3 text-left">
 														<input
 															type="checkbox"
@@ -418,25 +418,25 @@ export default function DataPage() {
 																filteredArticles.length > 0
 															}
 															onChange={selectAll}
-															className="rounded border-neutral-300"
+															className="rounded border-neutral-300 dark:border-white/20 dark:bg-white/10"
 														/>
 													</th>
-													<th className="px-3 py-3 text-left text-sm font-medium text-neutral-500">
+													<th className="px-3 py-3 text-left text-sm font-medium text-neutral-500 dark:text-neutral-400">
 														{t("Title")}
 													</th>
-													<th className="px-3 py-3 text-left text-sm font-medium text-neutral-500">
+													<th className="px-3 py-3 text-left text-sm font-medium text-neutral-500 dark:text-neutral-400">
 														{t("Category")}
 													</th>
-													<th className="px-3 py-3 text-left text-sm font-medium text-neutral-500">
+													<th className="px-3 py-3 text-left text-sm font-medium text-neutral-500 dark:text-neutral-400">
 														{t("Status")}
 													</th>
-													<th className="px-3 py-3 text-left text-sm font-medium text-neutral-500">
+													<th className="px-3 py-3 text-left text-sm font-medium text-neutral-500 dark:text-neutral-400">
 														{t("Risk")}
 													</th>
-													<th className="px-3 py-3 text-left text-sm font-medium text-neutral-500">
+													<th className="px-3 py-3 text-left text-sm font-medium text-neutral-500 dark:text-neutral-400">
 														{t("Published at")}
 													</th>
-													<th className="px-3 py-3 text-left text-sm font-medium text-neutral-500">
+													<th className="px-3 py-3 text-left text-sm font-medium text-neutral-500 dark:text-neutral-400">
 														{t("Actions")}
 													</th>
 												</tr>
@@ -446,7 +446,7 @@ export default function DataPage() {
 													<tr>
 														<td
 															colSpan={7}
-															className="py-12 text-center text-neutral-500"
+															className="py-12 text-center text-neutral-500 dark:text-neutral-400"
 														>
 															{t("No data")}
 														</td>
@@ -477,7 +477,7 @@ export default function DataPage() {
 														return (
 															<tr
 																key={article.id}
-																className="border-b border-neutral-50 hover:bg-neutral-50"
+																className="border-b border-neutral-50 hover:bg-neutral-50 dark:border-white/5 dark:hover:bg-white/5"
 															>
 																<td className="py-3">
 																	<input
@@ -486,13 +486,13 @@ export default function DataPage() {
 																		onChange={() =>
 																			toggleSelect(article.id, article.version)
 																		}
-																		className="rounded border-neutral-300"
+																		className="rounded border-neutral-300 dark:border-white/20 dark:bg-white/10"
 																	/>
 																</td>
 																<td className="max-w-xs truncate px-3 py-3 text-sm font-medium">
 																	{article.title}
 																</td>
-																<td className="px-3 py-3 text-sm text-neutral-500">
+																<td className="px-3 py-3 text-sm text-neutral-500 dark:text-neutral-400">
 																	{getCategoryName(article.category_id)}
 																</td>
 																<td className="px-3 py-3">
@@ -505,7 +505,7 @@ export default function DataPage() {
 																		{riskText}
 																	</Badge>
 																</td>
-																<td className="px-3 py-3 text-sm text-neutral-500">
+																<td className="px-3 py-3 text-sm text-neutral-500 dark:text-neutral-400">
 																	{formatDate(article.published_at)}
 																</td>
 																<td className="px-3 py-3">
@@ -535,7 +535,7 @@ export default function DataPage() {
 								{/* Pagination */}
 								{totalPages > 1 && (
 									<div className="mt-4 flex items-center justify-between border-t border-neutral-100 pt-4">
-										<p className="text-sm text-neutral-500">
+										<p className="text-sm text-neutral-500 dark:text-neutral-400">
 											{t("Showing {from} - {to} of {total}", {
 												from: page * PAGE_SIZE + 1,
 												to: Math.min((page + 1) * PAGE_SIZE, total),
@@ -552,7 +552,7 @@ export default function DataPage() {
 												<ChevronLeft aria-hidden="true" className="h-4 w-4" />
 												{t("Previous")}
 											</Button>
-											<span className="text-sm text-neutral-500">
+											<span className="text-sm text-neutral-500 dark:text-neutral-400">
 												{page + 1} / {totalPages}
 											</span>
 											<Button
@@ -580,12 +580,12 @@ export default function DataPage() {
 				size="sm"
 			>
 				<ModalHeader>
-					<h2 className="text-lg font-semibold text-neutral-900">
+					<h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">
 						{t("Confirm delete")}
 					</h2>
 				</ModalHeader>
 				<ModalBody>
-					<p className="text-sm text-neutral-600">
+					<p className="text-sm text-neutral-600 dark:text-neutral-300">
 						{t(
 							"You are about to delete {count} articles. This action cannot be undone.",
 							{ count: selectedArticles.size },

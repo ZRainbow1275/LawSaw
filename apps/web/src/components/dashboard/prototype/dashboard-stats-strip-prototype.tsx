@@ -73,13 +73,16 @@ function StatCard({
 			animate={{ opacity: 1, y: 0 }}
 			transition={{ duration: 0.4, delay, ease: "easeOut" }}
 			whileHover={{ y: -2 }}
-			className="flex flex-col gap-2 rounded-2xl border bg-white px-5 py-4 transition-shadow hover:shadow-sm"
-			style={{ borderColor: "var(--color-neutral-200)" }}
+			className="flex flex-col gap-2 rounded-2xl border px-5 py-4 transition-shadow hover:shadow-sm"
+			style={{
+				backgroundColor: "var(--color-card)",
+				borderColor: "var(--surface-card-border-strong)",
+			}}
 		>
 			<div className="flex items-center justify-between">
 				<span
 					className="text-xs font-semibold uppercase tracking-wider"
-					style={{ color: "var(--color-neutral-500)" }}
+					style={{ color: "var(--surface-card-faint-fg)" }}
 				>
 					{label}
 				</span>
@@ -92,7 +95,7 @@ function StatCard({
 			</div>
 			<div
 				className="text-[28px] font-extrabold leading-none tabular-nums"
-				style={{ color: "var(--color-neutral-900)" }}
+				style={{ color: "var(--field-foreground)" }}
 			>
 				{value !== null ? (
 					<AnimatedNumber
@@ -101,7 +104,7 @@ function StatCard({
 						formatter={(v) => Math.round(v).toLocaleString()}
 					/>
 				) : (
-					<span style={{ color: "var(--color-neutral-400)" }}>—</span>
+					<span style={{ color: "var(--surface-card-faint-fg)" }}>—</span>
 				)}
 			</div>
 			{trendLabel ? (
@@ -186,7 +189,7 @@ export function DashboardStatsStripPrototype() {
 			: "neutral";
 
 	return (
-		<div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+		<div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
 			<StatCard
 				label={t("Collected today")}
 				value={todayCount}

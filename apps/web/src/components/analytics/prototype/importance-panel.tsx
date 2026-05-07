@@ -24,7 +24,7 @@ const ReactECharts = dynamic(
 
 const cardStyle: CSSProperties = {
 	background: "var(--color-card)",
-	border: "1px solid var(--color-neutral-200)",
+	border: "1px solid var(--surface-card-border-strong)",
 	borderRadius: 12,
 	padding: 20,
 };
@@ -32,7 +32,7 @@ const cardStyle: CSSProperties = {
 const sectionTitleStyle: CSSProperties = {
 	fontSize: 14,
 	fontWeight: 700,
-	color: "var(--color-neutral-800)",
+	color: "var(--surface-card-foreground)",
 	marginBottom: 16,
 };
 
@@ -117,22 +117,22 @@ ${date} · 重要度 ${imp} · 权威 ${auth} · 风险 ${p.seriesName}
 				top: 0,
 				right: 16,
 				icon: "circle",
-				textStyle: { color: "var(--color-neutral-600)", fontSize: 12 },
+				textStyle: { color: "var(--surface-card-muted-fg)", fontSize: 12 },
 				data: Object.values(RISK_LABEL),
 			},
 			grid: { top: 36, bottom: 36, left: 36, right: 16, containLabel: true },
 			xAxis: {
 				type: "time" as const,
-				axisLine: { lineStyle: { color: "var(--color-neutral-200)" } },
-				axisLabel: { color: "var(--color-neutral-500)", fontSize: 11 },
+				axisLine: { lineStyle: { color: "var(--surface-card-border-strong)" } },
+				axisLabel: { color: "var(--surface-card-faint-fg)", fontSize: 11 },
 				splitLine: { show: false },
 			},
 			yAxis: {
 				type: "value" as const,
 				name: t("Importance"),
-				nameTextStyle: { color: "var(--color-neutral-500)", fontSize: 11 },
-				axisLine: { lineStyle: { color: "var(--color-neutral-200)" } },
-				axisLabel: { color: "var(--color-neutral-500)", fontSize: 11 },
+				nameTextStyle: { color: "var(--surface-card-faint-fg)", fontSize: 11 },
+				axisLine: { lineStyle: { color: "var(--surface-card-border-strong)" } },
+				axisLabel: { color: "var(--surface-card-faint-fg)", fontSize: 11 },
 				splitLine: { lineStyle: { color: "rgba(0,0,0,0.05)" } },
 			},
 			series,
@@ -156,7 +156,7 @@ ${date} · 重要度 ${imp} · 权威 ${auth} · 风险 ${p.seriesName}
 						alignItems: "center",
 						justifyContent: "center",
 						padding: 80,
-						color: "var(--color-neutral-400)",
+						color: "var(--surface-card-faint-fg)",
 					}}
 				>
 					<Loader2 aria-hidden="true" size={20} className="animate-spin" />
@@ -176,7 +176,7 @@ ${date} · 重要度 ${imp} · 权威 ${auth} · 风险 ${p.seriesName}
 				<div
 					style={{
 						padding: 32,
-						color: "var(--color-neutral-500)",
+						color: "var(--surface-card-faint-fg)",
 						fontSize: 13,
 						textAlign: "center",
 					}}

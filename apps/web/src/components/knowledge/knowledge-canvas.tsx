@@ -94,7 +94,7 @@ function getNodeBorder(entityType: string) {
 		case "person":
 			return "border-amber-200 bg-amber-50/70";
 		default:
-			return "border-neutral-200 bg-white/80";
+			return "border-neutral-200 bg-white/80 dark:border-white/10 dark:bg-neutral-900/80";
 	}
 }
 
@@ -732,15 +732,15 @@ export function KnowledgeCanvas({
 	return (
 		<div className={cn("relative flex min-h-0 flex-1 flex-col", className)}>
 			<div className="flex items-center justify-between gap-2 pb-3">
-				<div className="flex items-center gap-2 text-sm text-neutral-600">
-					<span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-neutral-100 text-neutral-600">
+				<div className="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-300">
+					<span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-neutral-100 text-neutral-600 dark:bg-white/10 dark:text-neutral-300">
 						<Move aria-hidden="true" className="h-4 w-4" />
 					</span>
 					<div className="min-w-0">
-						<div className="font-medium text-neutral-900">
+						<div className="font-medium text-neutral-900 dark:text-neutral-50">
 							{t("Knowledge graph canvas")}
 						</div>
-						<div className="text-xs text-neutral-500">
+						<div className="text-xs text-neutral-500 dark:text-neutral-400">
 							{showEmptySeed
 								? t("Select a seed entity from the left to get started.")
 								: t(
@@ -781,7 +781,7 @@ export function KnowledgeCanvas({
 					>
 						<RotateCcw aria-hidden="true" className="h-4 w-4" />
 					</Button>
-					<div className="ml-2 hidden rounded-lg bg-neutral-100 px-2 py-1 text-xs text-neutral-600 sm:block">
+					<div className="ml-2 hidden rounded-lg bg-neutral-100 px-2 py-1 text-xs text-neutral-600 sm:block dark:bg-white/10 dark:text-neutral-300">
 						{Math.round(viewport.scale * 100)}%
 					</div>
 				</div>
@@ -791,7 +791,7 @@ export function KnowledgeCanvas({
 				ref={containerRef}
 				data-testid="knowledge-canvas"
 				className={cn(
-					"relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-neutral-200 bg-[radial-gradient(circle_at_1px_1px,rgba(15,23,42,0.12)_1px,transparent_0)] [background-size:24px_24px]",
+					"relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-neutral-200 bg-[radial-gradient(circle_at_1px_1px,rgba(15,23,42,0.12)_1px,transparent_0)] [background-size:24px_24px] dark:border-white/10 dark:bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.10)_1px,transparent_0)]",
 					"outline-none select-none touch-none",
 					isPanning ? "cursor-grabbing" : "cursor-grab",
 				)}
@@ -872,12 +872,12 @@ export function KnowledgeCanvas({
 							>
 								<div className="flex items-start justify-between gap-2">
 									<div className="min-w-0">
-										<div className="truncate text-sm font-semibold text-neutral-900">
+										<div className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">
 											{node.name}
 										</div>
-										<div className="mt-0.5 flex items-center gap-2 text-xs text-neutral-500">
+										<div className="mt-0.5 flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
 											<span className="truncate">{node.entity_type}</span>
-											<span className="text-neutral-300">•</span>
+											<span className="text-neutral-300 dark:text-neutral-600">•</span>
 											<span>
 												{t("Mentioned {count} times", {
 													count: node.mention_count,
@@ -888,7 +888,7 @@ export function KnowledgeCanvas({
 									<span
 										className={cn(
 											"mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-lg border",
-											"border-neutral-200 bg-white/70 text-neutral-500",
+											"border-neutral-200 bg-white/70 text-neutral-500 dark:border-white/10 dark:bg-white/5 dark:text-neutral-400",
 										)}
 										title={
 											selected
@@ -905,8 +905,8 @@ export function KnowledgeCanvas({
 				</div>
 
 				{isLoading && (
-					<div className="absolute inset-0 flex items-center justify-center bg-white/40 backdrop-blur-sm">
-						<div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm text-neutral-700 shadow-sm">
+					<div className="absolute inset-0 flex items-center justify-center bg-white/40 backdrop-blur-sm dark:bg-neutral-900/40">
+						<div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm text-neutral-700 shadow-sm dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-200">
 							<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
 							<span>{t("Loading graph...")}</span>
 						</div>
@@ -915,14 +915,14 @@ export function KnowledgeCanvas({
 
 				{showEmptySeed && (
 					<div className="absolute inset-0 flex items-center justify-center p-6">
-						<div className="max-w-md rounded-2xl border border-neutral-200 bg-white/80 p-6 text-center shadow-sm backdrop-blur">
-							<div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-50 text-primary-700">
+						<div className="max-w-md rounded-2xl border border-neutral-200 bg-white/80 p-6 text-center shadow-sm backdrop-blur dark:border-white/10 dark:bg-neutral-900/80">
+							<div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-50 text-primary-700 dark:bg-primary-500/15 dark:text-primary-200">
 								<Move aria-hidden="true" className="h-5 w-5" />
 							</div>
-							<h3 className="mt-4 text-base font-semibold text-neutral-900">
+							<h3 className="mt-4 text-base font-semibold text-neutral-900 dark:text-neutral-50">
 								{t("No seed entity selected")}
 							</h3>
-							<p className="mt-2 text-sm text-neutral-600">
+							<p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">
 								{t(
 									"Select an entity from the left list, and the system will load its relations and visualize them here.",
 								)}
@@ -933,14 +933,14 @@ export function KnowledgeCanvas({
 
 				{seedEntityId && !isLoading && nodes.length === 0 && (
 					<div className="absolute inset-0 flex items-center justify-center p-6">
-						<div className="max-w-md rounded-2xl border border-neutral-200 bg-white/80 p-6 text-center shadow-sm backdrop-blur">
-							<div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-neutral-100 text-neutral-600">
+						<div className="max-w-md rounded-2xl border border-neutral-200 bg-white/80 p-6 text-center shadow-sm backdrop-blur dark:border-white/10 dark:bg-neutral-900/80">
+							<div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-neutral-100 text-neutral-600 dark:bg-white/10 dark:text-neutral-300">
 								<Loader2 aria-hidden="true" className="h-5 w-5" />
 							</div>
-							<h3 className="mt-4 text-base font-semibold text-neutral-900">
+							<h3 className="mt-4 text-base font-semibold text-neutral-900 dark:text-neutral-50">
 								{t("No relationship data available")}
 							</h3>
-							<p className="mt-2 text-sm text-neutral-600">
+							<p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">
 								{t(
 									'If there are no entities/relations in the database yet, run the ingestion/AI pipeline or use "Initialize knowledge graph".',
 								)}

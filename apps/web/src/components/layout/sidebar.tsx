@@ -1,5 +1,6 @@
 "use client";
 
+import { NAVIGATION_PREFIX_KEYS } from "@/components/providers/app-shortcuts-provider";
 import { useCategories } from "@/hooks/use-categories";
 import {
 	type RoleTier,
@@ -415,8 +416,23 @@ function SidebarPanel({
 									</div>
 
 									{!collapsed ? (
-										<span className="relative z-10 whitespace-nowrap">
-											{t(item.name)}
+										<span className="relative z-10 flex flex-1 items-center gap-2 whitespace-nowrap">
+											<span className="flex-1">{t(item.name)}</span>
+											{NAVIGATION_PREFIX_KEYS[item.href] ? (
+												<span
+													aria-hidden="true"
+													className="hidden items-center gap-0.5 rounded border px-1.5 py-0.5 font-mono text-[10px] font-medium opacity-0 transition-opacity duration-150 group-hover:opacity-100 md:inline-flex"
+													style={{
+														borderColor: "var(--surface-muted-border)",
+														backgroundColor: "var(--control-hover-bg)",
+														color: "var(--surface-muted-text)",
+													}}
+												>
+													g
+													<span className="opacity-50">·</span>
+													{NAVIGATION_PREFIX_KEYS[item.href]}
+												</span>
+											) : null}
 										</span>
 									) : null}
 								</Link>

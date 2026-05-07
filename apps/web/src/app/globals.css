@@ -109,6 +109,20 @@
 	--shadow-popup-card: 0 12px 40px rgba(0, 0, 0, 0.12);
 	--shadow-back-to-top: 0 4px 16px rgba(255, 107, 53, 0.35);
 
+	/* Risk pill palette — `prototype/app.html:299-303`
+	   Used by dashboard feed-grid + dashboard-page-content article rows.
+	   Light-mode: Material-soft tints (high contrast, AA on white).  */
+	--risk-low-bg: #e8f5e9;
+	--risk-low-fg: #2e7d32;
+	--risk-mid-bg: #fff8e1;
+	--risk-mid-fg: #f57f17;
+	--risk-high-bg: #ffebee;
+	--risk-high-fg: #c62828;
+	--risk-critical-bg: #f3e5f5;
+	--risk-critical-fg: #7b1fa2;
+	--risk-unknown-bg: var(--color-neutral-100);
+	--risk-unknown-fg: var(--color-neutral-600);
+
 	/* Admin console — 纯白底 + 卡片悬浮调子 (task #11)
 	   Used by AdminShell + admin-stats-strip + admin/* tile cards.
 	   Pulled out as tokens so future tweaks happen in one place. */
@@ -311,6 +325,18 @@
 	--auth-copy-secondary: var(--color-neutral-700);
 	--auth-copy-tertiary: var(--color-neutral-500);
 
+	/* Card / surface 语义文本 — 替代 prototype 内联 var(--color-neutral-*) 用法
+	   light: 走原色阶；dark: 自动切换至浅色阶 */
+	--surface-card-bg: #ffffff;
+	--surface-card-border: var(--color-neutral-100);
+	--surface-card-border-strong: var(--color-neutral-200);
+	--surface-card-foreground: var(--color-neutral-900);
+	--surface-card-foreground-strong: var(--color-neutral-900);
+	--surface-card-muted-fg: var(--color-neutral-600);
+	--surface-card-faint-fg: var(--color-neutral-500);
+	--surface-card-subtle-bg: var(--color-neutral-50);
+	--surface-card-tint-bg: var(--color-neutral-100);
+
 	/* Control hover / selected - sidebar / nav */
 	--control-hover-bg: rgba(241, 243, 244, 0.6);
 	--control-selected-bg: var(--color-primary-50);
@@ -411,6 +437,20 @@
 	--surface-accent-copy: var(--color-primary-200);
 	--surface-popover-bg: hsl(0 0% 15%);
 
+	/* Risk pill palette (dark) — desaturated tints, mirror of light theme.
+	   Tone matches feedback-status palette so dashboard feed reads as a
+	   coherent surface in dark mode. */
+	--risk-low-bg: rgba(46, 125, 50, 0.22);
+	--risk-low-fg: #6ee7b7;
+	--risk-mid-bg: rgba(245, 127, 23, 0.22);
+	--risk-mid-fg: #fcd34d;
+	--risk-high-bg: rgba(198, 40, 40, 0.22);
+	--risk-high-fg: #fca5a5;
+	--risk-critical-bg: rgba(123, 31, 162, 0.24);
+	--risk-critical-fg: #e9d5ff;
+	--risk-unknown-bg: rgba(255, 255, 255, 0.06);
+	--risk-unknown-fg: hsl(0 0% 70%);
+
 	/* Feedback palette — 暗色：低饱和深色 chip + 提亮文字 */
 	--feedback-status-resolved-bg: rgba(40, 167, 69, 0.18);
 	--feedback-status-resolved-fg: #6ee7b7;
@@ -444,6 +484,17 @@
 	--auth-copy-primary: hsl(0 0% 98%);
 	--auth-copy-secondary: hsl(0 0% 80%);
 	--auth-copy-tertiary: hsl(0 0% 60%);
+
+	/* Card / surface 语义 — 暗色覆盖（替代内联 color-neutral-* 用法） */
+	--surface-card-bg: hsl(0 0% 14%);
+	--surface-card-border: rgba(255, 255, 255, 0.10);
+	--surface-card-border-strong: rgba(255, 255, 255, 0.16);
+	--surface-card-foreground: hsl(0 0% 98%);
+	--surface-card-foreground-strong: hsl(0 0% 100%);
+	--surface-card-muted-fg: hsl(0 0% 70%);
+	--surface-card-faint-fg: hsl(0 0% 55%);
+	--surface-card-subtle-bg: rgba(255, 255, 255, 0.04);
+	--surface-card-tint-bg: rgba(255, 255, 255, 0.08);
 
 	/* Control hover / selected — 暗色 nav */
 	--control-hover-bg: rgba(255, 255, 255, 0.06);

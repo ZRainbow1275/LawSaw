@@ -99,7 +99,7 @@ export function DashboardHeroPrototype({
 					className="relative flex overflow-hidden rounded-lg border"
 					style={{
 						backgroundColor: "var(--color-card)",
-						borderColor: "var(--color-neutral-200)",
+						borderColor: "var(--surface-card-border-strong)",
 					}}
 				>
 					{timeButtons.map((btn) => {
@@ -113,7 +113,7 @@ export function DashboardHeroPrototype({
 								onClick={() => setTimeframe(btn.id)}
 								className="relative z-10 px-5 py-1.5 text-[13px] font-medium transition-colors"
 								style={{
-									color: active ? "white" : "var(--color-neutral-500)",
+									color: active ? "white" : "var(--surface-card-faint-fg)",
 								}}
 							>
 								<span className="relative z-10">{btn.label}</span>

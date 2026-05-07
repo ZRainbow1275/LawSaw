@@ -193,7 +193,7 @@ function RelationDrawer({
 							<button
 								type="button"
 								onClick={onClose}
-								className="rounded-lg p-2 hover:bg-neutral-100"
+								className="rounded-lg p-2 hover:bg-neutral-100 dark:hover:bg-white/10"
 								aria-label={t("Close")}
 							>
 								<X aria-hidden="true" className="h-4 w-4" />
@@ -734,7 +734,7 @@ function AdminRelationsMatrixContent() {
 											<tr
 												key={subjectId}
 												tabIndex={0}
-												className="cursor-pointer hover:bg-neutral-50"
+												className="cursor-pointer hover:bg-neutral-50 dark:hover:bg-white/5"
 												onClick={() => setDrawerSubject(subjectId)}
 												onKeyDown={(event) => {
 													if (event.key === "Enter" || event.key === " ") {

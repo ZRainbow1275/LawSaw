@@ -40,7 +40,7 @@ export function DashboardGeoFilter({ value, onChange }: Props) {
 
 	return (
 		<div
-			className="mb-3 flex flex-wrap gap-1.5"
+			className="flex flex-wrap gap-1.5"
 			role="tablist"
 			aria-label={t("Global")}
 		>
@@ -59,14 +59,14 @@ export function DashboardGeoFilter({ value, onChange }: Props) {
 						style={
 							active
 								? {
-										backgroundColor: "var(--color-neutral-800)",
+										backgroundColor: "var(--surface-card-foreground)",
 										color: "white",
-										borderColor: "var(--color-neutral-800)",
+										borderColor: "var(--surface-card-foreground)",
 									}
 								: {
-										backgroundColor: "white",
-										color: "var(--color-neutral-600)",
-										borderColor: "var(--color-neutral-200)",
+										backgroundColor: "var(--color-card)",
+										color: "var(--surface-card-muted-fg)",
+										borderColor: "var(--surface-card-border-strong)",
 									}
 						}
 					>

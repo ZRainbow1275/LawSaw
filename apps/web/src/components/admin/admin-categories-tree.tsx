@@ -832,7 +832,7 @@ function TreeRow({
 				className={cn(
 					"group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm transition-colors",
 					isDragging && "opacity-60",
-					isSelected ? "bg-primary-50 text-primary-700" : "hover:bg-neutral-50",
+					isSelected ? "bg-primary-50 text-primary-700 dark:bg-primary-500/15 dark:text-primary-200" : "hover:bg-neutral-50 dark:hover:bg-white/5",
 				)}
 				style={{
 					paddingLeft: `${depth * 16 + 8}px`,
@@ -861,7 +861,7 @@ function TreeRow({
 					}
 					className={cn(
 						"flex h-5 w-5 shrink-0 items-center justify-center rounded",
-						hasChildren ? "hover:bg-neutral-100" : "cursor-default",
+						hasChildren ? "hover:bg-neutral-100 dark:hover:bg-white/10" : "cursor-default",
 					)}
 				>
 					{hasChildren ? (
@@ -918,7 +918,7 @@ function TreeRow({
 						}}
 						aria-label={t("Add child category")}
 						title={t("Add child category")}
-						className="rounded p-1 hover:bg-neutral-100"
+						className="rounded p-1 hover:bg-neutral-100 dark:hover:bg-white/10"
 					>
 						<Plus
 							aria-hidden="true"
@@ -934,7 +934,7 @@ function TreeRow({
 						}}
 						aria-label={t("Edit category")}
 						title={t("Edit category")}
-						className="rounded p-1 hover:bg-neutral-100"
+						className="rounded p-1 hover:bg-neutral-100 dark:hover:bg-white/10"
 					>
 						<Pencil
 							aria-hidden="true"

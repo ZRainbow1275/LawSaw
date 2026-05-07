@@ -36,7 +36,7 @@ const grid2x2Style: CSSProperties = {
 
 const cardStyle: CSSProperties = {
 	background: "var(--color-card)",
-	border: "1px solid var(--color-neutral-200)",
+	border: "1px solid var(--surface-card-border-strong)",
 	borderRadius: 12,
 	padding: 20,
 };
@@ -44,7 +44,7 @@ const cardStyle: CSSProperties = {
 const sectionTitleStyle: CSSProperties = {
 	fontSize: 14,
 	fontWeight: 700,
-	color: "var(--color-neutral-800)",
+	color: "var(--surface-card-foreground)",
 	marginBottom: 16,
 };
 
@@ -53,7 +53,7 @@ const placeholderStyle: CSSProperties = {
 	alignItems: "center",
 	justifyContent: "center",
 	height: 220,
-	color: "var(--color-neutral-400)",
+	color: "var(--surface-card-faint-fg)",
 };
 
 const fallbackZeros = {
@@ -149,7 +149,7 @@ export function OverviewPanel() {
 							style={{
 								...placeholderStyle,
 								fontSize: 13,
-								color: "var(--color-neutral-500)",
+								color: "var(--surface-card-faint-fg)",
 							}}
 						>
 							{t("No trend data")}

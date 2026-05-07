@@ -40,23 +40,23 @@ interface StatConfig {
 
 const colorConfig = {
 	primary: {
-		bg: "bg-primary-100",
-		text: "text-primary-600",
+		bg: "bg-primary-100 dark:bg-primary-500/20",
+		text: "text-primary-600 dark:text-primary-300",
 		gradient: "from-primary-500 to-primary-600",
 	},
 	success: {
-		bg: "bg-green-100",
-		text: "text-green-600",
+		bg: "bg-green-100 dark:bg-green-500/20",
+		text: "text-green-600 dark:text-green-300",
 		gradient: "from-green-500 to-green-600",
 	},
 	warning: {
-		bg: "bg-amber-100",
-		text: "text-amber-600",
+		bg: "bg-amber-100 dark:bg-amber-500/20",
+		text: "text-amber-600 dark:text-amber-300",
 		gradient: "from-amber-500 to-amber-600",
 	},
 	error: {
-		bg: "bg-red-100",
-		text: "text-red-600",
+		bg: "bg-red-100 dark:bg-red-500/20",
+		text: "text-red-600 dark:text-red-300",
 		gradient: "from-red-500 to-red-600",
 	},
 };
@@ -88,20 +88,20 @@ function StatCard({ stat, index }: { stat: StatConfig; index: number }) {
 				<CardContent className="p-6">
 					<div className="flex items-center justify-between">
 						<div>
-							<p className="text-sm font-medium text-neutral-500">
+							<p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">
 								{t(stat.title)}
 							</p>
 							<div className="mt-2">
 								{stat.isLoading ? (
-									<div className="h-9 w-16 rounded bg-neutral-100 animate-pulse" />
+									<div className="h-9 w-16 rounded bg-neutral-100 animate-pulse dark:bg-white/10" />
 								) : stat.isError || stat.value === null ? (
-									<span className="text-3xl font-bold text-neutral-400">—</span>
+									<span className="text-3xl font-bold text-neutral-400 dark:text-neutral-500">—</span>
 								) : (
 									<AnimatedNumber
 										value={stat.value}
 										duration={1200}
 										animateOnView
-										numberClassName="text-3xl font-bold text-neutral-900"
+										numberClassName="text-3xl font-bold text-neutral-900 dark:text-neutral-50"
 									/>
 								)}
 							</div>
@@ -206,8 +206,8 @@ export function StatsCards() {
 			</motion.div>
 
 			{hasError ? (
-				<div className="mt-3 flex items-center justify-between rounded-lg border border-red-100 bg-red-50 px-3 py-2">
-					<p className="text-xs text-red-700">
+				<div className="mt-3 flex items-center justify-between rounded-lg border border-red-100 bg-red-50 px-3 py-2 dark:border-red-500/30 dark:bg-red-500/10">
+					<p className="text-xs text-red-700 dark:text-red-300">
 						{t("Some stats failed to load; unreliable values are hidden.")}
 					</p>
 					<Button variant="outline" size="sm" onClick={handleRetry}>

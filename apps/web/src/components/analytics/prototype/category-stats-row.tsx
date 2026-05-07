@@ -118,7 +118,7 @@ const gridStyle: CSSProperties = {
 
 const cardStyle: CSSProperties = {
 	background: "var(--color-card)",
-	border: "1px solid var(--color-neutral-200)",
+	border: "1px solid var(--surface-card-border-strong)",
 	borderRadius: 10,
 	padding: "12px 14px",
 	display: "flex",
@@ -140,12 +140,12 @@ const iconStyle = (bg: string, color: string): CSSProperties => ({
 const nameStyle: CSSProperties = {
 	fontSize: 13,
 	fontWeight: 600,
-	color: "var(--color-neutral-800)",
+	color: "var(--surface-card-foreground)",
 };
 
 const countStyle: CSSProperties = {
 	fontSize: 12,
-	color: "var(--color-neutral-500)",
+	color: "var(--surface-card-faint-fg)",
 	marginTop: 2,
 };
 

@@ -6,9 +6,9 @@ use law_eye_core::{
     ApiKeyService, ArticlePinService, ArticleReadService, ArticleService, AuditService,
     AuthzService, BannerService, CategoryService, ChannelService, EmailVerificationService,
     FeedbackService, KnowledgeService, MfaTotpService, OAuthIdentityService, ObjectService,
-    PasswordResetService, RagService, ReportService, ReportSubscriptionService,
-    ReportTemplateService, SourceService, StatisticsService, TenantService, UserService,
-    WebPushSubscriptionService, WebhookService,
+    PasswordResetService, PgReactionService, RagService, ReportService,
+    ReportSubscriptionService, ReportTemplateService, SourceService, StatisticsService,
+    TenantService, UserService, WebPushSubscriptionService, WebhookService,
 };
 use law_eye_queue::TaskQueue;
 use metrics_exporter_prometheus::PrometheusHandle;
@@ -65,6 +65,7 @@ pub struct AppState {
     pub channel_service: Arc<ChannelService>,
     pub article_pin_service: Arc<ArticlePinService>,
     pub article_read_service: Arc<ArticleReadService>,
+    pub reaction_service: Arc<PgReactionService>,
     pub report_subscription_service: Arc<ReportSubscriptionService>,
     // B.6a: banners + authz services (migrations 066/067 add the underlying tables).
     pub banner_service: Arc<BannerService>,
@@ -138,6 +139,7 @@ impl AppState {
             channel_service: Arc::new(ChannelService::new(pool.clone())),
             article_pin_service: Arc::new(ArticlePinService::new(pool.clone())),
             article_read_service: Arc::new(ArticleReadService::new(pool.clone())),
+            reaction_service: Arc::new(PgReactionService::new(pool.clone())),
             report_subscription_service: Arc::new(ReportSubscriptionService::new(pool.clone())),
             banner_service: Arc::new(BannerService::new(pool.clone())),
             authz_service: Arc::new(AuthzService::new(pool.clone())),

@@ -455,10 +455,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			{children}
 			<Modal isOpen={!!conflictInfo} onClose={closeConflictModal} size="lg">
 				<ModalHeader>
-					<h2 className="text-lg font-semibold text-neutral-900">
+					<h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">
 						{t(locale, "Concurrency conflict detected")}
 					</h2>
-					<p className="mt-1 text-sm text-neutral-600">
+					<p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
 						{t(
 							locale,
 							"This data was updated elsewhere. Refresh and submit again, or view details to choose how to proceed.",
@@ -468,13 +468,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
 				<ModalBody>
 					{conflictInfo ? (
 						<div className="space-y-3">
-							<div className="rounded-xl border border-warning/20 bg-warning/5 p-4 text-sm text-neutral-800">
+							<div className="rounded-xl border border-warning/20 bg-warning/5 p-4 text-sm text-neutral-800 dark:text-neutral-100">
 								<div className="font-medium">{t(locale, "Conflict info")}</div>
-								<div className="mt-2 text-neutral-700 whitespace-pre-wrap break-words">
+								<div className="mt-2 text-neutral-700 whitespace-pre-wrap break-words dark:text-neutral-200">
 									{conflictInfo.message}
 								</div>
 								{conflictInfo.requestId && (
-									<div className="mt-2 text-xs text-neutral-500">
+									<div className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
 										{t(locale, "Error ID")}:{" "}
 										<span className="font-mono">{conflictInfo.requestId}</span>
 									</div>
@@ -482,11 +482,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
 							</div>
 
 							{process.env.NODE_ENV !== "production" && (
-								<div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-									<div className="text-xs font-medium text-neutral-500">
+								<div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 dark:border-white/10 dark:bg-white/5">
+									<div className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
 										{t(locale, "Debug details")}
 									</div>
-									<pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-white p-3 text-xs text-neutral-700">
+									<pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-white p-3 text-xs text-neutral-700 dark:bg-white/10 dark:text-neutral-200">
 										{JSON.stringify(conflictInfo, null, 2)}
 									</pre>
 								</div>

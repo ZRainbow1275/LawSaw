@@ -8,6 +8,7 @@ import { ArticleCardSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { FeedHero } from "@/components/user/feed-hero";
 import { useCategories } from "@/hooks/use-categories";
 import { useMeFeed } from "@/hooks/use-me-feed";
+import { useReactionSummariesBatch } from "@/hooks/use-reaction";
 import { withLocalePath } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { motion } from "framer-motion";
@@ -91,6 +92,19 @@ export function MeFeedPage({ embedded = false }: MeFeedPageProps = {}) {
 	const trendingChannels = visibleChannels.slice(0, 5);
 	const followedCategories = categories.slice(0, 6);
 
+	// Hydrate reaction summaries for the visible feed + pinned grid in one
+	// batched call so per-card `ReactionToggle` instances can render via cache.
+	const reactionTargetIds = useMemo(() => {
+		const ids = new Set<string>();
+		for (const article of articles) ids.add(article.id);
+		for (const item of pinned) ids.add(item.article.id);
+		return Array.from(ids);
+	}, [articles, pinned]);
+
+	useReactionSummariesBatch("article", reactionTargetIds, {
+		enabled: reactionTargetIds.length > 0,
+	});
+
 	const Shell = ({ children }: { children: ReactNode }) =>
 		embedded ? (
 			<>{children}</>
@@ -124,12 +138,7 @@ export function MeFeedPage({ embedded = false }: MeFeedPageProps = {}) {
 				{adminDenied ? (
 					<motion.div variants={itemVariants}>
 						<div
-							className="flex items-start gap-3 rounded-2xl border p-4 text-sm"
-							style={{
-								backgroundColor: "color-mix(in srgb, #fef3c7 62%, white)",
-								borderColor: "#f59e0b",
-								color: "#92400e",
-							}}
+							className="flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
 							role="alert"
 						>
 							<ShieldAlert

@@ -136,13 +136,13 @@ export function SettingsAppearanceTab() {
 										style={{
 											borderColor: active
 												? "var(--color-primary-500)"
-												: "var(--color-neutral-200)",
+												: "var(--surface-card-border-strong)",
 											backgroundColor: active
 												? "var(--color-primary-50)"
 												: "transparent",
 											color: active
 												? "var(--color-primary-700)"
-												: "var(--color-neutral-700)",
+												: "var(--surface-card-muted-fg)",
 										}}
 									>
 										<choice.Icon aria-hidden="true" className="h-4 w-4" />
@@ -182,13 +182,13 @@ export function SettingsAppearanceTab() {
 										style={{
 											borderColor: active
 												? "var(--color-primary-500)"
-												: "var(--color-neutral-200)",
+												: "var(--surface-card-border-strong)",
 											backgroundColor: active
 												? "var(--color-primary-50)"
 												: "transparent",
 											color: active
 												? "var(--color-primary-700)"
-												: "var(--color-neutral-700)",
+												: "var(--surface-card-muted-fg)",
 										}}
 									>
 										{localeLabels[value]}
@@ -217,7 +217,7 @@ export function SettingsAppearanceTab() {
 						<label className="flex items-center justify-between gap-4">
 							<span
 								className="text-sm font-medium"
-								style={{ color: "var(--color-neutral-800)" }}
+								style={{ color: "var(--surface-card-foreground)" }}
 							>
 								{t("Enable compact mode")}
 							</span>

@@ -86,11 +86,11 @@ export function KnowledgePageContent() {
 						data-testid="kg-inline-stats"
 					>
 						<InlineStat label={t("Entities")} value={formatNumber(stats.entity_count)} />
-						<span aria-hidden style={{ color: "var(--color-neutral-300)" }}>·</span>
+						<span aria-hidden style={{ color: "var(--surface-card-border-strong)" }}>·</span>
 						<InlineStat label={t("Relations")} value={formatNumber(stats.relation_count)} />
-						<span aria-hidden style={{ color: "var(--color-neutral-300)" }}>·</span>
+						<span aria-hidden style={{ color: "var(--surface-card-border-strong)" }}>·</span>
 						<InlineStat label={t("Article links")} value={formatNumber(stats.article_entity_count)} />
-						<span aria-hidden style={{ color: "var(--color-neutral-300)" }}>·</span>
+						<span aria-hidden style={{ color: "var(--surface-card-border-strong)" }}>·</span>
 						<InlineStat label={t("Vector-ready entities")} value={formatNumber(stats.entities_with_embedding)} />
 					</dl>
 				) : null}
@@ -127,7 +127,7 @@ export function KnowledgePageContent() {
 function InlineStat({ label, value }: { label: string; value: string }) {
 	return (
 		<div className="inline-flex items-baseline gap-1.5">
-			<span style={{ color: "var(--color-neutral-500)" }}>{label}</span>
+			<span style={{ color: "var(--surface-card-faint-fg)" }}>{label}</span>
 			<span
 				className="text-sm font-semibold tabular-nums"
 				style={{ color: "var(--color-foreground)" }}

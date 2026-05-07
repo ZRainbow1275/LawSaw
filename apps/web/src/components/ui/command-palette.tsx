@@ -42,7 +42,7 @@ interface CommandPaletteProps {
 
 const backdropStyle = {
 	backgroundColor:
-		"color-mix(in srgb, var(--color-neutral-950) 40%, transparent)",
+		"color-mix(in srgb, var(--surface-card-foreground) 40%, transparent)",
 } as const;
 
 const surfaceStyle = {

@@ -137,11 +137,11 @@ export function Breadcrumbs({ pathname, className }: BreadcrumbsProps) {
 			aria-label={t("Breadcrumb")}
 			className={cn("overflow-x-auto whitespace-nowrap", className)}
 		>
-			<ol className="flex items-center gap-2 text-sm text-neutral-500">
+			<ol className="flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400">
 				<li>
 					<Link
 						href={withLocalePath(locale, "/")}
-						className="inline-flex items-center rounded px-1 py-0.5 hover:bg-neutral-100 hover:text-neutral-700"
+						className="inline-flex items-center rounded px-1 py-0.5 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-white/10 dark:hover:text-neutral-200"
 					>
 						<Home aria-hidden="true" className="h-3.5 w-3.5" />
 						<span className="sr-only">{t("Home")}</span>
@@ -151,19 +151,19 @@ export function Breadcrumbs({ pathname, className }: BreadcrumbsProps) {
 					<li key={item.key} className="inline-flex items-center gap-1">
 						<ChevronRight
 							aria-hidden="true"
-							className="h-3.5 w-3.5 text-neutral-400"
+							className="h-3.5 w-3.5 text-neutral-400 dark:text-neutral-500"
 						/>
 						{item.isLast ? (
 							<span
 								aria-current="page"
-								className="max-w-[18rem] truncate text-neutral-700"
+								className="max-w-[18rem] truncate text-neutral-700 dark:text-neutral-200"
 							>
 								{item.label}
 							</span>
 						) : (
 							<Link
 								href={item.href}
-								className="max-w-[16rem] truncate rounded px-1 py-0.5 hover:bg-neutral-100 hover:text-neutral-700"
+								className="max-w-[16rem] truncate rounded px-1 py-0.5 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-white/10 dark:hover:text-neutral-200"
 							>
 								{item.label}
 							</Link>

@@ -122,7 +122,7 @@ export function CategoryOverview() {
 							{ length: 5 },
 							(_, idx) => `cat-overview-skel-${idx}`,
 						).map((key) => (
-							<div key={key} className="h-10 rounded bg-neutral-100" />
+							<div key={key} className="h-10 rounded bg-neutral-100 dark:bg-white/10" />
 						))}
 					</div>
 				</CardContent>
@@ -188,8 +188,8 @@ export function CategoryOverview() {
 			</CardHeader>
 			<CardContent>
 				{countsError ? (
-					<div className="mb-3 flex items-center justify-between rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
-						<p className="text-xs text-amber-800">
+					<div className="mb-3 flex items-center justify-between rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 dark:border-amber-500/30 dark:bg-amber-500/10">
+						<p className="text-xs text-amber-800 dark:text-amber-200">
 							{t("Failed to load distribution stats")}
 						</p>
 						<Button
@@ -203,17 +203,17 @@ export function CategoryOverview() {
 				) : null}
 				<div className="space-y-3">
 					{uncategorizedCount > 0 && (
-						<div className="flex items-center justify-between rounded-lg p-2 transition-colors hover:bg-neutral-50">
+						<div className="flex items-center justify-between rounded-lg p-2 transition-colors hover:bg-neutral-50 dark:hover:bg-white/5">
 							<div className="flex items-center gap-3">
 								<div
 									className={cn(
 										"flex h-8 w-8 items-center justify-center rounded-lg",
-										"text-neutral-500 bg-neutral-50",
+										"text-neutral-500 bg-neutral-50 dark:text-neutral-400 dark:bg-white/5",
 									)}
 								>
 									<FileText aria-hidden="true" className="h-4 w-4" />
 								</div>
-								<span className="text-sm font-medium text-neutral-700">
+								<span className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
 									{t("Uncategorized")}
 								</span>
 							</div>
@@ -231,13 +231,13 @@ export function CategoryOverview() {
 						return (
 							<div
 								key={category.id}
-								className="flex items-center justify-between rounded-lg p-2 transition-colors hover:bg-neutral-50"
+								className="flex items-center justify-between rounded-lg p-2 transition-colors hover:bg-neutral-50 dark:hover:bg-white/5"
 							>
 								<div className="flex items-center gap-3">
 									<div
 										className={cn(
 											"flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold",
-											badgeStyle ? "" : "text-neutral-500 bg-neutral-50",
+											badgeStyle ? "" : "text-neutral-500 bg-neutral-50 dark:text-neutral-400 dark:bg-white/5",
 										)}
 										style={badgeStyle}
 									>
@@ -247,7 +247,7 @@ export function CategoryOverview() {
 											<span aria-hidden="true">{iconText}</span>
 										)}
 									</div>
-									<span className="text-sm font-medium text-neutral-700">
+									<span className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
 										{category.name}
 									</span>
 								</div>

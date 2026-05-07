@@ -89,18 +89,18 @@ export function SettingsSystemTab() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<dl className="divide-y" style={{ borderColor: "var(--color-neutral-100)" }}>
+						<dl className="divide-y" style={{ borderColor: "var(--surface-card-border)" }}>
 							{rows.map((row) => (
 								<div
 									key={row.label}
 									className="flex items-center justify-between py-3 text-sm"
 								>
-									<dt style={{ color: "var(--color-neutral-500)" }}>
+									<dt style={{ color: "var(--surface-card-faint-fg)" }}>
 										{row.label}
 									</dt>
 									<dd
 										className="font-semibold tabular-nums"
-										style={{ color: "var(--color-neutral-800)" }}
+										style={{ color: "var(--surface-card-foreground)" }}
 									>
 										{row.value}
 									</dd>

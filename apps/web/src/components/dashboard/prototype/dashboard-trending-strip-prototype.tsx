@@ -30,8 +30,11 @@ export function DashboardTrendingStripPrototype({
 
 	return (
 		<div
-			className="mb-5 flex items-center gap-4 overflow-hidden rounded-xl border bg-white px-5 py-3"
-			style={{ borderColor: "var(--color-neutral-200)" }}
+			className="flex items-center gap-4 overflow-hidden rounded-xl border px-5 py-3"
+			style={{
+				backgroundColor: "var(--color-card)",
+				borderColor: "var(--surface-card-border-strong)",
+			}}
 		>
 			<div
 				className="flex shrink-0 items-center gap-1.5 text-xs font-bold"
@@ -50,7 +53,7 @@ export function DashboardTrendingStripPrototype({
 								type="button"
 								onClick={() => onSelectArticle?.(article.id)}
 								className="group inline-flex shrink-0 items-center gap-1.5 text-[13px] font-medium transition-colors"
-								style={{ color: "var(--color-neutral-600)" }}
+								style={{ color: "var(--surface-card-muted-fg)" }}
 							>
 								<span
 									className="text-[11px] font-extrabold opacity-60"

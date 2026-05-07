@@ -210,10 +210,10 @@ export function MeFeedPagePrototype() {
 						aria-hidden="true"
 						className="mx-auto h-8 w-8 text-red-500"
 					/>
-					<p className="mt-3 font-semibold text-neutral-900">
+					<p className="mt-3 font-semibold text-neutral-900 dark:text-neutral-50">
 						{t("Failed to load feed items")}
 					</p>
-					<p className="mt-1 text-sm text-neutral-500">
+					<p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
 						{feedQuery.error instanceof Error
 							? feedQuery.error.message
 							: t("Unknown error")}
@@ -233,14 +233,14 @@ export function MeFeedPagePrototype() {
 			>
 				{/* page-header */}
 				<motion.header variants={itemVariants} className="flex flex-col gap-2">
-					<h1 className="flex items-center gap-2 text-2xl font-bold text-neutral-900">
+					<h1 className="flex items-center gap-2 text-2xl font-bold text-neutral-900 dark:text-neutral-50">
 						<Newspaper
 							aria-hidden="true"
 							className="h-6 w-6 text-primary-500"
 						/>
 						{t("My feed")}
 					</h1>
-					<p className="text-sm text-neutral-500">
+					<p className="text-sm text-neutral-500 dark:text-neutral-400">
 						{t("My feed page subtitle")}
 					</p>
 				</motion.header>
@@ -305,7 +305,7 @@ export function MeFeedPagePrototype() {
 									<Link
 										key={pin.id}
 										href={withLocalePath(locale, `/articles/${article.id}`)}
-										className="group flex items-start gap-3 rounded-lg border border-neutral-200 bg-white p-4 transition-colors hover:border-primary-300 hover:shadow-sm"
+										className="group flex items-start gap-3 rounded-lg border border-neutral-200 bg-white p-4 transition-colors hover:border-primary-300 hover:shadow-sm dark:border-white/10 dark:bg-neutral-900 dark:hover:border-primary-400/40"
 									>
 										<Pin
 											aria-hidden="true"
@@ -313,10 +313,10 @@ export function MeFeedPagePrototype() {
 											fill="currentColor"
 										/>
 										<div className="min-w-0 flex-1">
-											<p className="line-clamp-2 text-sm font-semibold text-neutral-900 transition-colors group-hover:text-primary-600">
+											<p className="line-clamp-2 text-sm font-semibold text-neutral-900 transition-colors group-hover:text-primary-600 dark:text-neutral-50 dark:group-hover:text-primary-300">
 												{article.title}
 											</p>
-											<p className="mt-1 text-xs text-neutral-500">
+											<p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
 												{categories.get(article.category_id ?? "") ??
 													t("Article")}
 												{" · "}
@@ -349,23 +349,23 @@ export function MeFeedPagePrototype() {
 							{bannersDisplayed.map((banner, index) => (
 								<article
 									key={banner.id}
-									className="rounded-lg border border-l-4 border-neutral-200 bg-white p-4 transition-shadow hover:shadow-sm"
+									className="rounded-lg border border-l-4 border-neutral-200 bg-white p-4 transition-shadow hover:shadow-sm dark:border-white/10 dark:bg-neutral-900"
 									style={{
 										borderLeftColor: index === 0 ? "#f59e0b" : "#3b82f6",
 									}}
 								>
-									<p className="text-sm font-semibold text-neutral-900">
+									<p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
 										{banner.title}
 									</p>
 									{banner.body ? (
-										<p className="mt-1 text-sm text-neutral-600">
+										<p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
 											{banner.body}
 										</p>
 									) : null}
 									{banner.cta_label && banner.cta_url ? (
 										<Link
 											href={banner.cta_url}
-											className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-primary-600 hover:text-primary-700"
+											className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-primary-600 hover:text-primary-700 dark:text-primary-300 dark:hover:text-primary-200"
 										>
 											{banner.cta_label}
 											<ArrowRight aria-hidden="true" className="h-3 w-3" />
@@ -381,12 +381,12 @@ export function MeFeedPagePrototype() {
 				<motion.section variants={itemVariants} className="space-y-3">
 					<SectionTitle
 						icon={
-							<List aria-hidden="true" className="h-4 w-4 text-neutral-500" />
+							<List aria-hidden="true" className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
 						}
 						label={t("Personalized news")}
 					/>
 					{articlesDisplayed.length === 0 ? (
-						<div className="rounded-xl border border-dashed border-neutral-200 bg-white p-8 text-center text-sm text-neutral-500">
+						<div className="rounded-xl border border-dashed border-neutral-200 bg-white p-8 text-center text-sm text-neutral-500 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-400">
 							{t("Your feed is quiet")}
 						</div>
 					) : (
@@ -398,7 +398,7 @@ export function MeFeedPagePrototype() {
 									<Link
 										key={article.id}
 										href={withLocalePath(locale, `/articles/${article.id}`)}
-										className="group block rounded-xl border border-neutral-200 bg-white p-4 transition-all hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-md"
+										className="group block rounded-xl border border-neutral-200 bg-white p-4 transition-all hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-md dark:border-white/10 dark:bg-neutral-900 dark:hover:border-primary-400/40"
 									>
 										<div className="mb-2 flex items-center gap-2">
 											<span
@@ -422,15 +422,15 @@ export function MeFeedPagePrototype() {
 												{t(riskMeta.labelKey)}
 											</span>
 										</div>
-										<h3 className="line-clamp-2 text-[15px] font-bold leading-snug text-neutral-900 transition-colors group-hover:text-primary-600">
+										<h3 className="line-clamp-2 text-[15px] font-bold leading-snug text-neutral-900 transition-colors group-hover:text-primary-600 dark:text-neutral-50 dark:group-hover:text-primary-300">
 											{article.title}
 										</h3>
 										{article.summary ? (
-											<p className="mt-1.5 line-clamp-2 text-[13px] leading-normal text-neutral-500">
+											<p className="mt-1.5 line-clamp-2 text-[13px] leading-normal text-neutral-500 dark:text-neutral-400">
 												{article.summary}
 											</p>
 										) : null}
-										<div className="mt-2.5 flex items-center gap-3 text-[12px] text-neutral-400">
+										<div className="mt-2.5 flex items-center gap-3 text-[12px] text-neutral-400 dark:text-neutral-500">
 											{article.author ? <span>{article.author}</span> : null}
 											{article.published_at || article.created_at ? (
 												<span>
@@ -467,7 +467,7 @@ interface InfoCardProps {
 
 function InfoCard({ icon, iconBg, label, value, desc }: InfoCardProps) {
 	return (
-		<div className="flex items-center gap-4 rounded-xl border border-neutral-200 bg-white p-5">
+		<div className="flex items-center gap-4 rounded-xl border border-neutral-200 bg-white p-5 dark:border-white/10 dark:bg-neutral-900">
 			<span
 				className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
 				style={{ background: iconBg }}
@@ -476,16 +476,16 @@ function InfoCard({ icon, iconBg, label, value, desc }: InfoCardProps) {
 			</span>
 			<div className="min-w-0 flex-1">
 				{label ? (
-					<p className="truncate text-sm font-semibold text-neutral-900">
+					<p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">
 						{label}
 					</p>
 				) : null}
 				{value != null ? (
-					<p className="text-2xl font-bold tabular-nums text-neutral-900">
+					<p className="text-2xl font-bold tabular-nums text-neutral-900 dark:text-neutral-50">
 						{value}
 					</p>
 				) : null}
-				<p className="mt-0.5 text-xs text-neutral-500">{desc}</p>
+				<p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">{desc}</p>
 			</div>
 		</div>
 	);
@@ -498,7 +498,7 @@ interface SectionTitleProps {
 
 function SectionTitle({ icon, label }: SectionTitleProps) {
 	return (
-		<h2 className="flex items-center gap-2 text-base font-semibold text-neutral-900">
+		<h2 className="flex items-center gap-2 text-base font-semibold text-neutral-900 dark:text-neutral-50">
 			{icon}
 			{label}
 		</h2>

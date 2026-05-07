@@ -94,9 +94,9 @@ export function CreateReportDialog({
 	const isValid = title.trim().length > 0 && periodStart && periodEnd;
 
 	const selectClassName = cn(
-		"flex h-10 w-full rounded-lg border-2 border-neutral-200 bg-neutral-50 px-4 py-2 text-sm text-neutral-900 transition-all",
-		"focus:border-primary-500 focus:bg-white focus:outline-none",
-		"hover:border-primary-200",
+		"flex h-10 w-full rounded-lg border-2 border-neutral-200 bg-neutral-50 px-4 py-2 text-sm text-neutral-900 transition-all dark:border-white/10 dark:bg-white/5 dark:text-neutral-100",
+		"focus:border-primary-500 focus:bg-white focus:outline-none dark:focus:bg-white/10",
+		"hover:border-primary-200 dark:hover:border-primary-400/40",
 		"disabled:cursor-not-allowed disabled:opacity-50",
 	);
 
@@ -110,10 +110,10 @@ export function CreateReportDialog({
 	return (
 		<Modal isOpen={isOpen} onClose={onClose} size="lg">
 			<ModalHeader>
-				<h2 className="text-xl font-bold text-neutral-900">
+				<h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-50">
 					{t("Create Report")}
 				</h2>
-				<p className="text-sm text-neutral-500 mt-1">
+				<p className="text-sm text-neutral-500 mt-1 dark:text-neutral-400">
 					{t("Create a new periodic legal analysis report")}
 				</p>
 			</ModalHeader>
@@ -124,7 +124,7 @@ export function CreateReportDialog({
 					<div>
 						<label
 							htmlFor="report-title"
-							className="block text-sm font-medium text-neutral-700 mb-1.5"
+							className="block text-sm font-medium text-neutral-700 mb-1.5 dark:text-neutral-200"
 						>
 							{t("Report Title")}
 						</label>
@@ -141,7 +141,7 @@ export function CreateReportDialog({
 					<div>
 						<label
 							htmlFor="period-type"
-							className="block text-sm font-medium text-neutral-700 mb-1.5"
+							className="block text-sm font-medium text-neutral-700 mb-1.5 dark:text-neutral-200"
 						>
 							{t("Period Type")}
 						</label>
@@ -166,7 +166,7 @@ export function CreateReportDialog({
 						<div>
 							<label
 								htmlFor="period-start"
-								className="block text-sm font-medium text-neutral-700 mb-1.5"
+								className="block text-sm font-medium text-neutral-700 mb-1.5 dark:text-neutral-200"
 							>
 								{t("Period Start")}
 							</label>
@@ -180,7 +180,7 @@ export function CreateReportDialog({
 						<div>
 							<label
 								htmlFor="period-end"
-								className="block text-sm font-medium text-neutral-700 mb-1.5"
+								className="block text-sm font-medium text-neutral-700 mb-1.5 dark:text-neutral-200"
 							>
 								{t("Period End")}
 							</label>
@@ -197,7 +197,7 @@ export function CreateReportDialog({
 					<div>
 						<label
 							htmlFor="report-template"
-							className="block text-sm font-medium text-neutral-700 mb-1.5"
+							className="block text-sm font-medium text-neutral-700 mb-1.5 dark:text-neutral-200"
 						>
 							{t("Template (optional)")}
 						</label>

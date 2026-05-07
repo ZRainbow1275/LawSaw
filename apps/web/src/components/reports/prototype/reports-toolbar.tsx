@@ -51,9 +51,9 @@ export function ReportsToolbar({
 	const t = useT();
 
 	const selectStyle = {
-		borderColor: "var(--color-neutral-200)",
-		color: "var(--color-neutral-700)",
-		backgroundColor: "white",
+		borderColor: "var(--surface-muted-border)",
+		color: "var(--field-foreground)",
+		backgroundColor: "var(--surface-popover-bg)",
 	} as const;
 
 	const handleStatus = (e: ChangeEvent<HTMLSelectElement>) =>
@@ -63,8 +63,8 @@ export function ReportsToolbar({
 
 	return (
 		<div
-			className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-white px-4 py-3 shadow-sm"
-			style={{ borderColor: "var(--color-neutral-100)" }}
+			className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-white px-4 py-3 shadow-sm dark:bg-neutral-900"
+			style={{ borderColor: "var(--surface-muted-border)" }}
 		>
 			<div className="flex flex-wrap items-center gap-2">
 				<select

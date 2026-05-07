@@ -284,7 +284,7 @@ export function ProfileTab({
 						{t("Avatar")}
 					</label>
 					<div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-						<div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-neutral-100 bg-neutral-50">
+						<div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-neutral-100 bg-neutral-50 dark:border-white/10 dark:bg-white/5">
 							{avatarSrc ? (
 								<Image
 									src={avatarSrc}
@@ -296,7 +296,7 @@ export function ProfileTab({
 									unoptimized={isPreviewAvatar}
 								/>
 							) : (
-								<span className="text-lg font-semibold text-neutral-600">
+								<span className="text-lg font-semibold text-neutral-600 dark:text-neutral-300">
 									{avatarInitial || "U"}
 								</span>
 							)}
@@ -340,7 +340,7 @@ export function ProfileTab({
 								</Button>
 							</div>
 
-							<p className="text-xs text-neutral-500">
+							<p className="text-xs text-neutral-500 dark:text-neutral-400">
 								{t("Supported formats: PNG / JPEG / WEBP. Max {size}KB", {
 									size: Math.floor(avatarMaxBytes / 1024),
 								})}
@@ -383,7 +383,7 @@ export function ProfileTab({
 						disabled
 						readOnly
 					/>
-					<p className="mt-1 text-xs text-neutral-500">
+					<p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
 						{t(
 							"Email is used as the login account and cannot be changed online yet.",
 						)}
@@ -464,8 +464,8 @@ export function ApiKeysTab({
 				<CardDescription>{t("Manage your API access keys")}</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
-				<div className="rounded-lg bg-neutral-50 p-4">
-					<p className="text-sm text-neutral-600">
+				<div className="rounded-lg bg-neutral-50 p-4 dark:bg-white/5">
+					<p className="text-sm text-neutral-600 dark:text-neutral-300">
 						{t(
 							"API keys are used for programmatic access. Keep them secret and do not share with others.",
 						)}
@@ -493,13 +493,13 @@ export function ApiKeysTab({
 					</div>
 				)}
 
-				<div className="rounded-lg border border-neutral-100 p-4">
+				<div className="rounded-lg border border-neutral-100 p-4 dark:border-white/10">
 					<p className="text-sm font-medium">{t("Create new key")}</p>
 					<div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
 						<div className="sm:col-span-1">
 							<label
 								htmlFor="apikey-name"
-								className="mb-1 block text-xs font-medium text-neutral-600"
+								className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300"
 							>
 								{t("Name")}
 							</label>
@@ -513,7 +513,7 @@ export function ApiKeysTab({
 						<div className="sm:col-span-1">
 							<label
 								htmlFor="apikey-permissions"
-								className="mb-1 block text-xs font-medium text-neutral-600"
+								className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300"
 							>
 								{t("Permissions (optional, comma-separated)")}
 							</label>
@@ -527,7 +527,7 @@ export function ApiKeysTab({
 						<div className="sm:col-span-1">
 							<label
 								htmlFor="apikey-rate-limit"
-								className="mb-1 block text-xs font-medium text-neutral-600"
+								className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300"
 							>
 								{t("Rate limit (optional)")}
 							</label>
@@ -569,20 +569,20 @@ export function ApiKeysTab({
 					</div>
 
 					{isLoading && (
-						<p className="py-6 text-center text-sm text-neutral-500">
+						<p className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
 							{t("Loading...")}
 						</p>
 					)}
 
 					{isError && (
-						<p className="py-6 text-center text-sm text-neutral-500">
+						<p className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
 							{t("Load failed:")}
 							{uiMessageFromError(error, t)}
 						</p>
 					)}
 
 					{!isLoading && !isError && keys.length === 0 && (
-						<p className="py-6 text-center text-sm text-neutral-500">
+						<p className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
 							{t("No API keys")}
 						</p>
 					)}
@@ -590,7 +590,7 @@ export function ApiKeysTab({
 					{keys.map((k) => (
 						<div
 							key={k.id}
-							className="rounded-lg border border-neutral-100 p-4"
+							className="rounded-lg border border-neutral-100 p-4 dark:border-white/10"
 						>
 							<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 								<div className="min-w-0">
@@ -600,13 +600,13 @@ export function ApiKeysTab({
 											{k.is_active ? t("Active") : t("Revoked")}
 										</Badge>
 									</div>
-									<p className="mt-1 text-xs text-neutral-500">
+									<p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
 										{t("Prefix: {prefix} · Rate limit: {limit}", {
 											prefix: k.key_prefix,
 											limit: k.rate_limit,
 										})}
 									</p>
-									<p className="mt-1 text-xs text-neutral-500">
+									<p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
 										{t("Permissions:")}
 										{k.permissions.length > 0
 											? k.permissions.join(", ")
@@ -900,13 +900,13 @@ export function TenantManagementTab() {
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
-					<div className="rounded-lg border border-neutral-100 p-4">
+					<div className="rounded-lg border border-neutral-100 p-4 dark:border-white/10">
 						<p className="text-sm font-medium">{t("Create tenant")}</p>
 						<div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
 							<div>
 								<label
 									htmlFor="create-tenant-slug"
-									className="mb-1 block text-xs font-medium text-neutral-600"
+									className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300"
 								>
 									{t("Tenant slug")}
 								</label>
@@ -920,7 +920,7 @@ export function TenantManagementTab() {
 							<div>
 								<label
 									htmlFor="create-tenant-name"
-									className="mb-1 block text-xs font-medium text-neutral-600"
+									className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300"
 								>
 									{t("Tenant name")}
 								</label>
@@ -962,20 +962,20 @@ export function TenantManagementTab() {
 					</div>
 
 					{tenantsQuery.isLoading && (
-						<p className="py-6 text-center text-sm text-neutral-500">
+						<p className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
 							{t("Loading...")}
 						</p>
 					)}
 
 					{tenantsQuery.isError && (
-						<p className="py-6 text-center text-sm text-neutral-500">
+						<p className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
 							{t("Load failed:")}
 							{uiMessageFromError(tenantsQuery.error, t)}
 						</p>
 					)}
 
 					{tenantsQuery.data && tenantsQuery.data.length === 0 && (
-						<p className="py-6 text-center text-sm text-neutral-500">
+						<p className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
 							{t("No tenants")}
 						</p>
 					)}
@@ -992,13 +992,13 @@ export function TenantManagementTab() {
 										className={`rounded-lg border p-3 text-left transition-colors ${
 											isActive
 												? "border-primary-300 bg-primary-50"
-												: "border-neutral-100 hover:border-neutral-200"
+												: "border-neutral-100 hover:border-neutral-200 dark:border-white/10 dark:hover:border-white/20"
 										}`}
 									>
-										<p className="font-medium text-neutral-900">
+										<p className="font-medium text-neutral-900 dark:text-neutral-50">
 											{tenant.name}
 										</p>
-										<p className="text-xs text-neutral-500">{tenant.slug}</p>
+										<p className="text-xs text-neutral-500 dark:text-neutral-400">{tenant.slug}</p>
 									</button>
 								);
 							})}
@@ -1022,7 +1022,7 @@ export function TenantManagementTab() {
 							<div>
 								<label
 									htmlFor="tenant-name"
-									className="mb-1 block text-xs font-medium text-neutral-600"
+									className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300"
 								>
 									{t("Tenant name")}
 								</label>
@@ -1035,7 +1035,7 @@ export function TenantManagementTab() {
 							<div>
 								<label
 									htmlFor="tenant-primary-color"
-									className="mb-1 block text-xs font-medium text-neutral-600"
+									className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300"
 								>
 									{t("Primary color")}
 								</label>
@@ -1058,7 +1058,7 @@ export function TenantManagementTab() {
 								<div key={key}>
 									<label
 										htmlFor={`tenant-${key}`}
-										className="mb-1 block text-xs font-medium text-neutral-600"
+										className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300"
 									>
 										{t(label)}
 									</label>
@@ -1081,7 +1081,7 @@ export function TenantManagementTab() {
 							<div>
 								<label
 									htmlFor="tenant-logo-url"
-									className="mb-1 block text-xs font-medium text-neutral-600"
+									className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300"
 								>
 									{t("Logo URL")}
 								</label>
@@ -1097,11 +1097,11 @@ export function TenantManagementTab() {
 									placeholder="https://..."
 								/>
 							</div>
-							<div className="grid grid-cols-2 gap-2 rounded-lg border border-neutral-100 p-3">
+							<div className="grid grid-cols-2 gap-2 rounded-lg border border-neutral-100 p-3 dark:border-white/10">
 								{featureFields.map(({ key, label }) => (
 									<label
 										key={key}
-										className="inline-flex items-center gap-2 text-xs text-neutral-700"
+										className="inline-flex items-center gap-2 text-xs text-neutral-700 dark:text-neutral-300"
 									>
 										<input
 											type="checkbox"
@@ -1120,7 +1120,7 @@ export function TenantManagementTab() {
 						</div>
 
 						{usage && (
-							<div className="rounded-lg border border-neutral-100 p-4">
+							<div className="rounded-lg border border-neutral-100 p-4 dark:border-white/10">
 								<div className="mb-2 flex items-center justify-between">
 									<p className="text-sm font-medium">{t("Current usage")}</p>
 									<Button
@@ -1134,7 +1134,7 @@ export function TenantManagementTab() {
 											: t("Refresh usage")}
 									</Button>
 								</div>
-								<div className="grid grid-cols-2 gap-2 text-xs text-neutral-600 sm:grid-cols-3">
+								<div className="grid grid-cols-2 gap-2 text-xs text-neutral-600 dark:text-neutral-300 sm:grid-cols-3">
 									<div>
 										{t("Users")}: {usage.current_users}
 									</div>
@@ -1335,7 +1335,7 @@ export function WebhookManagementTab() {
 						<div>
 							<label
 								htmlFor="webhook-name"
-								className="mb-1 block text-xs font-medium text-neutral-600"
+								className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300"
 							>
 								{t("Name")}
 							</label>
@@ -1349,7 +1349,7 @@ export function WebhookManagementTab() {
 						<div>
 							<label
 								htmlFor="webhook-url"
-								className="mb-1 block text-xs font-medium text-neutral-600"
+								className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300"
 							>
 								{t("Webhook URL")}
 							</label>
@@ -1366,7 +1366,7 @@ export function WebhookManagementTab() {
 						<div className="sm:col-span-2">
 							<label
 								htmlFor="webhook-secret"
-								className="mb-1 block text-xs font-medium text-neutral-600"
+								className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300"
 							>
 								{t("Signing secret")}
 							</label>
@@ -1378,7 +1378,7 @@ export function WebhookManagementTab() {
 								placeholder={t("Input webhook signing secret")}
 							/>
 						</div>
-						<label className="inline-flex items-center gap-2 self-end pb-2 text-sm text-neutral-700">
+						<label className="inline-flex items-center gap-2 self-end pb-2 text-sm text-neutral-700 dark:text-neutral-300">
 							<input
 								type="checkbox"
 								checked={enabled}
@@ -1392,7 +1392,7 @@ export function WebhookManagementTab() {
 						<div className="sm:col-span-2">
 							<label
 								htmlFor="webhook-events"
-								className="mb-1 block text-xs font-medium text-neutral-600"
+								className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300"
 							>
 								{t("Events (comma-separated)")}
 							</label>
@@ -1407,7 +1407,7 @@ export function WebhookManagementTab() {
 							<div>
 								<label
 									htmlFor="webhook-timeout"
-									className="mb-1 block text-xs font-medium text-neutral-600"
+									className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300"
 								>
 									{t("Timeout (ms)")}
 								</label>
@@ -1421,7 +1421,7 @@ export function WebhookManagementTab() {
 							<div>
 								<label
 									htmlFor="webhook-retries"
-									className="mb-1 block text-xs font-medium text-neutral-600"
+									className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300"
 								>
 									{t("Max retries")}
 								</label>
@@ -1460,7 +1460,7 @@ export function WebhookManagementTab() {
 						<div>
 							<label
 								htmlFor="webhook-search"
-								className="mb-1 block text-xs font-medium text-neutral-600"
+								className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300"
 							>
 								{t("Search")}
 							</label>
@@ -1474,7 +1474,7 @@ export function WebhookManagementTab() {
 						<div>
 							<label
 								htmlFor="webhook-enabled-filter"
-								className="mb-1 block text-xs font-medium text-neutral-600"
+								className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300"
 							>
 								{t("Status")}
 							</label>
@@ -1484,7 +1484,7 @@ export function WebhookManagementTab() {
 								onChange={(e) =>
 									setEnabledFilter(e.target.value as WebhookEnabledFilter)
 								}
-								className="h-10 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm text-neutral-700"
+								className="h-10 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm text-neutral-700 dark:border-white/10 dark:bg-white/5 dark:text-neutral-300"
 							>
 								<option value="all">{t("All statuses")}</option>
 								<option value="enabled">{t("Enabled only")}</option>
@@ -1494,7 +1494,7 @@ export function WebhookManagementTab() {
 						<div>
 							<label
 								htmlFor="webhook-delivery-filter"
-								className="mb-1 block text-xs font-medium text-neutral-600"
+								className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300"
 							>
 								{t("Delivery state")}
 							</label>
@@ -1504,7 +1504,7 @@ export function WebhookManagementTab() {
 								onChange={(e) =>
 									setDeliveryFilter(e.target.value as WebhookDeliveryFilter)
 								}
-								className="h-10 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm text-neutral-700"
+								className="h-10 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm text-neutral-700 dark:border-white/10 dark:bg-white/5 dark:text-neutral-300"
 							>
 								<option value="all">{t("All delivery states")}</option>
 								<option value="healthy">{t("Healthy")}</option>
@@ -1515,7 +1515,7 @@ export function WebhookManagementTab() {
 					</div>
 
 					{webhookStats && (
-						<div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600">
+						<div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300">
 							<Badge variant="outline">
 								{t("Total")}: {webhookStats.total}
 							</Badge>
@@ -1538,7 +1538,7 @@ export function WebhookManagementTab() {
 					)}
 
 					{webhooksQuery.data && (
-						<p className="text-xs text-neutral-500">
+						<p className="text-xs text-neutral-500 dark:text-neutral-400">
 							{t("Filtered {count} of {total}", {
 								count: webhooksQuery.data.filtered_total,
 								total: webhooksQuery.data.stats.total,
@@ -1563,18 +1563,18 @@ export function WebhookManagementTab() {
 					</div>
 
 					{webhooksQuery.isLoading && (
-						<p className="py-6 text-center text-sm text-neutral-500">
+						<p className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
 							{t("Loading...")}
 						</p>
 					)}
 					{webhooksQuery.isError && (
-						<p className="py-6 text-center text-sm text-neutral-500">
+						<p className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
 							{t("Load failed:")}
 							{uiMessageFromError(webhooksQuery.error, t)}
 						</p>
 					)}
 					{webhooksQuery.data && webhooksQuery.data.items.length === 0 && (
-						<p className="py-6 text-center text-sm text-neutral-500">
+						<p className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
 							{t("No webhooks")}
 						</p>
 					)}
@@ -1582,19 +1582,19 @@ export function WebhookManagementTab() {
 					{webhooksQuery.data?.items.map((item) => (
 						<div
 							key={item.id}
-							className="rounded-lg border border-neutral-100 p-4"
+							className="rounded-lg border border-neutral-100 p-4 dark:border-white/10"
 						>
 							<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 								<div className="min-w-0 space-y-1">
 									<div className="flex items-center gap-2">
-										<p className="truncate font-medium text-neutral-900">
+										<p className="truncate font-medium text-neutral-900 dark:text-neutral-50">
 											{item.name}
 										</p>
 										<Badge variant="outline">
 											{item.enabled ? t("Enabled") : t("Disabled")}
 										</Badge>
 									</div>
-									<div className="flex items-center gap-2 text-xs text-neutral-500">
+									<div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
 										<a
 											href={item.url}
 											target="_blank"
@@ -1605,10 +1605,10 @@ export function WebhookManagementTab() {
 											<ExternalLink aria-hidden="true" className="h-3 w-3" />
 										</a>
 									</div>
-									<p className="text-xs text-neutral-500">
+									<p className="text-xs text-neutral-500 dark:text-neutral-400">
 										{t("Events")}: {item.events.join(", ")}
 									</p>
-									<p className="text-xs text-neutral-500">
+									<p className="text-xs text-neutral-500 dark:text-neutral-400">
 										{t("Timeout (ms)")}: {item.timeout_ms} · {t("Max retries")}:{" "}
 										{item.max_retries}
 									</p>
@@ -1804,7 +1804,7 @@ export function SecurityTab() {
 							/>
 							<button
 								type="button"
-								className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+								className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300"
 								onClick={() => setShowCurrentPw(!showCurrentPw)}
 								aria-label={showCurrentPw ? "Hide password" : "Show password"}
 							>
@@ -1839,7 +1839,7 @@ export function SecurityTab() {
 							/>
 							<button
 								type="button"
-								className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+								className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300"
 								onClick={() => setShowNewPw(!showNewPw)}
 								aria-label={showNewPw ? "Hide password" : "Show password"}
 							>
@@ -1855,7 +1855,7 @@ export function SecurityTab() {
 								{pwChecks.map((c) => (
 									<li
 										key={c.label}
-										className={c.ok ? "text-emerald-700" : "text-neutral-500"}
+										className={c.ok ? "text-emerald-700 dark:text-emerald-300" : "text-neutral-500 dark:text-neutral-400"}
 									>
 										{c.ok ? "\u2713" : "\u2717"} {t(c.label)}
 									</li>
@@ -1883,7 +1883,7 @@ export function SecurityTab() {
 							/>
 							<button
 								type="button"
-								className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+								className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300"
 								onClick={() => setShowConfirmPw(!showConfirmPw)}
 								aria-label={showConfirmPw ? "Hide password" : "Show password"}
 							>
@@ -1928,7 +1928,7 @@ export function SecurityTab() {
 				</CardHeader>
 				<CardContent className="space-y-4">
 					{mfaPhase === "idle" && (
-						<div className="flex items-center justify-between rounded-lg border border-neutral-100 p-4">
+						<div className="flex items-center justify-between rounded-lg border border-neutral-100 p-4 dark:border-white/10">
 							<div>
 								<p className="font-medium">{t("Two-factor authentication")}</p>
 								<p className="text-sm text-neutral-500">{t("Not enabled")}</p>
@@ -1952,19 +1952,19 @@ export function SecurityTab() {
 
 					{mfaPhase === "setup" && (
 						<div className="space-y-4">
-							<div className="flex flex-col items-center gap-4 rounded-lg border border-neutral-100 p-6">
+							<div className="flex flex-col items-center gap-4 rounded-lg border border-neutral-100 p-6 dark:border-white/10">
 								<p className="text-sm font-medium">
 									{t("Scan QR code with your authenticator app")}
 								</p>
-								<div className="rounded-lg bg-white p-3">
+								<div className="rounded-lg bg-white p-3 dark:bg-white/10">
 									<QRCodeSVG value={totpUri} size={200} />
 								</div>
 								<div className="w-full">
-									<p className="mb-1 text-xs text-neutral-500">
+									<p className="mb-1 text-xs text-neutral-500 dark:text-neutral-400">
 										{t("Manual entry key")}
 									</p>
 									<div className="flex items-center gap-2">
-										<code className="flex-1 rounded bg-neutral-100 px-3 py-2 text-xs font-mono break-all select-all">
+										<code className="flex-1 rounded bg-neutral-100 dark:bg-white/10 px-3 py-2 text-xs font-mono break-all select-all">
 											{totpSecret}
 										</code>
 										<Button
@@ -2041,17 +2041,17 @@ export function SecurityTab() {
 											{t("Enabled")}
 										</Badge>
 									</div>
-									<p className="mt-1 text-sm text-neutral-600">
+									<p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
 										{t("2FA is currently enabled")}
 									</p>
 									{totpVerifiedAt && (
-										<p className="mt-1 text-xs text-neutral-500">
+										<p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
 											{t("Verified at")}:{" "}
 											{new Date(totpVerifiedAt).toLocaleString()}
 										</p>
 									)}
 									{totpLastUsedAt && (
-										<p className="text-xs text-neutral-500">
+										<p className="text-xs text-neutral-500 dark:text-neutral-400">
 											{t("Last used")}:{" "}
 											{new Date(totpLastUsedAt).toLocaleString()}
 										</p>
@@ -2089,13 +2089,13 @@ export function SecurityTab() {
 				</CardHeader>
 				<CardContent>
 					{loginActivityQuery.isLoading && (
-						<p className="py-6 text-center text-sm text-neutral-500">
+						<p className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
 							{t("Loading...")}
 						</p>
 					)}
 
 					{loginActivityQuery.isError && (
-						<p className="py-6 text-center text-sm text-neutral-500">
+						<p className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
 							{t("Load failed:")}
 							{uiMessageFromError(loginActivityQuery.error, t)}
 						</p>
@@ -2103,7 +2103,7 @@ export function SecurityTab() {
 
 					{loginActivityQuery.data &&
 						loginActivityQuery.data.items.length === 0 && (
-							<p className="py-6 text-center text-sm text-neutral-500">
+							<p className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
 								{t("No login activity yet")}
 							</p>
 						)}
@@ -2115,19 +2115,19 @@ export function SecurityTab() {
 									(entry: LoginActivityEntry) => (
 										<div
 											key={entry.id}
-											className="flex flex-col gap-1 rounded-lg border border-neutral-100 p-3 sm:flex-row sm:items-center sm:justify-between"
+											className="flex flex-col gap-1 rounded-lg border border-neutral-100 p-3 dark:border-white/10 sm:flex-row sm:items-center sm:justify-between"
 										>
 											<div className="min-w-0">
 												<p className="text-sm font-medium">
 													{actionLabel(entry.action, t)}
 												</p>
-												<p className="text-xs text-neutral-500">
+												<p className="text-xs text-neutral-500 dark:text-neutral-400">
 													{entry.ip_address ?? "-"}{" "}
-													<span className="text-neutral-400">&middot;</span>{" "}
+													<span className="text-neutral-400 dark:text-neutral-500">&middot;</span>{" "}
 													{shortenUserAgent(entry.user_agent)}
 												</p>
 											</div>
-											<p className="shrink-0 text-xs text-neutral-500">
+											<p className="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">
 												{relativeTime(entry.created_at, t)}
 											</p>
 										</div>

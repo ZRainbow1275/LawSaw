@@ -158,7 +158,7 @@ export function Header() {
 					>
 						<Search
 							aria-hidden="true"
-							className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
+							className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400 dark:text-neutral-500"
 						/>
 						<Input
 							type="search"
@@ -229,7 +229,7 @@ export function Header() {
 									<span className="text-sm font-medium">{initials}</span>
 								)}
 							</div>
-							<span className="hidden sm:inline text-sm font-medium text-neutral-700">
+							<span className="hidden sm:inline text-sm font-medium text-neutral-700 dark:text-neutral-200">
 								{displayName}
 							</span>
 						</Button>
@@ -245,7 +245,7 @@ export function Header() {
 								<button
 									type="button"
 									role="menuitem"
-									className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50/80 transition-colors"
+									className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50/80 transition-colors dark:text-neutral-200 dark:hover:bg-white/5"
 									onClick={() => {
 										setShowMenu(false);
 										router.push(withLocalePath(locale, "/settings"));
@@ -273,7 +273,7 @@ export function Header() {
 					</div>
 				</div>
 			</div>
-			<div className="border-t border-neutral-100/50 px-4 py-2 md:px-6">
+			<div className="border-t border-neutral-100/50 px-4 py-2 md:px-6 dark:border-white/10">
 				<Breadcrumbs pathname={pathname || "/"} />
 			</div>
 		</header>

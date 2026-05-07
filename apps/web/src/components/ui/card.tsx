@@ -9,7 +9,7 @@ const Card = React.forwardRef<
 		ref={ref}
 		data-slot="card"
 		className={cn(
-			"relative rounded-xl border border-neutral-200 bg-white shadow-card transition-all hover:shadow-card-hover hover:-translate-y-1 hover:border-primary-200 overflow-hidden",
+			"relative rounded-xl border border-neutral-200 bg-white shadow-card transition-all hover:shadow-card-hover hover:-translate-y-1 hover:border-primary-200 overflow-hidden dark:border-white/10 dark:bg-neutral-900 dark:hover:border-primary-400/40",
 			"before:absolute before:inset-x-0 before:top-0 before:h-1 before:bg-gradient-to-r before:from-primary-500 before:to-primary-600 before:transform before:scale-x-0 before:origin-left before:transition-transform hover:before:scale-x-100",
 			className,
 		)}
@@ -39,7 +39,7 @@ const CardTitle = React.forwardRef<
 		ref={ref}
 		data-slot="card-title"
 		className={cn(
-			"text-lg font-semibold leading-none tracking-tight text-neutral-900",
+			"text-lg font-semibold leading-none tracking-tight text-neutral-900 dark:text-neutral-50",
 			className,
 		)}
 		{...props}
@@ -54,7 +54,7 @@ const CardDescription = React.forwardRef<
 	<p
 		ref={ref}
 		data-slot="card-description"
-		className={cn("text-sm text-neutral-600", className)}
+		className={cn("text-sm text-neutral-600 dark:text-neutral-300", className)}
 		{...props}
 	/>
 ));

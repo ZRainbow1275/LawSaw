@@ -13,7 +13,7 @@ export function RegionRankingTable({ items }: RegionRankingTableProps) {
 
 	return (
 		<div className="space-y-3">
-			<h4 className="text-sm font-medium text-neutral-700">
+			<h4 className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
 				{t("Region Ranking")}
 			</h4>
 			<div className="space-y-2">
@@ -23,21 +23,21 @@ export function RegionRankingTable({ items }: RegionRankingTableProps) {
 							className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
 								index < 3
 									? "bg-primary-500 text-white"
-									: "bg-neutral-100 text-neutral-600"
+									: "bg-neutral-100 text-neutral-600 dark:bg-white/10 dark:text-neutral-300"
 							}`}
 						>
 							{index + 1}
 						</span>
 						<div className="flex-1">
 							<div className="mb-1 flex items-center justify-between">
-								<span className="text-sm font-medium text-neutral-800">
+								<span className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
 									{item.region_name}
 								</span>
-								<span className="text-xs text-neutral-500">
+								<span className="text-xs text-neutral-500 dark:text-neutral-400">
 									{item.count} ({item.percentage.toFixed(1)}%)
 								</span>
 							</div>
-							<div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
+							<div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-100 dark:bg-white/10">
 								<div
 									className="h-full rounded-full bg-primary-500 transition-all"
 									style={{

@@ -31,7 +31,7 @@ const layoutStyle: CSSProperties = {
 
 const cardStyle: CSSProperties = {
 	background: "var(--color-card)",
-	border: "1px solid var(--color-neutral-200)",
+	border: "1px solid var(--surface-card-border-strong)",
 	borderRadius: 12,
 	padding: 20,
 	minHeight: 480,
@@ -40,7 +40,7 @@ const cardStyle: CSSProperties = {
 const sectionTitleStyle: CSSProperties = {
 	fontSize: 14,
 	fontWeight: 700,
-	color: "var(--color-neutral-800)",
+	color: "var(--surface-card-foreground)",
 	marginBottom: 16,
 };
 
@@ -50,17 +50,17 @@ const rowStyle: CSSProperties = {
 	gap: 10,
 	alignItems: "center",
 	padding: "8px 0",
-	borderBottom: "1px solid var(--color-neutral-100)",
+	borderBottom: "1px solid var(--surface-card-tint-bg)",
 };
 
 const rankStyle: CSSProperties = {
 	fontSize: 12,
 	fontWeight: 700,
-	color: "var(--color-neutral-500)",
+	color: "var(--surface-card-faint-fg)",
 	width: 24,
 	height: 24,
 	borderRadius: 6,
-	background: "var(--color-neutral-100)",
+	background: "var(--surface-card-tint-bg)",
 	display: "flex",
 	alignItems: "center",
 	justifyContent: "center",
@@ -69,7 +69,7 @@ const rankStyle: CSSProperties = {
 const nameStyle: CSSProperties = {
 	fontSize: 13,
 	fontWeight: 600,
-	color: "var(--color-neutral-800)",
+	color: "var(--surface-card-foreground)",
 	display: "flex",
 	flexDirection: "column",
 	gap: 4,
@@ -78,7 +78,7 @@ const nameStyle: CSSProperties = {
 const barTrackStyle: CSSProperties = {
 	height: 6,
 	width: "100%",
-	background: "var(--color-neutral-100)",
+	background: "var(--surface-card-tint-bg)",
 	borderRadius: 4,
 	overflow: "hidden",
 };
@@ -86,7 +86,7 @@ const barTrackStyle: CSSProperties = {
 const countStyle: CSSProperties = {
 	fontSize: 13,
 	fontWeight: 700,
-	color: "var(--color-neutral-800)",
+	color: "var(--surface-card-foreground)",
 	textAlign: "right",
 };
 
@@ -163,7 +163,7 @@ export function RegionPanel() {
 				left: 16,
 				bottom: 16,
 				text: ["高", "低"],
-				textStyle: { fontSize: 11, color: "var(--color-neutral-500)" },
+				textStyle: { fontSize: 11, color: "var(--surface-card-faint-fg)" },
 				inRange: {
 					color: [
 						"#fff4f1",
@@ -213,7 +213,7 @@ export function RegionPanel() {
 								display: "flex",
 								alignItems: "center",
 								justifyContent: "center",
-								color: "var(--color-neutral-400)",
+								color: "var(--surface-card-faint-fg)",
 							}}
 						>
 							<Loader2 aria-hidden="true" size={20} className="animate-spin" />
@@ -227,7 +227,7 @@ export function RegionPanel() {
 								display: "flex",
 								alignItems: "center",
 								justifyContent: "center",
-								color: "var(--color-neutral-500)",
+								color: "var(--surface-card-faint-fg)",
 								fontSize: 12,
 							}}
 						>
@@ -254,7 +254,7 @@ export function RegionPanel() {
 							alignItems: "center",
 							justifyContent: "center",
 							padding: 32,
-							color: "var(--color-neutral-400)",
+							color: "var(--surface-card-faint-fg)",
 						}}
 					>
 						<Loader2 aria-hidden="true" size={18} className="animate-spin" />
@@ -274,7 +274,7 @@ export function RegionPanel() {
 						style={{
 							padding: 32,
 							fontSize: 12,
-							color: "var(--color-neutral-400)",
+							color: "var(--surface-card-faint-fg)",
 							textAlign: "center",
 						}}
 					>

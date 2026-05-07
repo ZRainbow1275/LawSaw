@@ -775,10 +775,10 @@ function SettingsContent() {
 		<div className="p-6">
 			{/* Page Title */}
 			<div className="mb-6">
-				<h1 className="text-2xl font-bold text-neutral-900">
+				<h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-50">
 								{t("Settings")}
 							</h1>
-							<p className="text-sm text-neutral-500">
+							<p className="text-sm text-neutral-500 dark:text-neutral-400">
 								{t("Manage your account and system configuration")}
 							</p>
 						</div>
@@ -804,8 +804,8 @@ function SettingsContent() {
 												aria-controls={`settings-tabpanel-${tab.id}`}
 												className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
 													activeTab === tab.id
-														? "bg-primary-50 text-primary-700 font-medium"
-														: "text-neutral-600 hover:bg-neutral-50"
+														? "bg-primary-50 text-primary-700 font-medium dark:bg-primary-500/15 dark:text-primary-200"
+														: "text-neutral-600 hover:bg-neutral-50 dark:text-neutral-300 dark:hover:bg-white/5"
 												}`}
 											>
 												<tab.icon className="h-4 w-4" />
@@ -879,11 +879,11 @@ function SettingsContent() {
 											].map(({ key, labelKey, descKey }) => (
 												<div
 													key={key}
-													className="flex items-center justify-between rounded-lg border border-neutral-100 p-4"
+													className="flex items-center justify-between rounded-lg border border-neutral-100 p-4 dark:border-white/10"
 												>
 													<div>
 														<p className="font-medium">{t(labelKey)}</p>
-														<p className="text-sm text-neutral-500">
+														<p className="text-sm text-neutral-500 dark:text-neutral-400">
 															{t(descKey)}
 														</p>
 													</div>
@@ -901,18 +901,18 @@ function SettingsContent() {
 															}
 															className="peer sr-only"
 														/>
-														<div className="peer h-6 w-11 rounded-full bg-neutral-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-primary-500 peer-checked:after:translate-x-full" />
+														<div className="peer h-6 w-11 rounded-full bg-neutral-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-primary-500 peer-checked:after:translate-x-full dark:bg-white/10 dark:after:bg-neutral-200 dark:peer-checked:bg-primary-500" />
 													</label>
 												</div>
 											))}
 
-											<div className="rounded-lg border border-neutral-100 p-4">
+											<div className="rounded-lg border border-neutral-100 p-4 dark:border-white/10">
 												<div className="flex items-start justify-between gap-4">
 													<div>
 														<p className="font-medium">
 															{t("Browser push (Web Push)")}
 														</p>
-														<p className="text-sm text-neutral-500">
+														<p className="text-sm text-neutral-500 dark:text-neutral-400">
 															{t(
 																"Receive notifications in the background (requires browser permission and Service Worker)",
 															)}
@@ -952,7 +952,7 @@ function SettingsContent() {
 
 												{webPush.supported &&
 												webPush.permission === "denied" ? (
-													<p className="mt-2 text-xs text-neutral-500">
+													<p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
 														{t(
 															"The browser has denied notification permission. Please allow notifications for this site in browser settings and try again.",
 														)}
@@ -1032,8 +1032,8 @@ function SettingsContent() {
 															}
 															className={`flex flex-1 flex-col items-center gap-2 rounded-lg border p-4 transition-colors ${
 																appearance.theme === value
-																	? "border-primary-500 bg-primary-50"
-																	: "border-neutral-200 hover:bg-neutral-50"
+																	? "border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-500/15 dark:text-primary-100"
+																	: "border-neutral-200 hover:bg-neutral-50 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
 															}`}
 														>
 															<Icon aria-hidden="true" className="h-5 w-5" />
@@ -1042,10 +1042,10 @@ function SettingsContent() {
 													))}
 												</div>
 											</div>
-											<div className="flex items-center justify-between rounded-lg border border-neutral-100 p-4">
+											<div className="flex items-center justify-between rounded-lg border border-neutral-100 p-4 dark:border-white/10">
 												<div>
 													<p className="font-medium">{t("Compact mode")}</p>
-													<p className="text-sm text-neutral-500">
+													<p className="text-sm text-neutral-500 dark:text-neutral-400">
 														{t("Reduce spacing to show more content")}
 													</p>
 												</div>
@@ -1061,7 +1061,7 @@ function SettingsContent() {
 														}
 														className="peer sr-only"
 													/>
-													<div className="peer h-6 w-11 rounded-full bg-neutral-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-primary-500 peer-checked:after:translate-x-full" />
+													<div className="peer h-6 w-11 rounded-full bg-neutral-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-primary-500 peer-checked:after:translate-x-full dark:bg-white/10 dark:after:bg-neutral-200 dark:peer-checked:bg-primary-500" />
 												</label>
 											</div>
 										</CardContent>
@@ -1110,8 +1110,8 @@ function SettingsContent() {
 										</CardHeader>
 										<CardContent>
 											<div className="space-y-3">
-												<div className="flex items-center justify-between border-b border-neutral-50 py-2">
-													<span className="text-sm text-neutral-500">
+												<div className="flex items-center justify-between border-b border-neutral-50 py-2 dark:border-white/5">
+													<span className="text-sm text-neutral-500 dark:text-neutral-400">
 														{t("API status")}
 													</span>
 													<span className="text-sm font-medium">
@@ -1122,16 +1122,16 @@ function SettingsContent() {
 																: (healthQuery.data?.status ?? t("Unknown"))}
 													</span>
 												</div>
-												<div className="flex items-center justify-between border-b border-neutral-50 py-2">
-													<span className="text-sm text-neutral-500">
+												<div className="flex items-center justify-between border-b border-neutral-50 py-2 dark:border-white/5">
+													<span className="text-sm text-neutral-500 dark:text-neutral-400">
 														{t("Backend version")}
 													</span>
 													<span className="text-sm font-medium">
 														{healthQuery.data?.version ?? "-"}
 													</span>
 												</div>
-												<div className="flex items-center justify-between border-b border-neutral-50 py-2">
-													<span className="text-sm text-neutral-500">
+												<div className="flex items-center justify-between border-b border-neutral-50 py-2 dark:border-white/5">
+													<span className="text-sm text-neutral-500 dark:text-neutral-400">
 														{t("Database")}
 													</span>
 													<span className="text-sm font-medium">
@@ -1142,8 +1142,8 @@ function SettingsContent() {
 																: t("Available")}
 													</span>
 												</div>
-												<div className="flex items-center justify-between border-b border-neutral-50 py-2">
-													<span className="text-sm text-neutral-500">
+												<div className="flex items-center justify-between border-b border-neutral-50 py-2 dark:border-white/5">
+													<span className="text-sm text-neutral-500 dark:text-neutral-400">
 														{t("Total articles")}
 													</span>
 													<span className="text-sm font-medium">
@@ -1151,7 +1151,7 @@ function SettingsContent() {
 													</span>
 												</div>
 												<div className="flex items-center justify-between py-2">
-													<span className="text-sm text-neutral-500">
+													<span className="text-sm text-neutral-500 dark:text-neutral-400">
 														{t("Added today")}
 													</span>
 													<span className="text-sm font-medium">

@@ -102,7 +102,7 @@ export function AnimatedNumber({
 
 	return (
 		<span ref={ref} className={cn("inline-flex items-baseline", className)}>
-			{prefix && <span className="text-neutral-500 mr-0.5">{prefix}</span>}
+			{prefix && <span className="text-neutral-500 mr-0.5 dark:text-neutral-400">{prefix}</span>}
 			<motion.span
 				className={cn("tabular-nums font-semibold", numberClassName)}
 				initial={{ opacity: 0, y: 10 }}
@@ -115,7 +115,7 @@ export function AnimatedNumber({
 			>
 				{effectiveFormatter(displayValue)}
 			</motion.span>
-			{suffix && <span className="text-neutral-500 ml-0.5">{suffix}</span>}
+			{suffix && <span className="text-neutral-500 ml-0.5 dark:text-neutral-400">{suffix}</span>}
 		</span>
 	);
 }
@@ -215,9 +215,9 @@ export function AnimatedPercentage({
 			ref={ref}
 			className={cn(
 				"inline-flex items-center gap-0.5 tabular-nums font-medium",
-				isPositive && "text-green-600",
-				isNegative && "text-red-600",
-				!isPositive && !isNegative && "text-neutral-500",
+				isPositive && "text-green-600 dark:text-green-400",
+				isNegative && "text-red-600 dark:text-red-400",
+				!isPositive && !isNegative && "text-neutral-500 dark:text-neutral-400",
 				className,
 			)}
 			initial={{ opacity: 0, x: -5 }}

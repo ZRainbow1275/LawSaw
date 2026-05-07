@@ -14,8 +14,10 @@
  * the parent should pass `categoryId` to the hook for server-side filtering.
  */
 
+import { ReactionToggle } from "@/components/reactions/reaction-toggle";
 import { useArticles } from "@/hooks/use-articles";
 import { useCategories } from "@/hooks/use-categories";
+import { useReactionSummariesBatch } from "@/hooks/use-reaction";
 import { type Article, getArticleRiskLevel } from "@/lib/api/types";
 import {
 	type Locale,
@@ -142,6 +144,14 @@ export function DashboardFeedGrid({ geoRegion, categoryId }: Props) {
 
 	const visible = filtered.slice(0, 6);
 
+	// Prefetch reaction summaries in a single batched call so each card can
+	// render its inline pill without firing N separate detail requests.
+	useReactionSummariesBatch(
+		"article",
+		visible.map((a) => a.id),
+		{ enabled: visible.length > 0 },
+	);
+
 	if (articlesQuery.isPending) {
 		return (
 			<div className="grid gap-4 md:grid-cols-2">
@@ -149,8 +159,11 @@ export function DashboardFeedGrid({ geoRegion, categoryId }: Props) {
 					<div
 						// biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholder list is fixed-size and stable
 						key={`feed-skel-${idx}`}
-						className="h-48 animate-pulse rounded-2xl border bg-white"
-						style={{ borderColor: "var(--color-neutral-200)" }}
+						className="h-48 animate-pulse rounded-2xl border"
+						style={{
+							backgroundColor: "var(--color-card)",
+							borderColor: "var(--surface-card-border-strong)",
+						}}
 					/>
 				))}
 			</div>
@@ -160,10 +173,11 @@ export function DashboardFeedGrid({ geoRegion, categoryId }: Props) {
 	if (visible.length === 0) {
 		return (
 			<div
-				className="rounded-2xl border bg-white p-12 text-center text-sm"
+				className="rounded-2xl border p-12 text-center text-sm"
 				style={{
-					borderColor: "var(--color-neutral-200)",
-					color: "var(--color-neutral-500)",
+					backgroundColor: "var(--color-card)",
+					borderColor: "var(--surface-card-border-strong)",
+					color: "var(--surface-card-faint-fg)",
 				}}
 			>
 				{t("No matching results")}
@@ -219,8 +233,12 @@ function HeroCard({ article, categoryById, locale, t }: CardProps) {
 			animate={{ opacity: 1, y: 0 }}
 			transition={{ duration: 0.4, ease: "easeOut" }}
 			whileHover={{ y: -4 }}
-			className="group col-span-full grid overflow-hidden rounded-2xl border bg-white transition-all hover:shadow-feed-hover md:grid-cols-[1fr_1.1fr]"
-			style={{ borderColor: "var(--color-neutral-200)", minHeight: 220 }}
+			className="group col-span-full grid overflow-hidden rounded-2xl border transition-all hover:shadow-feed-hover md:grid-cols-[1fr_1.1fr]"
+			style={{
+				backgroundColor: "var(--color-card)",
+				borderColor: "var(--surface-card-border-strong)",
+				minHeight: 220,
+			}}
 		>
 			<Link
 				href={withLocalePath(locale, `/articles/${article.id}`)}
@@ -251,7 +269,7 @@ function HeroCard({ article, categoryById, locale, t }: CardProps) {
 					{cat ? (
 						<span
 							className="flex items-center gap-1 text-xs font-semibold"
-							style={{ color: cat.color ?? "var(--color-neutral-600)" }}
+							style={{ color: cat.color ?? "var(--surface-card-muted-fg)" }}
 						>
 							<span
 								className="h-1.5 w-1.5 rounded-full"
@@ -265,14 +283,14 @@ function HeroCard({ article, categoryById, locale, t }: CardProps) {
 				<Link
 					href={withLocalePath(locale, `/articles/${article.id}`)}
 					className="text-[18px] font-semibold leading-snug transition-colors group-hover:text-[var(--color-primary-600)]"
-					style={{ color: "var(--color-neutral-900)" }}
+					style={{ color: "var(--field-foreground)" }}
 				>
 					{article.title}
 				</Link>
 				{article.summary ? (
 					<p
 						className="line-clamp-2 text-sm leading-relaxed"
-						style={{ color: "var(--color-neutral-500)" }}
+						style={{ color: "var(--surface-card-faint-fg)" }}
 					>
 						{article.summary}
 					</p>
@@ -302,8 +320,11 @@ function StandardCard({
 			animate={{ opacity: 1, y: 0 }}
 			transition={{ duration: 0.4, delay, ease: "easeOut" }}
 			whileHover={{ y: -4 }}
-			className="group flex flex-col gap-2.5 overflow-hidden rounded-2xl border bg-white p-5 transition-all hover:shadow-feed-hover"
-			style={{ borderColor: "var(--color-neutral-200)" }}
+			className="group flex flex-col gap-2.5 overflow-hidden rounded-2xl border p-5 transition-all hover:shadow-feed-hover"
+			style={{
+				backgroundColor: "var(--color-card)",
+				borderColor: "var(--surface-card-border-strong)",
+			}}
 		>
 			<div className="flex items-center gap-2">
 				<span
@@ -316,7 +337,7 @@ function StandardCard({
 				{cat ? (
 					<span
 						className="flex items-center gap-1 text-xs font-semibold"
-						style={{ color: cat.color ?? "var(--color-neutral-600)" }}
+						style={{ color: cat.color ?? "var(--surface-card-muted-fg)" }}
 					>
 						<span
 							className="h-1.5 w-1.5 rounded-full"
@@ -333,14 +354,14 @@ function StandardCard({
 					"line-clamp-2 text-[15px] font-semibold leading-snug transition-colors",
 					"group-hover:text-[var(--color-primary-600)]",
 				)}
-				style={{ color: "var(--color-neutral-900)" }}
+				style={{ color: "var(--field-foreground)" }}
 			>
 				{article.title}
 			</Link>
 			{article.summary ? (
 				<p
 					className="line-clamp-2 text-sm leading-relaxed"
-					style={{ color: "var(--color-neutral-500)" }}
+					style={{ color: "var(--surface-card-faint-fg)" }}
 				>
 					{article.summary}
 				</p>
@@ -370,13 +391,13 @@ function CardMeta({
 		<div className="mt-auto flex items-center justify-between pt-2">
 			<div
 				className="flex items-center gap-3 text-xs"
-				style={{ color: "var(--color-neutral-500)" }}
+				style={{ color: "var(--surface-card-faint-fg)" }}
 			>
 				<span className="flex items-center gap-1.5 font-medium">
 					<span
 						className="flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold text-white"
 						style={{
-							backgroundColor: cat?.color ?? "var(--color-neutral-500)",
+							backgroundColor: cat?.color ?? "var(--surface-card-faint-fg)",
 						}}
 						aria-hidden="true"
 					>
@@ -393,7 +414,20 @@ function CardMeta({
 					{t("{minutes} min read", { minutes })}
 				</span>
 			</div>
-			<div className="flex items-center gap-1">
+			<div
+				className="flex items-center gap-1.5"
+				onClick={(e) => e.stopPropagation()}
+				onMouseDown={(e) => e.stopPropagation()}
+				onPointerDown={(e) => e.stopPropagation()}
+				onKeyDown={(e) => e.stopPropagation()}
+			>
+				<ReactionToggle
+					targetType="article"
+					targetId={article.id}
+					initialSummary={article.reaction_summary ?? null}
+					variant="inline"
+					lazy
+				/>
 				<button
 					type="button"
 					className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-50 hover:text-[var(--color-primary-500)]"
