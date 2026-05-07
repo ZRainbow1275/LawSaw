@@ -81,14 +81,7 @@ pub(crate) async fn get_system_metrics(
     let pool_storage = state.pool.clone();
     let pool_errors = state.pool.clone();
 
-    let (
-        active_users,
-        articles_ingested,
-        reports_generated,
-        ai_tokens,
-        storage_bytes,
-        error_rate,
-    ) = tokio::join!(
+    let (active_users, articles_ingested, reports_generated, ai_tokens, storage_bytes, error_rate) = tokio::join!(
         fetch_active_users_7d(&pool_active, tenant_id, since_7d),
         fetch_articles_ingested_24h(&pool_articles, tenant_id, since_24h),
         fetch_reports_generated_7d(&pool_reports, tenant_id, since_7d),

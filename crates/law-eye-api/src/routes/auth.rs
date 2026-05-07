@@ -49,7 +49,7 @@ async fn ensure_tenant_roles_seeded(
                         gen_random_uuid(),
                         $1,
                         'editor',
-                        '["articles:read","articles:write","articles:publish","knowledge:manage","sources:read","categories:read","feedbacks:write","feedbacks:read","users:read","objects:read","apikeys:manage"]'::jsonb,
+                        '["articles:read","articles:write","articles:publish","knowledge:manage","sources:read","sources:read:meta","reports:subscribe","sources:read:name","categories:read","feedbacks:write","feedbacks:read","users:read","objects:read","apikeys:manage"]'::jsonb,
                         '编辑，可以管理文章',
                         NOW()
                     ),
@@ -57,7 +57,7 @@ async fn ensure_tenant_roles_seeded(
                         gen_random_uuid(),
                         $1,
                         'viewer',
-                        '["articles:read","sources:read","categories:read","feedbacks:write","feedbacks:read","users:read","objects:read"]'::jsonb,
+                        '["articles:read","sources:read","sources:read:name","categories:read","feedbacks:write","feedbacks:read","users:read","objects:read"]'::jsonb,
                         '只读用户',
                         NOW()
                     ),
@@ -65,7 +65,7 @@ async fn ensure_tenant_roles_seeded(
                         gen_random_uuid(),
                         $1,
                         'basic_user',
-                        '["articles:read","categories:read","sources:read","channels:read","reports:read","analytics:read","banners:read","knowledge:read","feedbacks:write","feedbacks:read","objects:read"]'::jsonb,
+                        '["articles:read","categories:read","sources:read","sources:read:name","channels:read","reports:read","analytics:read","banners:read","knowledge:read","feedbacks:write","feedbacks:read","objects:read"]'::jsonb,
                         '普通用户（basic_user）',
                         NOW()
                     ),
@@ -73,7 +73,7 @@ async fn ensure_tenant_roles_seeded(
                         gen_random_uuid(),
                         $1,
                         'verified_user',
-                        '["articles:read","categories:read","sources:read","channels:read","reports:read","analytics:read","banners:read","knowledge:read","feedbacks:write","feedbacks:read","objects:read","ai:use:summary"]'::jsonb,
+                        '["articles:read","categories:read","sources:read","sources:read:name","sources:read:meta","channels:read","reports:read","reports:subscribe","analytics:read","banners:read","knowledge:read","feedbacks:write","feedbacks:read","objects:read","ai:use:summary"]'::jsonb,
                         '认证用户（verified_user）',
                         NOW()
                     ),
@@ -81,7 +81,7 @@ async fn ensure_tenant_roles_seeded(
                         gen_random_uuid(),
                         $1,
                         'premium_user',
-                        '["articles:read","categories:read","sources:read","channels:read","reports:read","analytics:read","banners:read","knowledge:read","feedbacks:write","feedbacks:read","objects:read","ai:use:summary","reports:export","ai:use:sentiment"]'::jsonb,
+                        '["articles:read","categories:read","sources:read","sources:read:name","sources:read:meta","sources:read:full","channels:read","reports:read","reports:subscribe","reports:export","analytics:read","banners:read","knowledge:read","feedbacks:write","feedbacks:read","objects:read","ai:use:summary","ai:use:sentiment"]'::jsonb,
                         '高级用户（premium_user）',
                         NOW()
                     ),

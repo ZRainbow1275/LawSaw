@@ -1,12 +1,18 @@
 "use client";
 
 import { useAuth } from "@/hooks/use-auth";
-import { type RoleTier, isRoleTierAtLeast } from "@/lib/authz";
+import {
+	type RoleTier,
+	isRoleTierAtLeast,
+	roleTierLabelKey,
+} from "@/lib/authz";
 import { withLocalePath } from "@/lib/i18n";
-import { useLocale } from "@/lib/i18n-client";
+import { useLocale, useT } from "@/lib/i18n-client";
 import { useAuthStore } from "@/stores/auth-store";
+import { ShieldAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { EmptyState } from "../ui/empty-state";
 
 interface ProtectedRouteProps {
 	children: React.ReactNode;
@@ -90,44 +96,85 @@ export function ProtectedRoute({
 		router.replace(withLocalePath(locale, "/admin"));
 	}, [isAuthenticated, tierSatisfied, locale, router]);
 
-	// Only render the bootstrap spinner during the initial unauthenticated load.
-	// Once `isAuthenticated` is true, subsequent `isLoading` flips come from
-	// background `refreshSession()` calls (e.g. AuthProvider's per-pathname
-	// session probe). Replacing `children` with the spinner in that case would
-	// unmount the persistent shell (Sidebar/Header) on every SPA navigation,
-	// which is exactly what we want to avoid.
+	// Bootstrap: only render the bootstrap spinner during the initial
+	// unauthenticated load. Once `isAuthenticated` is true, subsequent
+	// `isLoading` flips come from background `refreshSession()` calls (e.g.
+	// AuthProvider's per-pathname session probe). Replacing `children` with the
+	// spinner in that case would unmount the persistent shell (Sidebar/Header)
+	// on every SPA navigation, which is exactly what we want to avoid.
 	if (isLoading && !bootstrapTimedOut && !isAuthenticated) {
-		return (
-			fallback ?? (
-				<div className="flex min-h-screen items-center justify-center">
-					<div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent" />
-				</div>
-			)
-		);
+		return <>{fallback ?? <BootstrapSpinner />}</>;
 	}
 
 	if (!isAuthenticated) {
-		// 正在跳转到登录页，保持 spinner 避免白屏闪烁
-		return (
-			fallback ?? (
-				<div className="flex min-h-screen items-center justify-center">
-					<div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent" />
-				</div>
-			)
-		);
+		// Redirect already scheduled by the effect above; render a labeled
+		// "redirecting to login" placeholder until navigation lands.
+		return <>{fallback ?? <RedirectingToLogin />}</>;
 	}
 
 	if (!tierSatisfied) {
-		// Tier mismatch — `useEffect` above redirects to /admin; render the
-		// spinner in the meantime to avoid flashing protected content.
+		// Tier mismatch — `useEffect` above redirects to /admin; render a
+		// semantic empty-state in the meantime instead of a faceless spinner.
 		return (
-			fallback ?? (
-				<div className="flex min-h-screen items-center justify-center">
-					<div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent" />
-				</div>
-			)
+			<>{fallback ?? <InsufficientTierEmpty tier={requiredRole ?? "basic_user"} />}</>
 		);
 	}
 
 	return <>{children}</>;
+}
+
+// ============================================
+// Internal fallback views (not exported)
+// ============================================
+
+function BootstrapSpinner() {
+	const t = useT();
+	const label = t("Loading session");
+	return (
+		<div
+			role="status"
+			aria-label={label}
+			aria-live="polite"
+			className="flex min-h-screen items-center justify-center"
+		>
+			<div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent" />
+			<span className="sr-only">{label}</span>
+		</div>
+	);
+}
+
+function RedirectingToLogin() {
+	const t = useT();
+	const label = t("Redirecting to login");
+	return (
+		<div
+			role="status"
+			aria-label={label}
+			aria-live="polite"
+			className="flex min-h-screen flex-col items-center justify-center gap-4"
+		>
+			<div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent" />
+			<p className="text-sm text-neutral-600">{t("Redirecting to login...")}</p>
+			<span className="sr-only">{label}</span>
+		</div>
+	);
+}
+
+function InsufficientTierEmpty({ tier }: { tier: RoleTier }) {
+	const t = useT();
+	const tierLabel = t(roleTierLabelKey(tier));
+	return (
+		<div
+			role="status"
+			aria-live="polite"
+			className="flex min-h-screen items-center justify-center"
+		>
+			<EmptyState
+				icon={ShieldAlert}
+				variant="error"
+				title={t("Insufficient permissions")}
+				description={t("This page requires {tier} access.", { tier: tierLabel })}
+			/>
+		</div>
+	);
 }

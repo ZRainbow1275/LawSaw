@@ -387,7 +387,11 @@ pub fn create_router(state: AppState) -> Router {
             "/ai",
             require_permissions(ai::router(), "articles:read", "articles:write"),
         )
-        .nest("/users", require_permission(users::router(), "users:read"))
+        // /users handlers do their own self-vs-admin gating (e.g. GET /{id}
+        // permits self-view; list/update/avatar/roles call check_admin_permission).
+        // An outer `users:read` permission would block customers from fetching
+        // their own profile via the SPA's refreshAuthz call.
+        .nest("/users", users::router())
         .nest(
             "/webhooks",
             require_permissions(webhooks::router(), "webhooks:read", "webhooks:write"),
@@ -432,7 +436,11 @@ pub fn create_router(state: AppState) -> Router {
         )
         .nest(
             "/admin/dashboard",
-            require_permission(admin_dashboard::router(), "tenants:manage"),
+            require_role_tier_and_permission(
+                admin_dashboard::router(),
+                ROLE_TIER_TENANT_ADMIN,
+                "tenants:manage",
+            ),
         )
         // G.4: admin ReBAC list endpoints — tenant-admin gated.
         .nest(
@@ -469,10 +477,7 @@ pub fn create_router(state: AppState) -> Router {
                 "audit:read",
             ),
         )
-        .nest(
-            "/me",
-            require_role_tier(me::router(), ROLE_TIER_BASIC_USER),
-        )
+        .nest("/me", require_role_tier(me::router(), ROLE_TIER_BASIC_USER))
         .nest(
             "/channels",
             require_role_tier(channels::public_router(), ROLE_TIER_BASIC_USER),
@@ -507,7 +512,7 @@ pub fn create_router(state: AppState) -> Router {
         )
         .nest(
             "/report-subscriptions",
-            require_role_tier(report_subscriptions::router(), ROLE_TIER_BASIC_USER),
+            require_permission(report_subscriptions::router(), "reports:subscribe"),
         )
         // B.6a: banners (basic_user public feed + tenant_admin manage).
         .nest(

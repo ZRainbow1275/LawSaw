@@ -317,7 +317,8 @@ pub(crate) async fn get_feed(
         .list()
         .await
         .map_err(AppError::from)?;
-    let visible_category_ids: Vec<Uuid> = if role_tier_at_least(&role_tier, ROLE_TIER_PREMIUM_USER) {
+    let visible_category_ids: Vec<Uuid> = if role_tier_at_least(&role_tier, ROLE_TIER_PREMIUM_USER)
+    {
         categories.iter().map(|category| category.id).collect()
     } else {
         categories

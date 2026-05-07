@@ -54,22 +54,10 @@ const SHELL_EXEMPT_PREFIXES = [
 	// Pages that still own their own Sidebar/Header (legacy chrome, not yet
 	// migrated to the persistent shell). Routing them through this list keeps
 	// their existing layout intact and avoids the doubled-chrome regression.
-	// TODO(shell-lift): /settings renders own UserShell — migrate into (shell-default) or (shell-wide) in a follow-up
-	"/settings",
-	// TODO(shell-lift): /search renders own UserShell — migrate into (shell-default) or (shell-wide) in a follow-up
-	"/search",
-	// TODO(shell-lift): /data renders own UserShell — migrate into (shell-default) or (shell-wide) in a follow-up
-	"/data",
-	// TODO(shell-lift): /sources renders own UserShell — migrate into (shell-default) or (shell-wide) in a follow-up
-	"/sources",
-	// TODO(shell-lift): /dashboard renders own UserShell — migrate into (shell-default) or (shell-wide) in a follow-up
-	"/dashboard",
 	// TODO(shell-lift): /articles index renders own UserShell (wide); /articles/[id]
 	// is the immersive ReaderLayout that MUST stay exempt — split this prefix when
 	// migrating the index into (shell-wide) in a follow-up.
 	"/articles",
-	// TODO(shell-lift): /category/[slug] renders own UserShell — migrate into (shell-default) or (shell-wide) in a follow-up
-	"/category",
 ];
 
 const SHELL_EXEMPT_PATTERNS: RegExp[] = [

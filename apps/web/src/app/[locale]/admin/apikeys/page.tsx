@@ -12,7 +12,7 @@ import { useToast } from "@/stores/toast-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, CheckCircle2, KeyRound, ShieldOff } from "lucide-react";
 import { useMemo, useState } from "react";
-import { ApiKeysTab, uiMessageFromError } from "../../../settings/tabs";
+import { ApiKeysTab, uiMessageFromError } from "@/components/settings/tabs";
 
 function parseCsv(value: string): string[] {
 	return value

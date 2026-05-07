@@ -59,10 +59,7 @@ pub fn meets_minimum_tier(tier: &str, min_tier: &str) -> bool {
 /// Used by `routes/mod.rs` to enforce the §4.5 double-guard (tier + permission) on
 /// every `/api/v1/admin/*` endpoint.
 #[allow(dead_code)]
-pub fn require_role_tier(
-    router: Router<AppState>,
-    min_tier: &'static str,
-) -> Router<AppState> {
+pub fn require_role_tier(router: Router<AppState>, min_tier: &'static str) -> Router<AppState> {
     router
         .layer(axum_middleware::from_extractor::<RequireRoleTier>())
         .layer(Extension(RequiredRoleTier(min_tier)))
@@ -99,8 +96,8 @@ mod tests {
 
     use super::*;
     use law_eye_core::role_tier::{
-        ROLE_TIER_BASIC_USER, ROLE_TIER_PREMIUM_USER, ROLE_TIER_SUPER_ADMIN, ROLE_TIER_TENANT_ADMIN,
-        ROLE_TIER_VERIFIED_USER,
+        ROLE_TIER_BASIC_USER, ROLE_TIER_PREMIUM_USER, ROLE_TIER_SUPER_ADMIN,
+        ROLE_TIER_TENANT_ADMIN, ROLE_TIER_VERIFIED_USER,
     };
 
     /// One assertion per role-tier combination — guarantees the inclusive `>=`

@@ -438,10 +438,7 @@ impl TenantService {
     // ── Super-admin operations (tenant-level CRUD with quotas / status) ──
 
     /// Super-admin list with optional q/status filters and pagination.
-    pub async fn super_list_tenants(
-        &self,
-        filter: SuperListTenantsFilter,
-    ) -> Result<Vec<Tenant>> {
+    pub async fn super_list_tenants(&self, filter: SuperListTenantsFilter) -> Result<Vec<Tenant>> {
         let q = filter
             .q
             .as_deref()
@@ -484,17 +481,14 @@ impl TenantService {
             return Err(Error::Validation("slug cannot be empty".to_string()));
         }
         if name.is_empty() {
-            return Err(Error::Validation(
-                "Tenant name cannot be empty".to_string(),
-            ));
+            return Err(Error::Validation("Tenant name cannot be empty".to_string()));
         }
         if !slug
             .chars()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
         {
             return Err(Error::Validation(
-                "slug must contain only lowercase letters, digits, and hyphens"
-                    .to_string(),
+                "slug must contain only lowercase letters, digits, and hyphens".to_string(),
             ));
         }
 
@@ -522,9 +516,7 @@ impl TenantService {
     ) -> Result<Tenant> {
         if let Some(name) = input.name.as_ref() {
             if name.trim().is_empty() {
-                return Err(Error::Validation(
-                    "Tenant name cannot be empty".to_string(),
-                ));
+                return Err(Error::Validation("Tenant name cannot be empty".to_string()));
             }
         }
         if let Some(status) = input.status.as_ref() {

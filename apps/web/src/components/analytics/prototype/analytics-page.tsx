@@ -8,33 +8,13 @@
 
 import { useT } from "@/lib/i18n-client";
 import { TrendingUp } from "lucide-react";
-import { type CSSProperties, useState } from "react";
+import { useState } from "react";
 import { type AnalyticsTabId, AnalyticsTabsBar } from "./analytics-tabs";
 import { CrossPanel } from "./cross-panel";
 import { ImportancePanel } from "./importance-panel";
 import { IndustryPanel } from "./industry-panel";
 import { OverviewPanel } from "./overview-panel";
 import { RegionPanel } from "./region-panel";
-
-const headerStyle: CSSProperties = {
-	display: "flex",
-	alignItems: "center",
-	gap: 8,
-	marginBottom: 24,
-};
-
-const titleStyle: CSSProperties = {
-	display: "flex",
-	alignItems: "center",
-	gap: 10,
-	fontSize: 22,
-	fontWeight: 700,
-	color: "var(--color-neutral-900)",
-};
-
-const iconStyle: CSSProperties = {
-	color: "var(--color-primary-500)",
-};
 
 export function AnalyticsPagePrototype() {
 	const t = useT();
@@ -50,12 +30,16 @@ export function AnalyticsPagePrototype() {
 
 	return (
 		<div className="w-full">
-			<div style={headerStyle}>
-				<h1 style={titleStyle}>
-					<TrendingUp aria-hidden="true" size={22} style={iconStyle} />
+			<header className="mb-6 flex items-center gap-2">
+				<h1 className="m-0 flex items-center gap-2.5 text-2xl font-bold text-[color:var(--color-neutral-900)]">
+					<TrendingUp
+						aria-hidden="true"
+						size={22}
+						className="text-[color:var(--color-primary-500)]"
+					/>
 					{t("Analytics")}
 				</h1>
-			</div>
+			</header>
 
 			<AnalyticsTabsBar
 				active={active}

@@ -127,7 +127,7 @@ function ReportSegment({
 					</p>
 					<div className="mt-3">
 						<Link
-							href="/settings"
+							href={withLocalePath(locale, "/settings")}
 							className="inline-flex h-8 items-center gap-2 rounded-lg px-3 text-xs font-semibold transition-colors"
 							style={{
 								backgroundColor: "var(--color-primary-500)",

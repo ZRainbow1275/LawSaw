@@ -280,6 +280,31 @@
 	/* Popover */
 	--surface-popover-bg: #ffffff;
 
+	/* Feedback / status badge palette
+	   Material-style soft tints used by feedback prototype status pills + type
+	   icon tiles. Pairs (bg ↔ fg) tuned for AA on white card.
+	   Source: prototype/app.html:1550-1632 + feedback-page.tsx (badge / typeOption). */
+	--feedback-status-resolved-bg: #e8f5e9;
+	--feedback-status-resolved-fg: #2e7d32;
+	--feedback-status-reviewing-bg: #e3f2fd;
+	--feedback-status-reviewing-fg: #1565c0;
+	--feedback-status-rejected-bg: #fee2e2;
+	--feedback-status-rejected-fg: #c62828;
+	--feedback-status-pending-bg: #fff8e1;
+	--feedback-status-pending-fg: #f57f17;
+
+	--feedback-type-source-bg: #e0f2fe;
+	--feedback-type-source-fg: #0284c7;
+	--feedback-type-bug-bg: #fee2e2;
+	--feedback-type-bug-fg: #ef4444;
+	--feedback-type-feature-bg: #fef3c7;
+	--feedback-type-feature-fg: #d97706;
+
+	/* Submit CTA gradient — softer than --gradient-cta (lighter top stop)
+	   matches prototype 1550-1632 button-submit linear-gradient(135deg,#ff8a5e,#ff6b35) */
+	--gradient-feedback-submit: linear-gradient(135deg, #ff8a5e, #ff6b35);
+	--gradient-feedback-submit-hover: linear-gradient(135deg, #ff7a4a, #e55a2b);
+
 	/* Field / Auth 文本系列 */
 	--field-foreground: var(--color-neutral-900);
 	--auth-copy-primary: var(--color-neutral-900);
@@ -386,6 +411,34 @@
 	--surface-accent-copy: var(--color-primary-200);
 	--surface-popover-bg: hsl(0 0% 15%);
 
+	/* Feedback palette — 暗色：低饱和深色 chip + 提亮文字 */
+	--feedback-status-resolved-bg: rgba(40, 167, 69, 0.18);
+	--feedback-status-resolved-fg: #6ee7b7;
+	--feedback-status-reviewing-bg: rgba(33, 150, 243, 0.18);
+	--feedback-status-reviewing-fg: #93c5fd;
+	--feedback-status-rejected-bg: rgba(220, 53, 69, 0.18);
+	--feedback-status-rejected-fg: #fca5a5;
+	--feedback-status-pending-bg: rgba(255, 193, 7, 0.16);
+	--feedback-status-pending-fg: #fcd34d;
+
+	--feedback-type-source-bg: rgba(2, 132, 199, 0.18);
+	--feedback-type-source-fg: #7dd3fc;
+	--feedback-type-bug-bg: rgba(239, 68, 68, 0.18);
+	--feedback-type-bug-fg: #fca5a5;
+	--feedback-type-feature-bg: rgba(217, 119, 6, 0.18);
+	--feedback-type-feature-fg: #fcd34d;
+
+	--gradient-feedback-submit: linear-gradient(
+		135deg,
+		var(--color-primary-400),
+		var(--color-primary-500)
+	);
+	--gradient-feedback-submit-hover: linear-gradient(
+		135deg,
+		var(--color-primary-500),
+		var(--color-primary-600)
+	);
+
 	/* Field / Auth copy — 暗色文本 */
 	--field-foreground: hsl(0 0% 98%);
 	--auth-copy-primary: hsl(0 0% 98%);
@@ -416,12 +469,117 @@
 		rgba(255, 255, 255, 0.04),
 		rgba(255, 255, 255, 0.02)
 	);
+
+	/* ─── status colors ─────────────────────────────────────────
+	   Material/Linear/Vercel 暗色 status：用 desaturated lighter variant；
+	   *-light 用低透明度色彩叠加（深底友好，避免纯白 #fef2f2 撞光）。 */
+	--color-success: #4ade80;
+	--color-success-light: rgba(34, 197, 94, 0.15);
+	--color-warning: #fbbf24;
+	--color-warning-light: rgba(251, 191, 36, 0.15);
+	--color-error: #f87171;
+	--color-error-light: rgba(239, 68, 68, 0.15);
+	--color-info: #60a5fa;
+	--color-info-light: rgba(96, 165, 250, 0.15);
+
+	/* ─── category colors (10 分类) ─────────────────────────────
+	   原色饱和度过高，深底视网膜灼伤；统一降 10-15% 饱和度、提 5-8% 亮度。
+	   alias 同步翻新，保证 sidebar / chips / category badges 一致切色。 */
+	--cat-legislation: #5dade2;
+	--cat-regulation: #b29bd2;
+	--cat-enforcement: #ec7567;
+	--cat-industry: #f5b041;
+	--cat-compliance: #58c490;
+	--cat-data-trends: #4ecbb6;
+	--cat-security: #ec7088;
+	--cat-academic: #a08474;
+	--cat-major-events: #ff8c5a;
+	--cat-international: #5da9e9;
+	--color-legislation: var(--cat-legislation);
+	--color-regulation: var(--cat-regulation);
+	--color-enforcement: var(--cat-enforcement);
+	--color-industry: var(--cat-industry);
+	--color-compliance: var(--cat-compliance);
+	--color-data: var(--cat-data-trends);
+	--color-security: var(--cat-security);
+	--color-academic: var(--cat-academic);
+	--color-events: var(--cat-major-events);
+	--color-international: var(--cat-international);
+
+	/* ─── chart colors ──────────────────────────────────────────
+	   chart 系列在深底用 status 暗色提亮版，保持图表可读性。 */
+	--color-chart-1: #ff8c5a;
+	--color-chart-2: #4ecbb6;
+	--color-chart-3: #4ade80;
+	--color-chart-4: #fbbf24;
+	--color-chart-5: #f87171;
+
+	/* ─── shadows ───────────────────────────────────────────────
+	   浅色阴影 rgba(0,0,0, 0.05-0.15) 在深底完全失效；深色用 0.3-0.65 才能压出层级。
+	   brand shadows 保留橙色 glow，但提高 alpha 以维持识别度。 */
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+	--shadow-card: 0 2px 8px rgba(0, 0, 0, 0.4);
+	--shadow-card-hover: 0 4px 16px rgba(0, 0, 0, 0.5);
+	--shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
+	--shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.55);
+	--shadow-popup-deep: 0 16px 48px rgba(0, 0, 0, 0.65);
+	--shadow-popup-card: 0 12px 40px rgba(0, 0, 0, 0.55);
+	--shadow-feed-hover: 0 8px 30px rgba(255, 107, 53, 0.18);
+	--shadow-back-to-top: 0 4px 16px rgba(255, 107, 53, 0.4);
+	--shadow-brand: 0 4px 14px -2px rgba(255, 107, 53, 0.4);
+	--shadow-brand-lg: 0 8px 32px rgba(255, 107, 53, 0.4);
+
+	/* ─── admin console tokens ──────────────────────────────────
+	   admin 进入暗色直接撞白 = 视网膜爆击。改用 hsl(0 0% 12%/16%) 双层灰阶，
+	   border 用低 alpha 白线，shadow 用深黑 + 加大 spread 维持卡片纵深感。 */
+	--admin-surface-bg: hsl(0 0% 12%);
+	--admin-card-bg: hsl(0 0% 16%);
+	--admin-card-border: rgba(255, 255, 255, 0.08);
+	--admin-card-border-hover: rgba(255, 107, 53, 0.4);
+	--admin-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4),
+		0 4px 14px rgba(0, 0, 0, 0.5);
+	--admin-shadow-card-hover: 0 2px 6px rgba(0, 0, 0, 0.45),
+		0 12px 28px rgba(0, 0, 0, 0.6);
+	--admin-shadow-sidebar: 1px 0 0 rgba(255, 255, 255, 0.08);
+
+	/* ─── brand gradients ───────────────────────────────────────
+	   light 模式 banner 是亮橙渐变，深底过曝；这里用 deep variant（降饱和、压暗）
+	   保留品牌识别但视觉不刺。CTA / viz-card / hero-visual 同步深色化。 */
+	--gradient-banner: linear-gradient(
+		155deg,
+		#c44a2a 0%,
+		#b03e1f 50%,
+		#8a3015 100%
+	);
+	--gradient-cta: linear-gradient(
+		135deg,
+		var(--color-primary-400),
+		var(--color-primary-500)
+	);
+	--gradient-cta-hover: linear-gradient(
+		135deg,
+		var(--color-primary-500),
+		var(--color-primary-600)
+	);
+	--gradient-viz-card: linear-gradient(145deg, hsl(0 0% 12%), hsl(0 0% 8%));
+	--gradient-hero-visual: linear-gradient(
+		135deg,
+		hsl(0 0% 12%),
+		hsl(0 0% 8%)
+	);
+	/* surface alias 同步指向暗色 viz-card / hero-visual */
+	--surface-viz-dark-gradient: var(--gradient-viz-card);
+	--surface-hero-visual-gradient: var(--gradient-hero-visual);
 }
 
-/* 基础样式 */
-* {
-	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
+/* 基础样式
+   注意：已移除全局 `* { transition: all 0.2s ... }` 通配规则。
+   理由：通配符对 width/height/margin/padding/color/background/transform/opacity 等所有属性应用过渡，
+   会在 sidebar collapse 等场景触发数百节点的 paint thrash（perf cliff），
+   并使 :focus-visible outline 也参与过渡，模糊键盘焦点指示器。
+   现代 design system（Linear/Vercel/Stripe）都把 transition 显式写在每个交互组件上。
+   组件需过渡的请使用 Tailwind utilities (transition-colors / transition-transform / transition-shadow)
+   或下方 .hover-lift / .card-hover / .btn-press / .admin-card-hover 等显式工具类。 */
 
 /* scroll-behavior 移至 body 避免 Next.js 警告 */
 
@@ -903,9 +1061,10 @@ body {
 	padding-right: var(--safe-area-right);
 }
 
-/* 卡片悬停效果增强 */
+/* 卡片悬停效果增强 — 显式过渡 transform + box-shadow，避免 transition: all */
 .card-hover {
-	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+	transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+		box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .card-hover:hover {
@@ -931,7 +1090,11 @@ body {
 	border-color: var(--admin-card-border-hover);
 }
 
-/* 按钮点击效果 */
+/* 按钮点击效果 — base 显式过渡 transform，避免依赖全局通配 */
+.btn-press {
+	transition: transform 0.1s ease;
+}
+
 .btn-press:active {
 	transform: scale(0.98);
 }

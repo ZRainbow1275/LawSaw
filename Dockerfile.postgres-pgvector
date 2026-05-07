@@ -161,7 +161,7 @@ fi
 exec "${BIN}/postgres" -D "${PGDATA}" -c listen_addresses='*'
 EOS
 
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN perl -pi -e 's/\r$//' /usr/local/bin/docker-entrypoint.sh && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 USER postgres
 

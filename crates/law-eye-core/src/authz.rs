@@ -3,7 +3,7 @@ use law_eye_common::{Error, Result};
 use law_eye_db::{AuthRelation, ChannelAccessPolicy, CreateAuthRelation};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 pub const ROLE_TIER_BASIC_USER: &str = "basic_user";
@@ -73,6 +73,26 @@ impl AuthzService {
         tenant_id: Uuid,
         input: CreateAuthRelation,
     ) -> Result<AuthRelation> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            Box::pin(async move { Self::insert_relation_tx(tenant_id, tx, input).await })
+        })
+        .await
+    }
+
+    pub async fn create_relation_tx(
+        &self,
+        tenant_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+        input: CreateAuthRelation,
+    ) -> Result<AuthRelation> {
+        Self::insert_relation_tx(tenant_id, tx, input).await
+    }
+
+    async fn insert_relation_tx(
+        tenant_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+        input: CreateAuthRelation,
+    ) -> Result<AuthRelation> {
         validate_resource_type(&input.resource_type)?;
         validate_subject_type(&input.subject_type)?;
         validate_relation_name(&input.relation)?;
@@ -86,43 +106,44 @@ impl AuthzService {
             None
         };
 
-        with_tenant_tx(&self.pool, tenant_id, |tx| {
-            Box::pin(async move {
-                sqlx::query_as::<_, AuthRelation>(
-                    r#"
-                    INSERT INTO auth_relations (
-                        tenant_id,
-                        resource_type,
-                        resource_id,
-                        relation,
-                        subject_type,
-                        subject_id,
-                        subject_key,
-                        subject_relation,
-                        properties,
-                        created_by,
-                        updated_at
-                    )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
-                    RETURNING *
-                    "#,
-                )
-                .bind(tenant_id)
-                .bind(&input.resource_type)
-                .bind(input.resource_id)
-                .bind(&input.relation)
-                .bind(&input.subject_type)
-                .bind(subject_id)
-                .bind(&input.subject_key)
-                .bind(&input.subject_relation)
-                .bind(&input.properties)
-                .bind(input.created_by)
-                .fetch_one(tx.as_mut())
-                .await
-                .map_err(|e| Error::Database(e.to_string()))
-            })
-        })
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(tenant_id.to_string())
+            .execute(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
+        sqlx::query_as::<_, AuthRelation>(
+            r#"
+            INSERT INTO auth_relations (
+                tenant_id,
+                resource_type,
+                resource_id,
+                relation,
+                subject_type,
+                subject_id,
+                subject_key,
+                subject_relation,
+                properties,
+                created_by,
+                updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+            RETURNING *
+            "#,
+        )
+        .bind(tenant_id)
+        .bind(&input.resource_type)
+        .bind(input.resource_id)
+        .bind(&input.relation)
+        .bind(&input.subject_type)
+        .bind(subject_id)
+        .bind(&input.subject_key)
+        .bind(&input.subject_relation)
+        .bind(&input.properties)
+        .bind(input.created_by)
+        .fetch_one(tx.as_mut())
         .await
+        .map_err(|e| Error::Database(e.to_string()))
     }
 
     pub async fn upsert_relation(
@@ -279,7 +300,7 @@ impl AuthzService {
         let mut decision_path = Vec::new();
 
         let resource_tenant = self
-            .resolve_resource_tenant(tenant_id, &input.resource_type, input.resource_id)
+            .resolve_resource_tenant(tenant_id, user_id, &input.resource_type, input.resource_id)
             .await?;
         if resource_tenant != Some(tenant_id) {
             decision_path
@@ -343,7 +364,7 @@ impl AuthzService {
 
         if permissions
             .iter()
-            .any(|permission| permission == "*" || permission == &input.permission)
+            .any(|permission| permission_implies(permission, &input.permission))
         {
             decision_path.push(format!(
                 "role:allow:granted by role baseline for {}",
@@ -467,6 +488,7 @@ impl AuthzService {
     async fn resolve_resource_tenant(
         &self,
         tenant_id: Uuid,
+        user_id: Uuid,
         resource_type: &str,
         resource_id: Uuid,
     ) -> Result<Option<Uuid>> {
@@ -476,6 +498,12 @@ impl AuthzService {
 
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
+                sqlx::query("SELECT set_config('app.user_id', $1, true)")
+                    .bind(user_id.to_string())
+                    .execute(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?;
+
                 let query = match resource_type {
                     "article" => {
                         Some("SELECT tenant_id FROM articles WHERE id = $1 AND deleted_at IS NULL")
@@ -485,6 +513,9 @@ impl AuthzService {
                     }
                     "report" => {
                         Some("SELECT tenant_id FROM reports WHERE id = $1 AND deleted_at IS NULL")
+                    }
+                    "report_subscription" => {
+                        Some("SELECT tenant_id FROM report_subscriptions WHERE id = $1 AND deleted_at IS NULL")
                     }
                     "feedback" => {
                         Some("SELECT tenant_id FROM feedbacks WHERE id = $1 AND deleted_at IS NULL")
@@ -537,17 +568,37 @@ fn match_relation<'a>(
     })
 }
 
+fn permission_implies(granted: &str, required: &str) -> bool {
+    if granted == "*" || granted == required {
+        return true;
+    }
+
+    matches!(
+        (granted, required),
+        (
+            "sources:read",
+            "sources:read:name" | "sources:read:meta" | "sources:read:full"
+        )
+    )
+}
+
 fn accepted_relations<'a>(resource_type: &str, permission: &str) -> Vec<&'a str> {
     match (resource_type, permission) {
         (_, "*") => vec!["owner", "admin", "manager", "editor"],
         ("tenant", "tenants:manage") => vec!["owner", "admin"],
-        ("source", "sources:write") => vec!["manager", "owner", "editor"],
-        ("source", "sources:read") => vec!["viewer", "manager", "owner"],
+        ("source", "sources:write") | ("source", "sources:manage") => {
+            vec!["manager", "owner", "editor"]
+        }
+        ("source", "sources:read")
+        | ("source", "sources:read:name")
+        | ("source", "sources:read:meta")
+        | ("source", "sources:read:full") => vec!["viewer", "manager", "owner"],
         ("article", "articles:write") => vec!["editor", "owner"],
         ("article", "articles:publish") => vec!["editor", "owner", "approver"],
         ("article", "articles:read") => vec!["viewer", "reader", "owner"],
         ("report", "reports:write") => vec!["editor", "owner", "approver"],
         ("report", "reports:read") => vec!["viewer", "approver", "owner"],
+        ("report_subscription", "reports:subscribe") => vec!["owner", "subscriber"],
         ("feedback", "feedbacks:read") => vec!["resolver", "owner"],
         ("feedback", "feedbacks:write") => vec!["resolver", "owner"],
         ("object", "objects:read") => vec!["viewer", "owner"],
@@ -558,7 +609,15 @@ fn accepted_relations<'a>(resource_type: &str, permission: &str) -> Vec<&'a str>
 
 fn validate_resource_type(value: &str) -> Result<()> {
     let allowed = [
-        "tenant", "channel", "article", "source", "report", "feedback", "object", "banner",
+        "tenant",
+        "channel",
+        "article",
+        "source",
+        "report",
+        "report_subscription",
+        "feedback",
+        "object",
+        "banner",
     ];
     if allowed.contains(&value) {
         Ok(())
@@ -631,4 +690,29 @@ pub fn derive_role_tier_from_names(role_names: &[String]) -> String {
         return ROLE_TIER_VERIFIED_USER.to_string();
     }
     ROLE_TIER_BASIC_USER.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn report_subscription_resource_type_is_supported() {
+        assert!(validate_resource_type("report_subscription").is_ok());
+    }
+
+    #[test]
+    fn report_subscription_accepts_owner_for_subscribe_permission() {
+        let accepted = accepted_relations("report_subscription", "reports:subscribe");
+        assert!(accepted.contains(&"owner"));
+        assert!(accepted.contains(&"subscriber"));
+    }
+
+    #[test]
+    fn legacy_sources_read_permission_implies_granular_read_permissions() {
+        assert!(permission_implies("sources:read", "sources:read:name"));
+        assert!(permission_implies("sources:read", "sources:read:meta"));
+        assert!(permission_implies("sources:read", "sources:read:full"));
+        assert!(!permission_implies("reports:read", "reports:subscribe"));
+    }
 }

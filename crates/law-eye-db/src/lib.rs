@@ -104,7 +104,11 @@ pub async fn create_pool_with_session_role_retry(
     }
 }
 
+/// Runs the crate-local embedded SQLx migration set.
+const EMBEDDED_MIGRATION_SET_VERSION: u32 = 82;
+
 pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
+    let _ = EMBEDDED_MIGRATION_SET_VERSION;
     sqlx::migrate!("./migrations").run(pool).await
 }
 

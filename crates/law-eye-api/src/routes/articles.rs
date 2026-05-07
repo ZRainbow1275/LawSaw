@@ -2126,7 +2126,10 @@ mod tier_filter_tests {
         assert!(!trimmed.link.is_empty(), "link visible to verified");
         assert!(trimmed.source_ref.is_some(), "source_ref visible");
         assert!(trimmed.author.is_some(), "author visible");
-        assert!(trimmed.ai_metadata.is_null(), "ai_metadata hidden for verified");
+        assert!(
+            trimmed.ai_metadata.is_null(),
+            "ai_metadata hidden for verified"
+        );
         assert!(trimmed.summary_struct.is_none(), "summary_struct hidden");
         assert_eq!(trimmed.domain_root.as_deref(), Some("regulation"));
         assert!(trimmed.risk_score.is_some());
@@ -2166,41 +2169,33 @@ mod tier_filter_tests {
 
     #[test]
     fn enforce_status_for_basic_user_rejects_archived_filter() {
-        let err = enforce_article_status_for_tier(
-            ROLE_TIER_BASIC_USER,
-            Some("archived".to_string()),
-        )
-        .unwrap_err();
+        let err =
+            enforce_article_status_for_tier(ROLE_TIER_BASIC_USER, Some("archived".to_string()))
+                .unwrap_err();
         assert_eq!(err.status, axum::http::StatusCode::FORBIDDEN);
     }
 
     #[test]
     fn enforce_status_for_verified_user_still_blocks_unpublished() {
-        let err = enforce_article_status_for_tier(
-            ROLE_TIER_VERIFIED_USER,
-            Some("pending".to_string()),
-        )
-        .unwrap_err();
+        let err =
+            enforce_article_status_for_tier(ROLE_TIER_VERIFIED_USER, Some("pending".to_string()))
+                .unwrap_err();
         assert_eq!(err.status, axum::http::StatusCode::FORBIDDEN);
     }
 
     #[test]
     fn enforce_status_for_premium_user_still_blocks_unpublished() {
-        let err = enforce_article_status_for_tier(
-            ROLE_TIER_PREMIUM_USER,
-            Some("processing".to_string()),
-        )
-        .unwrap_err();
+        let err =
+            enforce_article_status_for_tier(ROLE_TIER_PREMIUM_USER, Some("processing".to_string()))
+                .unwrap_err();
         assert_eq!(err.status, axum::http::StatusCode::FORBIDDEN);
     }
 
     #[test]
     fn enforce_status_for_tenant_admin_passes_through_archived_filter() {
-        let result = enforce_article_status_for_tier(
-            ROLE_TIER_TENANT_ADMIN,
-            Some("archived".to_string()),
-        )
-        .unwrap();
+        let result =
+            enforce_article_status_for_tier(ROLE_TIER_TENANT_ADMIN, Some("archived".to_string()))
+                .unwrap();
         assert_eq!(result, Some("archived".to_string()));
     }
 

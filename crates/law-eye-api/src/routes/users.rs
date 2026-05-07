@@ -10,7 +10,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use law_eye_common::Error;
-use law_eye_core::{AuditFilters, UploadUserAvatarInput};
+use law_eye_core::{role_tier::derive_role_tier_from_names, AuditFilters, UploadUserAvatarInput};
 use law_eye_db::{CreateAuditLog, UpdateUser};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -78,6 +78,10 @@ pub struct UserResponse {
     pub last_login: Option<chrono::DateTime<chrono::Utc>>,
     pub version: i64,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// Role names assigned to the user in this tenant. Included on list rows so
+    /// admin rosters and detail drawers render the same tier labels.
+    pub roles: Vec<String>,
+    pub role_tier: String,
 }
 
 impl From<law_eye_db::User> for UserResponse {
@@ -93,6 +97,8 @@ impl From<law_eye_db::User> for UserResponse {
             last_login: user.last_login,
             version: user.version,
             created_at: user.created_at,
+            roles: Vec::new(),
+            role_tier: derive_role_tier_from_names(&[]),
         }
     }
 }
@@ -369,7 +375,20 @@ pub(crate) async fn list_users(
         .await
         .map_err(AppError::from)?;
 
-    let rows: Vec<UserResponse> = users.into_iter().map(Into::into).collect();
+    let mut rows = Vec::with_capacity(users.len());
+    for tenant_user in users {
+        let roles = state
+            .user_service
+            .get_user_roles(user.tenant_id, tenant_user.id)
+            .await
+            .map_err(AppError::from)?;
+        let role_names: Vec<String> = roles.into_iter().map(|role| role.name).collect();
+        let mut row = UserResponse::from(tenant_user);
+        row.role_tier = derive_role_tier_from_names(&role_names);
+        row.roles = role_names;
+        rows.push(row);
+    }
+
     Ok(Json(UsersListResponse {
         data: rows.clone(),
         users: Some(rows),

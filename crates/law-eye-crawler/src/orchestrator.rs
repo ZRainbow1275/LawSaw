@@ -372,7 +372,7 @@ impl CrawlOrchestrator {
             return Vec::new();
         }
 
-        let max_concurrency = jobs.len().min(DEFAULT_BATCH_MAX_CONCURRENCY).max(1);
+        let max_concurrency = jobs.len().clamp(1, DEFAULT_BATCH_MAX_CONCURRENCY);
         let mut indexed_results: Vec<(usize, CrawlJobResult)> =
             stream::iter(jobs.iter().cloned().enumerate())
                 .map(|(index, job)| async move { (index, self.run_job(&job).await) })

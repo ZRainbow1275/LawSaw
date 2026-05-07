@@ -3,6 +3,14 @@ use crate::tenant::with_tenant_tx;
 use law_eye_db::CreateArticle;
 use sqlx::Transaction;
 
+struct ArticleSentimentUpdate<'a> {
+    id: Uuid,
+    sentiment: &'a str,
+    sentiment_score: Option<f64>,
+    sentiment_rationale: Option<&'a str>,
+    sentiment_aspect: Option<&'a str>,
+}
+
 impl ArticleService {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
@@ -732,11 +740,13 @@ impl ArticleService {
                 self.update_article_sentiment_tx(
                     tenant_id,
                     tx,
-                    id,
-                    sentiment,
-                    sentiment_score,
-                    sentiment_rationale,
-                    sentiment_aspect,
+                    ArticleSentimentUpdate {
+                        id,
+                        sentiment,
+                        sentiment_score,
+                        sentiment_rationale,
+                        sentiment_aspect,
+                    },
                 )
                 .await
             })
@@ -744,21 +754,17 @@ impl ArticleService {
         .await
     }
 
-    pub async fn update_article_sentiment_tx(
+    async fn update_article_sentiment_tx(
         &self,
         tenant_id: Uuid,
         tx: &mut Transaction<'_, Postgres>,
-        id: Uuid,
-        sentiment: &str,
-        sentiment_score: Option<f64>,
-        sentiment_rationale: Option<&str>,
-        sentiment_aspect: Option<&str>,
+        input: ArticleSentimentUpdate<'_>,
     ) -> Result<Article> {
-        validate_sentiment_label(sentiment)?;
-        if let Some(score) = sentiment_score {
+        validate_sentiment_label(input.sentiment)?;
+        if let Some(score) = input.sentiment_score {
             validate_sentiment_score(score)?;
         }
-        if let Some(aspect) = sentiment_aspect {
+        if let Some(aspect) = input.sentiment_aspect {
             validate_sentiment_aspect(aspect)?;
         }
 
@@ -781,16 +787,16 @@ impl ArticleService {
             RETURNING *
             "#,
         )
-        .bind(id)
-        .bind(sentiment)
-        .bind(sentiment_score)
-        .bind(sentiment_rationale)
-        .bind(sentiment_aspect)
+        .bind(input.id)
+        .bind(input.sentiment)
+        .bind(input.sentiment_score)
+        .bind(input.sentiment_rationale)
+        .bind(input.sentiment_aspect)
         .fetch_optional(tx.as_mut())
         .await
         .map_err(|e| Error::Database(e.to_string()))?;
 
-        updated.ok_or_else(|| Error::NotFound(format!("Article {} not found", id)))
+        updated.ok_or_else(|| Error::NotFound(format!("Article {} not found", input.id)))
     }
 
     /// Batch update status
@@ -1388,8 +1394,7 @@ impl ArticleService {
 
         let seed_ids = seed_article_ids.to_vec();
         let excluded = excluded_article_ids.to_vec();
-        let category_filter: Option<Vec<Uuid>> =
-            visible_category_ids.map(|slice| slice.to_vec());
+        let category_filter: Option<Vec<Uuid>> = visible_category_ids.map(|slice| slice.to_vec());
 
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {

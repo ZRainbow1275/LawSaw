@@ -1,7 +1,7 @@
 use law_eye_common::{Error, Result};
 use law_eye_db::{CreateReportSubscription, ReportSubscription, UpdateReportSubscription};
 use serde_json::Value;
-use sqlx::{PgConnection, PgPool};
+use sqlx::{PgConnection, PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 use crate::tenant::with_tenant_tx;
@@ -27,6 +27,8 @@ impl ReportSubscriptionService {
     ) -> Result<Vec<ReportSubscription>> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
+                Self::set_user_context(tx.as_mut(), user_id).await?;
+
                 sqlx::query_as::<_, ReportSubscription>(
                     r#"
                     SELECT *
@@ -45,25 +47,40 @@ impl ReportSubscriptionService {
         .await
     }
 
-    pub async fn get_by_id(&self, tenant_id: Uuid, id: Uuid) -> Result<ReportSubscription> {
+    pub async fn get_by_id(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        id: Uuid,
+    ) -> Result<ReportSubscription> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
-            Box::pin(async move {
-                sqlx::query_as::<_, ReportSubscription>(
-                    r#"
-                    SELECT *
-                    FROM report_subscriptions
-                    WHERE id = $1
-                      AND deleted_at IS NULL
-                    "#,
-                )
-                .bind(id)
-                .fetch_optional(tx.as_mut())
-                .await
-                .map_err(|err| Error::Database(err.to_string()))?
-                .ok_or_else(|| Error::NotFound(format!("Report subscription {} not found", id)))
-            })
+            Box::pin(async move { Self::get_by_id_tx(tx, user_id, id).await })
         })
         .await
+    }
+
+    pub async fn get_by_id_tx(
+        tx: &mut Transaction<'_, Postgres>,
+        user_id: Uuid,
+        id: Uuid,
+    ) -> Result<ReportSubscription> {
+        Self::set_user_context(tx.as_mut(), user_id).await?;
+
+        sqlx::query_as::<_, ReportSubscription>(
+            r#"
+            SELECT *
+            FROM report_subscriptions
+            WHERE id = $1
+              AND user_id = $2
+              AND deleted_at IS NULL
+            "#,
+        )
+        .bind(id)
+        .bind(user_id)
+        .fetch_optional(tx.as_mut())
+        .await
+        .map_err(|err| Error::Database(err.to_string()))?
+        .ok_or_else(|| Error::NotFound(format!("Report subscription {} not found", id)))
     }
 
     pub async fn create(
@@ -71,177 +88,221 @@ impl ReportSubscriptionService {
         tenant_id: Uuid,
         input: CreateReportSubscription,
     ) -> Result<ReportSubscription> {
-        Self::validate_create_input(&input)?;
-
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             let input = input.clone();
-            Box::pin(async move {
-                Self::ensure_user_exists_in_tenant(tx.as_mut(), tenant_id, input.user_id).await?;
-                Self::ensure_template_is_active_in_tenant(tx.as_mut(), tenant_id, input.template_id)
-                    .await?;
-
-                sqlx::query_as::<_, ReportSubscription>(
-                    r#"
-                    INSERT INTO report_subscriptions (
-                        tenant_id,
-                        user_id,
-                        name,
-                        template_id,
-                        period_type,
-                        delivery_channel,
-                        export_format,
-                        filters,
-                        is_active
-                    )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                    RETURNING *
-                    "#,
-                )
-                .bind(tenant_id)
-                .bind(input.user_id)
-                .bind(input.name.trim())
-                .bind(input.template_id)
-                .bind(input.period_type)
-                .bind(input.delivery_channel)
-                .bind(input.export_format)
-                .bind(input.filters.unwrap_or_else(|| serde_json::json!({})))
-                .bind(input.is_active.unwrap_or(true))
-                .fetch_one(tx.as_mut())
-                .await
-                .map_err(|err| Error::Database(err.to_string()))
-            })
+            Box::pin(async move { Self::create_tx(tenant_id, tx, input).await })
         })
         .await
+    }
+
+    pub async fn create_tx(
+        tenant_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+        input: CreateReportSubscription,
+    ) -> Result<ReportSubscription> {
+        Self::validate_create_input(&input)?;
+        Self::set_user_context(tx.as_mut(), input.user_id).await?;
+        Self::ensure_user_exists_in_tenant(tx.as_mut(), tenant_id, input.user_id).await?;
+        Self::ensure_template_is_active_in_tenant(tx.as_mut(), tenant_id, input.template_id)
+            .await?;
+
+        sqlx::query_as::<_, ReportSubscription>(
+            r#"
+            INSERT INTO report_subscriptions (
+                tenant_id,
+                user_id,
+                name,
+                template_id,
+                period_type,
+                delivery_channel,
+                export_format,
+                filters,
+                is_active
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING *
+            "#,
+        )
+        .bind(tenant_id)
+        .bind(input.user_id)
+        .bind(input.name.trim())
+        .bind(input.template_id)
+        .bind(input.period_type)
+        .bind(input.delivery_channel)
+        .bind(input.export_format)
+        .bind(input.filters.unwrap_or_else(|| serde_json::json!({})))
+        .bind(input.is_active.unwrap_or(true))
+        .fetch_one(tx.as_mut())
+        .await
+        .map_err(|err| Error::Database(err.to_string()))
     }
 
     pub async fn update(
         &self,
         tenant_id: Uuid,
+        user_id: Uuid,
+        id: Uuid,
+        input: UpdateReportSubscription,
+    ) -> Result<ReportSubscription> {
+        with_tenant_tx(&self.pool, tenant_id, |tx| {
+            let input = input.clone();
+            Box::pin(async move { Self::update_tx(tenant_id, tx, user_id, id, input).await })
+        })
+        .await
+    }
+
+    pub async fn update_tx(
+        tenant_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+        user_id: Uuid,
         id: Uuid,
         input: UpdateReportSubscription,
     ) -> Result<ReportSubscription> {
         Self::validate_update_input(&input)?;
+        Self::set_user_context(tx.as_mut(), user_id).await?;
 
+        let current = sqlx::query_as::<_, ReportSubscription>(
+            r#"
+            SELECT *
+            FROM report_subscriptions
+            WHERE id = $1
+              AND user_id = $2
+              AND deleted_at IS NULL
+            FOR UPDATE
+            "#,
+        )
+        .bind(id)
+        .bind(user_id)
+        .fetch_optional(tx.as_mut())
+        .await
+        .map_err(|err| Error::Database(err.to_string()))?
+        .ok_or_else(|| Error::NotFound(format!("Report subscription {} not found", id)))?;
+
+        let name = input.name.unwrap_or(current.name);
+        let template_id = input.template_id.unwrap_or(current.template_id);
+        let period_type = input.period_type.unwrap_or(current.period_type);
+        let delivery_channel = input.delivery_channel.unwrap_or(current.delivery_channel);
+        let export_format = input.export_format.unwrap_or(current.export_format);
+        let filters = input.filters.unwrap_or(current.filters);
+        let is_active = input.is_active.unwrap_or(current.is_active);
+
+        Self::validate_name(&name)?;
+        Self::validate_period_type(&period_type)?;
+        Self::validate_delivery_channel(&delivery_channel)?;
+        Self::validate_export_format(&export_format)?;
+        Self::validate_filters(&filters)?;
+        Self::ensure_template_is_active_in_tenant(tx.as_mut(), tenant_id, template_id).await?;
+
+        sqlx::query_as::<_, ReportSubscription>(
+            r#"
+            UPDATE report_subscriptions
+            SET name = $3,
+                template_id = $4,
+                period_type = $5,
+                delivery_channel = $6,
+                export_format = $7,
+                filters = $8,
+                is_active = $9,
+                version = version + 1,
+                updated_at = NOW()
+            WHERE id = $1
+              AND user_id = $2
+              AND deleted_at IS NULL
+            RETURNING *
+            "#,
+        )
+        .bind(id)
+        .bind(user_id)
+        .bind(name.trim())
+        .bind(template_id)
+        .bind(period_type)
+        .bind(delivery_channel)
+        .bind(export_format)
+        .bind(filters)
+        .bind(is_active)
+        .fetch_one(tx.as_mut())
+        .await
+        .map_err(|err| Error::Database(err.to_string()))
+    }
+
+    pub async fn soft_delete(&self, tenant_id: Uuid, user_id: Uuid, id: Uuid) -> Result<()> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
-            let input = input.clone();
-            Box::pin(async move {
-                let current = sqlx::query_as::<_, ReportSubscription>(
-                    r#"
-                    SELECT *
-                    FROM report_subscriptions
-                    WHERE id = $1
-                      AND deleted_at IS NULL
-                    FOR UPDATE
-                    "#,
-                )
-                .bind(id)
-                .fetch_optional(tx.as_mut())
-                .await
-                .map_err(|err| Error::Database(err.to_string()))?
-                .ok_or_else(|| Error::NotFound(format!("Report subscription {} not found", id)))?;
-
-                let name = input.name.unwrap_or(current.name);
-                let template_id = input.template_id.unwrap_or(current.template_id);
-                let period_type = input.period_type.unwrap_or(current.period_type);
-                let delivery_channel = input.delivery_channel.unwrap_or(current.delivery_channel);
-                let export_format = input.export_format.unwrap_or(current.export_format);
-                let filters = input.filters.unwrap_or(current.filters);
-                let is_active = input.is_active.unwrap_or(current.is_active);
-
-                Self::validate_name(&name)?;
-                Self::validate_period_type(&period_type)?;
-                Self::validate_delivery_channel(&delivery_channel)?;
-                Self::validate_export_format(&export_format)?;
-                Self::validate_filters(&filters)?;
-                Self::ensure_template_is_active_in_tenant(tx.as_mut(), tenant_id, template_id)
-                    .await?;
-
-                sqlx::query_as::<_, ReportSubscription>(
-                    r#"
-                    UPDATE report_subscriptions
-                    SET name = $2,
-                        template_id = $3,
-                        period_type = $4,
-                        delivery_channel = $5,
-                        export_format = $6,
-                        filters = $7,
-                        is_active = $8,
-                        version = version + 1,
-                        updated_at = NOW()
-                    WHERE id = $1
-                      AND deleted_at IS NULL
-                    RETURNING *
-                    "#,
-                )
-                .bind(id)
-                .bind(name.trim())
-                .bind(template_id)
-                .bind(period_type)
-                .bind(delivery_channel)
-                .bind(export_format)
-                .bind(filters)
-                .bind(is_active)
-                .fetch_one(tx.as_mut())
-                .await
-                .map_err(|err| Error::Database(err.to_string()))
-            })
+            Box::pin(async move { Self::soft_delete_tx(tx, user_id, id).await })
         })
         .await
     }
 
-    pub async fn soft_delete(&self, tenant_id: Uuid, id: Uuid) -> Result<()> {
+    pub async fn soft_delete_tx(
+        tx: &mut Transaction<'_, Postgres>,
+        user_id: Uuid,
+        id: Uuid,
+    ) -> Result<()> {
+        Self::set_user_context(tx.as_mut(), user_id).await?;
+
+        let result = sqlx::query(
+            r#"
+            UPDATE report_subscriptions
+            SET deleted_at = NOW(),
+                updated_at = NOW(),
+                version = version + 1
+            WHERE id = $1
+              AND user_id = $2
+              AND deleted_at IS NULL
+            "#,
+        )
+        .bind(id)
+        .bind(user_id)
+        .execute(tx.as_mut())
+        .await
+        .map_err(|err| Error::Database(err.to_string()))?;
+
+        if result.rows_affected() == 0 {
+            return Err(Error::NotFound(format!(
+                "Report subscription {} not found",
+                id
+            )));
+        }
+
+        Ok(())
+    }
+
+    pub async fn mark_triggered(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        id: Uuid,
+    ) -> Result<ReportSubscription> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
-            Box::pin(async move {
-                let result = sqlx::query(
-                    r#"
-                    UPDATE report_subscriptions
-                    SET deleted_at = NOW(),
-                        updated_at = NOW(),
-                        version = version + 1
-                    WHERE id = $1
-                      AND deleted_at IS NULL
-                    "#,
-                )
-                .bind(id)
-                .execute(tx.as_mut())
-                .await
-                .map_err(|err| Error::Database(err.to_string()))?;
-
-                if result.rows_affected() == 0 {
-                    return Err(Error::NotFound(format!(
-                        "Report subscription {} not found",
-                        id
-                    )));
-                }
-
-                Ok(())
-            })
+            Box::pin(async move { Self::mark_triggered_tx(tx, user_id, id).await })
         })
         .await
     }
 
-    pub async fn mark_triggered(&self, tenant_id: Uuid, id: Uuid) -> Result<ReportSubscription> {
-        with_tenant_tx(&self.pool, tenant_id, |tx| {
-            Box::pin(async move {
-                sqlx::query_as::<_, ReportSubscription>(
-                    r#"
-                    UPDATE report_subscriptions
-                    SET last_triggered_at = NOW(),
-                        version = version + 1,
-                        updated_at = NOW()
-                    WHERE id = $1
-                      AND deleted_at IS NULL
-                    RETURNING *
-                    "#,
-                )
-                .bind(id)
-                .fetch_optional(tx.as_mut())
-                .await
-                .map_err(|err| Error::Database(err.to_string()))?
-                .ok_or_else(|| Error::NotFound(format!("Report subscription {} not found", id)))
-            })
-        })
+    pub async fn mark_triggered_tx(
+        tx: &mut Transaction<'_, Postgres>,
+        user_id: Uuid,
+        id: Uuid,
+    ) -> Result<ReportSubscription> {
+        Self::set_user_context(tx.as_mut(), user_id).await?;
+
+        sqlx::query_as::<_, ReportSubscription>(
+            r#"
+            UPDATE report_subscriptions
+            SET last_triggered_at = NOW(),
+                version = version + 1,
+                updated_at = NOW()
+            WHERE id = $1
+              AND user_id = $2
+              AND deleted_at IS NULL
+            RETURNING *
+            "#,
+        )
+        .bind(id)
+        .bind(user_id)
+        .fetch_optional(tx.as_mut())
         .await
+        .map_err(|err| Error::Database(err.to_string()))?
+        .ok_or_else(|| Error::NotFound(format!("Report subscription {} not found", id)))
     }
 
     fn validate_create_input(input: &CreateReportSubscription) -> Result<()> {
@@ -341,6 +402,15 @@ impl ReportSubscriptionService {
                 "filters must be a JSON object".to_string(),
             ));
         }
+        Ok(())
+    }
+
+    async fn set_user_context(conn: &mut PgConnection, user_id: Uuid) -> Result<()> {
+        sqlx::query("SELECT set_config('app.user_id', $1, true)")
+            .bind(user_id.to_string())
+            .execute(conn)
+            .await
+            .map_err(|err| Error::Database(err.to_string()))?;
         Ok(())
     }
 

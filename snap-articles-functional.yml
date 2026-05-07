@@ -1,0 +1,650 @@
+- generic [active] [ref=e1]:
+  - link "跳到主要内容" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=e4]:
+    - complementary "主导航" [ref=e15]:
+      - generic [ref=e16]:
+        - img [ref=e18]
+        - generic [ref=e21]:
+          - generic [ref=e22]: 法眼
+          - generic [ref=e23]: LawSaw
+      - navigation [ref=e24]:
+        - generic [ref=e25]:
+          - paragraph [ref=e26]: 导航
+          - link "数据看板" [ref=e28] [cursor=pointer]:
+            - /url: /zh/dashboard
+            - img [ref=e30]
+            - generic [ref=e35]: 数据看板
+          - link "我的资讯流" [ref=e37] [cursor=pointer]:
+            - /url: /zh/me/feed
+            - img [ref=e39]
+            - generic [ref=e42]: 我的资讯流
+          - link "全部资讯" [ref=e44] [cursor=pointer]:
+            - /url: /zh/articles
+            - img [ref=e47]
+            - generic [ref=e50]: 全部资讯
+          - link "阅读历史" [ref=e52] [cursor=pointer]:
+            - /url: /zh/me/reading-history
+            - img [ref=e54]
+            - generic [ref=e58]: 阅读历史
+          - link "报告" [ref=e60] [cursor=pointer]:
+            - /url: /zh/reports
+            - img [ref=e62]
+            - generic [ref=e65]: 报告
+          - link "统计分析" [ref=e67] [cursor=pointer]:
+            - /url: /zh/analytics
+            - img [ref=e69]
+            - generic [ref=e72]: 统计分析
+          - link "知识图谱" [ref=e74] [cursor=pointer]:
+            - /url: /zh/knowledge
+            - img [ref=e76]
+            - generic [ref=e82]: 知识图谱
+          - link "留言反馈" [ref=e84] [cursor=pointer]:
+            - /url: /zh/feedback
+            - img [ref=e86]
+            - generic [ref=e88]: 留言反馈
+          - link "系统设置" [ref=e90] [cursor=pointer]:
+            - /url: /zh/settings
+            - img [ref=e92]
+            - generic [ref=e95]: 系统设置
+        - generic [ref=e96]:
+          - paragraph [ref=e97]: Admin
+          - link "管理员工作台" [ref=e99] [cursor=pointer]:
+            - /url: /zh/admin
+            - img [ref=e101]
+            - generic [ref=e103]: 管理员工作台
+          - link "用户目录" [ref=e105] [cursor=pointer]:
+            - /url: /zh/admin/users
+            - img [ref=e107]
+            - generic [ref=e110]: 用户目录
+          - link "授权关系" [ref=e112] [cursor=pointer]:
+            - /url: /zh/admin/relations
+            - img [ref=e114]
+            - generic [ref=e119]: 授权关系
+          - link "频道管理" [ref=e121] [cursor=pointer]:
+            - /url: /zh/admin/channels
+            - img [ref=e123]
+            - generic [ref=e126]: 频道管理
+          - link "横幅管理" [ref=e128] [cursor=pointer]:
+            - /url: /zh/admin/banners
+            - img [ref=e130]
+            - generic [ref=e133]: 横幅管理
+          - link "置顶文章" [ref=e135] [cursor=pointer]:
+            - /url: /zh/admin/pins
+            - img [ref=e137]
+            - generic [ref=e139]: 置顶文章
+          - link "反馈中心" [ref=e141] [cursor=pointer]:
+            - /url: /zh/admin/feedbacks
+            - img [ref=e143]
+            - generic [ref=e145]: 反馈中心
+          - link "审计日志" [ref=e147] [cursor=pointer]:
+            - /url: /zh/admin/audit
+            - img [ref=e149]
+            - generic [ref=e154]: 审计日志
+          - link "AI 使用情况" [ref=e156] [cursor=pointer]:
+            - /url: /zh/admin/ai-usage
+            - img [ref=e158]
+            - generic [ref=e170]: AI 使用情况
+          - link "API 密钥" [ref=e172] [cursor=pointer]:
+            - /url: /zh/admin/apikeys
+            - img [ref=e174]
+            - generic [ref=e178]: API 密钥
+          - link "报告" [ref=e180] [cursor=pointer]:
+            - /url: /zh/admin/reports
+            - img [ref=e182]
+            - generic [ref=e186]: 报告
+          - link "知识图谱" [ref=e188] [cursor=pointer]:
+            - /url: /zh/admin/knowledge
+            - img [ref=e190]
+            - generic [ref=e192]: 知识图谱
+        - generic [ref=e193]:
+          - paragraph [ref=e194]: 10 板块
+          - generic [ref=e195]:
+            - link "立法前沿" [ref=e197] [cursor=pointer]:
+              - /url: /zh/category/legislation
+              - img [ref=e199]
+              - generic [ref=e202]: 立法前沿
+            - link "监管动向" [ref=e204] [cursor=pointer]:
+              - /url: /zh/category/regulation
+              - img [ref=e206]
+              - generic [ref=e210]: 监管动向
+            - link "执法案例" [ref=e212] [cursor=pointer]:
+              - /url: /zh/category/enforcement
+              - img [ref=e214]
+              - generic [ref=e218]: 执法案例
+            - link "业界资讯" [ref=e220] [cursor=pointer]:
+              - /url: /zh/category/industry
+              - img [ref=e222]
+              - generic [ref=e225]: 业界资讯
+            - link "合规前沿" [ref=e227] [cursor=pointer]:
+              - /url: /zh/category/compliance
+              - img [ref=e229]
+              - generic [ref=e232]: 合规前沿
+            - link "数据动态" [ref=e234] [cursor=pointer]:
+              - /url: /zh/category/data
+              - img [ref=e236]
+              - generic [ref=e238]: 数据动态
+            - link "安全前哨" [ref=e240] [cursor=pointer]:
+              - /url: /zh/category/security
+              - img [ref=e242]
+              - generic [ref=e244]: 安全前哨
+            - link "学术文章" [ref=e246] [cursor=pointer]:
+              - /url: /zh/category/academic
+              - img [ref=e248]
+              - generic [ref=e251]: 学术文章
+            - link "重大事件" [ref=e253] [cursor=pointer]:
+              - /url: /zh/category/events
+              - img [ref=e255]
+              - generic [ref=e257]: 重大事件
+            - link "国际视野" [ref=e259] [cursor=pointer]:
+              - /url: /zh/category/international
+              - img [ref=e261]
+              - generic [ref=e266]: 国际视野
+      - generic [ref=e267]:
+        - button "收起菜单" [ref=e268]:
+          - img [ref=e270]
+          - generic [ref=e272]: 收起菜单
+        - button "切换预览角色" [ref=e273]:
+          - generic [ref=e274]: Q
+          - generic [ref=e275]:
+            - generic [ref=e276]:
+              - generic [ref=e277]: QA Admin
+              - generic [ref=e278]: 租户管理员
+            - paragraph [ref=e279]: 当前角色
+          - img [ref=e280]
+    - main [ref=e282]:
+      - generic [ref=e283]:
+        - generic [ref=e284]:
+          - generic [ref=e286]:
+            - img [ref=e287]
+            - combobox "全局搜索关键词" [ref=e290]
+            - button "执行全局搜索" [disabled]:
+              - img
+          - generic [ref=e291]:
+            - button "切换语言" [ref=e292]:
+              - img [ref=e293]
+            - button "通知中心" [ref=e296]:
+              - img [ref=e297]
+              - generic: "30"
+            - button "Q QA Admin" [ref=e301]:
+              - generic [ref=e303]: Q
+              - generic [ref=e304]: QA Admin
+        - navigation "面包屑导航" [ref=e306]:
+          - list [ref=e307]:
+            - listitem [ref=e308]:
+              - link "首页" [ref=e309] [cursor=pointer]:
+                - /url: /zh
+                - img [ref=e310]
+                - generic [ref=e313]: 首页
+            - listitem [ref=e314]:
+              - img [ref=e315]
+              - generic [ref=e317]: 资讯
+      - generic [ref=e318]:
+        - generic [ref=e319]:
+          - generic [ref=e320]:
+            - heading "资讯列表" [level=1] [ref=e321]
+            - paragraph [ref=e322]:
+              - text: 共
+              - generic [ref=e324]: "95"
+              - text: 篇
+          - generic [ref=e325]:
+            - generic [ref=e326]:
+              - button [ref=e327]:
+                - img [ref=e328]
+              - button [ref=e329]:
+                - img [ref=e330]
+            - button "筛选" [ref=e335]:
+              - img [ref=e336]
+              - text: 筛选
+        - generic [ref=e337]:
+          - generic [ref=e339] [cursor=pointer]: 全部
+          - generic [ref=e341] [cursor=pointer]:
+            - img [ref=e342]
+            - text: 立法前沿
+          - generic [ref=e346] [cursor=pointer]:
+            - img [ref=e347]
+            - text: 监管动向
+          - generic [ref=e352] [cursor=pointer]:
+            - img [ref=e353]
+            - text: 执法案例
+          - generic [ref=e358] [cursor=pointer]:
+            - img [ref=e359]
+            - text: 业界资讯
+          - generic [ref=e363] [cursor=pointer]:
+            - img [ref=e364]
+            - text: 合规前沿
+          - generic [ref=e368] [cursor=pointer]:
+            - img [ref=e369]
+            - text: 数据动态
+          - generic [ref=e372] [cursor=pointer]:
+            - img [ref=e373]
+            - text: 安全前哨
+          - generic [ref=e376] [cursor=pointer]:
+            - img [ref=e377]
+            - text: 学术文章
+          - generic [ref=e381] [cursor=pointer]:
+            - img [ref=e382]
+            - text: 重大事件
+          - generic [ref=e385] [cursor=pointer]:
+            - img [ref=e386]
+            - text: 国际视野
+        - generic [ref=e391]:
+          - heading "资讯列表" [level=3] [ref=e393]:
+            - img [ref=e394]
+            - text: 资讯列表
+          - generic [ref=e397]:
+            - generic [ref=e399]:
+              - 'link "低风险 building-2 监管动向 Mbodi AI (YC P25) Is Hiring Article URL: https://www.ycombinator.com/companies/mbodi-ai/jobs/mf9L3sy-senior-robotics-engineer-sy... chitianhao 4月4日" [ref=e403] [cursor=pointer]':
+                - /url: /zh/articles/ffd22741-7480-4ced-bd48-3e8aca5abd9a
+                - generic [ref=e404]:
+                  - generic [ref=e405]:
+                    - generic [ref=e406]:
+                      - generic [ref=e407]:
+                        - img [ref=e408]
+                        - text: 低风险
+                      - generic [ref=e411]: building-2 监管动向
+                    - button [ref=e412]:
+                      - img [ref=e413]
+                  - heading "Mbodi AI (YC P25) Is Hiring" [level=3] [ref=e415]
+                  - paragraph [ref=e416]: "Article URL: https://www.ycombinator.com/companies/mbodi-ai/jobs/mf9L3sy-senior-robotics-engineer-sy..."
+                  - generic [ref=e417]:
+                    - generic [ref=e418]:
+                      - generic [ref=e419]: chitianhao
+                      - generic [ref=e420]:
+                        - img [ref=e421]
+                        - text: 4月4日
+                    - img [ref=e424]
+              - 'link "低风险 scroll-text 立法前沿 A new gene therapy is giving people born deaf the chance to hear Article URL: https://www.sciencedaily.com/releases/2026/04/260403044651.htm Comments URL: https://ne... bilsbie 4月5日" [ref=e431] [cursor=pointer]':
+                - /url: /zh/articles/fb6b0a89-1fcd-44bf-bd45-6318b8dc0a9d
+                - generic [ref=e432]:
+                  - generic [ref=e433]:
+                    - generic [ref=e434]:
+                      - generic [ref=e435]:
+                        - img [ref=e436]
+                        - text: 低风险
+                      - generic [ref=e439]: scroll-text 立法前沿
+                    - button [ref=e440]:
+                      - img [ref=e441]
+                  - heading "A new gene therapy is giving people born deaf the chance to hear" [level=3] [ref=e443]
+                  - paragraph [ref=e444]: "Article URL: https://www.sciencedaily.com/releases/2026/04/260403044651.htm Comments URL: https://ne..."
+                  - generic [ref=e445]:
+                    - generic [ref=e446]:
+                      - generic [ref=e447]: bilsbie
+                      - generic [ref=e448]:
+                        - img [ref=e449]
+                        - text: 4月5日
+                    - img [ref=e452]
+              - 'link "低风险 building-2 监管动向 Tesla Is Sitting on a Record 50k Unsold EVs Article URL: https://insideevs.com/news/791999/tesla-unsold-inventory-record-q1-2026/ Comments URL: ... vrganj 4月4日" [ref=e459] [cursor=pointer]':
+                - /url: /zh/articles/fac12e4d-33fa-40ff-93e3-5195d70cacef
+                - generic [ref=e460]:
+                  - generic [ref=e461]:
+                    - generic [ref=e462]:
+                      - generic [ref=e463]:
+                        - img [ref=e464]
+                        - text: 低风险
+                      - generic [ref=e467]: building-2 监管动向
+                    - button [ref=e468]:
+                      - img [ref=e469]
+                  - heading "Tesla Is Sitting on a Record 50k Unsold EVs" [level=3] [ref=e471]
+                  - paragraph [ref=e472]: "Article URL: https://insideevs.com/news/791999/tesla-unsold-inventory-record-q1-2026/ Comments URL: ..."
+                  - generic [ref=e473]:
+                    - generic [ref=e474]:
+                      - generic [ref=e475]: vrganj
+                      - generic [ref=e476]:
+                        - img [ref=e477]
+                        - text: 4月4日
+                    - img [ref=e480]
+              - 'link "低风险 scroll-text 立法前沿 How many products does Microsoft have named ''Copilot''? Article URL: https://teybannerman.com/strategy/2026/03/31/how-many-microsoft-copilot-are-there.html ... gpi 4月5日" [ref=e487] [cursor=pointer]':
+                - /url: /zh/articles/f95b7145-cec3-4fc0-84bd-e5cb7503568f
+                - generic [ref=e488]:
+                  - generic [ref=e489]:
+                    - generic [ref=e490]:
+                      - generic [ref=e491]:
+                        - img [ref=e492]
+                        - text: 低风险
+                      - generic [ref=e495]: scroll-text 立法前沿
+                    - button [ref=e496]:
+                      - img [ref=e497]
+                  - heading "How many products does Microsoft have named 'Copilot'?" [level=3] [ref=e499]
+                  - paragraph [ref=e500]: "Article URL: https://teybannerman.com/strategy/2026/03/31/how-many-microsoft-copilot-are-there.html ..."
+                  - generic [ref=e501]:
+                    - generic [ref=e502]:
+                      - generic [ref=e503]: gpi
+                      - generic [ref=e504]:
+                        - img [ref=e505]
+                        - text: 4月5日
+                    - img [ref=e508]
+              - 'link "低风险 scroll-text 立法前沿 Why the most valuable things you know are things you cannot say Article URL: https://deadneurons.substack.com/p/why-the-most-valuable-things-you Comments URL: https... nr378 4月5日" [ref=e515] [cursor=pointer]':
+                - /url: /zh/articles/f4e1952f-cbd6-454e-9d9b-8040ab68e480
+                - generic [ref=e516]:
+                  - generic [ref=e517]:
+                    - generic [ref=e518]:
+                      - generic [ref=e519]:
+                        - img [ref=e520]
+                        - text: 低风险
+                      - generic [ref=e523]: scroll-text 立法前沿
+                    - button [ref=e524]:
+                      - img [ref=e525]
+                  - heading "Why the most valuable things you know are things you cannot say" [level=3] [ref=e527]
+                  - paragraph [ref=e528]: "Article URL: https://deadneurons.substack.com/p/why-the-most-valuable-things-you Comments URL: https..."
+                  - generic [ref=e529]:
+                    - generic [ref=e530]:
+                      - generic [ref=e531]: nr378
+                      - generic [ref=e532]:
+                        - img [ref=e533]
+                        - text: 4月5日
+                    - img [ref=e536]
+              - 'link "低风险 building-2 监管动向 Iran''s Network of Cameras Bolsters Air Defenses, Expert Says Article URL: https://www.wsj.com/livecoverage/iran-war-news-2026/card/iran-s-network-of-cameras-bols... uxhacker 4月5日" [ref=e543] [cursor=pointer]':
+                - /url: /zh/articles/f484fee1-d2ab-4da3-9a20-173dd7339de8
+                - generic [ref=e544]:
+                  - generic [ref=e545]:
+                    - generic [ref=e546]:
+                      - generic [ref=e547]:
+                        - img [ref=e548]
+                        - text: 低风险
+                      - generic [ref=e551]: building-2 监管动向
+                    - button [ref=e552]:
+                      - img [ref=e553]
+                  - heading "Iran's Network of Cameras Bolsters Air Defenses, Expert Says" [level=3] [ref=e555]
+                  - paragraph [ref=e556]: "Article URL: https://www.wsj.com/livecoverage/iran-war-news-2026/card/iran-s-network-of-cameras-bols..."
+                  - generic [ref=e557]:
+                    - generic [ref=e558]:
+                      - generic [ref=e559]: uxhacker
+                      - generic [ref=e560]:
+                        - img [ref=e561]
+                        - text: 4月5日
+                    - img [ref=e564]
+              - 'link "低风险 building-2 监管动向 Plague Ships (2020) Article URL: https://www.afloat.com.au/feature/plague-ships/ Comments URL: https://news.ycombinator.... bryanrasmussen 4月5日" [ref=e571] [cursor=pointer]':
+                - /url: /zh/articles/f42604f8-852a-44b4-a164-d62b668dfd9d
+                - generic [ref=e572]:
+                  - generic [ref=e573]:
+                    - generic [ref=e574]:
+                      - generic [ref=e575]:
+                        - img [ref=e576]
+                        - text: 低风险
+                      - generic [ref=e579]: building-2 监管动向
+                    - button [ref=e580]:
+                      - img [ref=e581]
+                  - heading "Plague Ships (2020)" [level=3] [ref=e583]
+                  - paragraph [ref=e584]: "Article URL: https://www.afloat.com.au/feature/plague-ships/ Comments URL: https://news.ycombinator...."
+                  - generic [ref=e585]:
+                    - generic [ref=e586]:
+                      - generic [ref=e587]: bryanrasmussen
+                      - generic [ref=e588]:
+                        - img [ref=e589]
+                        - text: 4月5日
+                    - img [ref=e592]
+              - 'link "低风险 scroll-text 立法前沿 No One at Waffle House Remembers FEMA Official Who Says He Teleported In Article URL: https://www.nytimes.com/2026/04/03/us/fema-gregg-phillips-waffle-house-teleportation.ht... planewave 4月4日" [ref=e599] [cursor=pointer]':
+                - /url: /zh/articles/f153e0c9-c8b1-4177-a12c-1712d6a2279b
+                - generic [ref=e600]:
+                  - generic [ref=e601]:
+                    - generic [ref=e602]:
+                      - generic [ref=e603]:
+                        - img [ref=e604]
+                        - text: 低风险
+                      - generic [ref=e607]: scroll-text 立法前沿
+                    - button [ref=e608]:
+                      - img [ref=e609]
+                  - heading "No One at Waffle House Remembers FEMA Official Who Says He Teleported In" [level=3] [ref=e611]
+                  - paragraph [ref=e612]: "Article URL: https://www.nytimes.com/2026/04/03/us/fema-gregg-phillips-waffle-house-teleportation.ht..."
+                  - generic [ref=e613]:
+                    - generic [ref=e614]:
+                      - generic [ref=e615]: planewave
+                      - generic [ref=e616]:
+                        - img [ref=e617]
+                        - text: 4月4日
+                    - img [ref=e620]
+              - 'link "低风险 scroll-text 立法前沿 Ask HN: How do you handle clients who don''t pay on time? I run a supply role at a company during the day and I''m building a B2B tool on the side. The problem... Hustlr786 4月4日" [ref=e627] [cursor=pointer]':
+                - /url: /zh/articles/cf467a82-474f-4747-ace1-eff06601687d
+                - generic [ref=e628]:
+                  - generic [ref=e629]:
+                    - generic [ref=e630]:
+                      - generic [ref=e631]:
+                        - img [ref=e632]
+                        - text: 低风险
+                      - generic [ref=e635]: scroll-text 立法前沿
+                    - button [ref=e636]:
+                      - img [ref=e637]
+                  - 'heading "Ask HN: How do you handle clients who don''t pay on time?" [level=3] [ref=e639]'
+                  - paragraph [ref=e640]: I run a supply role at a company during the day and I'm building a B2B tool on the side. The problem...
+                  - generic [ref=e641]:
+                    - generic [ref=e642]:
+                      - generic [ref=e643]: Hustlr786
+                      - generic [ref=e644]:
+                        - img [ref=e645]
+                        - text: 4月4日
+                    - img [ref=e648]
+              - 'link "低风险 scroll-text 立法前沿 US deploying nearly all stealthy long-range JASSM-ER cruise missiles to Iran war Article URL: https://www.msn.com/en-us/money/other/us-deploys-bulk-of-stealthy-long-range-missile-fo... prmph 4月5日" [ref=e655] [cursor=pointer]':
+                - /url: /zh/articles/ca2bff85-93fd-49cb-88a7-1867354a1b43
+                - generic [ref=e656]:
+                  - generic [ref=e657]:
+                    - generic [ref=e658]:
+                      - generic [ref=e659]:
+                        - img [ref=e660]
+                        - text: 低风险
+                      - generic [ref=e663]: scroll-text 立法前沿
+                    - button [ref=e664]:
+                      - img [ref=e665]
+                  - heading "US deploying nearly all stealthy long-range JASSM-ER cruise missiles to Iran war" [level=3] [ref=e667]
+                  - paragraph [ref=e668]: "Article URL: https://www.msn.com/en-us/money/other/us-deploys-bulk-of-stealthy-long-range-missile-fo..."
+                  - generic [ref=e669]:
+                    - generic [ref=e670]:
+                      - generic [ref=e671]: prmph
+                      - generic [ref=e672]:
+                        - img [ref=e673]
+                        - text: 4月5日
+                    - img [ref=e676]
+              - link "低风险 scale 执法案例 LLM Wiki – example of an \"idea file\" https://x.com/karpathy/status/2040470801506541998 https://xcancel.com/karpathy/status/20404708015065... tamnd 4月5日" [ref=e683] [cursor=pointer]:
+                - /url: /zh/articles/bc3ca702-91b3-484e-b5b7-e51d8fad41a3
+                - generic [ref=e684]:
+                  - generic [ref=e685]:
+                    - generic [ref=e686]:
+                      - generic [ref=e687]:
+                        - img [ref=e688]
+                        - text: 低风险
+                      - generic [ref=e691]: scale 执法案例
+                    - button [ref=e692]:
+                      - img [ref=e693]
+                  - heading "LLM Wiki – example of an \"idea file\"" [level=3] [ref=e695]
+                  - paragraph [ref=e696]: https://x.com/karpathy/status/2040470801506541998 https://xcancel.com/karpathy/status/20404708015065...
+                  - generic [ref=e697]:
+                    - generic [ref=e698]:
+                      - generic [ref=e699]: tamnd
+                      - generic [ref=e700]:
+                        - img [ref=e701]
+                        - text: 4月5日
+                    - img [ref=e704]
+              - 'link "低风险 scroll-text 立法前沿 Astronomers Find a Third Galaxy Missing Its Dark Matter Article URL: https://www.universetoday.com/articles/astronomers-find-a-third-galaxy-missing-its-dark... gostsamo 4月5日" [ref=e711] [cursor=pointer]':
+                - /url: /zh/articles/bbdd0e98-526a-417a-8ce9-0d1d9d287793
+                - generic [ref=e712]:
+                  - generic [ref=e713]:
+                    - generic [ref=e714]:
+                      - generic [ref=e715]:
+                        - img [ref=e716]
+                        - text: 低风险
+                      - generic [ref=e719]: scroll-text 立法前沿
+                    - button [ref=e720]:
+                      - img [ref=e721]
+                  - heading "Astronomers Find a Third Galaxy Missing Its Dark Matter" [level=3] [ref=e723]
+                  - paragraph [ref=e724]: "Article URL: https://www.universetoday.com/articles/astronomers-find-a-third-galaxy-missing-its-dark..."
+                  - generic [ref=e725]:
+                    - generic [ref=e726]:
+                      - generic [ref=e727]: gostsamo
+                      - generic [ref=e728]:
+                        - img [ref=e729]
+                        - text: 4月5日
+                    - img [ref=e732]
+              - 'link "低风险 scale 执法案例 IBM 3270 Information Display System: Color and Programmed Symbols (1979) [pdf] Article URL: https://bitsavers.org/pdf/ibm/3278/GA33-3056-0_3270_Information_Display_System_Color_an... hggh 4月5日" [ref=e739] [cursor=pointer]':
+                - /url: /zh/articles/b8367d44-b488-4304-b806-531472a686c5
+                - generic [ref=e740]:
+                  - generic [ref=e741]:
+                    - generic [ref=e742]:
+                      - generic [ref=e743]:
+                        - img [ref=e744]
+                        - text: 低风险
+                      - generic [ref=e747]: scale 执法案例
+                    - button [ref=e748]:
+                      - img [ref=e749]
+                  - 'heading "IBM 3270 Information Display System: Color and Programmed Symbols (1979) [pdf]" [level=3] [ref=e751]'
+                  - paragraph [ref=e752]: "Article URL: https://bitsavers.org/pdf/ibm/3278/GA33-3056-0_3270_Information_Display_System_Color_an..."
+                  - generic [ref=e753]:
+                    - generic [ref=e754]:
+                      - generic [ref=e755]: hggh
+                      - generic [ref=e756]:
+                        - img [ref=e757]
+                        - text: 4月5日
+                    - img [ref=e760]
+              - 'link "低风险 scroll-text 立法前沿 What life looks like on the most remote inhabited island Article URL: https://apps.npr.org/life-on-tristan-da-cunha/ Comments URL: https://news.ycombinator.c... brightbeige 4月5日" [ref=e767] [cursor=pointer]':
+                - /url: /zh/articles/ad635b95-0bdf-4f10-9c48-2c2284015252
+                - generic [ref=e768]:
+                  - generic [ref=e769]:
+                    - generic [ref=e770]:
+                      - generic [ref=e771]:
+                        - img [ref=e772]
+                        - text: 低风险
+                      - generic [ref=e775]: scroll-text 立法前沿
+                    - button [ref=e776]:
+                      - img [ref=e777]
+                  - heading "What life looks like on the most remote inhabited island" [level=3] [ref=e779]
+                  - paragraph [ref=e780]: "Article URL: https://apps.npr.org/life-on-tristan-da-cunha/ Comments URL: https://news.ycombinator.c..."
+                  - generic [ref=e781]:
+                    - generic [ref=e782]:
+                      - generic [ref=e783]: brightbeige
+                      - generic [ref=e784]:
+                        - img [ref=e785]
+                        - text: 4月5日
+                    - img [ref=e788]
+              - 'link "低风险 scale 执法案例 German men 18-45 need military permit for extended stays abroad Article URL: https://www.dw.com/en/german-men-need-military-permit-for-extended-stays-abroad/a-76662... L_226 4月4日" [ref=e795] [cursor=pointer]':
+                - /url: /zh/articles/aaf331f5-8fdb-453c-8f63-373efe82b7fc
+                - generic [ref=e796]:
+                  - generic [ref=e797]:
+                    - generic [ref=e798]:
+                      - generic [ref=e799]:
+                        - img [ref=e800]
+                        - text: 低风险
+                      - generic [ref=e803]: scale 执法案例
+                    - button [ref=e804]:
+                      - img [ref=e805]
+                  - heading "German men 18-45 need military permit for extended stays abroad" [level=3] [ref=e807]
+                  - paragraph [ref=e808]: "Article URL: https://www.dw.com/en/german-men-need-military-permit-for-extended-stays-abroad/a-76662..."
+                  - generic [ref=e809]:
+                    - generic [ref=e810]:
+                      - generic [ref=e811]: L_226
+                      - generic [ref=e812]:
+                        - img [ref=e813]
+                        - text: 4月4日
+                    - img [ref=e816]
+              - 'link "低风险 building-2 监管动向 Show HN: A game where you build a GPU Thought the resources for GPU arch were lacking, so here we are Comments URL: https://news.ycombinat... Jaso1024 4月5日" [ref=e823] [cursor=pointer]':
+                - /url: /zh/articles/a7ef7e78-48b0-44bf-9ecb-f2b81d08b300
+                - generic [ref=e824]:
+                  - generic [ref=e825]:
+                    - generic [ref=e826]:
+                      - generic [ref=e827]:
+                        - img [ref=e828]
+                        - text: 低风险
+                      - generic [ref=e831]: building-2 监管动向
+                    - button [ref=e832]:
+                      - img [ref=e833]
+                  - 'heading "Show HN: A game where you build a GPU" [level=3] [ref=e835]'
+                  - paragraph [ref=e836]: "Thought the resources for GPU arch were lacking, so here we are Comments URL: https://news.ycombinat..."
+                  - generic [ref=e837]:
+                    - generic [ref=e838]:
+                      - generic [ref=e839]: Jaso1024
+                      - generic [ref=e840]:
+                        - img [ref=e841]
+                        - text: 4月5日
+                    - img [ref=e844]
+              - link "低风险 scroll-text 立法前沿 我国牵头高压直流输电领域电容器国际标准 成功立项 近日，由我国发起的《高压直流输电系统用直流滤波电容器》国际标准提案通过国际电工委员会(IEC)立项。该标准是高压直流输电领域首个专门针对直流滤波电容器的国际标准，填补了相关专业领域标准空白。高压直流输... 4月4日" [ref=e851] [cursor=pointer]:
+                - /url: /zh/articles/a3bc9e36-8c88-40f2-8f14-82838c4d7eb6
+                - generic [ref=e852]:
+                  - generic [ref=e853]:
+                    - generic [ref=e854]:
+                      - generic [ref=e855]:
+                        - img [ref=e856]
+                        - text: 低风险
+                      - generic [ref=e859]: scroll-text 立法前沿
+                    - button [ref=e860]:
+                      - img [ref=e861]
+                  - heading "我国牵头高压直流输电领域电容器国际标准 成功立项" [level=3] [ref=e863]
+                  - paragraph [ref=e864]: 近日，由我国发起的《高压直流输电系统用直流滤波电容器》国际标准提案通过国际电工委员会(IEC)立项。该标准是高压直流输电领域首个专门针对直流滤波电容器的国际标准，填补了相关专业领域标准空白。高压直流输...
+                  - generic [ref=e865]:
+                    - generic [ref=e867]:
+                      - img [ref=e868]
+                      - text: 4月4日
+                    - img [ref=e871]
+              - 'link "低风险 scroll-text 立法前沿 Some Unusual Trees Article URL: https://thoughts.wyounas.com/p/some-unusual-trees Comments URL: https://news.ycombinato... simplegeek 4月4日" [ref=e878] [cursor=pointer]':
+                - /url: /zh/articles/9d12d366-573f-47ee-9f46-5a05bf0fd5cd
+                - generic [ref=e879]:
+                  - generic [ref=e880]:
+                    - generic [ref=e881]:
+                      - generic [ref=e882]:
+                        - img [ref=e883]
+                        - text: 低风险
+                      - generic [ref=e886]: scroll-text 立法前沿
+                    - button [ref=e887]:
+                      - img [ref=e888]
+                  - heading "Some Unusual Trees" [level=3] [ref=e890]
+                  - paragraph [ref=e891]: "Article URL: https://thoughts.wyounas.com/p/some-unusual-trees Comments URL: https://news.ycombinato..."
+                  - generic [ref=e892]:
+                    - generic [ref=e893]:
+                      - generic [ref=e894]: simplegeek
+                      - generic [ref=e895]:
+                        - img [ref=e896]
+                        - text: 4月4日
+                    - img [ref=e899]
+              - 'link "低风险 scale 执法案例 German implementation of eIDAS will require an Apple/Google account to function Article URL: https://bmi.usercontent.opencode.de/eudi-wallet/wallet-development-documentation-public... DyslexicAtheist 4月5日" [ref=e906] [cursor=pointer]':
+                - /url: /zh/articles/966d43fe-4719-4503-8e47-2cf05925cf28
+                - generic [ref=e907]:
+                  - generic [ref=e908]:
+                    - generic [ref=e909]:
+                      - generic [ref=e910]:
+                        - img [ref=e911]
+                        - text: 低风险
+                      - generic [ref=e914]: scale 执法案例
+                    - button [ref=e915]:
+                      - img [ref=e916]
+                  - heading "German implementation of eIDAS will require an Apple/Google account to function" [level=3] [ref=e918]
+                  - paragraph [ref=e919]: "Article URL: https://bmi.usercontent.opencode.de/eudi-wallet/wallet-development-documentation-public..."
+                  - generic [ref=e920]:
+                    - generic [ref=e921]:
+                      - generic [ref=e922]: DyslexicAtheist
+                      - generic [ref=e923]:
+                        - img [ref=e924]
+                        - text: 4月5日
+                    - img [ref=e927]
+              - 'link "低风险 scale 执法案例 Student Debt Burdened Them, So They Moved Abroad and Stopped Paying Article URL: https://www.nytimes.com/2026/04/04/business/student-loans-abroad-default.html Comments ... JumpCrisscross 4月5日" [ref=e934] [cursor=pointer]':
+                - /url: /zh/articles/9390f81a-c4de-46ce-8974-1e57697af97b
+                - generic [ref=e935]:
+                  - generic [ref=e936]:
+                    - generic [ref=e937]:
+                      - generic [ref=e938]:
+                        - img [ref=e939]
+                        - text: 低风险
+                      - generic [ref=e942]: scale 执法案例
+                    - button [ref=e943]:
+                      - img [ref=e944]
+                  - heading "Student Debt Burdened Them, So They Moved Abroad and Stopped Paying" [level=3] [ref=e946]
+                  - paragraph [ref=e947]: "Article URL: https://www.nytimes.com/2026/04/04/business/student-loans-abroad-default.html Comments ..."
+                  - generic [ref=e948]:
+                    - generic [ref=e949]:
+                      - generic [ref=e950]: JumpCrisscross
+                      - generic [ref=e951]:
+                        - img [ref=e952]
+                        - text: 4月5日
+                    - img [ref=e955]
+            - generic [ref=e959]:
+              - paragraph [ref=e960]: 第 1 / 5 页
+              - generic [ref=e961]:
+                - button "上一页" [disabled]:
+                  - img
+                  - text: 上一页
+                - button "下一页" [ref=e962]:
+                  - text: 下一页
+                  - img [ref=e963]
+  - generic [ref=e965]:
+    - img [ref=e967]
+    - button "Open Tanstack query devtools" [ref=e1015] [cursor=pointer]:
+      - img [ref=e1016]
+  - button "Open Next.js Dev Tools" [ref=e11] [cursor=pointer]:
+    - img [ref=e12]
+  - alert [ref=e1064]

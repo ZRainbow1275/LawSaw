@@ -21,6 +21,22 @@ pub struct PdfExporter {
     http_client: reqwest::Client,
 }
 
+struct PdfPageOptions<'a> {
+    margin_top: &'a str,
+    margin_bottom: &'a str,
+    margin_left: &'a str,
+    margin_right: &'a str,
+    landscape: bool,
+    format: &'a str,
+}
+
+struct GotenbergFallbackRequest<'a> {
+    html_content: &'a str,
+    page: PdfPageOptions<'a>,
+    browserless_error: String,
+    request_id: &'a str,
+}
+
 impl PdfExporter {
     pub fn new(browserless_url: &str) -> Self {
         let gotenberg_url = std::env::var("LAW_EYE__GOTENBERG__URL")
@@ -101,16 +117,25 @@ impl PdfExporter {
             .and_then(|v| v.as_str())
             .unwrap_or("A4");
 
+        let page_options = PdfPageOptions {
+            margin_top,
+            margin_bottom,
+            margin_left,
+            margin_right,
+            landscape,
+            format,
+        };
+
         let browserless_payload = serde_json::json!({
             "html": html_content,
             "options": {
-                "format": format,
-                "landscape": landscape,
+                "format": page_options.format,
+                "landscape": page_options.landscape,
                 "margin": {
-                    "top": margin_top,
-                    "bottom": margin_bottom,
-                    "left": margin_left,
-                    "right": margin_right
+                    "top": page_options.margin_top,
+                    "bottom": page_options.margin_bottom,
+                    "left": page_options.margin_left,
+                    "right": page_options.margin_right
                 },
                 "printBackground": true,
                 "displayHeaderFooter": false
@@ -190,40 +215,27 @@ impl PdfExporter {
             }
         }
 
-        self.try_gotenberg_fallback(
+        self.try_gotenberg_fallback(GotenbergFallbackRequest {
             html_content,
-            margin_top,
-            margin_bottom,
-            margin_left,
-            margin_right,
-            landscape,
-            format,
+            page: page_options,
             browserless_error,
-            &request_id,
-        )
+            request_id: &request_id,
+        })
         .await
     }
 
     async fn try_gotenberg_fallback(
         &self,
-        html_content: &str,
-        margin_top: &str,
-        margin_bottom: &str,
-        margin_left: &str,
-        margin_right: &str,
-        landscape: bool,
-        format: &str,
-        browserless_error: String,
-        request_id: &str,
+        request: GotenbergFallbackRequest<'_>,
     ) -> Result<Vec<u8>> {
         let Some(gotenberg_url) = &self.gotenberg_url else {
-            return Err(Error::Http(browserless_error));
+            return Err(Error::Http(request.browserless_error));
         };
 
         let endpoint = format!("{}/forms/chromium/convert/html", gotenberg_url);
 
         for attempt in 1..=GOTENBERG_MAX_ATTEMPTS {
-            let html_part = Part::bytes(html_content.as_bytes().to_vec())
+            let html_part = Part::bytes(request.html_content.as_bytes().to_vec())
                 // Gotenberg chromium html conversion expects an input file named index.html.
                 .file_name("index.html")
                 .mime_str("text/html; charset=utf-8")
@@ -231,12 +243,12 @@ impl PdfExporter {
 
             let form = Form::new()
                 .part("files", html_part)
-                .text("paperSize", format.to_string())
-                .text("landscape", landscape.to_string())
-                .text("marginTop", margin_top.to_string())
-                .text("marginBottom", margin_bottom.to_string())
-                .text("marginLeft", margin_left.to_string())
-                .text("marginRight", margin_right.to_string())
+                .text("paperSize", request.page.format.to_string())
+                .text("landscape", request.page.landscape.to_string())
+                .text("marginTop", request.page.margin_top.to_string())
+                .text("marginBottom", request.page.margin_bottom.to_string())
+                .text("marginLeft", request.page.margin_left.to_string())
+                .text("marginRight", request.page.margin_right.to_string())
                 .text("printBackground", "true".to_string());
 
             let response = self
@@ -252,11 +264,11 @@ impl PdfExporter {
                     let bytes = resp.bytes().await.map_err(|e| {
                         Error::Http(format!(
                             "request_id={} 读取 gotenberg PDF 响应失败: {}",
-                            request_id, e
+                            request.request_id, e
                         ))
                     })?;
                     info!(
-                        request_id = %request_id,
+                        request_id = %request.request_id,
                         attempt,
                         bytes = bytes.len(),
                         "pdf_export gotenberg success"
@@ -268,7 +280,7 @@ impl PdfExporter {
                     let body = resp.text().await.unwrap_or_else(|_| "unknown".to_string());
                     if attempt < GOTENBERG_MAX_ATTEMPTS && Self::should_retry_status(status) {
                         warn!(
-                            request_id = %request_id,
+                            request_id = %request.request_id,
                             attempt,
                             status = %status,
                             "pdf_export gotenberg retry"
@@ -278,13 +290,13 @@ impl PdfExporter {
                     }
                     return Err(Error::Http(format!(
                         "{}; request_id={} gotenberg PDF 生成失败 ({}): {}",
-                        browserless_error, request_id, status, body
+                        request.browserless_error, request.request_id, status, body
                     )));
                 }
                 Err(e) => {
                     if attempt < GOTENBERG_MAX_ATTEMPTS {
                         warn!(
-                            request_id = %request_id,
+                            request_id = %request.request_id,
                             attempt,
                             error = %e,
                             "pdf_export gotenberg retry after request error"
@@ -294,7 +306,7 @@ impl PdfExporter {
                     }
                     return Err(Error::Http(format!(
                         "{}; request_id={} gotenberg PDF 请求失败: {}",
-                        browserless_error, request_id, e
+                        request.browserless_error, request.request_id, e
                     )));
                 }
             }
@@ -302,7 +314,7 @@ impl PdfExporter {
 
         Err(Error::Http(format!(
             "{}; request_id={} gotenberg retry exhausted",
-            browserless_error, request_id
+            request.browserless_error, request.request_id
         )))
     }
 }

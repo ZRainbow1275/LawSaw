@@ -526,13 +526,14 @@ pub(crate) async fn delete_channel_policy(
         let user_agent = user_agent.clone();
 
         Box::pin(async move {
-            let result =
-                sqlx::query("DELETE FROM channel_access_policies WHERE id = $1 AND channel_id = $2")
-                    .bind(policy_id)
-                    .bind(channel_id)
-                    .execute(tx.as_mut())
-                    .await
-                    .map_err(|e| Error::Database(e.to_string()))?;
+            let result = sqlx::query(
+                "DELETE FROM channel_access_policies WHERE id = $1 AND channel_id = $2",
+            )
+            .bind(policy_id)
+            .bind(channel_id)
+            .execute(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
             if result.rows_affected() == 0 {
                 return Err(Error::NotFound(format!("Policy {} not found", policy_id)));
             }

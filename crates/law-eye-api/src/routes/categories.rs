@@ -234,7 +234,9 @@ pub(crate) async fn list_admin_categories(
         .list_admin(query.include_deleted.unwrap_or(false))
         .await
         .map_err(AppError::from)?;
-    Ok(Json(items.into_iter().map(CategoryResponse::from).collect()))
+    Ok(Json(
+        items.into_iter().map(CategoryResponse::from).collect(),
+    ))
 }
 
 #[utoipa::path(
@@ -551,8 +553,8 @@ mod tests {
     use super::*;
     use chrono::Utc;
     use law_eye_core::role_tier::{
-        ROLE_TIER_BASIC_USER, ROLE_TIER_PREMIUM_USER, ROLE_TIER_SUPER_ADMIN, ROLE_TIER_TENANT_ADMIN,
-        ROLE_TIER_VERIFIED_USER,
+        ROLE_TIER_BASIC_USER, ROLE_TIER_PREMIUM_USER, ROLE_TIER_SUPER_ADMIN,
+        ROLE_TIER_TENANT_ADMIN, ROLE_TIER_VERIFIED_USER,
     };
 
     fn category(slug: &str) -> law_eye_db::Category {

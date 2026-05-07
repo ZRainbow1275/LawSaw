@@ -152,12 +152,10 @@ impl RerankClient {
             )));
         }
 
-        let _permit = self
-            .semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|e| Error::Internal(format!("Failed to acquire rerank semaphore: {}", e)))?;
+        let _permit =
+            self.semaphore.clone().acquire_owned().await.map_err(|e| {
+                Error::Internal(format!("Failed to acquire rerank semaphore: {}", e))
+            })?;
 
         let url = format!("{}/rerank", self.base_url);
         let mut last_err: Option<Error> = None;

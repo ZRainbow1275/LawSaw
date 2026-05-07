@@ -91,23 +91,14 @@ export function ReportsPageContent() {
 	return (
 		<>
 			<header className="mb-6 flex items-center gap-3">
-				<span
-					className="flex h-10 w-10 items-center justify-center rounded-2xl"
-					style={{
-						backgroundColor: "var(--surface-accent-icon-bg)",
-						color: "var(--surface-accent-strong)",
-					}}
-				>
+				<span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[color:var(--surface-accent-icon-bg)] text-[color:var(--surface-accent-strong)]">
 					<ClipboardList aria-hidden="true" className="h-5 w-5" />
 				</span>
 				<div>
-					<h1
-						className="text-2xl font-bold tracking-tight"
-						style={{ color: "var(--color-foreground)" }}
-					>
+					<h1 className="text-2xl font-bold tracking-tight text-[color:var(--color-foreground)]">
 						{t("Reports center")}
 					</h1>
-					<p className="text-sm" style={{ color: "var(--surface-muted-text)" }}>
+					<p className="text-sm text-[color:var(--surface-muted-text)]">
 						{t(
 							"Browse, generate and export periodic legal reports — schedule subscriptions or kick off ad-hoc runs.",
 						)}
@@ -130,8 +121,7 @@ export function ReportsPageContent() {
 					{[0, 1, 2, 3].map((i) => (
 						<div
 							key={i}
-							className="h-44 animate-pulse rounded-2xl"
-							style={{ backgroundColor: "var(--color-neutral-100)" }}
+							className="h-44 animate-pulse rounded-2xl bg-[color:var(--color-neutral-100)]"
 						/>
 					))}
 				</div>
@@ -184,10 +174,7 @@ export function ReportsPageContent() {
 					>
 						{t("Previous")}
 					</Button>
-					<span
-						className="text-xs"
-						style={{ color: "var(--surface-muted-text)" }}
-					>
+					<span className="text-xs text-[color:var(--surface-muted-text)]">
 						{t("Page {current} / {total}", {
 							current: page + 1,
 							total: totalPages,

@@ -128,16 +128,14 @@ impl CategoryService {
 
         // Cycle detection: if parent_id is being changed, ensure it does not
         // make `id` reachable from `new_parent_id` via parent-chain traversal.
-        if let Some(new_parent) = input.parent_id {
-            if let Some(new_parent_id) = new_parent {
-                if new_parent_id == id {
-                    return Err(Error::Validation(
-                        "Category cannot be its own parent".to_string(),
-                    ));
-                }
-                self.assert_parent_exists(new_parent_id).await?;
-                self.assert_no_cycle(id, new_parent_id).await?;
+        if let Some(Some(new_parent_id)) = input.parent_id {
+            if new_parent_id == id {
+                return Err(Error::Validation(
+                    "Category cannot be its own parent".to_string(),
+                ));
             }
+            self.assert_parent_exists(new_parent_id).await?;
+            self.assert_no_cycle(id, new_parent_id).await?;
         }
 
         if let Some(slug) = input.slug.as_ref() {
@@ -214,13 +212,12 @@ impl CategoryService {
             ));
         }
 
-        let article_count = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM articles WHERE category_id = $1",
-        )
-        .bind(id)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        let article_count =
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM articles WHERE category_id = $1")
+                .bind(id)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
         if article_count > 0 {
             return Err(Error::Conflict(format!(
                 "Cannot delete a category referenced by {} articles",
@@ -359,13 +356,15 @@ impl CategoryService {
             let visibility_tier = normalize_visibility(row.visibility_tier.as_deref())?;
             let parent_id = match row.parent_slug.as_deref() {
                 None => None,
-                Some(parent_slug) if parent_slug.is_empty() => None,
-                Some(parent_slug) => Some(slug_to_id.get(parent_slug).copied().ok_or_else(|| {
-                    Error::Validation(format!(
-                        "Parent slug '{}' not found for row '{}'",
-                        parent_slug, row.slug
-                    ))
-                })?),
+                Some("") => None,
+                Some(parent_slug) => {
+                    Some(slug_to_id.get(parent_slug).copied().ok_or_else(|| {
+                        Error::Validation(format!(
+                            "Parent slug '{}' not found for row '{}'",
+                            parent_slug, row.slug
+                        ))
+                    })?)
+                }
             };
             let upserted = upsert_one_in_tx(
                 &mut tx,

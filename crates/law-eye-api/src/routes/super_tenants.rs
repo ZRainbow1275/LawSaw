@@ -221,8 +221,7 @@ pub(crate) async fn create_tenant(
     // The admin user must claim the account via the password-reset token
     // returned below. The interim password is a random UUID hash that is
     // never disclosed and never usable for login.
-    let placeholder_password =
-        format!("{}-{}", Uuid::new_v4(), Uuid::new_v4());
+    let placeholder_password = format!("{}-{}", Uuid::new_v4(), Uuid::new_v4());
 
     let admin_user = state
         .user_service
@@ -608,7 +607,11 @@ pub(crate) async fn list_tenant_users(
     .await
     .map_err(AppError::from)?;
 
-    let role_filter = query.role_tier.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let role_filter = query
+        .role_tier
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
     let mut data: Vec<TenantUserResponse> = Vec::with_capacity(users.len());
     for user in users {
         let roles = state
@@ -818,9 +821,7 @@ pub(crate) async fn reset_admin_password(
             .fetch_optional(tx.as_mut())
             .await
             .map_err(|e| Error::Database(e.to_string()))?
-            .ok_or_else(|| {
-                Error::NotFound(format!("Tenant {} has no super_admin user", id))
-            })
+            .ok_or_else(|| Error::NotFound(format!("Tenant {} has no super_admin user", id)))
         })
     })
     .await
@@ -1061,11 +1062,10 @@ pub(crate) async fn list_tenant_exports(
 
     // tenant_exports has RLS pinned to app.tenant_id; the SELECT runs inside
     // with_tenant_tx for the target tenant.
-    let rows: Vec<TenantExportResponse> =
-        law_eye_core::with_tenant_tx(&state.pool, id, |tx| {
-            Box::pin(async move {
-                sqlx::query_as::<_, TenantExportResponse>(
-                    r#"
+    let rows: Vec<TenantExportResponse> = law_eye_core::with_tenant_tx(&state.pool, id, |tx| {
+        Box::pin(async move {
+            sqlx::query_as::<_, TenantExportResponse>(
+                r#"
                     SELECT id, tenant_id, status, requested_by, job_id,
                            download_url, size_bytes, error_message,
                            started_at, finished_at, created_at
@@ -1074,17 +1074,17 @@ pub(crate) async fn list_tenant_exports(
                     ORDER BY created_at DESC, id DESC
                     LIMIT $2 OFFSET $3
                     "#,
-                )
-                .bind(id)
-                .bind(limit)
-                .bind(offset)
-                .fetch_all(tx.as_mut())
-                .await
-                .map_err(|e| Error::Database(e.to_string()))
-            })
+            )
+            .bind(id)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(tx.as_mut())
+            .await
+            .map_err(|e| Error::Database(e.to_string()))
         })
-        .await
-        .map_err(AppError::from)?;
+    })
+    .await
+    .map_err(AppError::from)?;
 
     let total: i64 = law_eye_core::with_tenant_tx(&state.pool, id, |tx| {
         Box::pin(async move {

@@ -1876,6 +1876,7 @@ impl Worker {
     /// F.3.b — Periodic maintenance for source_runs:
     ///   1) Force-fail rows stuck in `running` for > 24h (worker died mid-crawl)
     ///   2) Drop rows older than 90 days to keep the admin history bounded
+    ///
     /// Runs across all tenants; uses a tenant-scoped tx for each tenant_id present.
     async fn run_source_runs_maintenance(&self) -> anyhow::Result<()> {
         // Collect distinct tenant_ids that have any source_runs. We only need to
@@ -3671,26 +3672,24 @@ impl Worker {
                 stage_reports.push(tags_stage);
 
                 // Sentiment analysis (graceful: 失败时不阻塞主链路，落库 None 即可)
-                let (sentiment_opt, sentiment_stage) = match ai_service
-                    .analyze_sentiment(&article.title, content)
-                    .await
-                {
-                    Ok(sentiment) => (Some(sentiment), AiStageReport::success("sentiment")),
-                    Err(err) => {
-                        warn!(
-                            article_id = %task.article_id,
-                            error = %err,
-                            "AI full sentiment analysis failed, falling back to NULL"
-                        );
-                        (
-                            None,
-                            AiStageReport::degraded(
-                                "sentiment",
-                                sanitize_error_message(err.to_string()),
-                            ),
-                        )
-                    }
-                };
+                let (sentiment_opt, sentiment_stage) =
+                    match ai_service.analyze_sentiment(&article.title, content).await {
+                        Ok(sentiment) => (Some(sentiment), AiStageReport::success("sentiment")),
+                        Err(err) => {
+                            warn!(
+                                article_id = %task.article_id,
+                                error = %err,
+                                "AI full sentiment analysis failed, falling back to NULL"
+                            );
+                            (
+                                None,
+                                AiStageReport::degraded(
+                                    "sentiment",
+                                    sanitize_error_message(err.to_string()),
+                                ),
+                            )
+                        }
+                    };
                 stage_reports.push(sentiment_stage);
 
                 // Knowledge graph: extract entities and relations
@@ -4916,16 +4915,16 @@ impl Worker {
                     .ack_reserved(queue, &reserved.raw_payload)
                     .await
                 {
-                    error!("Failed to ack duplicate tenant export task {}: {}", task_id, e);
+                    error!(
+                        "Failed to ack duplicate tenant export task {}: {}",
+                        task_id, e
+                    );
                 }
                 return;
             }
             Ok(false) => {}
             Err(e) => {
-                error!(
-                    "Failed to check tenant export task {} done: {}",
-                    task_id, e
-                );
+                error!("Failed to check tenant export task {} done: {}", task_id, e);
                 return;
             }
         }

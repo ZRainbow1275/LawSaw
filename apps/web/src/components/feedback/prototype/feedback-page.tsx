@@ -14,6 +14,9 @@
  *   - history → useMyFeedbacks
  *
  * Chrome (Sidebar/Header/Auth) is provided by the route-level UserShell wrapper.
+ *
+ * Styling: Tailwind classes + design tokens only. Color palette for status
+ * pills / type icons lives in globals.css `--feedback-*` tokens (light + dark).
  */
 
 import { useCreateFeedback, useMyFeedbacks } from "@/hooks/use-feedback";
@@ -28,226 +31,76 @@ import {
 	Rss,
 	Sparkles,
 } from "lucide-react";
-import {
-	type CSSProperties,
-	type FormEvent,
-	type ReactNode,
-	useState,
-} from "react";
+import { type FormEvent, type ReactNode, useState } from "react";
 
 interface TypeOption {
 	value: CreateFeedbackInput["type"];
 	labelKey: string;
 	Icon: typeof Rss;
-	bg: string;
-	color: string;
+	bgVar: string;
+	fgVar: string;
 }
 
-const containerStyle: CSSProperties = {
-	width: "100%",
-};
+const TYPE_OPTIONS: TypeOption[] = [
+	{
+		value: "source_suggestion",
+		labelKey: "Source suggestion",
+		Icon: Rss,
+		bgVar: "var(--feedback-type-source-bg)",
+		fgVar: "var(--feedback-type-source-fg)",
+	},
+	{
+		value: "bug_report",
+		labelKey: "Bug report",
+		Icon: Bug,
+		bgVar: "var(--feedback-type-bug-bg)",
+		fgVar: "var(--feedback-type-bug-fg)",
+	},
+	{
+		value: "feature_request",
+		labelKey: "Feature request",
+		Icon: Lightbulb,
+		bgVar: "var(--feedback-type-feature-bg)",
+		fgVar: "var(--feedback-type-feature-fg)",
+	},
+	{
+		value: "other",
+		labelKey: "Other",
+		Icon: HelpCircle,
+		bgVar: "var(--color-neutral-100)",
+		fgVar: "var(--color-neutral-600)",
+	},
+];
 
-const headerStyle: CSSProperties = {
-	display: "flex",
-	flexDirection: "column",
-	gap: 4,
-	marginBottom: 24,
-};
-
-const titleStyle: CSSProperties = {
-	display: "flex",
-	alignItems: "center",
-	gap: 10,
-	fontSize: 22,
-	fontWeight: 700,
-	color: "var(--color-neutral-900)",
-	margin: 0,
-};
-
-const subtitleStyle: CSSProperties = {
-	fontSize: 13,
-	color: "var(--color-neutral-500)",
-};
-
-const layoutStyle: CSSProperties = {
-	display: "grid",
-	gridTemplateColumns: "2fr 1fr",
-	gap: 16,
-	alignItems: "start",
-};
-
-const cardStyle: CSSProperties = {
-	background: "var(--color-card)",
-	border: "1px solid var(--color-neutral-200)",
-	borderRadius: 12,
-	padding: 24,
-};
-
-const sectionTitleStyle: CSSProperties = {
-	fontSize: 14,
-	fontWeight: 700,
-	color: "var(--color-neutral-800)",
-	marginBottom: 16,
-};
-
-const formLabelStyle: CSSProperties = {
-	display: "block",
-	fontSize: 13,
-	fontWeight: 600,
-	color: "var(--color-neutral-700)",
-	marginBottom: 8,
-};
-
-const typeGridStyle: CSSProperties = {
-	display: "grid",
-	gridTemplateColumns: "repeat(2, 1fr)",
-	gap: 12,
-	marginBottom: 20,
-};
-
-const typeCardStyle = (selected: boolean): CSSProperties => ({
-	display: "flex",
-	alignItems: "center",
-	gap: 12,
-	padding: "14px 16px",
-	border: `2px solid ${selected ? "var(--color-primary-500)" : "var(--color-neutral-200)"}`,
-	background: selected ? "var(--color-primary-50)" : "var(--color-card)",
-	borderRadius: 10,
-	cursor: "pointer",
-	transition: "border-color 0.15s ease, background-color 0.15s ease",
-});
-
-const typeIconStyle = (bg: string, color: string): CSSProperties => ({
-	width: 36,
-	height: 36,
-	borderRadius: 8,
-	background: bg,
-	color,
-	display: "flex",
-	alignItems: "center",
-	justifyContent: "center",
-	flexShrink: 0,
-});
-
-const typeNameStyle: CSSProperties = {
-	fontSize: 13,
-	fontWeight: 600,
-	color: "var(--color-neutral-800)",
-};
-
-const formGroupStyle: CSSProperties = {
-	marginBottom: 16,
-};
-
-const formInputStyle: CSSProperties = {
-	width: "100%",
-	padding: "10px 14px",
-	fontSize: 13,
-	color: "var(--color-neutral-800)",
-	background: "var(--color-card)",
-	border: "1px solid var(--color-neutral-200)",
-	borderRadius: 8,
-	outline: "none",
-	transition: "border-color 0.15s ease",
-	fontFamily: "inherit",
-};
-
-const formTextareaStyle: CSSProperties = {
-	...formInputStyle,
-	minHeight: 120,
-	resize: "vertical",
-};
-
-const optionalStyle: CSSProperties = {
-	color: "var(--color-neutral-400)",
-	fontWeight: 400,
-	marginLeft: 4,
-};
-
-const formActionsStyle: CSSProperties = {
-	display: "flex",
-	justifyContent: "flex-end",
-	gap: 12,
-	marginTop: 8,
-};
-
-const btnCancelStyle: CSSProperties = {
-	padding: "8px 18px",
-	fontSize: 13,
-	fontWeight: 600,
-	background: "transparent",
-	border: "1px solid var(--color-neutral-300)",
-	borderRadius: 8,
-	color: "var(--color-neutral-700)",
-	cursor: "pointer",
-};
-
-const btnSubmitStyle = (disabled: boolean): CSSProperties => ({
-	display: "inline-flex",
-	alignItems: "center",
-	gap: 8,
-	padding: "8px 20px",
-	fontSize: 13,
-	fontWeight: 600,
-	border: "none",
-	borderRadius: 8,
-	color: "#fff",
-	background: disabled
-		? "var(--color-neutral-300)"
-		: "linear-gradient(135deg, #ff8a5e, #ff6b35)",
-	boxShadow: disabled ? "none" : "var(--shadow-brand)",
-	cursor: disabled ? "not-allowed" : "pointer",
-	opacity: disabled ? 0.7 : 1,
-});
-
-const historyItemStyle: CSSProperties = {
-	padding: "16px 0",
-	borderBottom: "1px solid var(--color-neutral-100)",
-};
-
-const historyTitleStyle: CSSProperties = {
-	fontSize: 13,
-	fontWeight: 600,
-	color: "var(--color-neutral-800)",
-	marginBottom: 6,
-};
-
-const historyMetaStyle: CSSProperties = {
-	display: "flex",
-	alignItems: "center",
-	gap: 10,
-	fontSize: 11,
-	color: "var(--color-neutral-500)",
-};
-
-const adminReplyStyle: CSSProperties = {
-	marginTop: 10,
-	padding: "10px 12px",
-	background: "var(--color-neutral-50)",
-	borderLeft: "3px solid var(--color-primary-500)",
-	borderRadius: 6,
-	fontSize: 12,
-	color: "var(--color-neutral-700)",
-	lineHeight: 1.5,
-};
-
-function statusBadge(status: Feedback["status"]): {
+function statusBadgeVars(status: Feedback["status"]): {
 	labelKey: string;
 	bg: string;
-	color: string;
+	fg: string;
 } {
 	switch (status) {
 		case "resolved":
-			return { labelKey: "Resolved", bg: "#e8f5e9", color: "#2e7d32" };
+			return {
+				labelKey: "Resolved",
+				bg: "var(--feedback-status-resolved-bg)",
+				fg: "var(--feedback-status-resolved-fg)",
+			};
 		case "reviewing":
-			return { labelKey: "Processing", bg: "#e3f2fd", color: "#1565c0" };
+			return {
+				labelKey: "Processing",
+				bg: "var(--feedback-status-reviewing-bg)",
+				fg: "var(--feedback-status-reviewing-fg)",
+			};
 		case "rejected":
-			return { labelKey: "Rejected", bg: "#fee2e2", color: "#c62828" };
+			return {
+				labelKey: "Rejected",
+				bg: "var(--feedback-status-rejected-bg)",
+				fg: "var(--feedback-status-rejected-fg)",
+			};
 		default:
 			return {
 				labelKey: "Pending",
-				bg: "#fff8e1",
-				color: "#f57f17",
+				bg: "var(--feedback-status-pending-bg)",
+				fg: "var(--feedback-status-pending-fg)",
 			};
 	}
 }
@@ -263,14 +116,7 @@ function formatDate(dateStr: string): string {
 
 function HistoryEmpty({ children }: { children: ReactNode }) {
 	return (
-		<div
-			style={{
-				padding: 32,
-				textAlign: "center",
-				fontSize: 13,
-				color: "var(--color-neutral-500)",
-			}}
-		>
+		<div className="p-8 text-center text-[13px] text-[color:var(--color-neutral-500)]">
 			{children}
 		</div>
 	);
@@ -287,37 +133,6 @@ export function FeedbackPagePrototype() {
 
 	const myFeedbacks = useMyFeedbacks();
 	const create = useCreateFeedback();
-
-	const types: TypeOption[] = [
-		{
-			value: "source_suggestion",
-			labelKey: "Source suggestion",
-			Icon: Rss,
-			bg: "#e0f2fe",
-			color: "#0284c7",
-		},
-		{
-			value: "bug_report",
-			labelKey: "Bug report",
-			Icon: Bug,
-			bg: "#fee2e2",
-			color: "#ef4444",
-		},
-		{
-			value: "feature_request",
-			labelKey: "Feature request",
-			Icon: Lightbulb,
-			bg: "#fef3c7",
-			color: "#d97706",
-		},
-		{
-			value: "other",
-			labelKey: "Other",
-			Icon: HelpCircle,
-			bg: "var(--color-neutral-100)",
-			color: "var(--color-neutral-600)",
-		},
-	];
 
 	const reset = () => {
 		setType("source_suggestion");
@@ -353,50 +168,71 @@ export function FeedbackPagePrototype() {
 	};
 
 	const items = myFeedbacks.data?.data ?? [];
+	const submitting = create.isPending;
+
+	const cardClass =
+		"rounded-xl border p-6 [border-color:var(--color-neutral-200)] bg-[var(--color-card)]";
+	const sectionTitleClass =
+		"text-sm font-bold mb-4 [color:var(--color-neutral-800)]";
+	const formLabelClass =
+		"block text-[13px] font-semibold mb-2 [color:var(--color-neutral-700)]";
+	const formInputClass =
+		"w-full rounded-lg border px-3.5 py-2.5 text-[13px] outline-none transition-colors duration-150 ease-out font-[inherit] " +
+		"[border-color:var(--color-neutral-200)] [background:var(--color-card)] [color:var(--color-neutral-800)] " +
+		"focus-visible:[border-color:var(--color-primary-500)] focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary-500)]/30";
 
 	return (
-		<div style={containerStyle}>
-			<div style={headerStyle}>
-				<h1 style={titleStyle}>
+		<div className="w-full">
+			<header className="mb-6 flex flex-col gap-1">
+				<h1 className="m-0 flex items-center gap-2.5 text-2xl font-bold text-[color:var(--color-neutral-900)]">
 					<Sparkles
 						aria-hidden="true"
 						size={22}
-						style={{ color: "var(--color-primary-500)" }}
+						className="text-[color:var(--color-primary-500)]"
 					/>
 					{t("Feedback")}
 				</h1>
-				<div style={subtitleStyle}>
+				<p className="text-[13px] text-[color:var(--color-neutral-500)]">
 					{t("Submit suggestions, report issues, or recommend new sources")}
-				</div>
-			</div>
+				</p>
+			</header>
 
-			<div style={layoutStyle}>
-				<form style={cardStyle} onSubmit={handleSubmit}>
-					<div style={sectionTitleStyle}>{t("Submit feedback")}</div>
+			<div className="grid items-start gap-4 grid-cols-1 lg:grid-cols-[2fr_1fr]">
+				<form className={cardClass} onSubmit={handleSubmit}>
+					<div className={sectionTitleClass}>{t("Submit feedback")}</div>
 
-					<div style={formLabelStyle}>{t("Feedback type")}</div>
-					<div style={typeGridStyle}>
-						{types.map((opt) => {
+					<div className={formLabelClass}>{t("Feedback type")}</div>
+					<div className="mb-5 grid grid-cols-2 gap-3">
+						{TYPE_OPTIONS.map((opt) => {
 							const selected = type === opt.value;
 							return (
 								<button
 									type="button"
 									key={opt.value}
-									style={typeCardStyle(selected)}
 									onClick={() => setType(opt.value)}
 									aria-pressed={selected}
+									className={`flex items-center gap-3 rounded-[10px] border-2 px-4 py-3.5 cursor-pointer transition-colors duration-150 ease-out ${
+										selected
+											? "[border-color:var(--color-primary-500)] [background:var(--color-primary-50)]"
+											: "[border-color:var(--color-neutral-200)] [background:var(--color-card)] hover:[border-color:var(--color-primary-300)] hover:[background:var(--color-primary-50)]/40"
+									}`}
 								>
-									<div style={typeIconStyle(opt.bg, opt.color)}>
+									<span
+										className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+										style={{ background: opt.bgVar, color: opt.fgVar }}
+									>
 										<opt.Icon aria-hidden="true" size={18} />
-									</div>
-									<span style={typeNameStyle}>{t(opt.labelKey)}</span>
+									</span>
+									<span className="text-[13px] font-semibold text-[color:var(--color-neutral-800)]">
+										{t(opt.labelKey)}
+									</span>
 								</button>
 							);
 						})}
 					</div>
 
-					<div style={formGroupStyle}>
-						<label htmlFor="fb-title" style={formLabelStyle}>
+					<div className="mb-4">
+						<label htmlFor="fb-title" className={formLabelClass}>
 							{t("Title")}
 						</label>
 						<input
@@ -405,13 +241,13 @@ export function FeedbackPagePrototype() {
 							value={title}
 							onChange={(e) => setTitle(e.target.value)}
 							placeholder={t("Briefly describe your feedback")}
-							style={formInputStyle}
+							className={formInputClass}
 							required
 						/>
 					</div>
 
-					<div style={formGroupStyle}>
-						<label htmlFor="fb-content" style={formLabelStyle}>
+					<div className="mb-4">
+						<label htmlFor="fb-content" className={formLabelClass}>
 							{t("Details")}
 						</label>
 						<textarea
@@ -419,15 +255,17 @@ export function FeedbackPagePrototype() {
 							value={content}
 							onChange={(e) => setContent(e.target.value)}
 							placeholder={t("Please describe your feedback in detail...")}
-							style={formTextareaStyle}
+							className={`${formInputClass} min-h-[120px] resize-y`}
 							required
 						/>
 					</div>
 
-					<div style={formGroupStyle}>
-						<label htmlFor="fb-email" style={formLabelStyle}>
+					<div className="mb-4">
+						<label htmlFor="fb-email" className={formLabelClass}>
 							{t("Contact email")}
-							<span style={optionalStyle}>{t("(optional)")}</span>
+							<span className="ml-1 font-normal text-[color:var(--color-neutral-400)]">
+								{t("(optional)")}
+							</span>
 						</label>
 						<input
 							id="fb-email"
@@ -435,20 +273,28 @@ export function FeedbackPagePrototype() {
 							value={email}
 							onChange={(e) => setEmail(e.target.value)}
 							placeholder="your@email.com"
-							style={formInputStyle}
+							className={formInputClass}
 						/>
 					</div>
 
-					<div style={formActionsStyle}>
-						<button type="button" style={btnCancelStyle} onClick={reset}>
+					<div className="mt-2 flex justify-end gap-3">
+						<button
+							type="button"
+							onClick={reset}
+							className="rounded-lg border bg-transparent px-[18px] py-2 text-[13px] font-semibold cursor-pointer transition-colors duration-150 ease-out [border-color:var(--color-neutral-300)] [color:var(--color-neutral-700)] hover:[background:var(--color-neutral-50)]"
+						>
 							{t("Cancel")}
 						</button>
 						<button
 							type="submit"
-							style={btnSubmitStyle(create.isPending)}
-							disabled={create.isPending}
+							disabled={submitting}
+							className={`inline-flex items-center gap-2 rounded-lg border-0 px-5 py-2 text-[13px] font-semibold text-white transition-[opacity,box-shadow,background] duration-150 ease-out ${
+								submitting
+									? "opacity-70 cursor-not-allowed [background:var(--color-neutral-300)]"
+									: "cursor-pointer shadow-[var(--shadow-brand)] [background:var(--gradient-feedback-submit)] hover:[background:var(--gradient-feedback-submit-hover)] hover:shadow-[var(--shadow-brand-lg)] focus-visible:shadow-[var(--shadow-brand-lg)]"
+							}`}
 						>
-							{create.isPending ? (
+							{submitting ? (
 								<>
 									<Loader2
 										aria-hidden="true"
@@ -464,16 +310,15 @@ export function FeedbackPagePrototype() {
 					</div>
 				</form>
 
-				<div style={cardStyle}>
-					<div style={sectionTitleStyle}>{t("My feedback")}</div>
+				<aside className={cardClass}>
+					<div className={sectionTitleClass}>{t("My feedback")}</div>
 
 					{myFeedbacks.isLoading ? (
 						<HistoryEmpty>
 							<Loader2
 								aria-hidden="true"
 								size={18}
-								className="animate-spin"
-								style={{ color: "var(--color-neutral-400)" }}
+								className="animate-spin text-[color:var(--color-neutral-400)]"
 							/>
 						</HistoryEmpty>
 					) : myFeedbacks.isError ? (
@@ -481,41 +326,40 @@ export function FeedbackPagePrototype() {
 					) : items.length === 0 ? (
 						<HistoryEmpty>{t("No feedback yet")}</HistoryEmpty>
 					) : (
-						<div>
+						<ul className="m-0 list-none p-0">
 							{items.map((fb) => {
-								const badge = statusBadge(fb.status);
+								const badge = statusBadgeVars(fb.status);
 								return (
-									<div key={fb.id} style={historyItemStyle}>
-										<div style={historyTitleStyle}>{fb.title}</div>
-										<div style={historyMetaStyle}>
+									<li
+										key={fb.id}
+										className="border-b py-4 [border-color:var(--color-neutral-100)] last:border-b-0"
+									>
+										<div className="mb-1.5 text-[13px] font-semibold text-[color:var(--color-neutral-800)]">
+											{fb.title}
+										</div>
+										<div className="flex items-center gap-2.5 text-[11px] text-[color:var(--color-neutral-500)]">
 											<span
-												style={{
-													padding: "3px 10px",
-													borderRadius: 999,
-													fontSize: 11,
-													fontWeight: 600,
-													background: badge.bg,
-													color: badge.color,
-												}}
+												className="rounded-full px-2.5 py-[3px] text-[11px] font-semibold"
+												style={{ background: badge.bg, color: badge.fg }}
 											>
 												{t(badge.labelKey)}
 											</span>
 											<span>{formatDate(fb.created_at)}</span>
 										</div>
 										{fb.admin_response ? (
-											<div style={adminReplyStyle}>
-												<b style={{ color: "var(--color-neutral-800)" }}>
+											<div className="mt-2.5 rounded-md border-l-[3px] px-3 py-2.5 text-xs leading-[1.5] [background:var(--color-neutral-50)] [border-left-color:var(--color-primary-500)] [color:var(--color-neutral-700)]">
+												<b className="text-[color:var(--color-neutral-800)]">
 													{t("Admin reply:")}
 												</b>
 												{` ${fb.admin_response}`}
 											</div>
 										) : null}
-									</div>
+									</li>
 								);
 							})}
-						</div>
+						</ul>
 					)}
-				</div>
+				</aside>
 			</div>
 		</div>
 	);

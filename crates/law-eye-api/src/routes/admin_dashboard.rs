@@ -117,12 +117,11 @@ async fn fetch_feedback_counts(
 ) -> Result<(i64, i64), Error> {
     with_tenant_tx(pool, tenant_id, |tx| {
         Box::pin(async move {
-            let total: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM feedbacks WHERE deleted_at IS NULL",
-            )
-            .fetch_one(tx.as_mut())
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+            let total: i64 =
+                sqlx::query_scalar("SELECT COUNT(*) FROM feedbacks WHERE deleted_at IS NULL")
+                    .fetch_one(tx.as_mut())
+                    .await
+                    .map_err(|e| Error::Database(e.to_string()))?;
 
             let pending: i64 = sqlx::query_scalar(
                 "SELECT COUNT(*) FROM feedbacks WHERE deleted_at IS NULL AND status = 'pending'",
@@ -229,6 +228,8 @@ mod tests {
     use super::*;
     use axum::body::Body;
     use axum::http::{Method, Request, StatusCode};
+    use axum::Router;
+    use axum_login::AuthManagerLayerBuilder;
     use law_eye_ai::LlmGateway;
     use law_eye_common::vault::PlaintextCipher;
     use law_eye_queue::TaskQueue;
@@ -236,6 +237,9 @@ mod tests {
     use sqlx::postgres::PgPoolOptions;
     use std::sync::Arc;
     use tower::ServiceExt;
+    use tower_sessions::SessionManagerLayer;
+
+    use crate::auth::AuthBackend;
 
     fn test_state() -> AppState {
         let pool = PgPoolOptions::new()
@@ -266,12 +270,23 @@ mod tests {
         )
     }
 
+    fn test_app() -> Router {
+        let state = test_state();
+        let session_layer = SessionManagerLayer::new(tower_sessions::MemoryStore::default())
+            .with_secure(false)
+            .with_http_only(true);
+        let auth_backend = AuthBackend::new(state.pool.clone());
+        let auth_layer = AuthManagerLayerBuilder::new(auth_backend, session_layer).build();
+
+        crate::routes::create_router(state).layer(auth_layer)
+    }
+
     /// Without a session cookie the protected admin nest must short-circuit
     /// to 401/403 — never 200, never 404. This guarantees the route is
     /// mounted *and* the auth/permission stack is wired up correctly.
     #[tokio::test]
     async fn dashboard_summary_route_is_mounted_and_protected() {
-        let app = crate::routes::create_router(test_state());
+        let app = test_app();
 
         let request = Request::builder()
             .method(Method::GET)
@@ -279,11 +294,7 @@ mod tests {
             .body(Body::empty())
             .expect("request");
 
-        let status = app
-            .oneshot(request)
-            .await
-            .expect("response")
-            .status();
+        let status = app.oneshot(request).await.expect("response").status();
 
         assert_ne!(
             status,

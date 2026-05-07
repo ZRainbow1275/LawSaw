@@ -59,7 +59,7 @@ services:
     image: lawsaw-postgres-pgvector:local
     user: "0:0"
     entrypoint: ["bash", "-lc"]
-    command: "chown postgres:postgres /var/lib/postgresql/data"
+    command: ["chown postgres:postgres /var/lib/postgresql/data"]
     volumes:
       - postgres_data:/var/lib/postgresql/data
     network_mode: "none"
@@ -237,6 +237,8 @@ services:
       # 使用 LAW_EYE__ 前缀匹配 config.rs 中的环境变量解析
       LAW_EYE__SERVER__HOST: "0.0.0.0"
       LAW_EYE__SERVER__PORT: "3001"
+      # CSRF allowlist: must include the browser-facing origin (web's host port).
+      LAW_EYE__SERVER__ALLOWED_ORIGINS: "${LAW_EYE__SERVER__ALLOWED_ORIGINS:-http://127.0.0.1:18849,http://localhost:18849,http://127.0.0.1:8849,http://localhost:8849}"
       # Local/e2e: allow localhost + docker service URLs for RSS fixtures.
       LAW_EYE__SECURITY__ALLOW_INTERNAL_SOURCE_URLS: "true"
       LAW_EYE__DATABASE__URL: postgres://law_eye:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/law_eye
@@ -254,11 +256,12 @@ services:
       LAW_EYE__OBJECT_STORAGE__ACCESS_KEY_ID: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
       LAW_EYE__OBJECT_STORAGE__SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
       LAW_EYE__OBJECT_STORAGE__FORCE_PATH_STYLE: "true"
-      LAW_EYE__OBJECT_STORAGE__SSE_ENABLED: true
+      LAW_EYE__OBJECT_STORAGE__SSE_ENABLED: "${LAW_EYE__OBJECT_STORAGE__SSE_ENABLED:-false}"
       WEB_PUSH_VAPID_PUBLIC_KEY: "${WEB_PUSH_VAPID_PUBLIC_KEY:-}"
       WEB_PUSH_VAPID_PRIVATE_KEY: "${WEB_PUSH_VAPID_PRIVATE_KEY:-}"
       WEB_PUSH_SUBJECT: "${WEB_PUSH_SUBJECT:-mailto:admin@lawsaw.io}"
       PRODUCTION: "${PRODUCTION:-false}"
+      LAW_EYE__ENCRYPTION__FEEDBACKS__REQUIRE_IN_PRODUCTION: "${LAW_EYE__ENCRYPTION__FEEDBACKS__REQUIRE_IN_PRODUCTION:-true}"
       LAW_EYE__METRICS__TOKEN: "${LAW_EYE__METRICS__TOKEN:-}"
       RUST_LOG: info
     ports:
@@ -319,7 +322,7 @@ services:
       LAW_EYE__OBJECT_STORAGE__ACCESS_KEY_ID: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
       LAW_EYE__OBJECT_STORAGE__SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
       LAW_EYE__OBJECT_STORAGE__FORCE_PATH_STYLE: "true"
-      LAW_EYE__OBJECT_STORAGE__SSE_ENABLED: true
+      LAW_EYE__OBJECT_STORAGE__SSE_ENABLED: "${LAW_EYE__OBJECT_STORAGE__SSE_ENABLED:-false}"
       # Browserless dynamic rendering (when crawler profile is active)
       LAW_EYE__BROWSERLESS__URL: "http://browserless:3000"
       LAW_EYE__BROWSERLESS__TIMEOUT_MS: "30000"

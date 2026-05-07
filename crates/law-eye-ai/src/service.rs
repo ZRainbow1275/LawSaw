@@ -237,33 +237,32 @@ impl AiService {
         let tags_result = tags_result?;
 
         // sentiment 容错降级：失败时回落到 neutral / 0.0，不中断 process_article。
-        let (sentiment_label, sentiment_score, sentiment_rationale, sentiment_aspect, sentiment_aspects) =
-            match sentiment_outcome {
-                Ok(s) => {
-                    let label = s.sentiment.as_db_str().to_string();
-                    (
-                        label,
-                        s.score,
-                        s.rationale,
-                        s.aspect,
-                        s.aspects,
-                    )
-                }
-                Err(err) => {
-                    tracing::warn!(
-                        error = %err,
-                        article_title = %title,
-                        "Sentiment analysis failed; degraded to neutral"
-                    );
-                    (
-                        SentimentLabel::Neutral.as_db_str().to_string(),
-                        0.0_f32,
-                        String::new(),
-                        None,
-                        Vec::new(),
-                    )
-                }
-            };
+        let (
+            sentiment_label,
+            sentiment_score,
+            sentiment_rationale,
+            sentiment_aspect,
+            sentiment_aspects,
+        ) = match sentiment_outcome {
+            Ok(s) => {
+                let label = s.sentiment.as_db_str().to_string();
+                (label, s.score, s.rationale, s.aspect, s.aspects)
+            }
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    article_title = %title,
+                    "Sentiment analysis failed; degraded to neutral"
+                );
+                (
+                    SentimentLabel::Neutral.as_db_str().to_string(),
+                    0.0_f32,
+                    String::new(),
+                    None,
+                    Vec::new(),
+                )
+            }
+        };
 
         // 生成嵌入
         let embedding_text = format!("{}\n\n{}", title, content);

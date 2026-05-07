@@ -279,7 +279,10 @@ mod tests {
             "international",
             ROLE_TIER_VERIFIED_USER
         ));
-        assert!(!category_visible_for_tier("security", ROLE_TIER_VERIFIED_USER));
+        assert!(!category_visible_for_tier(
+            "security",
+            ROLE_TIER_VERIFIED_USER
+        ));
     }
 
     #[test]
@@ -334,7 +337,11 @@ mod tests {
             ROLE_TIER_SUPER_ADMIN,
         ] {
             let trimmed = truncate_body_for_tier(Some(&body), tier).unwrap();
-            assert_eq!(trimmed.len(), body.len(), "tier {tier} must receive full body");
+            assert_eq!(
+                trimmed.len(),
+                body.len(),
+                "tier {tier} must receive full body"
+            );
         }
     }
 

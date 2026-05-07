@@ -5,7 +5,7 @@ import {
 	ProfileTab,
 	SecurityTab,
 	uiMessageFromError,
-} from "@/app/settings/tabs";
+} from "@/components/settings/tabs";
 import { SettingsAppearanceTab } from "@/components/me/settings-appearance-tab";
 import { SettingsBillingTab } from "@/components/me/settings-billing-tab";
 import { SettingsNotificationsTab } from "@/components/me/settings-notifications-tab";

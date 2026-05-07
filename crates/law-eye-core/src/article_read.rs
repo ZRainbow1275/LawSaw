@@ -139,11 +139,7 @@ impl ArticleReadService {
 
     /// All article ids the user has read at least once (for excluding
     /// already-read articles from recommendation results).
-    pub async fn all_read_article_ids(
-        &self,
-        tenant_id: Uuid,
-        user_id: Uuid,
-    ) -> Result<Vec<Uuid>> {
+    pub async fn all_read_article_ids(&self, tenant_id: Uuid, user_id: Uuid) -> Result<Vec<Uuid>> {
         with_tenant_tx(&self.pool, tenant_id, |tx| {
             Box::pin(async move {
                 sqlx::query_scalar::<_, Uuid>(
@@ -216,8 +212,7 @@ impl ArticleReadService {
                      AND a.id = ar.article_id
                      AND a.deleted_at IS NULL
                     LEFT JOIN categories c
-                      ON c.tenant_id = ar.tenant_id
-                     AND c.id = a.category_id
+                      ON c.id = a.category_id
                     WHERE ar.tenant_id = $1
                       AND ar.user_id = $2
                       AND (NOT $3::bool OR ar.finished = true)

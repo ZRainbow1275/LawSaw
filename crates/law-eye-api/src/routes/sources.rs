@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::auth::AuthSession;
+use crate::auth::{AuthSession, AuthenticatedUser};
 use crate::middleware::role_tier_at_least;
 use crate::state::AppState;
 use crate::{ApiError, ApiJson, ApiQuery, ApiResult, AppError};
@@ -20,6 +20,7 @@ use law_eye_common::egress::{validate_outbound_url, OutboundUrlPolicy};
 use law_eye_core::role_tier::{
     derive_role_tier_from_names, ROLE_TIER_PREMIUM_USER, ROLE_TIER_VERIFIED_USER,
 };
+use law_eye_core::AuthzCheckInput;
 use law_eye_db::{CreateAuditLog, CreateSource};
 use law_eye_queue::IngestTask;
 use serde_json::Value;
@@ -33,6 +34,7 @@ const SOURCE_PRIORITY_MIN: i32 = 0;
 const SOURCE_PRIORITY_MAX: i32 = 100;
 const SOURCE_LIST_DEFAULT_LIMIT: i64 = 100;
 const SOURCE_LIST_MAX_LIMIT: i64 = 1000;
+const SOURCE_VISIBLE_COUNT_BATCH: i64 = 200;
 const QUEUE_INGEST_PRIORITY: &str = "queue:ingest:priority";
 
 pub fn router() -> Router<AppState> {
@@ -49,6 +51,92 @@ pub fn admin_router() -> Router<AppState> {
         .route("/{id}", axum::routing::patch(admin_patch_source))
         .route("/{id}/run", post(admin_run_source))
         .route("/{id}/runs", get(admin_list_source_runs))
+}
+
+fn source_read_permission_for_tier(tier: &str) -> &'static str {
+    if role_tier_at_least(tier, ROLE_TIER_PREMIUM_USER) {
+        "sources:read:full"
+    } else if role_tier_at_least(tier, ROLE_TIER_VERIFIED_USER) {
+        "sources:read:meta"
+    } else {
+        "sources:read:name"
+    }
+}
+
+async fn source_authz_allows(
+    state: &AppState,
+    user: &AuthenticatedUser,
+    source_id: Uuid,
+    permission: &str,
+) -> ApiResult<bool> {
+    let decision = state
+        .authz_service
+        .check(
+            user.tenant_id,
+            user.id,
+            AuthzCheckInput {
+                resource_type: "source".to_string(),
+                resource_id: source_id,
+                permission: permission.to_string(),
+            },
+        )
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(decision.allow)
+}
+
+async fn ensure_source_authz(
+    state: &AppState,
+    user: &AuthenticatedUser,
+    source_id: Uuid,
+    permission: &str,
+) -> ApiResult<()> {
+    if !source_authz_allows(state, user, source_id, permission).await? {
+        return Err(AppError::forbidden("Permission denied"));
+    }
+    Ok(())
+}
+
+async fn count_visible_sources(
+    state: &AppState,
+    user: &AuthenticatedUser,
+    read_permission: &str,
+) -> ApiResult<i64> {
+    let raw_total = state
+        .source_service
+        .count(user.tenant_id)
+        .await
+        .map_err(|e| AppError::internal_with_code("COUNT_ERROR", e.to_string()))?;
+    if raw_total == 0 {
+        return Ok(0);
+    }
+
+    let mut visible_total = 0i64;
+    let mut offset = 0i64;
+    while offset < raw_total {
+        let batch = state
+            .source_service
+            .list(
+                user.tenant_id,
+                SOURCE_VISIBLE_COUNT_BATCH.min(raw_total - offset),
+                offset,
+            )
+            .await
+            .map_err(|e| AppError::internal_with_code("COUNT_ERROR", e.to_string()))?;
+        if batch.is_empty() {
+            break;
+        }
+
+        for source in batch {
+            if source_authz_allows(state, user, source.id, read_permission).await? {
+                visible_total += 1;
+            }
+        }
+        offset += SOURCE_VISIBLE_COUNT_BATCH;
+    }
+
+    Ok(visible_total)
 }
 
 fn validate_source_name(name: &str) -> Result<String, AppError> {
@@ -407,12 +495,6 @@ pub(crate) async fn list_sources(
             .map_err(|e| AppError::internal_with_code("FETCH_ERROR", e.to_string()))?
     };
 
-    let total = state
-        .source_service
-        .count(user.tenant_id)
-        .await
-        .map_err(|e| AppError::internal_with_code("COUNT_ERROR", e.to_string()))?;
-
     let roles = state
         .user_service
         .get_user_roles(user.tenant_id, user.id)
@@ -421,15 +503,21 @@ pub(crate) async fn list_sources(
     let role_names: Vec<String> = roles.into_iter().map(|role| role.name).collect();
     let role_tier = derive_role_tier_from_names(&role_names);
 
-    let data: Vec<SourceResponse> = sources
-        .into_iter()
-        .map(SourceResponse::from)
-        .map(|item| trim_source_for_tier(item, &role_tier))
-        .collect();
+    let read_permission = source_read_permission_for_tier(&role_tier);
+    let visible_total = count_visible_sources(&state, &user, read_permission).await?;
+    let mut data = Vec::with_capacity(sources.len());
+    for source in sources {
+        if source_authz_allows(&state, &user, source.id, read_permission).await? {
+            data.push(trim_source_for_tier(
+                SourceResponse::from(source),
+                &role_tier,
+            ));
+        }
+    }
 
     Ok(Json(SourceListResponse {
         data,
-        total,
+        total: visible_total,
         limit,
         offset: if params.cursor.is_some() { 0 } else { offset },
         next_cursor,
@@ -483,6 +571,13 @@ pub(crate) async fn get_source(
         .map_err(AppError::from)?;
     let role_names: Vec<String> = roles.into_iter().map(|role| role.name).collect();
     let role_tier = derive_role_tier_from_names(&role_names);
+    ensure_source_authz(
+        &state,
+        &user,
+        source.id,
+        source_read_permission_for_tier(&role_tier),
+    )
+    .await?;
 
     Ok(Json(trim_source_for_tier(
         SourceResponse::from(source),
@@ -524,6 +619,12 @@ pub(crate) async fn delete_source(
     if !is_admin {
         return Err(AppError::forbidden("Admin permission required"));
     }
+    state
+        .source_service
+        .get_by_id(user.tenant_id, id)
+        .await
+        .map_err(AppError::from)?;
+    ensure_source_authz(&state, &user, id, "sources:write").await?;
 
     let (ip_address, user_agent) = super::extract_audit_meta(&headers, addr);
     let tenant_id = user.tenant_id;
@@ -834,8 +935,10 @@ mod tests {
 
     #[test]
     fn trim_source_for_basic_user_keeps_only_name_and_url() {
-        let trimmed =
-            trim_source_for_tier(fixture_source(), law_eye_core::role_tier::ROLE_TIER_BASIC_USER);
+        let trimmed = trim_source_for_tier(
+            fixture_source(),
+            law_eye_core::role_tier::ROLE_TIER_BASIC_USER,
+        );
         assert_eq!(trimmed.name, "Test Source");
         assert_eq!(trimmed.url, "https://example.com/feed");
         assert!(trimmed.config.is_null());
@@ -901,6 +1004,22 @@ mod tests {
         assert_eq!(trimmed.config, original.config);
         assert_eq!(trimmed.last_error, original.last_error);
     }
+
+    #[test]
+    fn source_read_permission_tracks_role_tier_visibility() {
+        assert_eq!(
+            source_read_permission_for_tier(law_eye_core::role_tier::ROLE_TIER_BASIC_USER),
+            "sources:read:name"
+        );
+        assert_eq!(
+            source_read_permission_for_tier(law_eye_core::role_tier::ROLE_TIER_VERIFIED_USER),
+            "sources:read:meta"
+        );
+        assert_eq!(
+            source_read_permission_for_tier(law_eye_core::role_tier::ROLE_TIER_PREMIUM_USER),
+            "sources:read:full"
+        );
+    }
 }
 
 /// Trigger ingest fetch (admin only)
@@ -944,6 +1063,7 @@ pub(crate) async fn trigger_fetch(
         .get_by_id(user.tenant_id, id)
         .await
         .map_err(AppError::from)?;
+    ensure_source_authz(&state, &user, source.id, "sources:write").await?;
 
     let task = IngestTask {
         tenant_id: user.tenant_id,
@@ -1049,6 +1169,7 @@ pub(crate) async fn admin_run_source(
         .get_by_id(user.tenant_id, id)
         .await
         .map_err(AppError::from)?;
+    ensure_source_authz(&state, &user, source.id, "sources:write").await?;
 
     let job_id = Uuid::new_v4();
     let queued_at = Utc::now();
@@ -1169,6 +1290,13 @@ pub(crate) async fn admin_list_source_runs(
         return Err(AppError::forbidden("Permission denied"));
     }
 
+    let source = state
+        .source_service
+        .get_by_id(user.tenant_id, id)
+        .await
+        .map_err(AppError::from)?;
+    ensure_source_authz(&state, &user, source.id, "sources:read:full").await?;
+
     let tenant_id = user.tenant_id;
     let runs = law_eye_core::with_tenant_tx(&state.pool, tenant_id, |tx| {
         Box::pin(async move {
@@ -1255,6 +1383,12 @@ pub(crate) async fn admin_patch_source(
     if !can_manage {
         return Err(AppError::forbidden("Permission denied"));
     }
+    state
+        .source_service
+        .get_by_id(user.tenant_id, id)
+        .await
+        .map_err(AppError::from)?;
+    ensure_source_authz(&state, &user, id, "sources:write").await?;
 
     let validated_name = match &req.name {
         Some(name) => Some(validate_source_name(name)?),
@@ -1311,7 +1445,7 @@ pub(crate) async fn admin_patch_source(
                 r#"
                 UPDATE sources
                 SET name = COALESCE($2, name),
-                    source_type = COALESCE($3, source_type),
+                    type = COALESCE($3, type),
                     config = COALESCE($4, config),
                     schedule = CASE WHEN $5::bool THEN $6 ELSE schedule END,
                     encoding = CASE WHEN $7::bool THEN $8 ELSE encoding END,

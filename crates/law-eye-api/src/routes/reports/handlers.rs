@@ -20,10 +20,10 @@ use crate::routes::{etag_for_version, require_if_match_version};
 use crate::state::AppState;
 use crate::{ApiJson, ApiQuery, ApiResult, AppError};
 
-use law_eye_core::role_tier::{derive_role_tier_from_names, ROLE_TIER_TENANT_ADMIN};
 use law_eye_core::report::{
     CreateReportInput, ExportFormat, ListReportsQuery, ReportStatus, UpdateReportInput,
 };
+use law_eye_core::role_tier::{derive_role_tier_from_names, ROLE_TIER_TENANT_ADMIN};
 use law_eye_queue::{ReportExportTask, ReportGenerateTask};
 
 // ══════════════════════════════════════════════════════════════

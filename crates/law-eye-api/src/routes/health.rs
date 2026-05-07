@@ -525,14 +525,19 @@ pub(crate) async fn full_check(State(state): State<AppState>) -> (StatusCode, Js
     let status_str = if db_down {
         "down"
     } else {
-        let any_degraded = [&redis_check, &task_queue_check, &object_store_check, &ai_gateway_check]
-            .iter()
-            .any(|c| {
-                c.get("status")
-                    .and_then(Value::as_str)
-                    .map(|s| s != "ok" && s != "skipped" && s != "not_configured")
-                    .unwrap_or(false)
-            });
+        let any_degraded = [
+            &redis_check,
+            &task_queue_check,
+            &object_store_check,
+            &ai_gateway_check,
+        ]
+        .iter()
+        .any(|c| {
+            c.get("status")
+                .and_then(Value::as_str)
+                .map(|s| s != "ok" && s != "skipped" && s != "not_configured")
+                .unwrap_or(false)
+        });
         if any_degraded {
             "degraded"
         } else {
