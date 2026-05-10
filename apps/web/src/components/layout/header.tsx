@@ -147,10 +147,6 @@ export function Header() {
 						<Menu aria-hidden="true" className="h-5 w-5" />
 					</Button>
 
-					<div className="hidden md:block">
-						<WorkspaceSwitcher />
-					</div>
-
 					{/* Search */}
 					<form
 						onSubmit={handleSearch}
@@ -189,6 +185,9 @@ export function Header() {
 
 				{/* Right Actions */}
 				<div className="flex items-center gap-2 md:gap-4">
+					{/* Workspace Switcher (moved from left side, wave 9 hot-fix #2) */}
+					<WorkspaceSwitcher className="hidden md:block" />
+
 					{/* Locale */}
 					<Button
 						variant="ghost"

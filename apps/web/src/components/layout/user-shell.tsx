@@ -4,7 +4,6 @@ import { ProtectedRoute } from "@/components/auth/protected-route";
 import { Header } from "@/components/layout/header";
 import { Sidebar } from "@/components/layout/sidebar";
 import { cn } from "@/lib/utils";
-import { useSidebarStore } from "@/stores/sidebar-store";
 import type { ReactNode } from "react";
 
 interface UserShellProps {
@@ -50,38 +49,38 @@ interface UserShellContentProps {
 	className?: string;
 }
 
+// Wave 9 hot-fix #2 (regression follow-up): mirror `PersistentUserShellChrome`
+// layout exactly. The `<Sidebar>` is now a flex-row child (no longer fixed),
+// so the legacy `relative min-h-screen` + `md:ml-[280px]` push pattern leaves
+// a 280px empty band when sidebar takes natural block flow. Switch to the
+// flex `h-screen overflow-hidden` shell so sidebar + content sit side-by-side
+// and only `<main>` owns the page scroll.
 function UserShellContent({
 	children,
 	widthVariant,
 	hideHeader,
 	className,
 }: UserShellContentProps) {
-	const collapsed = useSidebarStore((state) => state.collapsed);
-
 	return (
 		<div
-			className="relative min-h-screen"
+			className="relative flex h-screen w-full overflow-hidden"
 			style={{ backgroundColor: "var(--color-card)" }}
 		>
 			<Sidebar />
 
-			<div
-				className={cn(
-					"flex min-h-screen flex-col transition-[margin] duration-300",
-					"md:ml-[280px]",
-					collapsed && "md:ml-16",
-				)}
-			>
+			<div className="flex min-w-0 flex-1 flex-col">
 				{!hideHeader ? <Header /> : null}
 
-				<main
-					className={cn(
-						"flex-1 px-4 py-6 md:px-6 md:py-8",
-						containerByVariant[widthVariant],
-						className,
-					)}
-				>
-					{children}
+				<main className="flex-1 overflow-y-auto scrollbar-subtle">
+					<div
+						className={cn(
+							"px-4 py-6 md:px-6 md:py-8",
+							containerByVariant[widthVariant],
+							className,
+						)}
+					>
+						{children}
+					</div>
 				</main>
 			</div>
 		</div>

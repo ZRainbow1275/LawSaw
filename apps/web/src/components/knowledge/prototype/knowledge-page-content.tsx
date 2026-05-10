@@ -55,8 +55,12 @@ export function KnowledgePageContent() {
 	const formatNumber = (n: number | undefined) =>
 		typeof n === "number" ? n.toLocaleString() : "—";
 
+	// Wave 9 hot-fix #6: knowledge page fills the available `<main>` viewport
+	// and only the three internal panels (entity list, canvas, inspector)
+	// scroll. Outer `<div>` claims `flex-1 min-h-0` so it fits between the
+	// route-group `pt-4 / pb-6` strips without producing a doc-level scroll.
 	return (
-		<div className="flex h-full min-h-0 flex-col">
+		<div className="flex min-h-0 flex-1 flex-col">
 			<header className="mb-5 flex flex-wrap items-end justify-between gap-3">
 				<div>
 					<h1
@@ -96,7 +100,7 @@ export function KnowledgePageContent() {
 				) : null}
 			</header>
 
-			<div className="kg-layout-3col grid h-[calc(100vh-160px)] min-h-[560px] grid-cols-1 gap-4">
+			<div className="kg-layout-3col grid min-h-0 flex-1 grid-cols-1 gap-4">
 				<EntityListPanel
 					entities={entities}
 					isLoading={isLoading}

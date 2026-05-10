@@ -6,10 +6,12 @@ import type { ReactNode } from "react";
  *
  * Members: `me/`, `feedback/`, `analytics/`.
  *
- * The locale-level `<PersistentUserShell>` already renders Sidebar + Header;
- * this layout only owns the content container width. Nesting another
- * ProtectedRoute / Sidebar / Header here would re-introduce the double-mount
- * we are explicitly trying to remove.
+ * The locale-level `<PersistentUserShell>` already renders Sidebar + Header
+ * AND owns the outer `<main>` element (wave 9 hot-fix #4). This layout only
+ * owns the content container width — wrapping in another `<main>` would
+ * produce nested landmarks, which is invalid and confuses screen readers.
+ * Nesting another ProtectedRoute / Sidebar / Header here would re-introduce
+ * the double-mount we are explicitly trying to remove.
  */
 export default function ShellDefaultLayout({
 	children,
@@ -17,8 +19,8 @@ export default function ShellDefaultLayout({
 	children: ReactNode;
 }) {
 	return (
-		<main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 md:px-6 md:py-8">
+		<div className="mx-auto w-full max-w-7xl px-4 pb-6 pt-4 md:px-6 md:pb-8 md:pt-5">
 			{children}
-		</main>
+		</div>
 	);
 }

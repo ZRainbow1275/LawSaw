@@ -360,7 +360,7 @@ function SidebarPanel({
 			</div>
 
 			{/* Navigation */}
-			<nav className="flex-1 space-y-1 overflow-y-auto p-3">
+			<nav className="flex-1 space-y-1 overflow-y-auto p-3 scrollbar-subtle">
 				<div className="mb-4">
 					{!collapsed ? (
 						<p
@@ -820,9 +820,19 @@ export function Sidebar() {
 		};
 	}, [mobileOpen, closeMobile, handleFocusTrap]);
 
-	const baseAsideClassName = cn(
-		"fixed left-0 top-0 flex h-screen flex-col",
-		"border-r",
+	// Desktop aside is a flow-level flex item inside `PersistentUserShellChrome`
+	// (wave 9 hot-fix #4) — height comes from the flex-row container, not
+	// `fixed` positioning, to avoid `RouteTransitionProvider`'s `filter`
+	// containing-block trap. Mobile drawer still uses `fixed inset-y-0` because
+	// it's an overlay rendered above the page chrome.
+	const desktopAsideClassName = cn(
+		"hidden md:flex shrink-0 h-full flex-col",
+		"border-r transition-[width] duration-300",
+		collapsed ? "w-16" : "w-[280px]",
+	);
+	const mobileAsideClassName = cn(
+		"fixed inset-y-0 left-0 z-50 flex h-full flex-col border-r",
+		"m-0 w-[280px] max-w-none p-0 md:hidden",
 	);
 	const baseAsideStyle = {
 		backgroundColor: "var(--color-card)",
@@ -833,11 +843,7 @@ export function Sidebar() {
 		<>
 			{/* Desktop */}
 			<aside
-				className={cn(
-					baseAsideClassName,
-					"z-30 hidden md:flex",
-					collapsed ? "w-16" : "w-[280px]",
-				)}
+				className={desktopAsideClassName}
 				style={baseAsideStyle}
 				aria-label={t("Primary navigation")}
 			>
@@ -880,10 +886,7 @@ export function Sidebar() {
 									? { duration: 0 }
 									: { duration: 0.25, ease: [0.4, 0, 0.2, 1] }
 							}
-							className={cn(
-								baseAsideClassName,
-								"z-50 m-0 w-[280px] max-w-none p-0 md:hidden",
-							)}
+							className={mobileAsideClassName}
 							style={baseAsideStyle}
 							aria-modal="true"
 							aria-label={t("Primary navigation")}

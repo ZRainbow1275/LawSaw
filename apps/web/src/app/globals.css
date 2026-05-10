@@ -715,6 +715,47 @@ body {
 	);
 }
 
+/* Subtle scrollbar utility — wave 9 hot-fix #5
+   For internal scroll regions (sidebar nav, knowledge panels, etc.) the
+   default brand-orange gradient thumb is visually too loud. This utility
+   yields a nearly-invisible track + thin neutral thumb that fades in on
+   hover. Apply via `className="scrollbar-subtle"` on the scroll container.
+   Falls back to the platform default (Firefox `scrollbar-width: thin`) for
+   non-WebKit engines. */
+.scrollbar-subtle {
+	scrollbar-width: thin;
+	scrollbar-color: transparent transparent;
+}
+
+.scrollbar-subtle:hover,
+.scrollbar-subtle:focus-within {
+	scrollbar-color: var(--surface-muted-border) transparent;
+}
+
+.scrollbar-subtle::-webkit-scrollbar {
+	width: 6px;
+	height: 6px;
+}
+
+.scrollbar-subtle::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.scrollbar-subtle::-webkit-scrollbar-thumb {
+	background: transparent;
+	border-radius: 3px;
+	transition: background-color 0.15s ease;
+}
+
+.scrollbar-subtle:hover::-webkit-scrollbar-thumb,
+.scrollbar-subtle:focus-within::-webkit-scrollbar-thumb {
+	background: var(--surface-muted-border);
+}
+
+.scrollbar-subtle::-webkit-scrollbar-thumb:hover {
+	background: var(--surface-card-border-strong);
+}
+
 /* 动画关键帧 */
 @keyframes fadeIn {
 	from {

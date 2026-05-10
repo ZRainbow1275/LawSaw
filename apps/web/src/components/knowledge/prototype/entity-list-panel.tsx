@@ -90,7 +90,7 @@ export function EntityListPanel({
 				{t("Entity list")}
 			</div>
 
-			<div className="-mx-1 flex-1 overflow-auto px-1">
+			<div className="-mx-1 flex-1 overflow-auto px-1 scrollbar-subtle">
 				{isLoading ? (
 					<div className="space-y-1.5">
 						{[

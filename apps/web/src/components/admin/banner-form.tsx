@@ -28,7 +28,7 @@ import {
 	BANNER_GRADIENT_KEYS,
 	type BannerGradientKey,
 	BannerPreview,
-	gradientCssVar,
+	bannerVividGradient,
 } from "@/components/admin/banner-preview";
 import { MarkdownEditor } from "@/components/editor";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +42,7 @@ import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import {
 	Calendar,
+	Check,
 	Eye,
 	Loader2,
 	Megaphone,
@@ -86,6 +87,7 @@ interface FormState {
 	body: string;
 	ctaLabel: string;
 	ctaUrl: string;
+	imageUrl: string;
 	status: BannerRecord["status"];
 	priority: number;
 	startsAt: string;
@@ -170,6 +172,7 @@ function bannerToFormState(banner: BannerRecord | null): FormState {
 			body: "",
 			ctaLabel: "",
 			ctaUrl: "",
+			imageUrl: "",
 			status: "draft",
 			priority: 100,
 			startsAt: "",
@@ -192,6 +195,7 @@ function bannerToFormState(banner: BannerRecord | null): FormState {
 		body: banner.body ?? "",
 		ctaLabel: banner.cta_label ?? "",
 		ctaUrl: banner.cta_url ?? "",
+		imageUrl: banner.image_url ?? "",
 		status: banner.status,
 		priority: banner.priority,
 		startsAt: isoToDatetimeLocal(banner.starts_at),
@@ -226,6 +230,7 @@ export function BannerForm({
 	const trimmedBody = form.body.trim();
 	const trimmedCtaLabel = form.ctaLabel.trim();
 	const trimmedCtaUrl = form.ctaUrl.trim();
+	const trimmedImageUrl = form.imageUrl.trim();
 
 	const validationMessage = useMemo(() => {
 		if (!trimmedTitle) {
@@ -236,6 +241,9 @@ export function BannerForm({
 		}
 		if (trimmedCtaUrl && !isValidUrl(trimmedCtaUrl)) {
 			return t("CTA URL must start with http:// or https://.");
+		}
+		if (trimmedImageUrl && !isValidUrl(trimmedImageUrl)) {
+			return t("Image URL must start with http:// or https://.");
 		}
 		if (trimmedCtaUrl && !trimmedCtaLabel) {
 			return t("CTA label is required when a CTA URL is provided.");
@@ -260,6 +268,7 @@ export function BannerForm({
 		trimmedTitle,
 		trimmedCtaLabel,
 		trimmedCtaUrl,
+		trimmedImageUrl,
 		form.audienceTiers,
 		form.priority,
 		form.startsAt,
@@ -304,6 +313,7 @@ export function BannerForm({
 			body: trimmedBody || undefined,
 			cta_label: trimmedCtaLabel || undefined,
 			cta_url: trimmedCtaUrl || undefined,
+			image_url: trimmedImageUrl || undefined,
 			status: form.status,
 			priority: form.priority,
 			starts_at: datetimeLocalToIso(form.startsAt),
@@ -484,6 +494,30 @@ export function BannerForm({
 											placeholder="https://"
 										/>
 									</div>
+								</div>
+
+								<div className="space-y-1.5">
+									<label
+										htmlFor="banner-image-url"
+										className="text-xs font-medium uppercase tracking-wide"
+										style={mutedStyle}
+									>
+										{t("Banner image URL")}
+									</label>
+									<Input
+										id="banner-image-url"
+										value={form.imageUrl}
+										onChange={(event) =>
+											setForm((prev) => ({
+												...prev,
+												imageUrl: event.target.value,
+											}))
+										}
+										placeholder="https://"
+									/>
+									<p className="text-xs" style={mutedStyle}>
+										{t("Optional banner illustration. Shown to the right of the message on wide screens.")}
+									</p>
 								</div>
 							</section>
 
@@ -726,7 +760,7 @@ export function BannerForm({
 									<p className="text-xs" style={mutedStyle}>
 										{t("Choose a hero gradient.")}
 									</p>
-									<div className="grid grid-cols-3 gap-2 md:grid-cols-6">
+									<div className="grid grid-cols-3 gap-3 md:grid-cols-6">
 										{BANNER_GRADIENT_KEYS.map((key) => {
 											const active = form.gradientKey === key;
 											return (
@@ -737,18 +771,43 @@ export function BannerForm({
 														setForm((prev) => ({ ...prev, gradientKey: key }))
 													}
 													className={cn(
-														"flex h-12 items-center justify-center rounded-2xl border-2 text-[11px] font-medium uppercase tracking-wide text-white shadow-sm transition",
+														"group flex flex-col items-center gap-1.5 rounded-xl p-1 transition focus:outline-none",
 														active
-															? "ring-2 ring-offset-2"
-															: "border-transparent",
+															? "ring-2 ring-offset-2 ring-[color:var(--color-primary-500)]"
+															: "ring-0",
 													)}
-													style={{
-														backgroundImage: gradientCssVar(key),
-													}}
 													aria-pressed={active}
 													aria-label={key}
 												>
-													{key}
+													<span
+														className={cn(
+															"relative flex h-12 w-full items-center justify-center rounded-lg shadow-md ring-1 ring-black/5 transition",
+															active
+																? "shadow-lg"
+																: "group-hover:shadow-lg",
+														)}
+														style={{
+															backgroundImage: bannerVividGradient(key),
+														}}
+													>
+														{active ? (
+															<Check
+																aria-hidden="true"
+																className="h-4 w-4 text-white drop-shadow"
+																strokeWidth={3}
+															/>
+														) : null}
+													</span>
+													<span
+														className={cn(
+															"text-[11px] font-medium capitalize tracking-wide",
+															active
+																? "text-[color:var(--color-foreground)]"
+																: "text-[color:var(--surface-muted-text)]",
+														)}
+													>
+														{key}
+													</span>
 												</button>
 											);
 										})}
@@ -791,6 +850,7 @@ export function BannerForm({
 									gradientKey={form.gradientKey}
 									dismissable={form.dismissable}
 									audienceTiers={form.audienceTiers}
+									imageUrl={trimmedImageUrl || undefined}
 								/>
 							</section>
 

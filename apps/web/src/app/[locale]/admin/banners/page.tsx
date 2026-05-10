@@ -18,7 +18,7 @@
 import { BannerForm } from "@/components/admin/banner-form";
 import {
 	type BannerGradientKey,
-	BannerPreview,
+	bannerVividGradient,
 } from "@/components/admin/banner-preview";
 import { Badge } from "@/components/ui/badge";
 import { useAdminDeepLink } from "@/hooks/use-admin-deep-link";
@@ -38,17 +38,21 @@ import { useAdminChannels } from "@/hooks/use-channels";
 import { ApiClientError } from "@/lib/api";
 import { formatDateTime } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-client";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/stores/toast-store";
 import {
 	Archive,
 	CalendarClock,
 	CheckCircle2,
 	Copy,
+	ExternalLink,
 	Flag,
+	Image as ImageIcon,
 	Layers,
 	Megaphone,
 	Plus,
 	RotateCcw,
+	Users,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -101,11 +105,6 @@ function audienceTiersOf(banner: BannerRecord): string[] {
 	return Array.isArray(tiers)
 		? tiers.filter((value): value is string => typeof value === "string")
 		: [];
-}
-
-function dismissableOf(banner: BannerRecord): boolean {
-	const value = banner.metadata?.dismissable;
-	return typeof value === "boolean" ? value : true;
 }
 
 function formatScheduleWindow(
@@ -434,7 +433,6 @@ export default function AdminBannersPage() {
 							banners.map((banner) => {
 								const audienceTiers = audienceTiersOf(banner);
 								const gradientKey = gradientKeyOf(banner);
-								const dismissable = dismissableOf(banner);
 								const channelLabels = banner.targets.map((target) =>
 									target.target_type === "global"
 										? t("Global")
@@ -443,56 +441,180 @@ export default function AdminBannersPage() {
 												target.target_channel_id)
 											: t("Unknown channel"),
 								);
+								const isArchived = Boolean(banner.archived_at);
+								const bodyPreview = (banner.body ?? "")
+									.replace(/[#*_`>~\-]/g, "")
+									.replace(/\s+/g, " ")
+									.trim()
+									.slice(0, 140);
 								return (
 									<div
 										key={banner.id}
-										className="space-y-3 rounded-2xl border p-4"
+										className={cn(
+											"group relative overflow-hidden rounded-2xl border transition",
+											"hover:shadow-md",
+											isArchived && "opacity-70",
+										)}
 										style={surfaceStyle}
 									>
-										<BannerPreview
-											title={banner.title}
-											body={banner.body ?? undefined}
-											ctaLabel={banner.cta_label ?? undefined}
-											ctaUrl={banner.cta_url ?? undefined}
-											gradientKey={gradientKey}
-											dismissable={dismissable}
-											audienceTiers={audienceTiers}
-										/>
-										<div
-											className="flex flex-wrap items-center gap-2 text-xs"
-											style={mutedTextStyle}
-										>
-											<Badge variant={statusVariant(banner.status)}>
-												{t(
-													banner.status === "draft"
-														? "Draft"
-														: banner.status === "scheduled"
-															? "Scheduled"
-															: banner.status === "active"
-																? "Active"
-																: banner.status === "expired"
-																	? "Expired"
-																	: "Archived",
+										<div className="flex flex-col gap-4 p-4 md:flex-row md:items-stretch">
+											{/* Color swatch — compact gradient identity, not a full hero */}
+											<div
+												className="relative flex h-20 w-20 shrink-0 items-center justify-center self-start rounded-2xl shadow-sm md:h-24 md:w-24"
+												style={{
+													backgroundImage: bannerVividGradient(gradientKey),
+												}}
+											>
+												<Megaphone
+													aria-hidden="true"
+													className="h-7 w-7 text-white drop-shadow"
+												/>
+												{banner.image_url ? (
+													<span
+														className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full border bg-white text-[10px] dark:bg-neutral-900"
+														style={{
+															borderColor:
+																"color-mix(in srgb, var(--color-border) 70%, transparent)",
+															color: "var(--surface-muted-text)",
+														}}
+														aria-label={t("Banner image URL")}
+													>
+														<ImageIcon
+															aria-hidden="true"
+															className="h-3 w-3"
+														/>
+													</span>
+												) : null}
+											</div>
+
+											{/* Body — title, status, summary, metadata */}
+											<div className="min-w-0 flex-1 space-y-2">
+												<div className="flex flex-wrap items-center gap-2">
+													<h3
+														className="truncate text-base font-semibold leading-snug"
+														style={headingStyle}
+														title={banner.title}
+													>
+														{banner.title}
+													</h3>
+													<Badge variant={statusVariant(banner.status)}>
+														{t(
+															banner.status === "draft"
+																? "Draft"
+																: banner.status === "scheduled"
+																	? "Scheduled"
+																	: banner.status === "active"
+																		? "Active"
+																		: banner.status === "expired"
+																			? "Expired"
+																			: "Archived",
+														)}
+													</Badge>
+													{isArchived ? (
+														<Badge
+															variant="outline"
+															className="border-dashed"
+														>
+															<Archive
+																aria-hidden="true"
+																className="mr-1 h-3 w-3"
+															/>
+															{t("Archived")}
+														</Badge>
+													) : null}
+												</div>
+
+												{bodyPreview ? (
+													<p
+														className="line-clamp-2 text-sm leading-relaxed"
+														style={mutedTextStyle}
+													>
+														{bodyPreview}
+													</p>
+												) : null}
+
+												<div
+													className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs"
+													style={mutedTextStyle}
+												>
+													<span className="inline-flex items-center gap-1">
+														<Flag
+															aria-hidden="true"
+															className="h-3 w-3"
+														/>
+														{t("Priority")}: {banner.priority}
+													</span>
+													<span className="inline-flex items-center gap-1">
+														<CalendarClock
+															aria-hidden="true"
+															className="h-3 w-3"
+														/>
+														{formatScheduleWindow(
+															t,
+															locale,
+															banner.starts_at,
+															banner.ends_at,
+														)}
+													</span>
+													{banner.cta_url ? (
+														<span className="inline-flex max-w-[260px] items-center gap-1 truncate">
+															<ExternalLink
+																aria-hidden="true"
+																className="h-3 w-3"
+															/>
+															<span className="truncate">
+																{banner.cta_label || banner.cta_url}
+															</span>
+														</span>
+													) : null}
+												</div>
+
+												{(audienceTiers.length > 0 ||
+													channelLabels.length > 0) && (
+													<div className="flex flex-wrap items-center gap-1.5 pt-1">
+														{audienceTiers.length > 0 ? (
+															<span
+																className="inline-flex items-center gap-1 text-[11px] uppercase tracking-wide"
+																style={mutedTextStyle}
+															>
+																<Users
+																	aria-hidden="true"
+																	className="h-3 w-3"
+																/>
+															</span>
+														) : null}
+														{audienceTiers.map((tier) => (
+															<Badge
+																key={`${banner.id}-tier-${tier}`}
+																variant="outline"
+																className="text-[11px] uppercase tracking-wide"
+															>
+																{tier}
+															</Badge>
+														))}
+														{channelLabels.map((label, index) => (
+															<Badge
+																key={`${banner.id}-target-${index}`}
+																variant="secondary"
+															>
+																{label}
+															</Badge>
+														))}
+													</div>
 												)}
-											</Badge>
-											<span>
-												{t("Priority")}: {banner.priority}
-											</span>
-											<span>
-												{formatScheduleWindow(
-													t,
-													locale,
-													banner.starts_at,
-													banner.ends_at,
-												)}
-											</span>
-											{channelLabels.length > 0 ? (
-												<span>
-													{t("Targets")}: {channelLabels.join(", ")}
-												</span>
-											) : null}
+											</div>
 										</div>
-										<div className="flex flex-wrap items-center gap-2">
+
+										{/* Action bar */}
+										<div
+											className="flex flex-wrap items-center gap-2 border-t px-4 py-3"
+											style={{
+												borderColor:
+													"color-mix(in srgb, var(--color-border) 78%, transparent)",
+												backgroundColor:
+													"color-mix(in srgb, var(--surface-muted-bg) 30%, transparent)",
+											}}
+										>
 											<Button
 												type="button"
 												variant="outline"
@@ -534,25 +656,33 @@ export default function AdminBannersPage() {
 												<Copy aria-hidden="true" className="h-4 w-4" />
 												{t("Duplicate")}
 											</Button>
-											<Button
-												type="button"
-												variant="outline"
-												size="sm"
-												onClick={() => handleArchiveToggle(banner)}
-												disabled={updateBanner.isPending}
-											>
-												{banner.archived_at ? (
-													<>
-														<RotateCcw aria-hidden="true" className="h-4 w-4" />
-														{t("Restore banner")}
-													</>
-												) : (
-													<>
-														<Archive aria-hidden="true" className="h-4 w-4" />
-														{t("Archive banner")}
-													</>
-												)}
-											</Button>
+											<div className="ml-auto">
+												<Button
+													type="button"
+													variant={isArchived ? "default" : "outline"}
+													size="sm"
+													onClick={() => handleArchiveToggle(banner)}
+													disabled={updateBanner.isPending}
+												>
+													{isArchived ? (
+														<>
+															<RotateCcw
+																aria-hidden="true"
+																className="h-4 w-4"
+															/>
+															{t("Restore banner")}
+														</>
+													) : (
+														<>
+															<Archive
+																aria-hidden="true"
+																className="h-4 w-4"
+															/>
+															{t("Archive banner")}
+														</>
+													)}
+												</Button>
+											</div>
 										</div>
 									</div>
 								);

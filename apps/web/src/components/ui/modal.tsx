@@ -9,7 +9,8 @@ import { overlayVariants, scaleVariants } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 interface ModalProps {
 	isOpen: boolean;
@@ -42,7 +43,15 @@ export function Modal({
 	closeOnEscape = true,
 	size = "md",
 }: ModalProps) {
-	const modalRef = useRef<HTMLDialogElement>(null);
+	// Mount only on the client so SSR doesn't try to read `document`. The
+	// modal is portalled to <body> so it escapes any ancestor `transform`
+	// (RouteTransitionProvider applies framer-motion transforms which would
+	// otherwise trap `position: fixed` inside the route content box and
+	// produce a "local-then-global" flicker.)
+	const [mounted, setMounted] = useState(false);
+	useEffect(() => {
+		setMounted(true);
+	}, []);
 
 	const handleKeyDown = useCallback(
 		(e: KeyboardEvent) => {
@@ -71,10 +80,12 @@ export function Modal({
 		}
 	};
 
-	return (
+	if (!mounted) return null;
+
+	const tree = (
 		<AnimatePresence>
 			{isOpen && (
-				<div className="fixed inset-0 z-50 flex items-center justify-center">
+				<div className="fixed inset-0 z-[100] flex items-center justify-center">
 					{/* Overlay */}
 					<motion.div
 						variants={overlayVariants}
@@ -89,9 +100,8 @@ export function Modal({
 					/>
 
 					{/* Modal Content */}
-					<motion.dialog
-						open
-						ref={modalRef}
+					<motion.div
+						role="dialog"
 						variants={scaleVariants}
 						initial="hidden"
 						animate="visible"
@@ -122,11 +132,13 @@ export function Modal({
 							</button>
 						)}
 						{children}
-					</motion.dialog>
+					</motion.div>
 				</div>
 			)}
 		</AnimatePresence>
 	);
+
+	return createPortal(tree, document.body);
 }
 
 // Header subcomponent

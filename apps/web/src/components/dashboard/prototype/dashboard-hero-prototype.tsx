@@ -67,7 +67,7 @@ export function DashboardHeroPrototype({
 	];
 
 	return (
-		<section className="flex flex-col" style={{ paddingBottom: 0 }}>
+		<div className="flex flex-1 flex-col">
 			{/* dh-header */}
 			<div className="mb-5 flex flex-wrap items-center justify-between gap-4">
 				<div className="flex flex-col gap-1">
@@ -131,9 +131,9 @@ export function DashboardHeroPrototype({
 				</div>
 			</div>
 
-			{/* dash-grid */}
+			{/* dash-grid — prototype/app.html:219 → `display:grid; flex:1; min-height:420px;` */}
 			<div
-				className="grid gap-5 md:grid-cols-[320px_1fr]"
+				className="grid flex-1 gap-5 md:grid-cols-[320px_1fr]"
 				style={{ minHeight: 420 }}
 			>
 				{/* banner-card */}
@@ -270,6 +270,6 @@ export function DashboardHeroPrototype({
 					</div>
 				</motion.article>
 			</div>
-		</section>
+		</div>
 	);
 }

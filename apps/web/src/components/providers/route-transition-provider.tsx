@@ -48,23 +48,23 @@ export function RouteTransitionProvider({
 		};
 	}, [pathname]);
 
+	// Wave 9 hot-fix #3: dropped `filter: blur(...)` from the variants and
+	// reduced `x` travel + duration. Blur costs a full-screen paint per frame
+	// AND turns the wrapper into a CSS containing block for any descendant
+	// `position: fixed` element (sidebar bug, see PersistentUserShellChrome).
+	// Pure opacity + small x-translate stays visually crisp at 200ms and lets
+	// fixed-positioned overlays escape correctly.
 	const variants = useMemo(
 		() => ({
-			initial: reducedMotion
-				? { opacity: 0 }
-				: { opacity: 0, x: 24, filter: "blur(2px)" },
-			animate: reducedMotion
-				? { opacity: 1 }
-				: { opacity: 1, x: 0, filter: "blur(0px)" },
-			exit: reducedMotion
-				? { opacity: 0 }
-				: { opacity: 0, x: -16, filter: "blur(2px)" },
+			initial: reducedMotion ? { opacity: 0 } : { opacity: 0, x: 12 },
+			animate: reducedMotion ? { opacity: 1 } : { opacity: 1, x: 0 },
+			exit: reducedMotion ? { opacity: 0 } : { opacity: 0, x: -8 },
 		}),
 		[reducedMotion],
 	);
 
 	return (
-		<div id="main-content" tabIndex={-1} className="min-h-screen">
+		<div id="main-content" tabIndex={-1}>
 			<AnimatePresence mode="wait" initial={false}>
 				<motion.div
 					key={pathname}
@@ -73,10 +73,9 @@ export function RouteTransitionProvider({
 					exit="exit"
 					variants={variants}
 					transition={{
-						duration: reducedMotion ? 0.12 : 0.28,
+						duration: reducedMotion ? 0.12 : 0.18,
 						ease: [0.4, 0, 0.2, 1],
 					}}
-					className="min-h-[calc(100vh-0px)]"
 				>
 					{children}
 				</motion.div>

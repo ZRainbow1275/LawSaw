@@ -40,8 +40,6 @@
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { Header } from "@/components/layout/header";
 import { Sidebar } from "@/components/layout/sidebar";
-import { cn } from "@/lib/utils";
-import { useSidebarStore } from "@/stores/sidebar-store";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useMemo } from "react";
 
@@ -105,24 +103,31 @@ export function PersistentUserShell({ children }: PersistentUserShellProps) {
 }
 
 function PersistentUserShellChrome({ children }: { children: ReactNode }) {
-	const collapsed = useSidebarStore((state) => state.collapsed);
-
+	// Layout note (sidebar sticky bug, wave 9 hot-fix #4):
+	// We use a flex-row + per-column `overflow-y-auto` shell instead of
+	// `<aside position: fixed>`. An ancestor `<motion.div>` from
+	// `RouteTransitionProvider` carries `filter: blur(0px)` during/after route
+	// transitions, which (per CSS spec) becomes the containing block for any
+	// descendant `position: fixed` element. With the legacy fixed layout the
+	// sidebar would scroll away with the document instead of staying pinned.
+	// A flex shell sidesteps the containing-block trap entirely — the sidebar
+	// is a flow-level flex item naturally locked to the viewport-height row.
+	// This mirrors the wave 8 hot-fix pattern already in `AdminShell`.
+	//
+	// `useSidebarStore` is no longer needed here because <Sidebar /> renders
+	// its own desktop <aside> sized by `collapsed` directly inside the flex row.
 	return (
 		<div
-			className="relative min-h-screen"
+			className="relative flex h-screen w-full overflow-hidden"
 			style={{ backgroundColor: "var(--color-card)" }}
 		>
 			<Sidebar />
 
-			<div
-				className={cn(
-					"flex min-h-screen flex-col transition-[margin] duration-300",
-					"md:ml-[280px]",
-					collapsed && "md:ml-16",
-				)}
-			>
+			<div className="flex min-w-0 flex-1 flex-col">
 				<Header />
-				<div className="flex flex-1 flex-col">{children}</div>
+				<main className="flex-1 overflow-y-auto scrollbar-subtle">
+					{children}
+				</main>
 			</div>
 		</div>
 	);
